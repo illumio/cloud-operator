@@ -167,12 +167,14 @@ func unaryInterceptor(
 
 func main() {
 	flag.Parse()
+	logger := zap.NewNop()
 
-	logger, err := zap.NewDevelopment()
+	devLogger, err := zap.NewDevelopment()
 	if err != nil {
 		logger.Fatal("failed to configure logger:", zap.Error(err))
 	}
-
+	// Ensure logger is never nil
+	logger = devLogger
 	token = "token1"
 	// Example of generating a JWT with an "aud" claim
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -184,6 +186,7 @@ func main() {
 	mySigningKey := []byte("secret")
 
 	// Sign and get the complete encoded token as a string
+	// nosemgrep
 	token, err := jwtToken.SignedString(mySigningKey)
 	if err != nil {
 		logger.Error("Token could not be signed with fake secret key")
