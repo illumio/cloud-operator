@@ -57,7 +57,6 @@ func main() {
 	var enableLeaderElection bool
 	var probeAddr string
 	var secureMetrics bool
-	var enableHTTP2 bool
 	var TlsSkipVerify bool
 	var PairingAddress string
 	var TokenEndpoint string
@@ -70,9 +69,6 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager")
 	flag.BoolVar(&secureMetrics, "metrics-secure", false,
 		"If set the metrics endpoint is served securely")
-	flag.BoolVar(&enableHTTP2, "enable-http2", false,
-		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-
 	flag.BoolVar(&TlsSkipVerify, "tls-skip-verify", true, "If set, TLS connections will verify the x.509 certificate")
 	flag.StringVar(&PairingAddress, "pairing-address", "https://192.168.65.254:50053/api/v1/cluster/pair", "The address of CloudSecure that accepts Pairing Requests")
 	flag.StringVar(&TokenEndpoint, "token-endpoint", "https://192.168.65.254:50053/api/v1/authenticate", "The address of CloudSecure that accepts OAuth requests for Operator")
@@ -100,16 +96,6 @@ func main() {
 		varMap[key.String()] = v.MapIndex(key).Interface()
 	}
 
-	// if the enable-http2 flag is false (the default), http/2 should be disabled
-	// due to its vulnerabilities. More specifically, disabling http/2 will
-	// prevent from being vulnerable to the HTTP/2 Stream Cancelation and
-	// Rapid Reset CVEs. For more information see:
-	// - https://github.com/advisories/GHSA-4374-p667-p6c8
-	//  TODO: Delete above info as well as flip http/2 flag to true when go version upgraded to 1.22
-	disableHTTP2 := func(c *tls.Config) {
-		setupLog.Info("Disabling http/2")
-		c.NextProtos = []string{"http/1.1"}
-	}
 	logger := log.Log
 
 	// Start the gops agent and listen on a specific address and port
@@ -118,9 +104,6 @@ func main() {
 	}
 
 	tlsOpts := []func(*tls.Config){}
-	if !enableHTTP2 {
-		tlsOpts = append(tlsOpts, disableHTTP2)
-	}
 
 	webhookServer := webhook.NewServer(webhook.Options{
 		TLSOpts: tlsOpts,
