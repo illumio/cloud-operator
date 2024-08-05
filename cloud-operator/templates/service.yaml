@@ -3,13 +3,17 @@ kind: Service
 metadata:
   name: {{ include "cloud-operator.fullname" . }}
   labels:
-    {{- include "cloud-operator.labels" . | nindent 4 }}
+    app: {{ include "cloud-operator.name" . }}
+    chart: {{ include "cloud-operator.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
 spec:
   type: {{ .Values.service.type }}
   ports:
     - port: {{ .Values.service.port }}
-      targetPort: http
+      targetPort: {{ .Values.service.port }}
       protocol: TCP
       name: http
   selector:
-    {{- include "cloud-operator.selectorLabels" . | nindent 4 }}
+    app: {{ include "cloud-operator.name" . }}
+    release: {{ .Release.Name }}
