@@ -17,7 +17,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
 	"go.uber.org/zap"
