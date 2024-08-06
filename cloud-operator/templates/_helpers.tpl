@@ -23,3 +23,11 @@ helm.sh/chart: {{ include "cloud-operator.chart" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
+
+{{- define "cloud-operator.serviceAccountName" -}}
+{{- if .Values.serviceAccount.name -}}
+{{- .Values.serviceAccount.name -}}
+{{- else -}}
+{{- include "cloud-operator.fullname" . }}
+{{- end -}}
+{{- end -}}
