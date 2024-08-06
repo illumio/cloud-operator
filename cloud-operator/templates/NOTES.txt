@@ -1,5 +1,3 @@
-1. **Basic Information**: 
-```yaml
 {{- if .Release.IsInstall -}}
   Congratulations! You have successfully installed the cloud-operator Helm chart.
 {{- else if .Release.IsUpgrade -}}
@@ -9,33 +7,16 @@
 Release Name: {{ .Release.Name }}
 Namespace: {{ .Release.Namespace }}
 
-2. **Access Instructions**: 
-```yaml
-{{- if .Values.service.type == "LoadBalancer" -}}
-  The application is being exposed via a LoadBalancer service. It may take a few minutes for the LoadBalancer IP to be available.
-  You can watch the status by running:
-    kubectl get svc --namespace {{ .Release.Namespace }} -w {{ include "cloud-operator.fullname" . }}
+### Next Steps:
 
-  Once the external IP is available, you can access the application using the following URL:
-    http://{{ include "cloud-operator.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
-{{- else if .Values.service.type == "NodePort" -}}
-  The application is being exposed via a NodePort service. You can access the application using any node's IP address and the following port:
-    http://<NodeIP>:{{ (index .spec.ports 0).nodePort }}
-{{- else -}}
-  The application is being exposed via a ClusterIP service. You can access the application using the following URL within the cluster:
-    http://{{ include "cloud-operator.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
-{{- end }}
-
-3. **Next Steps**: 
-```yaml
 - To view the application logs, run:
     kubectl logs -l app={{ include "cloud-operator.name" . }} -n {{ .Release.Namespace }}
 
 - To describe the application resources, run:
     kubectl describe deployment {{ include "cloud-operator.fullname" . }} -n {{ .Release.Namespace }}
 
-4. **Helpful Commands**: 
-```yaml
+### Helpful Commands:
+
 - To get the status of the release, run:
     helm status {{ .Release.Name }}
 
