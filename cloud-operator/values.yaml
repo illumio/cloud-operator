@@ -5,9 +5,12 @@ image:
   tag: "latest"
   pullPolicy: IfNotPresent
 
+service:
+  port: 80  
+
 serviceAccount:
   create: true
-  name: ""
+  name: "illumio-cloud"
   annotations: {}
   automount: true
 
