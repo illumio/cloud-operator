@@ -32,6 +32,7 @@ func (rm *ResourceManager) sendResourceSnapshotComplete() error {
 	return nil
 }
 
+// sendClusterMetadata sends a message to indicate current cluster metadata
 func (rm *ResourceManager) sendClusterMetadata(ctx context.Context) error {
 	clusterUid, err := GetClusterID(ctx, rm.logger)
 	if err != nil {
