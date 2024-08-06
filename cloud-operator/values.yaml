@@ -1,13 +1,9 @@
 replicaCount: 1
 
 image:
-  repository: "your-docker-repo/cloud-operator"
+  repository: "illumio/cloud-operator"
   tag: "latest"
   pullPolicy: IfNotPresent
-
-service:
-  type: ClusterIP
-  port: 80
 
 serviceAccount:
   create: true
@@ -22,11 +18,3 @@ resources:
   requests:
     cpu: 100m
     memory: 128Mi
-
-ingress:
-  enabled: false
-  annotations: {}
-  hosts:
-    - host: chart-example.local
-      paths: []
-  tls: []
