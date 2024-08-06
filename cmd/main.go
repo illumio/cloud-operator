@@ -62,18 +62,18 @@ func main() {
 	var TokenEndpoint string
 	var DeployedSecret string
 	var OAuthSecret string
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
+	flag.StringVar(&metricsAddr, "metrics_bind_address", ":8080", "The address the metric endpoint binds to")
+	flag.StringVar(&probeAddr, "health_probe_bind_address", ":8081", "The address the probe endpoint binds to")
+	flag.BoolVar(&enableLeaderElection, "leader_elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager")
-	flag.BoolVar(&secureMetrics, "metrics-secure", false,
+	flag.BoolVar(&secureMetrics, "metrics_secure", false,
 		"If set the metrics endpoint is served securely")
-	flag.BoolVar(&TlsSkipVerify, "tls-skip-verify", true, "If set, TLS connections will verify the x.509 certificate")
-	flag.StringVar(&PairingAddress, "pairing-address", "https://192.168.65.254:50053/api/v1/cluster/pair", "The address of CloudSecure that accepts Pairing Requests")
-	flag.StringVar(&TokenEndpoint, "token-endpoint", "https://192.168.65.254:50053/api/v1/authenticate", "The address of CloudSecure that accepts OAuth requests for Operator")
-	flag.StringVar(&DeployedSecret, "deployed-secret", "clientsecret", "The key pair given to a user via the CloudSecure pairing process")
-	flag.StringVar(&OAuthSecret, "oauth-secret", "oauthsecret", "The key pair given to the operator in order to create JWTs")
+	flag.BoolVar(&TlsSkipVerify, "tls_skip_verify", true, "If set, TLS connections will verify the x.509 certificate")
+	flag.StringVar(&PairingAddress, "pairing_address", "https://192.168.65.254:50053/api/v1/cluster/pair", "The address of CloudSecure that accepts Pairing Requests")
+	flag.StringVar(&TokenEndpoint, "token_endpoint", "https://192.168.65.254:50053/api/v1/authenticate", "The address of CloudSecure that accepts OAuth requests for Operator")
+	flag.StringVar(&DeployedSecret, "deployed_secret", "clientsecret", "The key pair given to a user via the CloudSecure pairing process")
+	flag.StringVar(&OAuthSecret, "oauth_secret", "oauthsecret", "The key pair given to the operator in order to create JWTs")
 	opts := zap.Options{
 		Development: true,
 	}

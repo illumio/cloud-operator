@@ -21,3 +21,11 @@ resources:
   requests:
     cpu: 100m
     memory: 128Mi
+
+
+env:
+  tls_skip_verify: "false"
+  pairing_address: "https://192.168.65.254:50053/api/v1/cluster/pair"
+  token_endpoint:  "https://192.168.65.254:50053/api/v1/authenticate"
+  deployed_secret: "clientsecret"
+  oauth_secret: "oauthsecret"

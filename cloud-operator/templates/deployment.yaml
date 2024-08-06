@@ -26,7 +26,15 @@ spec:
           ports:
             - containerPort: {{ .Values.service.port }}
           env:
-            - name: EXAMPLE_ENV_VAR
-              value: "example-value"
+            - name: TLS_SKIP_VERIFY
+              value: "{{ .Values.env.tls_skip_verify }}"
+            - name: PAIRING_ADDRESS
+              value: "{{ .Values.env.pairing_address }}"
+            - name: TOKEN_ENDPOINT
+              value: "{{ .Values.env.token_endpoint }}"
+            - name: DEPLOYED_SECRET
+              value: "{{ .Values.env.deployed_secret }}"
+            - name: OAUTH_SECRET
+              value: "{{ .Values.env.oauth_secret }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
