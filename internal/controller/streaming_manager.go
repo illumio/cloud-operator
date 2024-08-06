@@ -82,7 +82,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 		dynamicClient: dynamicClient,
 		streamManager: sm,
 	}
-
+	resourceLister.sendClusterMetadata(ctx)
 	for _, resourceType := range resourceTypes {
 		allResourcesSnapshotted.Add(1)
 		go resourceLister.DyanmicListAndWatchResources(ctx, cancel, resourceType, &allResourcesSnapshotted, &snapshotCompleted)

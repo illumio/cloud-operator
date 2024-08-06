@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-logr/logr"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
+	testHelper "github.com/illumio/cloud-operator/internal/controller/test_helper"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
@@ -25,6 +26,26 @@ type ResourceManager struct {
 // sendResourceSnapshotComplete sends a message to indicate that the initial inventory snapshot has been completely streamed into the given stream.
 func (rm *ResourceManager) sendResourceSnapshotComplete() error {
 	if err := rm.streamManager.instance.stream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
+		rm.logger.Error(err, "Falied to send resource snapshot complete")
+		return err
+	}
+	return nil
+}
+
+func (rm *ResourceManager) sendClusterMetadata(ctx context.Context) error {
+	clusterUid, err := GetClusterID(ctx, rm.logger)
+	if err != nil {
+		rm.logger.Error(err, "Error getting cluster id")
+	}
+	clientset, err := testHelper.NewClientSet()
+	if err != nil {
+		rm.logger.Error(err, "Error creating clientset")
+	}
+	kubernetesVersion, err := clientset.Discovery().ServerVersion()
+	if err != nil {
+		rm.logger.Error(err, "Error getting Kubernetes version")
+	}
+	if err := rm.streamManager.instance.stream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: "0.0,1"}}}); err != nil {
 		rm.logger.Error(err, "Falied to send resource snapshot complete")
 		return err
 	}
