@@ -1,22 +1,46 @@
-1. Get the application URL by running these commands:
-{{- if .Values.ingress.enabled }}
-{{- range $host := .Values.ingress.hosts }}
-  {{- range .paths }}
-  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
-  {{- end }}
+1. **Basic Information**: 
+```yaml
+{{- if .Release.IsInstall -}}
+  Congratulations! You have successfully installed the cloud-operator Helm chart.
+{{- else if .Release.IsUpgrade -}}
+  Your cloud-operator Helm chart has been upgraded successfully.
 {{- end }}
-{{- else if contains "NodePort" .Values.service.type }}
-  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "cloud-operator.fullname" . }})
-  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
-  echo http://$NODE_IP:$NODE_PORT
-{{- else if contains "LoadBalancer" .Values.service.type }}
-     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
-           You can watch its status by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "cloud-operator.fullname" . }}'
-  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "cloud-operator.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
-  echo http://$SERVICE_IP:{{ .Values.service.port }}
-{{- else if contains "ClusterIP" .Values.service.type }}
-  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "cloud-operator.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
-  export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
-  echo "Visit http://127.0.0.1:8080 to use your application"
-  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:$CONTAINER_PORT
+
+Release Name: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+2. **Access Instructions**: 
+```yaml
+{{- if .Values.service.type == "LoadBalancer" -}}
+  The application is being exposed via a LoadBalancer service. It may take a few minutes for the LoadBalancer IP to be available.
+  You can watch the status by running:
+    kubectl get svc --namespace {{ .Release.Namespace }} -w {{ include "cloud-operator.fullname" . }}
+
+  Once the external IP is available, you can access the application using the following URL:
+    http://{{ include "cloud-operator.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+{{- else if .Values.service.type == "NodePort" -}}
+  The application is being exposed via a NodePort service. You can access the application using any node's IP address and the following port:
+    http://<NodeIP>:{{ (index .spec.ports 0).nodePort }}
+{{- else -}}
+  The application is being exposed via a ClusterIP service. You can access the application using the following URL within the cluster:
+    http://{{ include "cloud-operator.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
 {{- end }}
+
+3. **Next Steps**: 
+```yaml
+- To view the application logs, run:
+    kubectl logs -l app={{ include "cloud-operator.name" . }} -n {{ .Release.Namespace }}
+
+- To describe the application resources, run:
+    kubectl describe deployment {{ include "cloud-operator.fullname" . }} -n {{ .Release.Namespace }}
+
+4. **Helpful Commands**: 
+```yaml
+- To get the status of the release, run:
+    helm status {{ .Release.Name }}
+
+- To get a list of all resources created by the chart, run:
+    kubectl get all -l app={{ include "cloud-operator.name" . }} -n {{ .Release.Namespace }}
+
+- To delete the release, run:
+    helm delete {{ .Release.Name }} --namespace {{ .Release.Namespace }}
