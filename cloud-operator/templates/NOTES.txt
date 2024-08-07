@@ -5,7 +5,7 @@
 {{- end }}
 
 Release Name: {{ .Release.Name }}
-Namespace: {{ .Release.Namespace }}
+Namespace: {{ .Values.Namespace }}
 
 ### Next Steps:
 
@@ -13,7 +13,7 @@ Namespace: {{ .Release.Namespace }}
     kubectl logs -l app={{ include "cloud-operator.name" . }} -n {{ .Release.Namespace }}
 
 - To describe the application resources, run:
-    kubectl describe deployment {{ include "cloud-operator.fullname" . }} -n {{ .Release.Namespace }}
+    kubectl describe deployment {{ include "cloud-operator.fullname" . }} -n {{ .Values.Namespace }}
 
 ### Helpful Commands:
 
@@ -21,10 +21,10 @@ Namespace: {{ .Release.Namespace }}
     helm status {{ .Release.Name }}
 
 - To get a list of all resources created by the chart, run:
-    kubectl get all -l app={{ include "cloud-operator.name" . }} -n {{ .Release.Namespace }}
+    kubectl get all -l app={{ include "cloud-operator.name" . }} -n {{ .Values.Namespace }}
 
 - To delete the release, run:
-    helm delete {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+    helm delete {{ .Release.Name }} --namespace {{ .Values.Namespace }}
 
 - To run unittests, run:
     helm unittest .
