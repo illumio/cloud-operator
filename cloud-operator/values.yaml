@@ -14,7 +14,7 @@ service:
 
 serviceAccount:
   create: true
-  name: "illumio-cloud"
+  name: "illumio-cloud-sa"
   annotations: {}
   automount: true
 
