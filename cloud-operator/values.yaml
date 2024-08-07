@@ -1,9 +1,13 @@
+defaultNamespace: "illumio-cloud"
 replicaCount: 1
 
 image:
-  repository: "illumio/cloud-operator"
+  repository: "illumioevanj80/operator"
   tag: "latest"
   pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: regcred
 
 service:
   port: 80  

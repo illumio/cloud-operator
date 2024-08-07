@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "cloud-operator.fullname" . }}
+  namespace: {{ .Values.defaultNamespace }}
   labels:
     app: {{ include "cloud-operator.name" . }}
     chart: {{ include "cloud-operator.chart" . }}
@@ -19,6 +20,10 @@ spec:
         app: {{ include "cloud-operator.name" . }}
         release: {{ .Release.Name }}
     spec:
+      imagePullSecrets:
+          {{- range .Values.imagePullSecrets }}
+          - name: {{ .name }}
+          {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
