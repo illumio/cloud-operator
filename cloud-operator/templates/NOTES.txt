@@ -10,7 +10,7 @@ Namespace: {{ .Values.Namespace }}
 ### Next Steps:
 
 - To view the application logs, run:
-    kubectl logs -l app={{ include "cloud-operator.name" . }} -n {{ .Release.Namespace }}
+    kubectl logs -l app={{ include "cloud-operator.name" . }} -n {{ .Values.Namespace }}
 
 - To describe the application resources, run:
     kubectl describe deployment {{ include "cloud-operator.fullname" . }} -n {{ .Values.Namespace }}
