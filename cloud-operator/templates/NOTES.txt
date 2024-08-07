@@ -25,3 +25,6 @@ Namespace: {{ .Release.Namespace }}
 
 - To delete the release, run:
     helm delete {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+
+- To run unittests, run:
+    helm unittest .

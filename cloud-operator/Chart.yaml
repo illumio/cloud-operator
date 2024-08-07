@@ -1,4 +1,4 @@
-apiVersion: v2
+apiVersion: v1
 name: cloud-operator
 description: A Helm chart for deploying the cloud-operator application
 type: application
