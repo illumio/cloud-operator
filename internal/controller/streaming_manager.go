@@ -82,7 +82,11 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 		dynamicClient: dynamicClient,
 		streamManager: sm,
 	}
-	resourceLister.sendClusterMetadata(ctx)
+	err = resourceLister.sendClusterMetadata(ctx)
+	if err != nil {
+		sm.logger.Error(err, "Failed to send cluster metadata")
+		return err
+	}
 	for _, resourceType := range resourceTypes {
 		allResourcesSnapshotted.Add(1)
 		go resourceLister.DyanmicListAndWatchResources(ctx, cancel, resourceType, &allResourcesSnapshotted, &snapshotCompleted)
