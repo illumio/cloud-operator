@@ -31,6 +31,7 @@ var resourceTypes = [2]string{"pods", "nodes"}
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch
 //+kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch
+//+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch
 //+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 
 // NewStream returns a new stream.
@@ -83,6 +84,11 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 		streamManager: sm,
 	}
 
+	flowManager, err := initFlowManager(ctx, sm.logger)
+	if err != nil {
+		sm.logger.Error(err, "Cannot intialize FlowManager")
+		return err
+	}
 	for _, resourceType := range resourceTypes {
 		allResourcesSnapshotted.Add(1)
 		go resourceLister.DyanmicListAndWatchResources(ctx, cancel, resourceType, &allResourcesSnapshotted, &snapshotCompleted)
@@ -94,6 +100,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 		return err
 	}
 	snapshotCompleted.Done()
+	go flowManager.listenToFlows(ctx)
 	<-ctx.Done()
 	return err
 }
