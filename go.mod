@@ -10,7 +10,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.17.1
 	github.com/onsi/gomega v1.32.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/oauth2 v0.20.0
+	golang.org/x/oauth2 v0.22.0
 	google.golang.org/grpc v1.65.0
 	google.golang.org/protobuf v1.34.2
 	k8s.io/api v0.30.2
