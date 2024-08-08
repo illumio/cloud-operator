@@ -15,6 +15,7 @@ import (
 	"io"
 	"math/big"
 	"net"
+	"os"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -167,14 +168,12 @@ func unaryInterceptor(
 
 func main() {
 	flag.Parse()
-	logger := zap.NewNop()
 
-	devLogger, err := zap.NewDevelopment()
+	logger, err := zap.NewDevelopment()
 	if err != nil {
-		logger.Fatal("failed to configure logger:", zap.Error(err))
+		fmt.Fprintf(os.Stderr, "failed to configure logger: %s", err)
+		os.Exit(1)
 	}
-	// Ensure logger is never nil
-	logger = devLogger
 	token = "token1"
 	// Example of generating a JWT with an "aud" claim
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
