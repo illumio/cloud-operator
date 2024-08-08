@@ -186,7 +186,7 @@ func main() {
 	mySigningKey := []byte("secret")
 
 	// Sign and get the complete encoded token as a string
-	// nosemgrep
+	// nosemgrep: jwt.hardcoded-jwt-key
 	token, err := jwtToken.SignedString(mySigningKey)
 	if err != nil {
 		logger.Error("Token could not be signed with fake secret key")

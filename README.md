@@ -1,6 +1,5 @@
 # Cloud-operator
-The Illumio Cloud-operator is dpeloyed as a pod on a desired cluster. It will then stream information about resources and network data directly to CloudSecure. 
-It will then create CNI policies to effectively segment resources based on selections in CloudSecure.
+The Illumio Cloud-operator is deployed as a Deployment on a desired cluster to stream information about the cluster's resources and network traffic to CloudSecure, and to enforce Illumio network policies by managing corresponding k8s NetworkPolicies in the cluster.
 
 ## Getting Started
 
