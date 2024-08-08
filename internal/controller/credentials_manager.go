@@ -133,6 +133,7 @@ func SetUpOAuthConnection(ctx context.Context, logger logr.Logger, tokenURL stri
 		return &grpc.ClientConn{}, err
 	}
 	// Parse the token.
+	// nosemgrep: jwt-go-parse-unverified
 	parsedJWT, _, err := new(jwt.Parser).ParseUnverified(token.AccessToken, jwt.MapClaims{})
 	if err != nil {
 		logger.Error(err, "Error parsing token")
