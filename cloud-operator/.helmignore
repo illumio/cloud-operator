@@ -1,3 +1,4 @@
+# Copyright 2024 Illumio, Inc. All Rights Reserved.
 # Patterns to ignore when building packages.
 # This supports shell glob matching, relative path matching, and
 # negation (prefixed with !). Only one pattern per line.

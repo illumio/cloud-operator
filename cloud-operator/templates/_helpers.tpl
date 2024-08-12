@@ -1,3 +1,5 @@
+# Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 {{- define "cloud-operator.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}

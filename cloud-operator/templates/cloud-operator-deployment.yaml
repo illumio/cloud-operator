@@ -1,3 +1,5 @@
+# Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,7 +21,10 @@ spec:
       labels:
         app: {{ include "cloud-operator.name" . }}
         release: {{ .Release.Name }}
-    spec:
+     spec:
+      securityContext:
+        fsGroup: 65532
+      priorityClassName: {{ .Values.priorityClassName }}
       serviceAccountName: {{ .Values.serviceAccount.name }}
       imagePullSecrets:
           {{- range .Values.imagePullSecrets }}
@@ -27,6 +32,14 @@ spec:
           {{- end }}
       containers:
         - name: {{ .Chart.Name }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop:
+                - ALL
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:

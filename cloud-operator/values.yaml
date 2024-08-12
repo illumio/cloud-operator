@@ -1,6 +1,8 @@
+# Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 defaultNamespace: "illumio-cloud"
 replicaCount: 1
-
+priorityClassName: ""
 image:
   repository: "illumioevanj80/operator"
   tag: "latest"
@@ -26,6 +28,7 @@ resources:
     cpu: 100m
     memory: 128Mi
 
+existingHubbleRelay: false
 
 env:
   tls_skip_verify: "false"
