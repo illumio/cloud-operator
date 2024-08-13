@@ -58,22 +58,24 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var TlsSkipVerify bool
-	var PairingAddress string
+	var PairingEndpoint string
 	var TokenEndpoint string
-	var DeployedSecret string
-	var OAuthSecret string
-	flag.StringVar(&metricsAddr, "metrics_bind_address", ":8080", "The address the metric endpoint binds to")
-	flag.StringVar(&probeAddr, "health_probe_bind_address", ":8081", "The address the probe endpoint binds to")
-	flag.BoolVar(&enableLeaderElection, "leader_elect", false,
+	var OnboardingClientId string
+	var OnboardingClientSecret string
+	var ClusterCreds string
+	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to")
+	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to")
+	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager")
-	flag.BoolVar(&secureMetrics, "metrics_secure", false,
+	flag.BoolVar(&secureMetrics, "metrics-secure", false,
 		"If set the metrics endpoint is served securely")
 	flag.BoolVar(&TlsSkipVerify, "tls_skip_verify", true, "If set, TLS connections will verify the x.509 certificate")
-	flag.StringVar(&PairingAddress, "pairing_address", "https://192.168.65.254:50053/api/v1/cluster/pair", "The address of CloudSecure that accepts Pairing Requests")
+	flag.StringVar(&PairingEndpoint, "pairing_endpoint", "https://192.168.65.254:50053/api/v1/cluster/pair", "The address of CloudSecure that accepts Pairing Requests")
 	flag.StringVar(&TokenEndpoint, "token_endpoint", "https://192.168.65.254:50053/api/v1/authenticate", "The address of CloudSecure that accepts OAuth requests for Operator")
-	flag.StringVar(&DeployedSecret, "deployed_secret", "clientsecret", "The key pair given to a user via the CloudSecure pairing process")
-	flag.StringVar(&OAuthSecret, "oauth_secret", "oauthsecret", "The key pair given to the operator in order to create JWTs")
+	flag.StringVar(&OnboardingClientId, "onboarding_creds_id", "client_id_1", "The client_id used to onboard this operator")
+	flag.StringVar(&OnboardingClientSecret, "onboarding_creds_secret_id", "client_secret_1", "The client_secret_id used to onboard this operator")
+	flag.StringVar(&ClusterCreds, "cluster_creds_secret", "clustercreds", "The name of the Secret resource containing the OAuth 2 client credentials used to authenticate this operator after onboarding")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -85,11 +87,12 @@ func main() {
 	varMap := make(map[string]interface{})
 	// Use reflection to get variable names and values
 	v := reflect.ValueOf(map[string]interface{}{
-		"TlsSkipVerify":  TlsSkipVerify,
-		"PairingAddress": PairingAddress,
-		"TokenEndpoint":  TokenEndpoint,
-		"DeployedSecret": DeployedSecret,
-		"OAuthSecret":    OAuthSecret,
+		"TlsSkipVerify":          TlsSkipVerify,
+		"PairingEndpoint":        PairingEndpoint,
+		"TokenEndpoint":          TokenEndpoint,
+		"OnboardingClientId":     OnboardingClientId,
+		"OnboardingClientSecret": OnboardingClientSecret,
+		"ClusterCreds":           ClusterCreds,
 	})
 
 	for _, key := range v.MapKeys() {

@@ -1,52 +1,16 @@
 # Copyright 2024 Illumio, Inc. All Rights Reserved.
 
 apiVersion: rbac.authorization.k8s.io/v1
-kind: List
-items:
+kind: Role
 metadata:
-  name: {{ include "cloud-operator.fullname" . }}
-  labels:
-    {{- include "cloud-operator.labels" . | nindent 4 }}
+  name: cloud-operator-secret-manager
+  namespace: illumio-cloud
 rules:
-- apiGroups:
-  - apps
-  resources:
-  - deployments
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - namespaces
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - nodes
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - get
-  - list
-  - watch
-
-
 - apiGroups:
   - ""
   resources:
   - secrets
-  verbs:
+  verbs: 
   - create
   - delete
   - get

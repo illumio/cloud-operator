@@ -119,23 +119,23 @@ func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap ma
 		logger.Info("Failed to establish connection; will retry", "delay", sleep)
 		time.Sleep(sleep)
 		backoff = backoff * 2 // Exponential increase
-		clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, envMap["OAuthSecret"].(string))
+		clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, envMap["ClusterCreds"].(string))
 		if err != nil {
 			logger.Error(err, "Could not read K8s credentials")
 		}
 		if clientID == "" && clientSecret == "" {
-			PairingProfileCredentials, err := sm.ImportPairClusterCredentials(ctx, envMap["DeployedSecret"].(string))
+			PairingProfileCredentials, err := sm.ImportPairClusterCredentials(ctx, envMap["OnboardingClientId"].(string), envMap["OnboardingClientSecret"].(string))
 			if err != nil {
 				logger.Error(err, "Failed to import pairing credentials")
 				continue
 			}
 			am := CredentialsManager{Credentials: PairingProfileCredentials, Logger: logger}
-			err = am.Pair(ctx, envMap["TlsSkipVerify"].(bool), envMap["PairingAddress"].(string), envMap["OAuthSecret"].(string))
+			err = am.Pair(ctx, envMap["TlsSkipVerify"].(bool), envMap["PairingEndpoint"].(string), envMap["ClusterCreds"].(string))
 			if err != nil {
 				logger.Error(err, "Failed to register cluster")
 				continue
 			}
-			clientID, clientSecret, err = sm.ReadCredentialsK8sSecrets(ctx, envMap["OAuthSecret"].(string))
+			clientID, clientSecret, err = sm.ReadCredentialsK8sSecrets(ctx, envMap["ClusterCreds"].(string))
 			if err != nil {
 				logger.Error(err, "Could not read K8s credentials")
 				continue

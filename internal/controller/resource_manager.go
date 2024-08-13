@@ -6,7 +6,6 @@ import (
 
 	"github.com/go-logr/logr"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
-	testHelper "github.com/illumio/cloud-operator/internal/controller/test_helper"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
@@ -38,7 +37,7 @@ func (rm *ResourceManager) sendClusterMetadata(ctx context.Context) error {
 	if err != nil {
 		rm.logger.Error(err, "Error getting cluster id")
 	}
-	clientset, err := testHelper.NewClientSet()
+	clientset, err := NewClientSet()
 	if err != nil {
 		rm.logger.Error(err, "Error creating clientset")
 	}

@@ -41,7 +41,7 @@ type PairResponse struct {
 
 // Pair Attempts to make a request with CloudSecure using a pairing profile and it will get back the oauth2 credentials.
 // It then will store those credentials in the namespaces k8s secret.
-func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, PairingAddress string, OAuthSecret string) error {
+func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, PairingEndpoint string, ClusterCreds string) error {
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: TlsSkipVerify,
@@ -68,7 +68,7 @@ func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, Pair
 	}
 
 	// Create a new POST request with the JSON data
-	req, err := http.NewRequest("POST", PairingAddress, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", PairingEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		am.Logger.Error(err, "Unable to structure post request")
 		return err
@@ -96,7 +96,7 @@ func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, Pair
 		return err
 	}
 	sm := &SecretManager{Logger: am.Logger}
-	err = sm.WriteK8sSecret(ctx, responseData, OAuthSecret)
+	err = sm.WriteK8sSecret(ctx, responseData, ClusterCreds)
 	time.Sleep(1 * time.Second)
 	if err != nil {
 		am.Logger.Error(err, "Failed to write secret to Kubernetes")
