@@ -126,7 +126,7 @@ func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap ma
 		if clientID == "" && clientSecret == "" {
 			PairingProfileCredentials, err := sm.ImportPairClusterCredentials(ctx, envMap["OnboardingClientId"].(string), envMap["OnboardingClientSecret"].(string))
 			if err != nil {
-				logger.Error(err, "Failed to import pairing credentials")
+				logger.Error(err, "Failed to get onboarding credentials")
 				continue
 			}
 			am := CredentialsManager{Credentials: PairingProfileCredentials, Logger: logger}

@@ -8,8 +8,11 @@ metadata:
 rules:
 - apiGroups:
   - ""
-  resources:
+ resources:
   - secrets
+  resourceNames:
+  - onboardingcreds
+  - clustercreds
   verbs: 
   - create
   - delete

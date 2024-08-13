@@ -28,13 +28,11 @@ resources:
     cpu: 100m
     memory: 128Mi
 
-existingHubbleRelay: false
-
 env:
   tls_skip_verify: "false"
   pairing_endpoint: "https://192.168.65.254:50053/api/v1/cluster/pair"
   token_endpoint:  "https://192.168.65.254:50053/api/v1/authenticate"
-  onboarding_creds_id: "client_id_1"
-  onboarding_creds_secret_id: "client_secret_1"
+  onboarding_client_id: "client_id_1"
+  onboarding_secret_id: "client_secret_1"
   # The name of the Secret resource containing the OAuth 2 client credentials used to authenticate this operator after onboarding.
   cluster_creds_secret: "clustercreds"

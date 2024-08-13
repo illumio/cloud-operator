@@ -23,9 +23,9 @@ import (
 
 // Credentials contains attributes that are needed for pairing profiles.
 type Credentials struct {
-	cluster_id    string
-	client_id     string
-	client_secret string
+	ClusterID    string `json:"cluster_id"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
 }
 
 // CredentialsManager holds credentials and a logger.
@@ -41,7 +41,7 @@ type PairResponse struct {
 
 // Pair Attempts to make a request with CloudSecure using a pairing profile and it will get back the oauth2 credentials.
 // It then will store those credentials in the namespaces k8s secret.
-func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, PairingEndpoint string, ClusterCreds string) error {
+func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, PairingEndpoint string, ClusterCredsSecretName string) error {
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: TlsSkipVerify,
@@ -56,8 +56,8 @@ func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, Pair
 
 	// Create the data to be sent in the POST request
 	data := map[string]string{
-		"cluster_client_id":     am.Credentials.client_id,
-		"cluster_client_secret": am.Credentials.client_secret,
+		"cluster_client_id":     am.Credentials.ClientID,
+		"cluster_client_secret": am.Credentials.ClientSecret,
 	}
 
 	// Convert the data to JSON
@@ -96,7 +96,7 @@ func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, Pair
 		return err
 	}
 	sm := &SecretManager{Logger: am.Logger}
-	err = sm.WriteK8sSecret(ctx, responseData, ClusterCreds)
+	err = sm.WriteK8sSecret(ctx, responseData, ClusterCredsSecretName)
 	time.Sleep(1 * time.Second)
 	if err != nil {
 		am.Logger.Error(err, "Failed to write secret to Kubernetes")

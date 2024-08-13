@@ -31,13 +31,13 @@ tests:
           value: "https://192.168.65.254:50053/api/v1/authenticate"
       - equal:
           path: spec.template.spec.containers[0].env[3].name
-          value: "ONBOARDING_CREDS_ID"
+          value: "ONBOARDING_CLIENT_ID"
       - equal:
           path: spec.template.spec.containers[0].env[3].value
           value: "client_id_1"
       - equal:
           path: spec.template.spec.containers[0].env[4].name
-          value: "ONBOARDING_CREDS_SECRET_ID"
+          value: "ONBOARDING_SECRET_ID"
       - equal:
           path: spec.template.spec.containers[0].env[4].value
           value: "client_secret_1"

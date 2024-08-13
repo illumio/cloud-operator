@@ -20,13 +20,13 @@ type SecretManager struct {
 }
 
 // ImportPairClusterCredentials reads from Kubernetes secret to grab everything needed for a pairing request.
-func (sm *SecretManager) ImportPairClusterCredentials(ctx context.Context, clientId string, secretId string) (Credentials, error) {
+func (sm *SecretManager) ImportPairClusterCredentials(ctx context.Context, clientID string, clientSecret string) (Credentials, error) {
 	clusterID, err := GetClusterID(ctx, sm.Logger)
 	if err != nil {
 		sm.Logger.Error(err, "Cannot get clusterID")
 		return Credentials{}, err
 	}
-	return Credentials{cluster_id: clusterID, client_id: clientId, client_secret: secretId}, nil
+	return Credentials{ClusterID: clusterID, ClientID: clientID, ClientSecret: clientSecret}, nil
 }
 
 // ReadK8sSecret takes a secretName and reads the file.

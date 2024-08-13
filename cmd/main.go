@@ -73,8 +73,8 @@ func main() {
 	flag.BoolVar(&TlsSkipVerify, "tls_skip_verify", true, "If set, TLS connections will verify the x.509 certificate")
 	flag.StringVar(&PairingEndpoint, "pairing_endpoint", "https://192.168.65.254:50053/api/v1/cluster/pair", "The address of CloudSecure that accepts Pairing Requests")
 	flag.StringVar(&TokenEndpoint, "token_endpoint", "https://192.168.65.254:50053/api/v1/authenticate", "The address of CloudSecure that accepts OAuth requests for Operator")
-	flag.StringVar(&OnboardingClientId, "onboarding_creds_id", "client_id_1", "The client_id used to onboard this operator")
-	flag.StringVar(&OnboardingClientSecret, "onboarding_creds_secret_id", "client_secret_1", "The client_secret_id used to onboard this operator")
+	flag.StringVar(&OnboardingClientId, "onboarding_client_id", "client_id_1", "The client_id used to onboard this operator")
+	flag.StringVar(&OnboardingClientSecret, "onboarding_secret_id", "client_secret_1", "The client_secret_id used to onboard this operator")
 	flag.StringVar(&ClusterCreds, "cluster_creds_secret", "clustercreds", "The name of the Secret resource containing the OAuth 2 client credentials used to authenticate this operator after onboarding")
 	opts := zap.Options{
 		Development: true,

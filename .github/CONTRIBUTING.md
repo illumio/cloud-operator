@@ -32,7 +32,9 @@ kind create cluster
 helm package .
 helm install cloud-operator-0.0.1.tgz . --namespace illumio-cloud --create-namespace
 ```
-##### INSERT KEY CREATION KUBECTL COMMAND HERE IN ORDER TO ACCESS PRIVATE DOCKERHUB REPO 
+
+> [!NOTE]
+> TODO: Insert key creation kubectl command here in order to access private DockerHub repo.
 
 ##### Wait for the deployment to be ready
 ```
