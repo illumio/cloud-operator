@@ -21,7 +21,7 @@ spec:
       labels:
         app: {{ include "cloud-operator.name" . }}
         release: {{ .Release.Name }}
-     spec:
+    spec:
       securityContext:
         fsGroup: 65532
       priorityClassName: {{ .Values.priorityClassName }}
@@ -47,13 +47,11 @@ spec:
           env:
             - name: TLS_SKIP_VERIFY
               value: "{{ .Values.env.tls_skip_verify }}"
-            - name: PAIRING_ADDRESS
-              value: "{{ .Values.env.pairing_address }}"
+            - name: PAIRING_ENDPOINT
+              value: "{{ .Values.env.pairing_endpoint }}"
             - name: TOKEN_ENDPOINT
               value: "{{ .Values.env.token_endpoint }}"
-            - name: DEPLOYED_SECRET
-              value: "{{ .Values.env.deployed_secret }}"
-            - name: OAUTH_SECRET
-              value: "{{ .Values.env.oauth_secret }}"
+            - name: CLUSTER_CREDS_SECRET
+              value: "{{ .Values.env.cluster_creds_secret }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

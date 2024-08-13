@@ -2,7 +2,7 @@
 
 suite: test cloud-operator values
 templates:
-  - deployment.yaml
+  - cloud-operator-deployment.yaml
 
 tests:
 
@@ -29,7 +29,12 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[2].value
           value: "https://192.168.65.254:50053/api/v1/authenticate"
-
+      - equal:
+          path: spec.template.spec.containers[0].env[3].name
+          value: "CLUSTER_CREDS_SECRET"
+      - equal:
+          path: spec.template.spec.containers[0].env[3].value
+          value: "clustercreds"
   # Test for replicaCount value
   - it: should set the correct number of replicas
     set:

@@ -5,7 +5,8 @@ kind: ClusterRole
 metadata:
   name: {{ include "cloud-operator.fullname" . }}
   labels:
-    {{- include "cloud-operator.labels" . | nindent 4 }}rules:
+    {{- include "cloud-operator.labels" . | nindent 4 }}
+rules:
 - apiGroups: [""]
   resources: ["*"]
   verbs: ["get", "list", "watch"]
