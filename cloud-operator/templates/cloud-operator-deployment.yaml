@@ -51,6 +51,10 @@ spec:
               value: "{{ .Values.env.pairing_endpoint }}"
             - name: TOKEN_ENDPOINT
               value: "{{ .Values.env.token_endpoint }}"
+            - name: ONBOARDING_CREDS_ID
+              value: "{{ .Values.env.onboarding_creds_id }}"
+            - name: ONBOARDING_CREDS_SECRET_ID
+              value: "{{ .Values.env.onboarding_creds_secret_id }}"
             - name: CLUSTER_CREDS_SECRET
               value: "{{ .Values.env.cluster_creds_secret }}"
           resources:
