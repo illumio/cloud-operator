@@ -4,7 +4,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: cloud-operator-secret-manager
-  namespace: illumio-cloud
+  namespace: {{ .Release.Namespace }}
 rules:
 - apiGroups:
   - ""

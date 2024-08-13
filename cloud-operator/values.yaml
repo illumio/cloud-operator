@@ -29,10 +29,11 @@ resources:
     memory: 128Mi
 
 env:
-  tls_skip_verify: "false"
-  pairing_endpoint: "https://192.168.65.254:50053/api/v1/cluster/pair"
-  token_endpoint:  "https://192.168.65.254:50053/api/v1/authenticate"
-  onboarding_client_id: "client_id_1"
-  onboarding_secret_id: "client_secret_1"
+  tlsSkipVerify: "false"
+  # TODO: Replace with real endpoints when they are available.
+  pairingEndpoint: "https://192.168.65.254:50053/api/v1/cluster/pair"
+  tokenEndpoint:  "https://192.168.65.254:50053/api/v1/authenticate"
+  onboardingClientId: "client_id_1"
+  onboardingClientSecret: "client_secret_1"
   # The name of the Secret resource containing the OAuth 2 client credentials used to authenticate this operator after onboarding.
-  cluster_creds_secret: "clustercreds"
+  clusterCredsSecret: "clustercreds"
