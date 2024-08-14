@@ -6,7 +6,7 @@
 
 {{- define "cloud-operator.fullname" -}}
 {{- $name := default .Chart.Name .Values.nameOverride -}}
-{{- $fullname := printf "%s-%s" .Release.Name $name -}}
+{{- $fullname := printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
 {{- $trimmed := trunc 63 $fullname | trimSuffix "-" -}}
 {{- if eq $trimmed $fullname -}}
 {{- $fullname -}}

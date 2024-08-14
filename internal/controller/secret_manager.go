@@ -19,8 +19,8 @@ type SecretManager struct {
 	Logger logr.Logger
 }
 
-// ImportPairClusterCredentials reads from Kubernetes secret to grab everything needed for a pairing request.
-func (sm *SecretManager) ImportPairClusterCredentials(ctx context.Context, clientID string, clientSecret string) (Credentials, error) {
+// GetOnboardingCredentials returns credentials to onboard this cluster with CloudSecure.
+func (sm *SecretManager) GetOnboardingCredentials(ctx context.Context, clientID string, clientSecret string) (Credentials, error) {
 	clusterID, err := GetClusterID(ctx, sm.Logger)
 	if err != nil {
 		sm.Logger.Error(err, "Cannot get clusterID")

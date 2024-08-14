@@ -42,8 +42,6 @@ spec:
                 - ALL
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          ports:
-            - containerPort: {{ .Values.service.port }}
           env:
             - name: TLS_SKIP_VERIFY
               value: "{{ .Values.env.tls_skip_verify }}"
@@ -52,10 +50,16 @@ spec:
             - name: TOKEN_ENDPOINT
               value: "{{ .Values.env.token_endpoint }}"
             - name: ONBOARDING_CLIENT_ID
-              value: "{{ .Values.env.onboarding_client_id }}"
+              valueFrom:
+                secretKeyRef:
+                  name: onboardingcreds
+                  key: "client-id"
             - name: ONBOARDING_SECRET_ID
-              value: "{{ .Values.env.onboarding_secret_id }}"
+              valueFrom:
+                secretKeyRef:
+                  name: onboardingcreds
+                  key: "secret-id"
             - name: CLUSTER_CREDS_SECRET
-              value: "{{ .Values.env.cluster_creds_secret }}"
+              value: "clustercreds"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

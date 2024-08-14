@@ -6,18 +6,6 @@ metadata:
   name: cloud-operator-secret-manager
   namespace: {{ .Release.Namespace }}
 rules:
-- apiGroups:
-  - ""
- resources:
-  - secrets
-  resourceNames:
-  - onboardingcreds
-  - clustercreds
-  verbs: 
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
+- apiGroups: [""] # "" indicates the core API group
+  resources: ["secrets"]
+  verbs: ["create","delete", "get", "list", "patch", "update", "watch"]
