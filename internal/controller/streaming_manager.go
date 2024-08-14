@@ -27,12 +27,6 @@ type streamManager struct {
 
 var resourceTypes = [2]string{"pods", "nodes"}
 
-//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;
-//+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
-//+kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch
-//+kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch
-//+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
-
 // NewStream returns a new stream.
 func NewStream(ctx context.Context, logger logr.Logger, conn *grpc.ClientConn) (*streamManager, error) {
 	client := pb.NewKubernetesInfoServiceClient(conn)
@@ -129,13 +123,6 @@ func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap ma
 				logger.Error(err, "Failed to get onboarding credentials")
 				continue
 			}
-
-			_, _, err = sm.ReadCredentialsK8sSecretsTEST(ctx, envMap["blah"].(string))
-			if err != nil {
-				logger.Error(err, "Could not read K8s credentials")
-				continue
-			}
-
 			am := CredentialsManager{Credentials: OnboardingCredentials, Logger: logger}
 			err = am.Pair(ctx, envMap["TlsSkipVerify"].(bool), envMap["PairingEndpoint"].(string), envMap["ClusterCreds"].(string))
 			if err != nil {

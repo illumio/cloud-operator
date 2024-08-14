@@ -30,28 +30,6 @@ func (sm *SecretManager) GetOnboardingCredentials(ctx context.Context, clientID 
 }
 
 // ReadK8sSecret takes a secretName and reads the file.
-func (sm *SecretManager) ReadCredentialsK8sSecretsTEST(ctx context.Context, secretName string) (string, string, error) {
-	// Create a new clientset
-	clientset, err := NewClientSet()
-	if err != nil {
-		sm.Logger.Error(err, "Failed to create clientSet")
-		return "", "", err
-	}
-
-	// Get the secret
-	secret, err := clientset.CoreV1().Secrets("default").Get(ctx, secretName, metav1.GetOptions{})
-	if err != nil {
-		sm.Logger.Error(err, "Failed to get secret")
-		return "", "", err
-	}
-
-	// Assuming your secret data has a "client_id" and "client_secret" key.
-	clientID := string(secret.Data["client_id"])
-	clientSecret := string(secret.Data["client_secret"])
-	return clientID, clientSecret, nil
-}
-
-// ReadK8sSecret takes a secretName and reads the file.
 func (sm *SecretManager) ReadCredentialsK8sSecrets(ctx context.Context, secretName string) (string, string, error) {
 	// Create a new clientset
 	clientset, err := NewClientSet()
