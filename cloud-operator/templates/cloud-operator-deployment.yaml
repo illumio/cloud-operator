@@ -44,11 +44,13 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: TLS_SKIP_VERIFY
-              value: "{{ .Values.env.tls_skip_verify }}"
+              value: "{{ .Values.env.tlsSkipVerify }}"
             - name: PAIRING_ENDPOINT
-              value: "{{ .Values.env.pairing_endpoint }}"
+              value: "{{ .Values.env.pairingEndpoint }}"
             - name: TOKEN_ENDPOINT
-              value: "{{ .Values.env.token_endpoint }}"
+              value: "{{ .Values.env.tokenEndpoint }}"
+            - name: CLUSTER_CREDS_SECRET
+              value: "clustercreds"
             - name: ONBOARDING_CLIENT_ID
               valueFrom:
                 secretKeyRef:
@@ -59,7 +61,5 @@ spec:
                 secretKeyRef:
                   name: onboardingcreds
                   key: "secret-id"
-            - name: CLUSTER_CREDS_SECRET
-              value: "clustercreds"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

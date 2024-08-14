@@ -124,12 +124,19 @@ func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap ma
 			logger.Error(err, "Could not read K8s credentials")
 		}
 		if clientID == "" && clientSecret == "" {
-			PairingProfileCredentials, err := sm.ImportPairClusterCredentials(ctx, envMap["OnboardingClientId"].(string), envMap["OnboardingClientSecret"].(string))
+			OnboardingCredentials, err := sm.GetOnboardingCredentials(ctx, envMap["OnboardingClientId"].(string), envMap["OnboardingClientSecret"].(string))
 			if err != nil {
 				logger.Error(err, "Failed to get onboarding credentials")
 				continue
 			}
-			am := CredentialsManager{Credentials: PairingProfileCredentials, Logger: logger}
+
+			_, _, err = sm.ReadCredentialsK8sSecretsTEST(ctx, envMap["blah"].(string))
+			if err != nil {
+				logger.Error(err, "Could not read K8s credentials")
+				continue
+			}
+
+			am := CredentialsManager{Credentials: OnboardingCredentials, Logger: logger}
 			err = am.Pair(ctx, envMap["TlsSkipVerify"].(bool), envMap["PairingEndpoint"].(string), envMap["ClusterCreds"].(string))
 			if err != nil {
 				logger.Error(err, "Failed to register cluster")
