@@ -56,10 +56,10 @@ spec:
                 secretKeyRef:
                   name: onboardingcreds
                   key: "client_id"
-            - name: ONBOARDING_SECRET_ID
+            - name: ONBOARDING_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: onboardingcreds
-                  key: "secret_id"
+                  key: "client_secret"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

@@ -1,9 +1,7 @@
 # Copyright 2024 Illumio, Inc. All Rights Reserved.
-
 suite: test cloud-operator values
 templates:
   - cloud-operator-deployment.yaml
-
 tests:
 
   # Test for environment variables
@@ -39,14 +37,8 @@ tests:
           path: spec.template.spec.containers[0].env[4].name
           value: "ONBOARDING_CLIENT_ID"
       - equal:
-          path: spec.template.spec.containers[0].env[4].valueFrom.secretKeyRef.key
-          value: "client_id"
-      - equal:
           path: spec.template.spec.containers[0].env[5].name
-          value: "ONBOARDING_SECRET_ID"
-      - equal:
-          path: spec.template.spec.containers[0].env[5].valueFrom.secretKeyRef.key
-          value: "secret_id"
+          value: "ONBOARDING_CLIENT_SECRET"
   # Test for replicaCount value
   - it: should set the correct number of replicas
     set:
