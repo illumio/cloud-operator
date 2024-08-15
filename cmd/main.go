@@ -57,12 +57,12 @@ func main() {
 	var enableLeaderElection bool
 	var probeAddr string
 	var secureMetrics bool
-	var enableHTTP2 bool
 	var TlsSkipVerify bool
-	var PairingAddress string
+	var OnboardingEndpoint string
 	var TokenEndpoint string
-	var DeployedSecret string
-	var OAuthSecret string
+	var OnboardingClientId string
+	var OnboardingClientSecret string
+	var ClusterCreds string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -70,14 +70,12 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager")
 	flag.BoolVar(&secureMetrics, "metrics-secure", false,
 		"If set the metrics endpoint is served securely")
-	flag.BoolVar(&enableHTTP2, "enable-http2", false,
-		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-
-	flag.BoolVar(&TlsSkipVerify, "tls-skip-verify", true, "If set, TLS connections will verify the x.509 certificate")
-	flag.StringVar(&PairingAddress, "pairing-address", "https://192.168.65.254:50053/api/v1/cluster/pair", "The address of CloudSecure that accepts Pairing Requests")
-	flag.StringVar(&TokenEndpoint, "token-endpoint", "https://192.168.65.254:50053/api/v1/authenticate", "The address of CloudSecure that accepts OAuth requests for Operator")
-	flag.StringVar(&DeployedSecret, "deployed-secret", "clientsecret", "The key pair given to a user via the CloudSecure pairing process")
-	flag.StringVar(&OAuthSecret, "oauth-secret", "oauthsecret", "The key pair given to the operator in order to create JWTs")
+	flag.BoolVar(&TlsSkipVerify, "tls_skip_verify", true, "If set, TLS connections will verify the x.509 certificate")
+	flag.StringVar(&OnboardingEndpoint, "onboarding_endpoint", "https://192.168.65.254:50053/api/v1/cluster/onboard", "The CloudSecure endpoint for onboarding this operator")
+	flag.StringVar(&TokenEndpoint, "token_endpoint", "https://192.168.65.254:50053/api/v1/authenticate", "The CloudSecure endpoint to authenticate this operator")
+	flag.StringVar(&OnboardingClientId, "onboarding_client_id", "client_id_1", "The client_id used to onboard this operator")
+	flag.StringVar(&OnboardingClientSecret, "onboarding_client_secret", "client_secret_1", "The client_secret_id used to onboard this operator")
+	flag.StringVar(&ClusterCreds, "cluster_creds_secret", "clustercreds", "The name of the Secret resource containing the OAuth 2 client credentials used to authenticate this operator after onboarding")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -89,27 +87,18 @@ func main() {
 	varMap := make(map[string]interface{})
 	// Use reflection to get variable names and values
 	v := reflect.ValueOf(map[string]interface{}{
-		"TlsSkipVerify":  TlsSkipVerify,
-		"PairingAddress": PairingAddress,
-		"TokenEndpoint":  TokenEndpoint,
-		"DeployedSecret": DeployedSecret,
-		"OAuthSecret":    OAuthSecret,
+		"TlsSkipVerify":          TlsSkipVerify,
+		"OnboardingEndpoint":     OnboardingEndpoint,
+		"TokenEndpoint":          TokenEndpoint,
+		"OnboardingClientId":     OnboardingClientId,
+		"OnboardingClientSecret": OnboardingClientSecret,
+		"ClusterCreds":           ClusterCreds,
 	})
 
 	for _, key := range v.MapKeys() {
 		varMap[key.String()] = v.MapIndex(key).Interface()
 	}
 
-	// if the enable-http2 flag is false (the default), http/2 should be disabled
-	// due to its vulnerabilities. More specifically, disabling http/2 will
-	// prevent from being vulnerable to the HTTP/2 Stream Cancelation and
-	// Rapid Reset CVEs. For more information see:
-	// - https://github.com/advisories/GHSA-4374-p667-p6c8
-	//  TODO: Delete above info as well as flip http/2 flag to true when go version upgraded to 1.22
-	disableHTTP2 := func(c *tls.Config) {
-		setupLog.Info("Disabling http/2")
-		c.NextProtos = []string{"http/1.1"}
-	}
 	logger := log.Log
 
 	// Start the gops agent and listen on a specific address and port
@@ -118,9 +107,6 @@ func main() {
 	}
 
 	tlsOpts := []func(*tls.Config){}
-	if !enableHTTP2 {
-		tlsOpts = append(tlsOpts, disableHTTP2)
-	}
 
 	webhookServer := webhook.NewServer(webhook.Options{
 		TLSOpts: tlsOpts,

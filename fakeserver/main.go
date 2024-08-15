@@ -18,7 +18,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
 	"go.uber.org/zap"
@@ -69,6 +69,8 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 			return err // Return the error to terminate the stream
 		}
 		switch req.Request.(type) {
+		case *pb.SendKubernetesResourcesRequest_ClusterMetadata:
+			logger.Info("Cluster metadata received")
 		case *pb.SendKubernetesResourcesRequest_ResourceMetadata:
 			logger.Info("Intial inventory data")
 		case *pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete:

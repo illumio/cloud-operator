@@ -1,0 +1,32 @@
+Copyright 2024 Illumio, Inc. All Rights Reserved.
+
+{{- if .Release.IsInstall -}}
+  Congratulations! You have successfully installed the cloud-operator Helm chart.
+{{- else if .Release.IsUpgrade -}}
+  Your cloud-operator Helm chart has been upgraded successfully.
+{{- end }}
+
+Release Name: {{ .Release.Name }}
+Namespace: {{ .Values.Namespace }}
+
+### Next Steps:
+
+- To view the application logs, run:
+    kubectl logs -l app={{ include "cloud-operator.name" . }} -n {{ .Values.Namespace }}
+
+- To describe the application resources, run:
+    kubectl describe deployment {{ include "cloud-operator.fullname" . }} -n {{ .Values.Namespace }}
+
+### Helpful Commands:
+
+- To get the status of the release, run:
+    helm status {{ .Release.Name }}
+
+- To get a list of all resources created by the chart, run:
+    kubectl get all -l app={{ include "cloud-operator.name" . }} -n {{ .Values.Namespace }}
+
+- To delete the release, run:
+    helm delete {{ .Release.Name }} --namespace {{ .Values.Namespace }}
+
+- To run unittests, run:
+    helm unittest .

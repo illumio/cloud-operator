@@ -8,8 +8,6 @@ import (
 
 	"context"
 
-	testHelper "github.com/illumio/cloud-operator/internal/controller/test_helper"
-
 	kuberneteserror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -21,25 +19,20 @@ type SecretManager struct {
 	Logger logr.Logger
 }
 
-// ImportPairClusterCredentials reads from Kubernetes secret to grab everything needed for a pairing request.
-func (sm *SecretManager) ImportPairClusterCredentials(ctx context.Context, secretName string) (Credentials, error) {
-	clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, secretName)
-	if err != nil {
-		sm.Logger.Error(err, "Unable to read K8s secret")
-		return Credentials{}, err
-	}
+// GetOnboardingCredentials returns credentials to onboard this cluster with CloudSecure.
+func (sm *SecretManager) GetOnboardingCredentials(ctx context.Context, clientID string, clientSecret string) (Credentials, error) {
 	clusterID, err := GetClusterID(ctx, sm.Logger)
 	if err != nil {
 		sm.Logger.Error(err, "Cannot get clusterID")
 		return Credentials{}, err
 	}
-	return Credentials{cluster_id: clusterID, client_id: clientID, client_secret: clientSecret}, nil
+	return Credentials{ClusterID: clusterID, ClientID: clientID, ClientSecret: clientSecret}, nil
 }
 
 // ReadK8sSecret takes a secretName and reads the file.
 func (sm *SecretManager) ReadCredentialsK8sSecrets(ctx context.Context, secretName string) (string, string, error) {
 	// Create a new clientset
-	clientset, err := testHelper.NewClientSet()
+	clientset, err := NewClientSet()
 	if err != nil {
 		sm.Logger.Error(err, "Failed to create clientSet")
 		return "", "", err
@@ -59,7 +52,7 @@ func (sm *SecretManager) ReadCredentialsK8sSecrets(ctx context.Context, secretNa
 }
 
 func (sm *SecretManager) DoesK8sSecretExist(ctx context.Context, secretName string) bool {
-	clientset, err := testHelper.NewClientSet()
+	clientset, err := NewClientSet()
 	if err != nil {
 		sm.Logger.Error(err, "Failed to create clientSet")
 	}
@@ -70,7 +63,7 @@ func (sm *SecretManager) DoesK8sSecretExist(ctx context.Context, secretName stri
 }
 
 // WriteK8sSecret takes a the PairingClusterResponse and writes it to a locally kept secret.
-func (sm *SecretManager) WriteK8sSecret(ctx context.Context, keyData PairResponse, OAuthSecret string) error {
+func (sm *SecretManager) WriteK8sSecret(ctx context.Context, keyData PairResponse, ClusterCreds string) error {
 	clusterConfig, err := rest.InClusterConfig()
 	if err != nil {
 		sm.Logger.Error(err, "Error getting in cluster config")
@@ -87,7 +80,7 @@ func (sm *SecretManager) WriteK8sSecret(ctx context.Context, keyData PairRespons
 	namespace := "illumio-cloud" // Will be made configurable.
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      OAuthSecret,
+			Name:      ClusterCreds,
 			Namespace: namespace,
 		},
 		StringData: secretData,

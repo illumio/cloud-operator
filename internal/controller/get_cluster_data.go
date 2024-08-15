@@ -5,13 +5,12 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
-	testHelper "github.com/illumio/cloud-operator/internal/controller/test_helper"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // GetClusterID returns the uid of the k8s cluster's kube-system namespace, which is used as the cluster's globally unique ID.
 func GetClusterID(ctx context.Context, logger logr.Logger) (string, error) {
-	clientset, err := testHelper.NewClientSet()
+	clientset, err := NewClientSet()
 	if err != nil {
 		logger.Error(err, "Error creating clientset")
 	}
