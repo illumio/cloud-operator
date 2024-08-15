@@ -72,7 +72,7 @@ func startHTTPServer(address string, loggerToUse *zap.Logger, clientID string, c
 		token:        tokenString,
 	}
 	http.HandleFunc("/api/v1/authenticate", authService.authenticateHandler)
-	http.HandleFunc("/api/v1/cluster/pair", authService.pairCluster)
+	http.HandleFunc("/api/v1/cluster/onboard", authService.pairCluster)
 
 	server := &http.Server{
 		Addr:         address,

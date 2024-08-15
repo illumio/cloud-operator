@@ -11,9 +11,6 @@ image:
 imagePullSecrets:
   - name: regcred
 
-service:
-  port: 80  
-
 serviceAccount:
   create: true
   name: "illumio-cloud-sa"
@@ -31,7 +28,7 @@ resources:
 env:
   tlsSkipVerify: "false"
   # TODO: Replace with real endpoints when they are available.
-  pairingEndpoint: "https://192.168.65.254:50053/api/v1/cluster/pair"
+  OnboardingEndpoint: "https://192.168.65.254:50053/api/v1/cluster/onboard"
   tokenEndpoint:  "https://192.168.65.254:50053/api/v1/authenticate"
 
 onboardingClientId: "client_id_1"

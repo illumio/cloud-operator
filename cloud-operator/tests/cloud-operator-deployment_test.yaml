@@ -19,10 +19,10 @@ tests:
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[1].name
-          value: "PAIRING_ENDPOINT"
+          value: "ONBOARDING_ENDPOINT"
       - equal:
           path: spec.template.spec.containers[0].env[1].value
-          value: "https://192.168.65.254:50053/api/v1/cluster/pair"
+          value: "https://192.168.65.254:50053/api/v1/cluster/onboard"
       - equal:
           path: spec.template.spec.containers[0].env[2].name
           value: "TOKEN_ENDPOINT"
@@ -35,6 +35,18 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[3].value
           value: "clustercreds"
+      - equal:
+          path: spec.template.spec.containers[0].env[4].name
+          value: "ONBOARDING_CLIENT_ID"
+      - equal:
+          path: spec.template.spec.containers[0].env[4].valueFrom.secretKeyRef.key
+          value: "client_id"
+      - equal:
+          path: spec.template.spec.containers[0].env[5].name
+          value: "ONBOARDING_SECRET_ID"
+      - equal:
+          path: spec.template.spec.containers[0].env[5].valueFrom.secretKeyRef.key
+          value: "secret_id"
   # Test for replicaCount value
   - it: should set the correct number of replicas
     set:

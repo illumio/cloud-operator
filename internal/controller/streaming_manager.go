@@ -124,7 +124,7 @@ func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap ma
 				continue
 			}
 			am := CredentialsManager{Credentials: OnboardingCredentials, Logger: logger}
-			err = am.Pair(ctx, envMap["TlsSkipVerify"].(bool), envMap["PairingEndpoint"].(string), envMap["ClusterCreds"].(string))
+			err = am.Pair(ctx, envMap["TlsSkipVerify"].(bool), envMap["OnboardingEndpoint"].(string), envMap["ClusterCreds"].(string))
 			if err != nil {
 				logger.Error(err, "Failed to register cluster")
 				continue

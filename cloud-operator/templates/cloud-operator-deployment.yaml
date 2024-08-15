@@ -45,8 +45,8 @@ spec:
           env:
             - name: TLS_SKIP_VERIFY
               value: "{{ .Values.env.tlsSkipVerify }}"
-            - name: PAIRING_ENDPOINT
-              value: "{{ .Values.env.pairingEndpoint }}"
+            - name: ONBOARDING_ENDPOINT
+              value: "{{ .Values.env.OnboardingEndpoint }}"
             - name: TOKEN_ENDPOINT
               value: "{{ .Values.env.tokenEndpoint }}"
             - name: CLUSTER_CREDS_SECRET
@@ -55,11 +55,11 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: onboardingcreds
-                  key: "client-id"
+                  key: "client_id"
             - name: ONBOARDING_SECRET_ID
               valueFrom:
                 secretKeyRef:
                   name: onboardingcreds
-                  key: "secret-id"
+                  key: "secret_id"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
