@@ -94,8 +94,34 @@ message KubernetesResourceMutation {
   }
 }
 
+message Workload {
+  string name = 1;
+  string kind = 2;
+}
+
+message FlowMetadata {
+  string ip = 1;
+  map<string, string> labels = 2;
+  string name = 3;
+  string namespace = 4;
+  int32 port = 5;
+  string protocol = 6;
+  Workload workload = 7;
+}
+
+// Message containing required metadata for flow logs
+message SendKubernetesNetworkFlowsRequest {
+  FlowMetadata source = 1;
+  FlowMetadata destination = 2;
+}
+
+// Message sent to the operator in a KubernetesNetworkFlows response stream.
+message SendKubernetesNetworkFlowsResponse {}
+
 // Syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
 service KubernetesInfoService {
   // Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
   rpc SendKubernetesResources(stream SendKubernetesResourcesRequest) returns (stream SendKubernetesResourcesResponse);
+
+  rpc SendKubernetesNetworkFlows(stream SendKubernetesNetworkFlowsRequest) returns (stream SendKubernetesNetworkFlowsResponse);
 }

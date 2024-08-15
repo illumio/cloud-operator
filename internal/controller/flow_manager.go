@@ -16,7 +16,7 @@ import (
 
 type FlowManager struct {
 	logger logr.Logger
-	hc     observer.ObserverClient
+	client observer.ObserverClient
 }
 
 // discoverHubbleRelayAddress uses a kubernetes clientset in order to discover the address of hubble-relay within kube-system
@@ -55,7 +55,7 @@ func initFlowManager(ctx context.Context, logger logr.Logger) (FlowManager, erro
 		log.Fatalf("Failed to connect to Hubble: %v", err)
 	}
 	hubbleClient := observer.NewObserverClient(conn)
-	return FlowManager{logger: logger, hc: hubbleClient}, nil
+	return FlowManager{logger: logger, client: hubbleClient}, nil
 }
 
 // listenToFlows and fetches network flows in batches indefinitely
@@ -71,7 +71,7 @@ func (fm *FlowManager) listenToFlows(ctx context.Context) error {
 		// Process and store flows
 		for _, flow := range flows {
 			flowObj := flow.GetFlow()
-			fm.logger.Info("Flow recorded:", "Source Pod:", flowObj.GetSource().GetPodName(), "Destination Pod:", flowObj.GetDestination().GetPodName(), "Source Workflow:", flowObj.GetSource().GetWorkloads(), "Destination Workflows:", flowObj.GetDestination().GetWorkloads(), "Source Labels:", flowObj.GetSource().GetLabels(), "Destination Labels:", flowObj.GetDestination().GetLabels(), "END", "\n\n")
+			fm.logger.Info("Flow recorded:", "Source Pod:", flowObj.GetSource().GetPodName(), "Destination Pod:", flowObj.GetDestination().GetPodName(), "Source Workflow:", flowObj.GetSource().GetWorkloads()[0]., "Destination Workflows:", flowObj.GetDestination().GetWorkloads(), "Source Labels:", flowObj.GetSource().GetLabels(), "Destination Labels:", flowObj.GetDestination().GetLabels(), "END", "\n\n")
 			flowObj.GetL4().GetProtocol()
 			flowObj.GetL4().GetSCTP().GetDestinationPort()
 			flowObj.GetL4().GetSCTP().GetSourcePort()
@@ -85,7 +85,7 @@ func (fm *FlowManager) readFlows(ctx context.Context) ([]*observer.GetFlowsRespo
 	req := &observer.GetFlowsRequest{
 		Number: 10,
 	}
-	observerClient := fm.hc
+	observerClient := fm.client
 	stream, err := observerClient.GetFlows(ctx, req)
 	if err != nil {
 		fm.logger.Error(err, "Error getting network flows")
