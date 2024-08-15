@@ -16,8 +16,9 @@ import (
 )
 
 type streamClient struct {
-	conn   *grpc.ClientConn
-	stream pb.KubernetesInfoService_SendKubernetesResourcesClient
+	conn                      *grpc.ClientConn
+	streamKubernetesResources pb.KubernetesInfoService_SendKubernetesResourcesClient
+	streamKubernetesFlows     pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 }
 
 type streamManager struct {
@@ -37,7 +38,13 @@ var resourceTypes = [2]string{"pods", "nodes"}
 // NewStream returns a new stream.
 func NewStream(ctx context.Context, logger logr.Logger, conn *grpc.ClientConn) (*streamManager, error) {
 	client := pb.NewKubernetesInfoServiceClient(conn)
-	stream, err := client.SendKubernetesResources(ctx)
+	streamKubernetesResources, err := client.SendKubernetesResources(ctx)
+	if err != nil {
+		// Proper error handling here; you might want to return the error, log it, etc.
+		logger.Error(err, "Failed to connect to server")
+		return &streamManager{}, err
+	}
+	streamKubernetesFlows, err := client.SendKubernetesNetworkFlows(ctx)
 	if err != nil {
 		// Proper error handling here; you might want to return the error, log it, etc.
 		logger.Error(err, "Failed to connect to server")
@@ -46,8 +53,9 @@ func NewStream(ctx context.Context, logger logr.Logger, conn *grpc.ClientConn) (
 
 	// Create or update the instance with the new stream and connection
 	instance := &streamClient{
-		conn:   conn,
-		stream: stream,
+		conn:                      conn,
+		streamKubernetesResources: streamKubernetesResources,
+		streamKubernetesFlows:     streamKubernetesFlows,
 	}
 	sm := &streamManager{
 		instance: instance,
@@ -100,7 +108,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 		return err
 	}
 	snapshotCompleted.Done()
-	go flowManager.listenToFlows(ctx)
+	go flowManager.listenToFlows(ctx, *sm)
 	<-ctx.Done()
 	return err
 }

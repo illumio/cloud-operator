@@ -101,12 +101,12 @@ message Workload {
 
 message FlowMetadata {
   string ip = 1;
-  map<string, string> labels = 2;
+  repeated string labels = 2;
   string name = 3;
   string namespace = 4;
   int32 port = 5;
   string protocol = 6;
-  Workload workload = 7;
+  repeated Workload workload = 7;
 }
 
 // Message containing required metadata for flow logs

@@ -24,7 +24,7 @@ type ResourceManager struct {
 
 // sendResourceSnapshotComplete sends a message to indicate that the initial inventory snapshot has been completely streamed into the given stream.
 func (rm *ResourceManager) sendResourceSnapshotComplete() error {
-	if err := rm.streamManager.instance.stream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
+	if err := rm.streamManager.instance.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
 		rm.logger.Error(err, "Falied to send resource snapshot complete")
 		return err
 	}

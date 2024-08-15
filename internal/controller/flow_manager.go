@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/cilium/cilium/api/v1/flow"
 	observer "github.com/cilium/cilium/api/v1/observer"
 	"github.com/go-logr/logr"
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
 	testHelper "github.com/illumio/cloud-operator/internal/controller/test_helper"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -19,7 +21,7 @@ type FlowManager struct {
 	client observer.ObserverClient
 }
 
-// discoverHubbleRelayAddress uses a kubernetes clientset in order to discover the address of hubble-relay within kube-system
+// discoverHubbleRelayAddress uses a kubernetes clientset in order to discover the address of hubble-relay within kube-system.
 func discoverHubbleRelayAddress(ctx context.Context, logger logr.Logger, clientset *kubernetes.Clientset) (string, error) {
 	service, err := clientset.CoreV1().Services("kube-system").Get(ctx, "hubble-relay", metav1.GetOptions{})
 	if err != nil {
@@ -36,7 +38,7 @@ func discoverHubbleRelayAddress(ctx context.Context, logger logr.Logger, clients
 	return address, nil
 }
 
-// initFlowManager connects to hubble, sets up a observerClient and creates a new FlowManager object
+// initFlowManager connects to hubble, sets up a observerClient and creates a new FlowManager object.
 func initFlowManager(ctx context.Context, logger logr.Logger) (FlowManager, error) {
 	// Connect to Hubble
 	config, err := testHelper.NewClientSet()
@@ -58,8 +60,8 @@ func initFlowManager(ctx context.Context, logger logr.Logger) (FlowManager, erro
 	return FlowManager{logger: logger, client: hubbleClient}, nil
 }
 
-// listenToFlows and fetches network flows in batches indefinitely
-func (fm *FlowManager) listenToFlows(ctx context.Context) error {
+// listenToFlows and fetches network flows in batches indefinitely.
+func (fm *FlowManager) listenToFlows(ctx context.Context, sm streamManager) error {
 	// Fetch network flows
 	for {
 		flows, err := fm.readFlows(ctx)
@@ -71,16 +73,46 @@ func (fm *FlowManager) listenToFlows(ctx context.Context) error {
 		// Process and store flows
 		for _, flow := range flows {
 			flowObj := flow.GetFlow()
-			fm.logger.Info("Flow recorded:", "Source Pod:", flowObj.GetSource().GetPodName(), "Destination Pod:", flowObj.GetDestination().GetPodName(), "Source Workflow:", flowObj.GetSource().GetWorkloads()[0]., "Destination Workflows:", flowObj.GetDestination().GetWorkloads(), "Source Labels:", flowObj.GetSource().GetLabels(), "Destination Labels:", flowObj.GetDestination().GetLabels(), "END", "\n\n")
-			flowObj.GetL4().GetProtocol()
-			flowObj.GetL4().GetSCTP().GetDestinationPort()
-			flowObj.GetL4().GetSCTP().GetSourcePort()
-			flowObj.GetL7().GetHttp().ProtoMessage()
+			sourceWorkloads := convertToProtoWorkloads(flowObj.GetSource().GetWorkloads())
+			source := pb.FlowMetadata{
+				Ip:        flowObj.GetIP().GetSource(),
+				Labels:    flowObj.GetSource().GetLabels(),
+				Namespace: flowObj.GetSource().GetNamespace(),
+				Name:      flowObj.GetNodeName(),
+				Port:      12,
+				Protocol:  flowObj.GetL7().GetHttp().GetProtocol(),
+				Workload:  sourceWorkloads,
+			}
+
+			destinationWorkloads := convertToProtoWorkloads(flowObj.GetDestination().GetWorkloads())
+			destination := pb.FlowMetadata{
+				Ip:        flowObj.GetIP().GetDestination(),
+				Labels:    flowObj.GetDestination().GetLabels(),
+				Namespace: flowObj.GetDestination().GetNamespace(),
+				Name:      flowObj.GetNodeName(),
+				Port:      12,
+				Protocol:  flowObj.GetL7().GetHttp().GetProtocol(),
+				Workload:  destinationWorkloads,
+			}
+			sendNetworkFlowsData(&sm, &source, &destination)
 		}
 	}
 }
 
-// readFlows uses the observerClient to make gRPC calls to hubble-relay and grab the last x amount of flows
+// Conversion function for []*flow.Workflow to proto defined workload array.
+func convertToProtoWorkloads(workloads []*flow.Workload) []*pb.Workload {
+	var protoWorkloads []*pb.Workload
+	for _, wl := range workloads {
+		protoWorkload := &pb.Workload{
+			Name: wl.Name,
+			Kind: wl.Kind,
+		}
+		protoWorkloads = append(protoWorkloads, protoWorkload)
+	}
+	return protoWorkloads
+}
+
+// readFlows uses the observerClient to make gRPC calls to hubble-relay and grab the last x amount of flows.
 func (fm *FlowManager) readFlows(ctx context.Context) ([]*observer.GetFlowsResponse, error) {
 	req := &observer.GetFlowsRequest{
 		Number: 10,
