@@ -88,7 +88,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 	flowManager, err := initFlowManager(ctx, sm.logger)
 	if err != nil {
 		sm.logger.Error(err, "Cannot intialize FlowManager")
-
+	}
 	err = resourceLister.sendClusterMetadata(ctx)
 	if err != nil {
 		sm.logger.Error(err, "Failed to send cluster metadata")

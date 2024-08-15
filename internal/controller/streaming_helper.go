@@ -18,7 +18,7 @@ func sendObjectMetaData(sm *streamManager, metadata *pb.KubernetesObjectMetadata
 
 func sendNetworkFlowsData(sm *streamManager, sourceFlow *pb.FlowMetadata, destinationFlow *pb.FlowMetadata) error {
 	if err := sm.instance.streamKubernetesFlows.Send(&pb.SendKubernetesNetworkFlowsRequest{Source: sourceFlow, Destination: destinationFlow}); err != nil {
-		sm.logger.Error(err, "Failed to send resource metadata")
+		sm.logger.Error(err, "Failed to send flow metadata")
 		return err
 	}
 	return nil

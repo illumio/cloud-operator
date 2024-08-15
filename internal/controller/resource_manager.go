@@ -46,7 +46,7 @@ func (rm *ResourceManager) sendClusterMetadata(ctx context.Context) error {
 	if err != nil {
 		rm.logger.Error(err, "Error getting Kubernetes version")
 	}
-	if err := rm.streamManager.instance.stream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: version.Version()}}}); err != nil {
+	if err := rm.streamManager.instance.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: version.Version()}}}); err != nil {
 		rm.logger.Error(err, "Failed to send cluster metadata")
 		return err
 	}

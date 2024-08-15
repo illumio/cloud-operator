@@ -9,7 +9,6 @@ import (
 	observer "github.com/cilium/cilium/api/v1/observer"
 	"github.com/go-logr/logr"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
-	testHelper "github.com/illumio/cloud-operator/internal/controller/test_helper"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,7 +40,7 @@ func discoverHubbleRelayAddress(ctx context.Context, logger logr.Logger, clients
 // initFlowManager connects to hubble, sets up a observerClient and creates a new FlowManager object.
 func initFlowManager(ctx context.Context, logger logr.Logger) (FlowManager, error) {
 	// Connect to Hubble
-	config, err := testHelper.NewClientSet()
+	config, err := NewClientSet()
 	if err != nil {
 		logger.Error(err, "Could not create a new client set")
 		return FlowManager{}, err
@@ -74,29 +73,45 @@ func (fm *FlowManager) listenToFlows(ctx context.Context, sm streamManager) erro
 		for _, flow := range flows {
 			flowObj := flow.GetFlow()
 			sourceWorkloads := convertToProtoWorkloads(flowObj.GetSource().GetWorkloads())
+			sourcePort := fm.getPortFromFlows(flowObj)
 			source := pb.FlowMetadata{
 				Ip:        flowObj.GetIP().GetSource(),
 				Labels:    flowObj.GetSource().GetLabels(),
 				Namespace: flowObj.GetSource().GetNamespace(),
 				Name:      flowObj.GetNodeName(),
-				Port:      12,
+				Port:      int32(sourcePort),
 				Protocol:  flowObj.GetL7().GetHttp().GetProtocol(),
 				Workload:  sourceWorkloads,
 			}
-
 			destinationWorkloads := convertToProtoWorkloads(flowObj.GetDestination().GetWorkloads())
+			destPort := fm.getPortFromFlows(flowObj)
 			destination := pb.FlowMetadata{
 				Ip:        flowObj.GetIP().GetDestination(),
 				Labels:    flowObj.GetDestination().GetLabels(),
 				Namespace: flowObj.GetDestination().GetNamespace(),
 				Name:      flowObj.GetNodeName(),
-				Port:      12,
+				Port:      int32(destPort),
 				Protocol:  flowObj.GetL7().GetHttp().GetProtocol(),
 				Workload:  destinationWorkloads,
 			}
-			sendNetworkFlowsData(&sm, &source, &destination)
+			err = sendNetworkFlowsData(&sm, &source, &destination)
+			if err != nil {
+				fm.logger.Error(err, "Cannot send object metadata")
+				return err
+			}
 		}
 	}
+}
+
+func (fm *FlowManager) getPortFromFlows(flowObj *flow.Flow) uint32 {
+	if flowObj.GetL4().GetTCP() != nil {
+		return flowObj.GetL4().GetTCP().GetDestinationPort()
+	} else if flowObj.GetL4().GetSCTP() != nil {
+		return flowObj.GetL4().GetSCTP().GetDestinationPort()
+	} else if flowObj.GetL4().GetUDP() != nil {
+		return flowObj.GetL4().GetUDP().GetDestinationPort()
+	}
+	return 0
 }
 
 // Conversion function for []*flow.Workflow to proto defined workload array.
