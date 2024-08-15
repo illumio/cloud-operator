@@ -55,8 +55,6 @@ func initFlowManager(ctx context.Context, logger logr.Logger) (FlowManager, erro
 		log.Fatalf("Failed to connect to Hubble: %v", err)
 	}
 	hubbleClient := observer.NewObserverClient(conn)
-	logger.Info("PRINTING HUMBLEADDRESS")
-	logger.Info(hubbleAddress)
 	return FlowManager{logger: logger, hc: hubbleClient}, nil
 }
 
@@ -72,8 +70,12 @@ func (fm *FlowManager) listenToFlows(ctx context.Context) error {
 
 		// Process and store flows
 		for _, flow := range flows {
-			fm.logger.Info("Flow\n", "%v", flow)
-			// You can store the flow in a database or file here
+			flowObj := flow.GetFlow()
+			fm.logger.Info("Flow recorded:", "Source Pod:", flowObj.GetSource().GetPodName(), "Destination Pod:", flowObj.GetDestination().GetPodName(), "Source Workflow:", flowObj.GetSource().GetWorkloads(), "Destination Workflows:", flowObj.GetDestination().GetWorkloads(), "Source Labels:", flowObj.GetSource().GetLabels(), "Destination Labels:", flowObj.GetDestination().GetLabels(), "END", "\n\n")
+			flowObj.GetL4().GetProtocol()
+			flowObj.GetL4().GetSCTP().GetDestinationPort()
+			flowObj.GetL4().GetSCTP().GetSourcePort()
+			flowObj.GetL7().GetHttp().ProtoMessage()
 		}
 	}
 }
