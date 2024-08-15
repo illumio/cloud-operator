@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 
@@ -21,7 +22,7 @@ type FlowManager struct {
 }
 
 // discoverHubbleRelayAddress uses a kubernetes clientset in order to discover the address of hubble-relay within kube-system.
-func discoverHubbleRelayAddress(ctx context.Context, logger logr.Logger, clientset *kubernetes.Clientset) (string, error) {
+func discoverHubbleRelayAddress(ctx context.Context, logger logr.Logger, clientset kubernetes.Interface) (string, error) {
 	service, err := clientset.CoreV1().Services("kube-system").Get(ctx, "hubble-relay", metav1.GetOptions{})
 	if err != nil {
 		logger.Error(err, "Failed to get Hubble Relay service")
@@ -30,7 +31,7 @@ func discoverHubbleRelayAddress(ctx context.Context, logger logr.Logger, clients
 
 	if len(service.Spec.Ports) == 0 {
 		logger.Error(err, "Hubble Relay service has no ports")
-		return "", err
+		return "", errors.New("hubble relay service has no ports")
 	}
 
 	address := fmt.Sprintf("%s:%d", service.Spec.ClusterIP, service.Spec.Ports[0].Port)
