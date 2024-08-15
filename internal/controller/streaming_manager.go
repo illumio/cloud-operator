@@ -28,13 +28,6 @@ type streamManager struct {
 
 var resourceTypes = [2]string{"pods", "nodes"}
 
-//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;
-//+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
-//+kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch
-//+kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch
-//+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch
-//+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
-
 // NewStream returns a new stream.
 func NewStream(ctx context.Context, logger logr.Logger, conn *grpc.ClientConn) (*streamManager, error) {
 	client := pb.NewKubernetesInfoServiceClient(conn)
@@ -95,6 +88,10 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 	flowManager, err := initFlowManager(ctx, sm.logger)
 	if err != nil {
 		sm.logger.Error(err, "Cannot intialize FlowManager")
+
+	err = resourceLister.sendClusterMetadata(ctx)
+	if err != nil {
+		sm.logger.Error(err, "Failed to send cluster metadata")
 		return err
 	}
 	for _, resourceType := range resourceTypes {
@@ -130,23 +127,23 @@ func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap ma
 		logger.Info("Failed to establish connection; will retry", "delay", sleep)
 		time.Sleep(sleep)
 		backoff = backoff * 2 // Exponential increase
-		clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, envMap["OAuthSecret"].(string))
+		clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, envMap["ClusterCreds"].(string))
 		if err != nil {
 			logger.Error(err, "Could not read K8s credentials")
 		}
 		if clientID == "" && clientSecret == "" {
-			PairingProfileCredentials, err := sm.ImportPairClusterCredentials(ctx, envMap["DeployedSecret"].(string))
+			OnboardingCredentials, err := sm.GetOnboardingCredentials(ctx, envMap["OnboardingClientId"].(string), envMap["OnboardingClientSecret"].(string))
 			if err != nil {
-				logger.Error(err, "Failed to import pairing credentials")
+				logger.Error(err, "Failed to get onboarding credentials")
 				continue
 			}
-			am := CredentialsManager{Credentials: PairingProfileCredentials, Logger: logger}
-			err = am.Pair(ctx, envMap["TlsSkipVerify"].(bool), envMap["PairingAddress"].(string), envMap["OAuthSecret"].(string))
+			am := CredentialsManager{Credentials: OnboardingCredentials, Logger: logger}
+			err = am.Pair(ctx, envMap["TlsSkipVerify"].(bool), envMap["OnboardingEndpoint"].(string), envMap["ClusterCreds"].(string))
 			if err != nil {
 				logger.Error(err, "Failed to register cluster")
 				continue
 			}
-			clientID, clientSecret, err = sm.ReadCredentialsK8sSecrets(ctx, envMap["OAuthSecret"].(string))
+			clientID, clientSecret, err = sm.ReadCredentialsK8sSecrets(ctx, envMap["ClusterCreds"].(string))
 			if err != nil {
 				logger.Error(err, "Could not read K8s credentials")
 				continue

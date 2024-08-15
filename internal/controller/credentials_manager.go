@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 
@@ -23,9 +23,9 @@ import (
 
 // Credentials contains attributes that are needed for pairing profiles.
 type Credentials struct {
-	cluster_id    string
-	client_id     string
-	client_secret string
+	ClusterID    string `json:"cluster_id"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
 }
 
 // CredentialsManager holds credentials and a logger.
@@ -41,7 +41,7 @@ type PairResponse struct {
 
 // Pair Attempts to make a request with CloudSecure using a pairing profile and it will get back the oauth2 credentials.
 // It then will store those credentials in the namespaces k8s secret.
-func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, PairingAddress string, OAuthSecret string) error {
+func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string, ClusterCredsSecretName string) error {
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: TlsSkipVerify,
@@ -56,8 +56,8 @@ func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, Pair
 
 	// Create the data to be sent in the POST request
 	data := map[string]string{
-		"cluster_client_id":     am.Credentials.client_id,
-		"cluster_client_secret": am.Credentials.client_secret,
+		"cluster_client_id":     am.Credentials.ClientID,
+		"cluster_client_secret": am.Credentials.ClientSecret,
 	}
 
 	// Convert the data to JSON
@@ -68,7 +68,7 @@ func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, Pair
 	}
 
 	// Create a new POST request with the JSON data
-	req, err := http.NewRequest("POST", PairingAddress, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", OnboardingEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		am.Logger.Error(err, "Unable to structure post request")
 		return err
@@ -96,7 +96,7 @@ func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, Pair
 		return err
 	}
 	sm := &SecretManager{Logger: am.Logger}
-	err = sm.WriteK8sSecret(ctx, responseData, OAuthSecret)
+	err = sm.WriteK8sSecret(ctx, responseData, ClusterCredsSecretName)
 	time.Sleep(1 * time.Second)
 	if err != nil {
 		am.Logger.Error(err, "Failed to write secret to Kubernetes")
@@ -133,6 +133,7 @@ func SetUpOAuthConnection(ctx context.Context, logger logr.Logger, tokenURL stri
 		return &grpc.ClientConn{}, err
 	}
 	// Parse the token.
+	// nosemgrep: jwt-go-parse-unverified
 	parsedJWT, _, err := new(jwt.Parser).ParseUnverified(token.AccessToken, jwt.MapClaims{})
 	if err != nil {
 		logger.Error(err, "Error parsing token")

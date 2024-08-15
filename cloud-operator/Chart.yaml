@@ -1,0 +1,8 @@
+# Copyright 2024 Illumio, Inc. All Rights Reserved.
+
+apiVersion: v1
+name: cloud-operator
+description: A Helm chart for deploying the Illumio cloud-operator application
+version: 0.0.1
+appVersion: "0.0.1"
+icon: "https://cdn.prod.website-files.com/63cdb40b25368837c04197b3/643479525f557e4bffc2e3ca_Combination_Mark.svg"

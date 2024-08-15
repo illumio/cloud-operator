@@ -72,7 +72,7 @@ func startHTTPServer(address string, loggerToUse *zap.Logger, clientID string, c
 		token:        tokenString,
 	}
 	http.HandleFunc("/api/v1/authenticate", authService.authenticateHandler)
-	http.HandleFunc("/api/v1/cluster/pair", authService.pairCluster)
+	http.HandleFunc("/api/v1/cluster/onboard", authService.onboardCluster)
 
 	server := &http.Server{
 		Addr:         address,
@@ -129,8 +129,8 @@ func (a *AuthService) authenticateHandler(w http.ResponseWriter, r *http.Request
 	}
 }
 
-// pairCluster handles the pairing request and returns OAuth creds used for token.
-func (a *AuthService) pairCluster(w http.ResponseWriter, r *http.Request) {
+// onboardCluster handles the pairing request and returns OAuth creds used for token.
+func (a *AuthService) onboardCluster(w http.ResponseWriter, r *http.Request) {
 	a.logger.Info(
 		"received request",
 		zap.String("method", r.Method),

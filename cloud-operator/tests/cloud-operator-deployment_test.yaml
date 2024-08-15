@@ -1,0 +1,80 @@
+# Copyright 2024 Illumio, Inc. All Rights Reserved.
+suite: test cloud-operator values
+templates:
+  - cloud-operator-deployment.yaml
+tests:
+
+  # Test for environment variables
+  - it: should set the correct environment variables
+    set:
+      env.tlsSkipVerify: "true"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: "TLS_SKIP_VERIFY"
+      - equal:
+          path: spec.template.spec.containers[0].env[0].value
+          value: "true"
+      - equal:
+          path: spec.template.spec.containers[0].env[1].name
+          value: "ONBOARDING_ENDPOINT"
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: "https://192.168.65.254:50053/api/v1/cluster/onboard"
+      - equal:
+          path: spec.template.spec.containers[0].env[2].name
+          value: "TOKEN_ENDPOINT"
+      - equal:
+          path: spec.template.spec.containers[0].env[2].value
+          value: "https://192.168.65.254:50053/api/v1/authenticate"
+      - equal:
+          path: spec.template.spec.containers[0].env[3].name
+          value: "CLUSTER_CREDS_SECRET"
+      - equal:
+          path: spec.template.spec.containers[0].env[3].value
+          value: "clustercreds"
+      - equal:
+          path: spec.template.spec.containers[0].env[4].name
+          value: "ONBOARDING_CLIENT_ID"
+      - equal:
+          path: spec.template.spec.containers[0].env[5].name
+          value: "ONBOARDING_CLIENT_SECRET"
+  # Test for replicaCount value
+  - it: should set the correct number of replicas
+    set:
+      replicaCount: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+    # Test for service selectors
+  - it: should set the correct service selectors
+    asserts:
+      - equal:
+          path: spec.selector.matchLabels.app
+          value: "cloud-operator"
+      - equal:
+          path: spec.selector.matchLabels.release
+          value: "RELEASE-NAME"
+
+  # Test for image repository and tag
+  - it: should use the correct image
+    set:
+      image.repository: "illumio/cloud-operator"
+      image.tag: "1.0.0"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "illumio/cloud-operator:1.0.0"
+  # Test for resource requests
+  - it: should set the correct resource requests
+    set:
+      resources.requests.cpu: "100m"
+      resources.requests.memory: "128Mi"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: "100m"
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: "128Mi"

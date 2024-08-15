@@ -15,9 +15,10 @@ import (
 	"io"
 	"math/big"
 	"net"
+	"os"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
 	"go.uber.org/zap"
@@ -68,6 +69,8 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 			return err // Return the error to terminate the stream
 		}
 		switch req.Request.(type) {
+		case *pb.SendKubernetesResourcesRequest_ClusterMetadata:
+			logger.Info("Cluster metadata received")
 		case *pb.SendKubernetesResourcesRequest_ResourceMetadata:
 			logger.Info("Intial inventory data")
 		case *pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete:
@@ -170,9 +173,9 @@ func main() {
 
 	logger, err := zap.NewDevelopment()
 	if err != nil {
-		logger.Fatal("failed to configure logger:", zap.Error(err))
+		fmt.Fprintf(os.Stderr, "failed to configure logger: %s", err)
+		os.Exit(1)
 	}
-
 	token = "token1"
 	// Example of generating a JWT with an "aud" claim
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -184,6 +187,7 @@ func main() {
 	mySigningKey := []byte("secret")
 
 	// Sign and get the complete encoded token as a string
+	// nosemgrep: jwt.hardcoded-jwt-key
 	token, err := jwtToken.SignedString(mySigningKey)
 	if err != nil {
 		logger.Error("Token could not be signed with fake secret key")

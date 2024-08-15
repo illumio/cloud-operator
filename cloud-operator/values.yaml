@@ -1,0 +1,35 @@
+# Copyright 2024 Illumio, Inc. All Rights Reserved.
+
+defaultNamespace: "illumio-cloud"
+replicaCount: 1
+priorityClassName: ""
+image:
+  repository: "illumioevanj80/operator"
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: regcred
+
+serviceAccount:
+  create: true
+  name: "illumio-cloud-sa"
+  annotations: {}
+  automount: true
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+env:
+  tlsSkipVerify: "false"
+  # TODO: Replace with real endpoints when they are available.
+  OnboardingEndpoint: "https://192.168.65.254:50053/api/v1/cluster/onboard"
+  tokenEndpoint:  "https://192.168.65.254:50053/api/v1/authenticate"
+
+onboardingClientId: "client_id_1"
+onboardingClientSecret: "client_secret_1"
