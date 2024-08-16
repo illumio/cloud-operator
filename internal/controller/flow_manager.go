@@ -75,7 +75,7 @@ func (fm *FlowManager) listenToFlows(ctx context.Context, sm streamManager) erro
 		for _, flow := range flows {
 			flowObj := flow.GetFlow()
 			sourceWorkloads := convertToProtoWorkloads(flowObj.GetSource().GetWorkloads())
-			sourcePort := fm.getPortFromFlows(flowObj, true)
+			sourcePort := fm.getPortFromFlows(flowObj.GetL4(), true)
 			source := pb.FlowMetadata{
 				Ip:        flowObj.GetIP().GetSource(),
 				Labels:    flowObj.GetSource().GetLabels(),
@@ -86,7 +86,7 @@ func (fm *FlowManager) listenToFlows(ctx context.Context, sm streamManager) erro
 				Workload:  sourceWorkloads,
 			}
 			destinationWorkloads := convertToProtoWorkloads(flowObj.GetDestination().GetWorkloads())
-			destPort := fm.getPortFromFlows(flowObj, false)
+			destPort := fm.getPortFromFlows(flowObj.GetL4(), false)
 			destination := pb.FlowMetadata{
 				Ip:        flowObj.GetIP().GetDestination(),
 				Labels:    flowObj.GetDestination().GetLabels(),
@@ -106,22 +106,22 @@ func (fm *FlowManager) listenToFlows(ctx context.Context, sm streamManager) erro
 }
 
 // getPortFromFlows determines which port is being used in a given flow.
-func (fm *FlowManager) getPortFromFlows(flowObj *flow.Flow, isSourcePort bool) uint32 {
+func (fm *FlowManager) getPortFromFlows(l4Object *flow.Layer4, isSourcePort bool) uint32 {
 	if isSourcePort {
-		if flowObj.GetL4().GetTCP() != nil {
-			return flowObj.GetL4().GetTCP().GetSourcePort()
-		} else if flowObj.GetL4().GetSCTP() != nil {
-			return flowObj.GetL4().GetSCTP().GetSourcePort()
-		} else if flowObj.GetL4().GetUDP() != nil {
-			return flowObj.GetL4().GetUDP().GetSourcePort()
+		if l4Object.GetTCP() != nil {
+			return l4Object.GetTCP().GetSourcePort()
+		} else if l4Object.GetSCTP() != nil {
+			return l4Object.GetSCTP().GetSourcePort()
+		} else if l4Object.GetUDP() != nil {
+			return l4Object.GetUDP().GetSourcePort()
 		}
 	} else {
-		if flowObj.GetL4().GetTCP() != nil {
-			return flowObj.GetL4().GetTCP().GetDestinationPort()
-		} else if flowObj.GetL4().GetSCTP() != nil {
-			return flowObj.GetL4().GetSCTP().GetDestinationPort()
-		} else if flowObj.GetL4().GetUDP() != nil {
-			return flowObj.GetL4().GetUDP().GetDestinationPort()
+		if l4Object.GetTCP() != nil {
+			return l4Object.GetTCP().GetDestinationPort()
+		} else if l4Object.GetSCTP() != nil {
+			return l4Object.GetSCTP().GetDestinationPort()
+		} else if l4Object.GetUDP() != nil {
+			return l4Object.GetUDP().GetDestinationPort()
 		}
 	}
 	return 0
