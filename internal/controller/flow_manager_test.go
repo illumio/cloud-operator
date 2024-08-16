@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/cilium/cilium/api/v1/flow"
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
 
 	"github.com/go-logr/logr/funcr"
 	"github.com/stretchr/testify/assert"
@@ -194,6 +195,65 @@ func TestGetPortFromFlows(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			port := fm.getPortFromFlows(tt.l4Object, tt.isSourcePort)
 			assert.Equal(t, tt.expectedPort, port)
+		})
+	}
+}
+
+func TestConvertToProtoWorkloads(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []*flow.Workload
+		expected []*pb.Workload
+	}{
+		{
+			name:     "empty input",
+			input:    []*flow.Workload{},
+			expected: []*pb.Workload{},
+		},
+		{
+			name: "single workload",
+			input: []*flow.Workload{
+				{
+					Name: "workload1",
+					Kind: "id1",
+				},
+			},
+			expected: []*pb.Workload{
+				{
+					Name: "workload1",
+					Kind: "id1",
+				},
+			},
+		},
+		{
+			name: "multiple workloads",
+			input: []*flow.Workload{
+				{
+					Name: "workload1",
+					Kind: "id1",
+				},
+				{
+					Name: "workload2",
+					Kind: "id2",
+				},
+			},
+			expected: []*pb.Workload{
+				{
+					Name: "workload1",
+					Kind: "id1",
+				},
+				{
+					Name: "workload2",
+					Kind: "id2",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := convertToProtoWorkloads(tt.input)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }

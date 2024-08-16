@@ -129,7 +129,7 @@ func (fm *FlowManager) getPortFromFlows(l4Object *flow.Layer4, isSourcePort bool
 
 // Conversion function for []*flow.Workflow to proto defined workload array.
 func convertToProtoWorkloads(workloads []*flow.Workload) []*pb.Workload {
-	var protoWorkloads []*pb.Workload
+	protoWorkloads := []*pb.Workload{}
 	for _, wl := range workloads {
 		protoWorkload := &pb.Workload{
 			Name: wl.Name,
