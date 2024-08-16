@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// FlowManager holds a logger and Cilium client
 type FlowManager struct {
 	logger logr.Logger
 	client observer.ObserverClient
@@ -74,7 +75,7 @@ func (fm *FlowManager) listenToFlows(ctx context.Context, sm streamManager) erro
 		for _, flow := range flows {
 			flowObj := flow.GetFlow()
 			sourceWorkloads := convertToProtoWorkloads(flowObj.GetSource().GetWorkloads())
-			sourcePort := fm.getPortFromFlows(flowObj)
+			sourcePort := fm.getPortFromFlows(flowObj, true)
 			source := pb.FlowMetadata{
 				Ip:        flowObj.GetIP().GetSource(),
 				Labels:    flowObj.GetSource().GetLabels(),
@@ -85,7 +86,7 @@ func (fm *FlowManager) listenToFlows(ctx context.Context, sm streamManager) erro
 				Workload:  sourceWorkloads,
 			}
 			destinationWorkloads := convertToProtoWorkloads(flowObj.GetDestination().GetWorkloads())
-			destPort := fm.getPortFromFlows(flowObj)
+			destPort := fm.getPortFromFlows(flowObj, false)
 			destination := pb.FlowMetadata{
 				Ip:        flowObj.GetIP().GetDestination(),
 				Labels:    flowObj.GetDestination().GetLabels(),
@@ -104,13 +105,24 @@ func (fm *FlowManager) listenToFlows(ctx context.Context, sm streamManager) erro
 	}
 }
 
-func (fm *FlowManager) getPortFromFlows(flowObj *flow.Flow) uint32 {
-	if flowObj.GetL4().GetTCP() != nil {
-		return flowObj.GetL4().GetTCP().GetDestinationPort()
-	} else if flowObj.GetL4().GetSCTP() != nil {
-		return flowObj.GetL4().GetSCTP().GetDestinationPort()
-	} else if flowObj.GetL4().GetUDP() != nil {
-		return flowObj.GetL4().GetUDP().GetDestinationPort()
+// getPortFromFlows determines which port is being used in a given flow.
+func (fm *FlowManager) getPortFromFlows(flowObj *flow.Flow, isSourcePort bool) uint32 {
+	if isSourcePort {
+		if flowObj.GetL4().GetTCP() != nil {
+			return flowObj.GetL4().GetTCP().GetSourcePort()
+		} else if flowObj.GetL4().GetSCTP() != nil {
+			return flowObj.GetL4().GetSCTP().GetSourcePort()
+		} else if flowObj.GetL4().GetUDP() != nil {
+			return flowObj.GetL4().GetUDP().GetSourcePort()
+		}
+	} else {
+		if flowObj.GetL4().GetTCP() != nil {
+			return flowObj.GetL4().GetTCP().GetDestinationPort()
+		} else if flowObj.GetL4().GetSCTP() != nil {
+			return flowObj.GetL4().GetSCTP().GetDestinationPort()
+		} else if flowObj.GetL4().GetUDP() != nil {
+			return flowObj.GetL4().GetUDP().GetDestinationPort()
+		}
 	}
 	return 0
 }

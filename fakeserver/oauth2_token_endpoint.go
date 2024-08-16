@@ -28,11 +28,11 @@ type TokenResponse struct {
 	AccessToken string `json:"access_token,omitempty"` //nolint:tagliatelle
 }
 
-type PairRequest struct {
+type OnboardRequest struct {
 	ClusterClientID     string `json:"cluster_client_id"`
 	ClusterClientSecret string `json:"cluster_client_secret"`
 }
-type PairResponse struct {
+type OnboardResponse struct {
 	ClusterClientId     string
 	ClusterClientSecret string
 }
@@ -129,7 +129,7 @@ func (a *AuthService) authenticateHandler(w http.ResponseWriter, r *http.Request
 	}
 }
 
-// onboardCluster handles the pairing request and returns OAuth creds used for token.
+// onboardCluster handles the onboarding request and returns OAuth creds used for token.
 func (a *AuthService) onboardCluster(w http.ResponseWriter, r *http.Request) {
 	a.logger.Info(
 		"received request",
@@ -151,7 +151,7 @@ func (a *AuthService) onboardCluster(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	// Unmarshal the JSON data into a struct
-	var requestData PairRequest
+	var requestData OnboardRequest
 	if err := json.Unmarshal(body, &requestData); err != nil {
 		http.Error(w, "Error unmarshalling JSON", http.StatusBadRequest)
 		return
@@ -162,7 +162,7 @@ func (a *AuthService) onboardCluster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Just pass back what client sent for testing purposes.
-	resp := PairResponse{ClusterClientId: requestData.ClusterClientID, ClusterClientSecret: requestData.ClusterClientSecret}
+	resp := OnboardResponse{ClusterClientId: requestData.ClusterClientID, ClusterClientSecret: requestData.ClusterClientSecret}
 
 	jsonResponse(w, http.StatusOK, resp)
 }

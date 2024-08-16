@@ -94,24 +94,37 @@ message KubernetesResourceMutation {
   }
 }
 
+// Information on a Kubernetes Workflow infomation from Cilium.
+// https://pkg.go.dev/github.com/cilium/cilium@v1.16.0/api/v1/flow#Workload
 message Workload {
+  // Name of workload.
   string name = 1;
+  // Kind of workload.
   string kind = 2;
 }
 
 message FlowMetadata {
+  // IP address of request.
   string ip = 1;
+  // Labels attached to resource.
   repeated string labels = 2;
+  // Name of resource.
   string name = 3;
+  // Namespace where resource is located.
   string namespace = 4;
+  // Port that request is being used.
   int32 port = 5;
+  // Network protocol being used.
   string protocol = 6;
+  // Workloads the request is interacting with.
   repeated Workload workload = 7;
 }
 
 // Message containing required metadata for flow logs
 message SendKubernetesNetworkFlowsRequest {
+  // FlowMetadata from source.
   FlowMetadata source = 1;
+  // FlowMetadata from destination.
   FlowMetadata destination = 2;
 }
 
@@ -123,5 +136,6 @@ service KubernetesInfoService {
   // Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
   rpc SendKubernetesResources(stream SendKubernetesResourcesRequest) returns (stream SendKubernetesResourcesResponse);
 
+  // Continuously sends Network Flow traffic recorded via CNI in the cluster into CloudSecure.
   rpc SendKubernetesNetworkFlows(stream SendKubernetesNetworkFlowsRequest) returns (stream SendKubernetesNetworkFlowsResponse);
 }

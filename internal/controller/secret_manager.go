@@ -62,8 +62,8 @@ func (sm *SecretManager) DoesK8sSecretExist(ctx context.Context, secretName stri
 	return err == nil
 }
 
-// WriteK8sSecret takes a the PairingClusterResponse and writes it to a locally kept secret.
-func (sm *SecretManager) WriteK8sSecret(ctx context.Context, keyData PairResponse, ClusterCreds string) error {
+// WriteK8sSecret takes keyData and writes it to a locally kept secret.
+func (sm *SecretManager) WriteK8sSecret(ctx context.Context, keyData OnboardResponse, ClusterCreds string) error {
 	clusterConfig, err := rest.InClusterConfig()
 	if err != nil {
 		sm.Logger.Error(err, "Error getting in cluster config")
