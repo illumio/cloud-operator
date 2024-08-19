@@ -3,11 +3,50 @@ The Illumio Cloud-operator is deployed as a Deployment on a desired cluster to s
 
 ## Getting Started
 
-DEPLOYMENT INSTRUCTION TBD
+### Deployment Instructions
+##### Prerequisites
+Ensure you have Helm installed and configured on your local machine.
+Ensure you have access to a Kubernetes cluster and the necessary permissions to deploy resources.
+Packaging the Helm Chart
+First, package the Helm chart. This will create a .tgz file that can be used for installation.
+```
+helm package .
+```
+This command will generate a file named cloud-operator-0.0.1.tgz (or similar, depending on your chart version) in the current directory.
+
+Installing the Helm Chart
+To install the Helm chart, use the following command:
+```
+helm install illumio cloud-operator-0.0.1.tgz --namespace illumio-cloud --create-namespace
+```
+This command will:
+
+Install the Helm chart with the release name illumio.
+Use the packaged chart file cloud-operator-0.0.1.tgz.
+Deploy the resources into the illumio-cloud namespace.
+Create the illumio-cloud namespace if it does not already exist.
+Verifying the Installation
+To verify that the Helm chart has been successfully installed, you can use the following command:
+
+```
+helm list --namespace illumio-cloud
+```
+This will list all the Helm releases in the illumio-cloud namespace, including the illumio release if the installation was successful.
+
+Uninstalling the Helm Chart
+If you need to uninstall the Helm chart, use the following command:
+
+```
+helm uninstall illumio --namespace illumio-cloud
+```
+This will remove all the resources associated with the illumio release from the illumio-cloud namespace.
+
+
 
 ### Prerequisites
 - go version v1.22.0+
 - Access to a Kubernetes v1.11.3+ cluster.
+- helm version v3.15.3+
 
 ## License
 
