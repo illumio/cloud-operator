@@ -124,10 +124,15 @@ func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap ma
 				continue
 			}
 			am := CredentialsManager{Credentials: OnboardingCredentials, Logger: logger}
-			err = am.Pair(ctx, envMap["TlsSkipVerify"].(bool), envMap["OnboardingEndpoint"].(string), envMap["ClusterCreds"].(string))
+			responseData, err := am.Pair(ctx, envMap["TlsSkipVerify"].(bool), envMap["OnboardingEndpoint"].(string))
 			if err != nil {
 				logger.Error(err, "Failed to register cluster")
 				continue
+			}
+			err = sm.WriteK8sSecret(ctx, responseData, envMap["ClusterCreds"].(string))
+			time.Sleep(1 * time.Second)
+			if err != nil {
+				am.Logger.Error(err, "Failed to write secret to Kubernetes")
 			}
 			clientID, clientSecret, err = sm.ReadCredentialsK8sSecrets(ctx, envMap["ClusterCreds"].(string))
 			if err != nil {

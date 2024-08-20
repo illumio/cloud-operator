@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/golang-jwt/jwt"
 	"golang.org/x/oauth2"
@@ -41,7 +40,7 @@ type PairResponse struct {
 
 // Pair Attempts to make a request with CloudSecure using a pairing profile and it will get back the oauth2 credentials.
 // It then will store those credentials in the namespaces k8s secret.
-func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string, ClusterCredsSecretName string) error {
+func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string) (PairResponse, error) {
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: TlsSkipVerify,
@@ -59,19 +58,19 @@ func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, Onbo
 		"cluster_client_id":     am.Credentials.ClientID,
 		"cluster_client_secret": am.Credentials.ClientSecret,
 	}
-
+	var responseData PairResponse
 	// Convert the data to JSON
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		am.Logger.Error(err, "Unable to marshal json data")
-		return err
+		return responseData, err
 	}
 
 	// Create a new POST request with the JSON data
 	req, err := http.NewRequest("POST", OnboardingEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		am.Logger.Error(err, "Unable to structure post request")
-		return err
+		return responseData, err
 	}
 
 	// Set the appropriate headers
@@ -80,7 +79,7 @@ func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, Onbo
 	resp, err := client.Do(req)
 	if err != nil {
 		am.Logger.Error(err, "Unable to send post request")
-		return err
+		return responseData, err
 	}
 	defer resp.Body.Close()
 
@@ -88,20 +87,13 @@ func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, Onbo
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		am.Logger.Error(err, "Unable to read response of Pair post request")
-		return err
+		return responseData, err
 	}
-	var responseData PairResponse
 	if err := json.Unmarshal(body, &responseData); err != nil {
 		am.Logger.Error(err, "Unable to unmarshal json data")
-		return err
+		return responseData, err
 	}
-	sm := &SecretManager{Logger: am.Logger}
-	err = sm.WriteK8sSecret(ctx, responseData, ClusterCredsSecretName)
-	time.Sleep(1 * time.Second)
-	if err != nil {
-		am.Logger.Error(err, "Failed to write secret to Kubernetes")
-	}
-	return nil
+	return responseData, nil
 }
 
 // SetUpOAuthConnection establishes a gRPC connection using OAuth credentials and logging the process.

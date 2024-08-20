@@ -38,7 +38,7 @@ func (sm *SecretManager) ReadCredentialsK8sSecrets(ctx context.Context, secretNa
 		return "", "", err
 	}
 
-	// Get the secrets
+	// Get the secret
 	secret, err := clientset.CoreV1().Secrets("illumio-cloud").Get(ctx, secretName, metav1.GetOptions{})
 	if err != nil {
 		sm.Logger.Error(err, "Failed to get secret")
