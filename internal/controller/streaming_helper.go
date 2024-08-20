@@ -2,7 +2,10 @@
 package controller
 
 import (
+	"context"
+
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
+	"github.com/illumio/cloud-operator/internal/version"
 	"k8s.io/apimachinery/pkg/watch"
 )
 
@@ -34,6 +37,36 @@ func streamMutationObjectMetaData(sm *streamManager, metadata *pb.KubernetesObje
 			sm.logger.Error(err, "Failed to send update resource mutation")
 			return err
 		}
+	}
+	return nil
+}
+
+// sendResourceSnapshotComplete sends a message to indicate that the initial inventory snapshot has been completely streamed into the given stream.
+func (rm *ResourceManager) sendResourceSnapshotComplete() error {
+	if err := rm.streamManager.instance.stream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
+		rm.logger.Error(err, "Falied to send resource snapshot complete")
+		return err
+	}
+	return nil
+}
+
+// sendClusterMetadata sends a message to indicate current cluster metadata
+func (rm *ResourceManager) sendClusterMetadata(ctx context.Context) error {
+	clusterUid, err := GetClusterID(ctx, rm.logger)
+	if err != nil {
+		rm.logger.Error(err, "Error getting cluster id")
+	}
+	clientset, err := NewClientSet()
+	if err != nil {
+		rm.logger.Error(err, "Error creating clientset")
+	}
+	kubernetesVersion, err := clientset.Discovery().ServerVersion()
+	if err != nil {
+		rm.logger.Error(err, "Error getting Kubernetes version")
+	}
+	if err := rm.streamManager.instance.stream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: version.Version()}}}); err != nil {
+		rm.logger.Error(err, "Failed to send cluster metadata")
+		return err
 	}
 	return nil
 }
