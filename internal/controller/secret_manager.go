@@ -3,6 +3,8 @@
 package controller
 
 import (
+	"errors"
+
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 
@@ -10,8 +12,6 @@ import (
 
 	kuberneteserror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 )
 
 // SecretManager keeps a logger for its own methods.
@@ -38,7 +38,7 @@ func (sm *SecretManager) ReadCredentialsK8sSecrets(ctx context.Context, secretNa
 		return "", "", err
 	}
 
-	// Get the secret
+	// Get the secrets
 	secret, err := clientset.CoreV1().Secrets("illumio-cloud").Get(ctx, secretName, metav1.GetOptions{})
 	if err != nil {
 		sm.Logger.Error(err, "Failed to get secret")
@@ -47,7 +47,15 @@ func (sm *SecretManager) ReadCredentialsK8sSecrets(ctx context.Context, secretNa
 
 	// Assuming your secret data has a "client_id" and "client_secret" key.
 	clientID := string(secret.Data["client_id"])
+	if clientID == "" {
+		sm.Logger.Error(err, "Cannot get client_id")
+		return "", "", errors.New("failed to get client_id out of secret")
+	}
 	clientSecret := string(secret.Data["client_secret"])
+	if clientSecret == "" {
+		sm.Logger.Error(err, "Cannot get client_secret")
+		return "", "", errors.New("failed to get client_secret out of secret")
+	}
 	return clientID, clientSecret, nil
 }
 
@@ -64,11 +72,7 @@ func (sm *SecretManager) DoesK8sSecretExist(ctx context.Context, secretName stri
 
 // WriteK8sSecret takes a the PairingClusterResponse and writes it to a locally kept secret.
 func (sm *SecretManager) WriteK8sSecret(ctx context.Context, keyData PairResponse, ClusterCreds string) error {
-	clusterConfig, err := rest.InClusterConfig()
-	if err != nil {
-		sm.Logger.Error(err, "Error getting in cluster config")
-	}
-	clientset, err := kubernetes.NewForConfig(clusterConfig)
+	clientset, err := NewClientSet()
 	if err != nil {
 		sm.Logger.Error(err, "Error creating clientset")
 	}
@@ -97,6 +101,7 @@ func (sm *SecretManager) WriteK8sSecret(ctx context.Context, keyData PairRespons
 	}
 	if err != nil {
 		sm.Logger.Error(err, "Error creating or updating secret")
+		return err
 	} else {
 		sm.Logger.Info("Secret created or updated successfully")
 	}

@@ -1,6 +1,6 @@
 //Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package test_helper
+package testhelper
 
 import (
 	"os/exec"
