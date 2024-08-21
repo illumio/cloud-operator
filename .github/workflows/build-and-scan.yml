@@ -24,11 +24,11 @@ jobs:
         with:
           context: .
           push: false
-          tags: my-app:latest
+          tags: cloud-operator:latest
 
       - name: Install Grype
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Scan Docker image with Grype
-        run: grype my-app:latest --fail-on low
+        run: grype docker://cloud-operator:latest --fail-on low
