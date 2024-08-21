@@ -25,10 +25,24 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 )
+
+var kaep = keepalive.EnforcementPolicy{
+	MinTime:             5 * time.Second, // If a client pings more than once every 5 seconds, terminate the connection
+	PermitWithoutStream: true,            // Allow pings even when there are no active streams
+}
+
+var kasp = keepalive.ServerParameters{
+	MaxConnectionIdle:     15 * time.Second, // If a client is idle for 15 seconds, send a GOAWAY
+	MaxConnectionAge:      30 * time.Second, // If any connection is alive for more than 30 seconds, send a GOAWAY
+	MaxConnectionAgeGrace: 5 * time.Second,  // Allow 5 seconds for pending RPCs to complete before forcibly closing connections
+	Time:                  5 * time.Second,  // Ping the client if it is idle for 5 seconds to ensure the connection is still active
+	Timeout:               2 * time.Second,  // Wait 2 second for the ping ack before assuming the connection is dead
+}
 
 const (
 	AuthorizationHeader = "authorization"
@@ -230,7 +244,7 @@ func main() {
 	creds := credentials.NewTLS(&tls.Config{
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS12})
-	s := grpc.NewServer(grpc.Creds(creds), grpc.StreamInterceptor(tokenAuthStreamInterceptor(token)), grpc.UnaryInterceptor(unaryInterceptor))
+	s := grpc.NewServer(grpc.Creds(creds), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor(token)), grpc.UnaryInterceptor(unaryInterceptor))
 	pb.RegisterKubernetesInfoServiceServer(s, &server{})
 	logger.Info("Server listening", zap.String("network", listener.Addr().Network()), zap.String("address", listener.Addr().String()))
 

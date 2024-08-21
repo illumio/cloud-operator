@@ -19,7 +19,14 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"
+	"google.golang.org/grpc/keepalive"
 )
+
+var kacp = keepalive.ClientParameters{
+	Time:                10 * time.Second, // send pings every 10 seconds if there is no activity
+	Timeout:             time.Second,      // wait 1 second for ping ack before considering the connection dead
+	PermitWithoutStream: true,             // send pings even without active streams
+}
 
 // Credentials contains attributes that are needed for onboarding profiles.
 type Credentials struct {
@@ -58,6 +65,7 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, O
 	data := map[string]string{
 		"cluster_client_id":     am.Credentials.ClientID,
 		"cluster_client_secret": am.Credentials.ClientSecret,
+		// TODO: Add cluster ID using kube-system uuid
 	}
 
 	// Convert the data to JSON
@@ -156,7 +164,8 @@ func SetUpOAuthConnection(ctx context.Context, logger logr.Logger, tokenURL stri
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(oauth.TokenSource{
 			TokenSource: tokenSource,
-		}))
+		}),
+		grpc.WithKeepaliveParams(kacp))
 	if err != nil {
 		return nil, err
 	}
