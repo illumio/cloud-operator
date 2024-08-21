@@ -26,9 +26,12 @@ jobs:
           push: false
           tags: cloud-operator:latest
 
+      - name: Save Docker image to tar file
+        run: docker save -o cloud-operator.tar cloud-operator:latest
+
       - name: Install Grype
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
 
-      - name: Scan Docker image with Grype
-        run: grype docker://cloud-operator:latest --fail-on low
+      - name: Scan Docker image tar file with Grype
+        run: grype cloud-operator.tar --fail-on low
