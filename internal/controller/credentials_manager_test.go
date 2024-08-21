@@ -31,7 +31,10 @@ func TestPair(t *testing.T) {
 			assert.Equal(t, "test-client-secret", requestData["cluster_client_secret"])
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(expectedResponse)
+			err = json.NewEncoder(w).Encode(expectedResponse)
+			if err != nil {
+				panic("Failed to encdoe response in creds manager test " + err.Error())
+			}
 		}))
 		defer server.Close()
 
