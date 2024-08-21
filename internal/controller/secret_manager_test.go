@@ -15,14 +15,12 @@ import (
 func TestGetOnboardingCredentials(t *testing.T) {
 	ctx := context.Background()
 	err := testhelper.SetupTestCluster()
+	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
+	logger := zapLogger.WithName("test")
 	if err != nil {
 		panic("Failed to set up test cluster " + err.Error())
 	}
-
 	t.Run("Success", func(t *testing.T) {
-		// Initialize the logger
-		zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
-		logger := zapLogger.WithName("test")
 		sm := &SecretManager{Logger: logger}
 
 		clientID := "test-client-id"
@@ -37,9 +35,6 @@ func TestGetOnboardingCredentials(t *testing.T) {
 	})
 
 	t.Run("Empty ClientID", func(t *testing.T) {
-		// Initialize the logger
-		zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
-		logger := zapLogger.WithName("test")
 		sm := &SecretManager{Logger: logger}
 
 		clientID := ""
@@ -51,9 +46,6 @@ func TestGetOnboardingCredentials(t *testing.T) {
 	})
 
 	t.Run("Empty ClientSecret", func(t *testing.T) {
-		// Initialize the logger
-		zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
-		logger := zapLogger.WithName("test")
 		sm := &SecretManager{Logger: logger}
 
 		clientID := "test-client-id"
@@ -72,6 +64,8 @@ func TestGetOnboardingCredentials(t *testing.T) {
 func TestReadCredentialsK8sSecrets(t *testing.T) {
 	ctx := context.Background()
 	err := testhelper.SetupTestCluster()
+	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
+	logger := zapLogger.WithName("test")
 	if err != nil {
 		panic("Failed to set up test cluster " + err.Error())
 	}
@@ -90,9 +84,6 @@ func TestReadCredentialsK8sSecrets(t *testing.T) {
 	}
 
 	t.Run("Success", func(t *testing.T) {
-		zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
-		logger := zapLogger.WithName("test")
-
 		sm := &SecretManager{
 			Logger: logger,
 		}
@@ -121,9 +112,6 @@ func TestReadCredentialsK8sSecrets(t *testing.T) {
 	})
 
 	t.Run("SecretNotFound", func(t *testing.T) {
-		zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
-		logger := zapLogger.WithName("test")
-
 		sm := &SecretManager{
 			Logger: logger,
 		}
@@ -135,9 +123,6 @@ func TestReadCredentialsK8sSecrets(t *testing.T) {
 	})
 
 	t.Run("ClientIDNotFound", func(t *testing.T) {
-		zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
-		logger := zapLogger.WithName("test")
-
 		sm := &SecretManager{
 			Logger: logger,
 		}
@@ -167,9 +152,6 @@ func TestReadCredentialsK8sSecrets(t *testing.T) {
 	})
 
 	t.Run("ClientSecretNotFound", func(t *testing.T) {
-		zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
-		logger := zapLogger.WithName("test")
-
 		sm := &SecretManager{
 			Logger: logger,
 		}
@@ -204,6 +186,8 @@ func TestReadCredentialsK8sSecrets(t *testing.T) {
 func TestWriteK8sSecret(t *testing.T) {
 	ctx := context.Background()
 	err := testhelper.SetupTestCluster()
+	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
+	logger := zapLogger.WithName("test")
 	if err != nil {
 		panic("Failed to set up test cluster " + err.Error())
 	}
@@ -213,8 +197,6 @@ func TestWriteK8sSecret(t *testing.T) {
 	}
 
 	t.Run("Failure", func(t *testing.T) {
-		zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
-		logger := zapLogger.WithName("test")
 		expectedErrorMsg := "namespaces \"illumio-cloud\" not found"
 		sm := &SecretManager{
 			Logger: logger,
@@ -233,9 +215,6 @@ func TestWriteK8sSecret(t *testing.T) {
 		if err != nil {
 			panic("Cannot create a namespace for test " + err.Error())
 		}
-		zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
-		logger := zapLogger.WithName("test")
-
 		sm := &SecretManager{
 			Logger: logger,
 		}

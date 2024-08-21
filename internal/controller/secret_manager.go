@@ -26,6 +26,9 @@ func (sm *SecretManager) GetOnboardingCredentials(ctx context.Context, clientID 
 		sm.Logger.Error(err, "Cannot get clusterID")
 		return Credentials{}, err
 	}
+	if clusterID == "" || clientID == "" || clientSecret == "" {
+		return Credentials{}, errors.New("incomplete credentials found")
+	}
 	return Credentials{ClusterID: clusterID, ClientID: clientID, ClientSecret: clientSecret}, nil
 }
 
