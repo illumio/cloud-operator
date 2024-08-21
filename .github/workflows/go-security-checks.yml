@@ -37,4 +37,4 @@ jobs:
           version: v1.60.2
 
       - name: Run golangci-lint
-        run: golangci-lint run ./...
+        run: golangci-lint run ./... --timeout 10m
