@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
   build-and-scan:
@@ -28,4 +31,4 @@ jobs:
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Scan Docker image with Grype
-        run: grype my-app:latest --fail-on high
+        run: grype my-app:latest --fail-on low
