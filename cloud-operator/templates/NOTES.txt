@@ -7,15 +7,15 @@ Copyright 2024 Illumio, Inc. All Rights Reserved.
 {{- end }}
 
 Release Name: {{ .Release.Name }}
-Namespace: {{ .Values.Namespace }}
+Namespace: {{ .Release.Namespace }}
 
 ### Next Steps:
 
 - To view the application logs, run:
-    kubectl logs -l app={{ include "cloud-operator.name" . }} -n {{ .Values.Namespace }}
+    kubectl logs -l app={{ include "cloud-operator.name" . }} -n {{ .Release.Namespace }}
 
 - To describe the application resources, run:
-    kubectl describe deployment {{ include "cloud-operator.fullname" . }} -n {{ .Values.Namespace }}
+    kubectl describe deployment {{ include "cloud-operator.fullname" . }} -n {{ .Release.Namespace }}
 
 ### Helpful Commands:
 
@@ -23,10 +23,10 @@ Namespace: {{ .Values.Namespace }}
     helm status {{ .Release.Name }}
 
 - To get a list of all resources created by the chart, run:
-    kubectl get all -l app={{ include "cloud-operator.name" . }} -n {{ .Values.Namespace }}
+    kubectl get all -l app={{ include "cloud-operator.name" . }} -n {{ .Release.Namespace }}
 
 - To delete the release, run:
-    helm delete {{ .Release.Name }} --namespace {{ .Values.Namespace }}
+    helm delete {{ .Release.Name }} --namespace {{ .Release.Namespace }}
 
 - To run unittests, run:
     helm unittest .
