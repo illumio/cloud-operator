@@ -8,6 +8,8 @@ require (
 	github.com/cilium/cilium v1.16.0
 	github.com/go-logr/logr v1.4.2
 	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/onsi/ginkgo/v2 v2.20.1
+	github.com/onsi/gomega v1.34.1
 	go.uber.org/zap v1.27.0
 	golang.org/x/oauth2 v0.22.0
 	google.golang.org/grpc v1.65.0
