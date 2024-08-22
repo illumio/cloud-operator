@@ -44,7 +44,7 @@ This will delete all the resources associated with the `illumio` release from th
 
 ### Prerequisites
 - go version v1.22.0+
-- Access to a Kubernetes v1.11.3+ cluster.
+- Kubernetes v1.30+ cluster.
 - helm version v3.15.3+
 
 ## License

@@ -3,6 +3,7 @@ FROM mcr.microsoft.com/vscode/devcontainers/go:${VARIANT}
 
 ARG BUF_VERSION=v1.30.0
 ARG GOLANGCI_VERSION=v1.60.2
+ARG HELM_VERSION=v3.15.4
 
 USER root
 

@@ -21,15 +21,10 @@ type SecretManager struct {
 
 // GetOnboardingCredentials returns credentials to onboard this cluster with CloudSecure.
 func (sm *SecretManager) GetOnboardingCredentials(ctx context.Context, clientID string, clientSecret string) (Credentials, error) {
-	clusterID, err := GetClusterID(ctx, sm.Logger)
-	if err != nil {
-		sm.Logger.Error(err, "Cannot get clusterID")
-		return Credentials{}, err
-	}
-	if clusterID == "" || clientID == "" || clientSecret == "" {
+	if clientID == "" || clientSecret == "" {
 		return Credentials{}, errors.New("incomplete credentials found")
 	}
-	return Credentials{ClusterID: clusterID, ClientID: clientID, ClientSecret: clientSecret}, nil
+	return Credentials{ClientID: clientID, ClientSecret: clientSecret}, nil
 }
 
 // ReadK8sSecret takes a secretName and reads the file.
@@ -73,7 +68,7 @@ func (sm *SecretManager) DoesK8sSecretExist(ctx context.Context, secretName stri
 	return err == nil
 }
 
-// WriteK8sSecret takes a the PairingClusterResponse and writes it to a locally kept secret.
+// WriteK8sSecret takes a the OnboardResponse and writes it to a locally kept secret.
 func (sm *SecretManager) WriteK8sSecret(ctx context.Context, keyData OnboardResponse, ClusterCreds string) error {
 	clientset, err := NewClientSet()
 	if err != nil {

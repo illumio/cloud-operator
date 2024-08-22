@@ -19,7 +19,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: build local container
+      - name: Build image
         uses: docker/build-push-action@v4
         with:
           tags: localbuild/testimage:latest

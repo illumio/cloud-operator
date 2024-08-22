@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc/credentials/oauth"
 )
 
-// Credentials contains attributes that are needed for pairing profiles.
+// Credentials contains attributes that are needed for onboarding.
 type Credentials struct {
 	ClusterID    string `json:"cluster_id"`
 	ClientID     string `json:"client_id"`
@@ -38,8 +38,7 @@ type OnboardResponse struct {
 	ClusterClientSecret string
 }
 
-// Pair Attempts to make a request with CloudSecure using a pairing profile and it will get back the oauth2 credentials.
-// It then will store those credentials in the namespaces k8s secret.
+// Onboard onboards this cluster with CloudSecure using the onboarding credentials and obtains OAuth 2 credentials for this cluster.
 func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string) (OnboardResponse, error) {
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
@@ -86,7 +85,7 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, O
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		am.Logger.Error(err, "Unable to read response of Pair post request")
+		am.Logger.Error(err, "Unable to read response of onboard post request")
 		return responseData, err
 	}
 	if err := json.Unmarshal(body, &responseData); err != nil {
