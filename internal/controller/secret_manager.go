@@ -52,12 +52,12 @@ func (sm *SecretManager) ReadCredentialsK8sSecrets(ctx context.Context, secretNa
 	clientID := string(secret.Data["client_id"])
 	if clientID == "" {
 		sm.Logger.Error(err, "Cannot get client_id")
-		return "", "", errors.New("failed to get client_id out of secret")
+		return "", "", errors.New("failed to get client_id from secret")
 	}
 	clientSecret := string(secret.Data["client_secret"])
 	if clientSecret == "" {
 		sm.Logger.Error(err, "Cannot get client_secret")
-		return "", "", errors.New("failed to get client_secret out of secret")
+		return "", "", errors.New("failed to get client_secret from secret")
 	}
 	return clientID, clientSecret, nil
 }
@@ -74,7 +74,7 @@ func (sm *SecretManager) DoesK8sSecretExist(ctx context.Context, secretName stri
 }
 
 // WriteK8sSecret takes a the PairingClusterResponse and writes it to a locally kept secret.
-func (sm *SecretManager) WriteK8sSecret(ctx context.Context, keyData PairResponse, ClusterCreds string) error {
+func (sm *SecretManager) WriteK8sSecret(ctx context.Context, keyData OnboardResponse, ClusterCreds string) error {
 	clientset, err := NewClientSet()
 	if err != nil {
 		sm.Logger.Error(err, "Error creating clientset")

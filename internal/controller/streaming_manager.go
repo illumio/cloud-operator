@@ -1,4 +1,5 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 package controller
 
 import (
@@ -124,7 +125,7 @@ func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap ma
 				continue
 			}
 			am := CredentialsManager{Credentials: OnboardingCredentials, Logger: logger}
-			responseData, err := am.Pair(ctx, envMap["TlsSkipVerify"].(bool), envMap["OnboardingEndpoint"].(string))
+			responseData, err := am.Onboard(ctx, envMap["TlsSkipVerify"].(bool), envMap["OnboardingEndpoint"].(string))
 			if err != nil {
 				logger.Error(err, "Failed to register cluster")
 				continue

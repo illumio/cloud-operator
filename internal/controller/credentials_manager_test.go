@@ -1,3 +1,5 @@
+// Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 package controller
 
 import (
@@ -11,12 +13,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
-func TestPair(t *testing.T) {
+func TestOnboard(t *testing.T) {
 	ctx := context.Background()
 	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
 	logger := zapLogger.WithName("test")
 	t.Run("Success", func(t *testing.T) {
-		expectedResponse := PairResponse{
+		expectedResponse := OnboardResponse{
 			ClusterClientId:     "test-client-id",
 			ClusterClientSecret: "test-client-secret",
 		}
@@ -47,7 +49,7 @@ func TestPair(t *testing.T) {
 			Logger: logger,
 		}
 
-		response, err := am.Pair(ctx, true, server.URL)
+		response, err := am.Onboard(ctx, true, server.URL)
 		assert.NoError(t, err)
 		assert.Equal(t, expectedResponse, response)
 	})
@@ -64,7 +66,7 @@ func TestPair(t *testing.T) {
 		}
 		expectedErrorMsg := "parse \"http://example.com/\\x00\": net/url: invalid control character in URL"
 
-		_, err := am.Pair(ctx, true, "http://example.com/\x00")
+		_, err := am.Onboard(ctx, true, "http://example.com/\x00")
 		assert.EqualErrorf(t, err, expectedErrorMsg, "Error should be: %v, got: %v", expectedErrorMsg, err)
 		assert.Error(t, err)
 	})

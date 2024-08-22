@@ -33,14 +33,14 @@ type CredentialsManager struct {
 	Logger      logr.Logger
 }
 
-type PairResponse struct {
+type OnboardResponse struct {
 	ClusterClientId     string
 	ClusterClientSecret string
 }
 
 // Pair Attempts to make a request with CloudSecure using a pairing profile and it will get back the oauth2 credentials.
 // It then will store those credentials in the namespaces k8s secret.
-func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string) (PairResponse, error) {
+func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string) (OnboardResponse, error) {
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: TlsSkipVerify,
@@ -58,7 +58,7 @@ func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, Onbo
 		"cluster_client_id":     am.Credentials.ClientID,
 		"cluster_client_secret": am.Credentials.ClientSecret,
 	}
-	var responseData PairResponse
+	var responseData OnboardResponse
 	// Convert the data to JSON
 	jsonData, err := json.Marshal(data)
 	if err != nil {
