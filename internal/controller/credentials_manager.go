@@ -65,7 +65,6 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, O
 	data := map[string]string{
 		"cluster_client_id":     am.Credentials.ClientID,
 		"cluster_client_secret": am.Credentials.ClientSecret,
-		// TODO: Add cluster ID using kube-system uuid
 	}
 
 	// Convert the data to JSON
