@@ -4,82 +4,52 @@ package controller
 
 import (
 	"context"
-	"testing"
 
-	testhelper "github.com/illumio/cloud-operator/internal/controller/testhelper"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
-func TestGetOnboardingCredentials(t *testing.T) {
+// MODEL TEST FOR ALL OTHER TESTS
+func (suite *ControllerTestSuite) TestGetOnboardingCredentials() {
 	ctx := context.Background()
-	err := testhelper.SetupTestCluster()
 	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
 	logger := zapLogger.WithName("test")
-	if err != nil {
-		panic("Failed to set up test cluster " + err.Error())
-	}
 
-	tests := []struct {
-		name          string
+	tests := map[string]struct {
 		clientID      string
 		clientSecret  string
 		expectedError bool
 	}{
-		{"Success", "test-client-id", "test-client-secret", false},
-		{"Empty ClientID", "", "test-client-secret", true},
-		{"Empty ClientSecret", "test-client-id", "", true},
+		"success":             {"test-client-id", "test-client-secret", false},
+		"empty-client-id":     {"", "test-client-secret", true},
+		"empty-client-secret": {"test-client-id", "", true},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		suite.Run(name, func() {
 			sm := &SecretManager{Logger: logger}
 			creds, err := sm.GetOnboardingCredentials(ctx, tt.clientID, tt.clientSecret)
 			if tt.expectedError {
-				assert.Error(t, err)
-				assert.Equal(t, Credentials{}, creds)
+				assert.Error(suite.T(), err)
+				assert.Equal(suite.T(), Credentials{}, creds)
 			} else {
-				assert.NoError(t, err)
-				clusterId, _ := GetClusterID(ctx, logger)
-				assert.Equal(t, clusterId, creds.ClusterID)
-				assert.Equal(t, tt.clientID, creds.ClientID)
-				assert.Equal(t, tt.clientSecret, creds.ClientSecret)
+				assert.NoError(suite.T(), err)
+				assert.Equal(suite.T(), tt.clientID, creds.ClientID)
+				assert.Equal(suite.T(), tt.clientSecret, creds.ClientSecret)
 			}
 		})
 	}
-
-	err = testhelper.TearDownTestCluster()
-	if err != nil {
-		panic("Failed to delete test cluster " + err.Error())
-	}
 }
 
-func TestReadCredentialsK8sSecrets(t *testing.T) {
+func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 	ctx := context.Background()
-	err := testhelper.SetupTestCluster()
 	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
 	logger := zapLogger.WithName("test")
-	if err != nil {
-		panic("Failed to set up test cluster " + err.Error())
-	}
-	clientset, err := NewClientSet()
-	if err != nil {
-		panic("Failed to get client set " + err.Error())
-	}
-	namespaceObj := &v1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "illumio-cloud",
-		},
-	}
-	_, err = clientset.CoreV1().Namespaces().Create(context.TODO(), namespaceObj, metav1.CreateOptions{})
-	if err != nil {
-		panic("Cannot create a namespace for test " + err.Error())
-	}
 
-	tests := []struct {
-		name                 string
+	tests := map[string]struct {
 		secretName           string
 		secretData           map[string][]byte
 		expectedError        bool
@@ -87,8 +57,7 @@ func TestReadCredentialsK8sSecrets(t *testing.T) {
 		expectedClientID     string
 		expectedClientSecret string
 	}{
-		{
-			name:       "Success",
+		"success": {
 			secretName: "test-secret",
 			secretData: map[string][]byte{
 				"client_id":     []byte("test-client-id"),
@@ -98,14 +67,12 @@ func TestReadCredentialsK8sSecrets(t *testing.T) {
 			expectedClientID:     "test-client-id",
 			expectedClientSecret: "test-client-secret",
 		},
-		{
-			name:           "SecretNotFound",
+		"secret-not-found": {
 			secretName:     "non-existent-secret",
 			expectedError:  true,
 			expectedErrMsg: "secrets \"non-existent-secret\" not found",
 		},
-		{
-			name:       "ClientIDNotFound",
+		"client-id-not-found": {
 			secretName: "test-secret-no-client-id",
 			secretData: map[string][]byte{
 				"client_secret": []byte("test-client-secret"),
@@ -113,8 +80,7 @@ func TestReadCredentialsK8sSecrets(t *testing.T) {
 			expectedError:  true,
 			expectedErrMsg: "failed to get client_id from secret",
 		},
-		{
-			name:       "ClientSecretNotFound",
+		"client-secret-not-found": {
 			secretName: "test-secret-no-client-secret-id",
 			secretData: map[string][]byte{
 				"client_id": []byte("test-client-id"),
@@ -124,8 +90,8 @@ func TestReadCredentialsK8sSecrets(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		suite.Run(name, func() {
 			sm := &SecretManager{Logger: logger}
 
 			if tt.secretData != nil {
@@ -135,7 +101,7 @@ func TestReadCredentialsK8sSecrets(t *testing.T) {
 					},
 					Data: tt.secretData,
 				}
-				_, err := clientset.CoreV1().Secrets("illumio-cloud").Create(context.TODO(), secret, metav1.CreateOptions{})
+				_, err := suite.clientset.CoreV1().Secrets("illumio-cloud").Create(context.TODO(), secret, metav1.CreateOptions{})
 				if err != nil {
 					panic("Cannot create a secret for test " + err.Error())
 				}
@@ -143,64 +109,69 @@ func TestReadCredentialsK8sSecrets(t *testing.T) {
 
 			clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, tt.secretName)
 			if tt.expectedError {
-				assert.Error(t, err)
-				assert.EqualErrorf(t, err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
-				assert.Empty(t, clientID)
-				assert.Empty(t, clientSecret)
+				assert.Error(suite.T(), err)
+				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
+				assert.Empty(suite.T(), clientID)
+				assert.Empty(suite.T(), clientSecret)
 			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tt.expectedClientID, clientID)
-				assert.Equal(t, tt.expectedClientSecret, clientSecret)
+				assert.NoError(suite.T(), err)
+				assert.Equal(suite.T(), tt.expectedClientID, clientID)
+				assert.Equal(suite.T(), tt.expectedClientSecret, clientSecret)
 			}
 		})
 	}
-
-	err = testhelper.TearDownTestCluster()
-	if err != nil {
-		panic("Failed to delete test cluster " + err.Error())
-	}
 }
 
-func TestWriteK8sSecret(t *testing.T) {
+func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 	ctx := context.Background()
-	err := testhelper.SetupTestCluster()
 	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
 	logger := zapLogger.WithName("test")
-	if err != nil {
-		panic("Failed to set up test cluster " + err.Error())
-	}
-	clientset, err := NewClientSet()
-	if err != nil {
-		panic("Failed to get client set " + err.Error())
+
+	tests := map[string]struct {
+		namespaceExists bool
+		onboardResponse OnboardResponse
+		secretName      string
+		expectedError   bool
+		expectedErrMsg  string
+	}{
+		"failure": {
+			namespaceExists: false,
+			onboardResponse: OnboardResponse{ClusterClientId: "test-client-id", ClusterClientSecret: "test-client-secret"},
+			secretName:      "test-secret",
+			expectedError:   true,
+			expectedErrMsg:  "namespaces \"illumio-cloud\" not found",
+		},
+		"success": {
+			namespaceExists: true,
+			onboardResponse: OnboardResponse{ClusterClientId: "test-client-id", ClusterClientSecret: "test-client-secret"},
+			secretName:      "test-secret",
+			expectedError:   false,
+		},
 	}
 
-	t.Run("Failure", func(t *testing.T) {
-		expectedErrorMsg := "namespaces \"illumio-cloud\" not found"
-		sm := &SecretManager{
-			Logger: logger,
-		}
-		err := sm.WriteK8sSecret(ctx, OnboardResponse{ClusterClientId: "test-client-id", ClusterClientSecret: "test-client-secret"}, "test-secret")
-		assert.EqualErrorf(t, err, expectedErrorMsg, "Error should be: %v, got: %v", expectedErrorMsg, err)
-	})
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			sm := &SecretManager{Logger: logger}
 
-	t.Run("Success", func(t *testing.T) {
-		namespaceObj := &v1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "illumio-cloud",
-			},
-		}
-		_, err := clientset.CoreV1().Namespaces().Create(context.TODO(), namespaceObj, metav1.CreateOptions{})
-		if err != nil {
-			panic("Cannot create a namespace for test " + err.Error())
-		}
-		sm := &SecretManager{
-			Logger: logger,
-		}
-		err = sm.WriteK8sSecret(ctx, OnboardResponse{ClusterClientId: "test-client-id", ClusterClientSecret: "test-client-secret"}, "test-secret")
-		assert.NoError(t, err)
-	})
-	err = testhelper.TearDownTestCluster()
-	if err != nil {
-		panic("Failed to delete test cluster " + err.Error())
+			if tt.namespaceExists {
+				namespaceObj := &v1.Namespace{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "illumio-cloud",
+					},
+				}
+				_, err := suite.clientset.CoreV1().Namespaces().Create(context.TODO(), namespaceObj, metav1.CreateOptions{})
+				if err != nil && !errors.IsAlreadyExists(err) {
+					panic("Cannot create the illumio-cloud namespace for test " + err.Error())
+				}
+			}
+
+			err := sm.WriteK8sSecret(ctx, tt.onboardResponse, tt.secretName)
+			if tt.expectedError {
+				assert.Error(suite.T(), err)
+				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
+			} else {
+				assert.NoError(suite.T(), err)
+			}
+		})
 	}
 }

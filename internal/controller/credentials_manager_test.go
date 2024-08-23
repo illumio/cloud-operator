@@ -17,57 +17,81 @@ func TestOnboard(t *testing.T) {
 	ctx := context.Background()
 	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
 	logger := zapLogger.WithName("test")
-	t.Run("Success", func(t *testing.T) {
-		expectedResponse := OnboardResponse{
-			ClusterClientId:     "test-client-id",
-			ClusterClientSecret: "test-client-secret",
-		}
 
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+	tests := []struct {
+		name             string
+		clientID         string
+		clientSecret     string
+		serverHandler    http.HandlerFunc
+		requestURL       string
+		expectedResponse OnboardResponse
+		expectedError    bool
+		expectedErrMsg   string
+	}{
+		{
+			name:         "Success",
+			clientID:     "test-client-id",
+			clientSecret: "test-client-secret",
+			serverHandler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
-			var requestData map[string]string
-			err := json.NewDecoder(r.Body).Decode(&requestData)
-			assert.NoError(t, err)
-			assert.Equal(t, "test-client-id", requestData["cluster_client_id"])
-			assert.Equal(t, "test-client-secret", requestData["cluster_client_secret"])
+				var requestData map[string]string
+				err := json.NewDecoder(r.Body).Decode(&requestData)
+				assert.NoError(t, err)
+				assert.Equal(t, "test-client-id", requestData["cluster_client_id"])
+				assert.Equal(t, "test-client-secret", requestData["cluster_client_secret"])
 
-			w.Header().Set("Content-Type", "application/json")
-			err = json.NewEncoder(w).Encode(expectedResponse)
-			if err != nil {
-				panic("Failed to encdoe response in creds manager test " + err.Error())
+				w.Header().Set("Content-Type", "application/json")
+				err = json.NewEncoder(w).Encode(OnboardResponse{
+					ClusterClientId:     "test-client-id",
+					ClusterClientSecret: "test-client-secret",
+				})
+				if err != nil {
+					panic("Failed to encode response in creds manager test " + err.Error())
+				}
+			},
+			requestURL: "http://example.com",
+			expectedResponse: OnboardResponse{
+				ClusterClientId:     "test-client-id",
+				ClusterClientSecret: "test-client-secret",
+			},
+			expectedError: false,
+		},
+		{
+			name:           "Request URL Error",
+			clientID:       "test-client-id",
+			clientSecret:   "test-client-secret",
+			serverHandler:  nil,
+			requestURL:     "http://example.com/\x00",
+			expectedError:  true,
+			expectedErrMsg: "parse \"http://example.com/\\x00\": net/url: invalid control character in URL",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.serverHandler != nil {
+				server := httptest.NewServer(tt.serverHandler)
+				defer server.Close()
+				tt.requestURL = server.URL
 			}
-		}))
-		defer server.Close()
 
-		am := &CredentialsManager{
-			Credentials: Credentials{
-				ClientID:     "test-client-id",
-				ClientSecret: "test-client-secret",
-				ClusterID:    "test-cluster-id",
-			},
-			Logger: logger,
-		}
+			am := &CredentialsManager{
+				Credentials: Credentials{
+					ClientID:     tt.clientID,
+					ClientSecret: tt.clientSecret,
+				},
+				Logger: logger,
+			}
 
-		response, err := am.Onboard(ctx, true, server.URL)
-		assert.NoError(t, err)
-		assert.Equal(t, expectedResponse, response)
-	})
-
-	t.Run("Request URL Error", func(t *testing.T) {
-
-		am := &CredentialsManager{
-			Credentials: Credentials{
-				ClientID:     "test-client-id",
-				ClientSecret: "test-client-secret",
-				ClusterID:    "test-cluster-id",
-			},
-			Logger: logger,
-		}
-		expectedErrorMsg := "parse \"http://example.com/\\x00\": net/url: invalid control character in URL"
-
-		_, err := am.Onboard(ctx, true, "http://example.com/\x00")
-		assert.EqualErrorf(t, err, expectedErrorMsg, "Error should be: %v, got: %v", expectedErrorMsg, err)
-		assert.Error(t, err)
-	})
+			response, err := am.Onboard(ctx, true, tt.requestURL)
+			if tt.expectedError {
+				assert.Error(t, err)
+				assert.EqualErrorf(t, err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedResponse, response)
+			}
+		})
+	}
 }

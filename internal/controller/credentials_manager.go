@@ -22,7 +22,6 @@ import (
 
 // Credentials contains attributes that are needed for onboarding.
 type Credentials struct {
-	ClusterID    string `json:"cluster_id"`
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
 }
@@ -54,8 +53,8 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, O
 
 	// Create the data to be sent in the POST request
 	data := map[string]string{
-		"cluster_client_id":     am.Credentials.ClientID,
-		"cluster_client_secret": am.Credentials.ClientSecret,
+		"onboarding_client_id":     am.Credentials.ClientID,
+		"onboarding_client_secret": am.Credentials.ClientSecret,
 	}
 	var responseData OnboardResponse
 	// Convert the data to JSON
