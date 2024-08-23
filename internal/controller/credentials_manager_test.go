@@ -7,19 +7,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
-func TestOnboard(t *testing.T) {
+func (suite *ControllerTestSuite) TestOnboard() {
 	ctx := context.Background()
 	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
 	logger := zapLogger.WithName("test")
 
-	tests := []struct {
-		name             string
+	tests := map[string]struct {
 		clientID         string
 		clientSecret     string
 		serverHandler    http.HandlerFunc
@@ -28,18 +26,17 @@ func TestOnboard(t *testing.T) {
 		expectedError    bool
 		expectedErrMsg   string
 	}{
-		{
-			name:         "Success",
+		"success": {
 			clientID:     "test-client-id",
 			clientSecret: "test-client-secret",
 			serverHandler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				assert.Equal(suite.T(), "application/json", r.Header.Get("Content-Type"))
 
 				var requestData map[string]string
 				err := json.NewDecoder(r.Body).Decode(&requestData)
-				assert.NoError(t, err)
-				assert.Equal(t, "test-client-id", requestData["cluster_client_id"])
-				assert.Equal(t, "test-client-secret", requestData["cluster_client_secret"])
+				assert.NoError(suite.T(), err)
+				assert.Equal(suite.T(), "test-client-id", requestData["onboarding_client_id"])
+				assert.Equal(suite.T(), "test-client-secret", requestData["onboarding_client_secret"])
 
 				w.Header().Set("Content-Type", "application/json")
 				err = json.NewEncoder(w).Encode(OnboardResponse{
@@ -57,8 +54,7 @@ func TestOnboard(t *testing.T) {
 			},
 			expectedError: false,
 		},
-		{
-			name:           "Request URL Error",
+		"request-url-error": {
 			clientID:       "test-client-id",
 			clientSecret:   "test-client-secret",
 			serverHandler:  nil,
@@ -68,8 +64,8 @@ func TestOnboard(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		suite.Run(name, func() {
 			if tt.serverHandler != nil {
 				server := httptest.NewServer(tt.serverHandler)
 				defer server.Close()
@@ -86,11 +82,11 @@ func TestOnboard(t *testing.T) {
 
 			response, err := am.Onboard(ctx, true, tt.requestURL)
 			if tt.expectedError {
-				assert.Error(t, err)
-				assert.EqualErrorf(t, err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
+				assert.Error(suite.T(), err)
+				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
 			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tt.expectedResponse, response)
+				assert.NoError(suite.T(), err)
+				assert.Equal(suite.T(), tt.expectedResponse, response)
 			}
 		})
 	}

@@ -45,6 +45,15 @@ func (suite *ControllerTestSuite) TestGetOnboardingCredentials() {
 }
 
 func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
+	namespaceObj := &v1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "illumio-cloud",
+		},
+	}
+	_, err := suite.clientset.CoreV1().Namespaces().Create(context.TODO(), namespaceObj, metav1.CreateOptions{})
+	if err != nil {
+		panic("Cannot create the illumio-cloud namespace for test " + err.Error())
+	}
 	ctx := context.Background()
 	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
 	logger := zapLogger.WithName("test")
