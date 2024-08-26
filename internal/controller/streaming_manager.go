@@ -25,6 +25,7 @@ type streamManager struct {
 	instance *streamClient
 	logger   logr.Logger
 }
+// TODO: Creat a struct that holds all of the env variables to more easily pass them in with static types
 
 var resourceTypes = [2]string{"pods", "nodes"}
 

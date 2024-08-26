@@ -46,9 +46,17 @@ func (suite *ControllerTestSuite) TearDownSuite() {
 
 func (suite *ControllerTestSuite) SetupTest() {
 	// Delete the illumio-cloud namespace if it exists
-	err := suite.clientset.CoreV1().Namespaces().Delete(context.TODO(), "illumio-cloud", metav1.DeleteOptions{})
+	var gracePeriod int64 = 0
+	err := suite.clientset.CoreV1().Namespaces().Delete(context.TODO(), "illumio-cloud", metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod})
 	if err != nil && !errors.IsNotFound(err) {
 		panic("Failed to delete illumio-cloud namespace " + err.Error())
 	}
-	time.Sleep(1 * time.Second)
+	// Wait for the namespace to be fully deleted
+	for {
+		_, err := suite.clientset.CoreV1().Namespaces().Get(context.TODO(), "illumio-cloud", metav1.GetOptions{})
+		if errors.IsNotFound(err) {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
 }
