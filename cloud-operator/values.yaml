@@ -26,14 +26,22 @@ resources:
     memory: 128Mi
 
 clusterCredsSecret:
+  clientId: ""
+  clientSecret: ""
   disableSecretCreation: false
-  forceSecretCreation: false
+  forceSecretCreation: true
+
+onboardingSecret:
+  clientId: "client_id_1"
+  clientSecret: "client_secret_1"
 
 env:
   tlsSkipVerify: false
   # TODO: Replace with real endpoints when they are available.
-  OnboardingEndpoint: "https://192.168.65.254:50053/api/v1/cluster/onboard"
+  onboardingEndpoint: "https://192.168.65.254:50053/api/v1/cluster/onboard"
   tokenEndpoint: "https://192.168.65.254:50053/api/v1/authenticate"
 
+clusterCredsClientId: "cat"
+clusterCredsClientSecret: "dog"
 onboardingClientId: "client_id_1"
 onboardingClientSecret: "client_secret_1"

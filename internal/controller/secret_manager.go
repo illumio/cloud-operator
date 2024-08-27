@@ -67,7 +67,7 @@ func (sm *SecretManager) DoesK8sSecretExist(ctx context.Context, secretName stri
 	return err == nil
 }
 
-// WriteK8sSecret takes a the OnboardResponse and writes it to a locally kept secret.
+// WriteK8sSecret takes an OnboardResponse and writes it to a locally kept secret.
 func (sm *SecretManager) WriteK8sSecret(ctx context.Context, keyData OnboardResponse, ClusterCreds string) error {
 	clientset, err := NewClientSet()
 	if err != nil {
