@@ -52,7 +52,7 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 	}
 	_, err := suite.clientset.CoreV1().Namespaces().Create(context.TODO(), namespaceObj, metav1.CreateOptions{})
 	if err != nil {
-		panic("Cannot create the illumio-cloud namespace for test " + err.Error())
+		suite.T().Fatal("Cannot create the illumio-cloud namespace for test " + err.Error())
 	}
 	ctx := context.Background()
 	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
@@ -112,7 +112,7 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 				}
 				_, err := suite.clientset.CoreV1().Secrets("illumio-cloud").Create(context.TODO(), secret, metav1.CreateOptions{})
 				if err != nil {
-					panic("Cannot create a secret for test " + err.Error())
+					suite.T().Fatal("Cannot create a secret for test " + err.Error())
 				}
 			}
 
@@ -170,7 +170,7 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 				}
 				_, err := suite.clientset.CoreV1().Namespaces().Create(context.TODO(), namespaceObj, metav1.CreateOptions{})
 				if err != nil && !errors.IsAlreadyExists(err) {
-					panic("Cannot create the illumio-cloud namespace for test " + err.Error())
+					suite.T().Fatal("Cannot create the illumio-cloud namespace for test " + err.Error())
 				}
 			}
 

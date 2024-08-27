@@ -44,7 +44,7 @@ func (suite *ControllerTestSuite) TestOnboard() {
 					ClusterClientSecret: "test-client-secret",
 				})
 				if err != nil {
-					panic("Failed to encode response in creds manager test " + err.Error())
+					suite.T().Fatal("Failed to encode response in creds manager test " + err.Error())
 				}
 			},
 			requestURL: "http://example.com",

@@ -27,12 +27,12 @@ func (suite *ControllerTestSuite) SetupSuite() {
 	var err error
 	err = testhelper.SetupTestCluster()
 	if err != nil {
-		panic("Failed to set up test cluster " + err.Error())
+		suite.T().Fatal("Failed to set up test cluster " + err.Error())
 	}
 	// Create a new clientset
 	suite.clientset, err = NewClientSet()
 	if err != nil {
-		panic("Failed to get client set " + err.Error())
+		suite.T().Fatal("Failed to get client set " + err.Error())
 	}
 
 }
@@ -40,7 +40,7 @@ func (suite *ControllerTestSuite) SetupSuite() {
 func (suite *ControllerTestSuite) TearDownSuite() {
 	err := testhelper.TearDownTestCluster()
 	if err != nil {
-		panic("Failed to delete test cluster " + err.Error())
+		suite.T().Fatal("Failed to delete test cluster " + err.Error())
 	}
 }
 
@@ -49,7 +49,7 @@ func (suite *ControllerTestSuite) SetupTest() {
 	var gracePeriod int64 = 0
 	err := suite.clientset.CoreV1().Namespaces().Delete(context.TODO(), "illumio-cloud", metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod})
 	if err != nil && !errors.IsNotFound(err) {
-		panic("Failed to delete illumio-cloud namespace " + err.Error())
+		suite.T().Fatal("Failed to delete illumio-cloud namespace " + err.Error())
 	}
 	// Wait for the namespace to be fully deleted
 	for {
