@@ -3,6 +3,8 @@
 package controller
 
 import (
+	"errors"
+
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 
@@ -18,12 +20,10 @@ type SecretManager struct {
 
 // GetOnboardingCredentials returns credentials to onboard this cluster with CloudSecure.
 func (sm *SecretManager) GetOnboardingCredentials(ctx context.Context, clientID string, clientSecret string) (Credentials, error) {
-	clusterID, err := GetClusterID(ctx, sm.Logger)
-	if err != nil {
-		sm.Logger.Error(err, "Cannot get clusterID")
-		return Credentials{}, err
+	if clientID == "" || clientSecret == "" {
+		return Credentials{}, errors.New("incomplete credentials found")
 	}
-	return Credentials{ClusterID: clusterID, ClientID: clientID, ClientSecret: clientSecret}, nil
+	return Credentials{ClientID: clientID, ClientSecret: clientSecret}, nil
 }
 
 // ReadK8sSecret takes a secretName and reads the file.
@@ -44,7 +44,15 @@ func (sm *SecretManager) ReadCredentialsK8sSecrets(ctx context.Context, secretNa
 
 	// Assuming your secret data has a "client_id" and "client_secret" key.
 	clientID := string(secret.Data["client_id"])
+	if clientID == "" {
+		sm.Logger.Error(err, "Cannot get client_id")
+		return "", "", errors.New("failed to get client_id from secret")
+	}
 	clientSecret := string(secret.Data["client_secret"])
+	if clientSecret == "" {
+		sm.Logger.Error(err, "Cannot get client_secret")
+		return "", "", errors.New("failed to get client_secret from secret")
+	}
 	return clientID, clientSecret, nil
 }
 
