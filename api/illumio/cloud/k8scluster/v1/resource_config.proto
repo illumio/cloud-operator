@@ -95,7 +95,7 @@ message KubernetesResourceMutation {
 }
 
 // Information on a Kubernetes Workflow infomation from Cilium.
-// https://pkg.go.dev/github.com/cilium/cilium@v1.16.0/api/v1/flow#Workload
+// https://pkg.go.dev/github.com/cilium/cilium@v1.16.1/api/v1/flow#Workload
 message Workload {
   // Name of workload.
   string name = 1;
