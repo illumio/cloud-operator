@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 
 	"github.com/cilium/cilium/api/v1/flow"
 	observer "github.com/cilium/cilium/api/v1/observer"
@@ -55,7 +54,8 @@ func initFlowManager(ctx context.Context, logger logr.Logger) (FlowManager, erro
 	// Adjust this address if needed
 	conn, err := grpc.NewClient(hubbleAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Fatalf("Failed to connect to Hubble: %v", err)
+		logger.Error(err, "Failed to connect to Hubble")
+		return FlowManager{}, err
 	}
 	hubbleClient := observer.NewObserverClient(conn)
 	return FlowManager{logger: logger, client: hubbleClient}, nil

@@ -37,13 +37,13 @@ func NewStream(ctx context.Context, logger logr.Logger, conn *grpc.ClientConn) (
 	streamKubernetesResources, err := client.SendKubernetesResources(ctx)
 	if err != nil {
 		// Proper error handling here; you might want to return the error, log it, etc.
-		logger.Error(err, "Failed to connect to server")
+		logger.Error(err, "Failed to create a kubernetes resource client")
 		return &streamManager{}, err
 	}
 	streamKubernetesFlows, err := client.SendKubernetesNetworkFlows(ctx)
 	if err != nil {
 		// Proper error handling here; you might want to return the error, log it, etc.
-		logger.Error(err, "Failed to connect to server")
+		logger.Error(err, "Failed to create a kubernetes network flows client")
 		return &streamManager{}, err
 	}
 
@@ -108,7 +108,11 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 		return err
 	}
 	snapshotCompleted.Done()
-	go flowManager.listenToFlows(ctx, *sm)
+	err = flowManager.listenToFlows(ctx, *sm)
+	if err != nil {
+		sm.logger.Error(err, "Failed to listen to flows")
+		return err
+	}
 	<-ctx.Done()
 	return err
 }
