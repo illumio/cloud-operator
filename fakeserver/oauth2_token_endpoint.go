@@ -129,7 +129,7 @@ func (a *AuthService) authenticateHandler(w http.ResponseWriter, r *http.Request
 	}
 }
 
-// onboardCluster handles the onboarding request and returns OAuth creds used for token.
+// onboardCluster handles the onboard request and returns OAuth creds used for token.
 func (a *AuthService) onboardCluster(w http.ResponseWriter, r *http.Request) {
 	a.logger.Info(
 		"received request",

@@ -1,4 +1,5 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 package controller
 
 import (
@@ -25,6 +26,7 @@ type streamManager struct {
 	instance *streamClient
 	logger   logr.Logger
 }
+// TODO: Creat a struct that holds all of the env variables to more easily pass them in with static types
 
 var resourceTypes = [2]string{"pods", "nodes"}
 
@@ -138,10 +140,15 @@ func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap ma
 				continue
 			}
 			am := CredentialsManager{Credentials: OnboardingCredentials, Logger: logger}
-			err = am.Onboard(ctx, envMap["TlsSkipVerify"].(bool), envMap["OnboardingEndpoint"].(string), envMap["ClusterCreds"].(string))
+			responseData, err := am.Onboard(ctx, envMap["TlsSkipVerify"].(bool), envMap["OnboardingEndpoint"].(string))
 			if err != nil {
 				logger.Error(err, "Failed to register cluster")
 				continue
+			}
+			err = sm.WriteK8sSecret(ctx, responseData, envMap["ClusterCreds"].(string))
+			time.Sleep(1 * time.Second)
+			if err != nil {
+				am.Logger.Error(err, "Failed to write secret to Kubernetes")
 			}
 			clientID, clientSecret, err = sm.ReadCredentialsK8sSecrets(ctx, envMap["ClusterCreds"].(string))
 			if err != nil {
