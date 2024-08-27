@@ -4,7 +4,6 @@ package controller
 
 import (
 	"context"
-	"log"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
@@ -188,7 +187,7 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 				// Create the secret in the specified namespace
 				_, err := suite.clientset.CoreV1().Secrets("illumio-cloud").Create(context.TODO(), secret, metav1.CreateOptions{})
 				if err != nil {
-					log.Fatalf("Failed to create secret: %v", err)
+					suite.T().Fatal("Failed to create secret for test " + err.Error())
 				}
 			}
 
