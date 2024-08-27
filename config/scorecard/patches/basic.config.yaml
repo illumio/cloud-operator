@@ -1,9 +1,0 @@
-- op: add
-  path: /stages/0/tests/-
-  value:
-    entrypoint:
-    - scorecard-test
-    - basic-check-spec
-    labels:
-      suite: basic
-      test: basic-check-spec-test

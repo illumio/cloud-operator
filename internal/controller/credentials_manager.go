@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/golang-jwt/jwt"
 	"golang.org/x/oauth2"
@@ -21,9 +20,8 @@ import (
 	"google.golang.org/grpc/credentials/oauth"
 )
 
-// Credentials contains attributes that are needed for pairing profiles.
+// Credentials contains attributes that are needed for onboarding.
 type Credentials struct {
-	ClusterID    string `json:"cluster_id"`
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
 }
@@ -34,14 +32,13 @@ type CredentialsManager struct {
 	Logger      logr.Logger
 }
 
-type PairResponse struct {
+type OnboardResponse struct {
 	ClusterClientId     string
 	ClusterClientSecret string
 }
 
-// Pair Attempts to make a request with CloudSecure using a pairing profile and it will get back the oauth2 credentials.
-// It then will store those credentials in the namespaces k8s secret.
-func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string, ClusterCredsSecretName string) error {
+// Onboard onboards this cluster with CloudSecure using the onboarding credentials and obtains OAuth 2 credentials for this cluster.
+func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string) (OnboardResponse, error) {
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: TlsSkipVerify,
@@ -56,22 +53,22 @@ func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, Onbo
 
 	// Create the data to be sent in the POST request
 	data := map[string]string{
-		"cluster_client_id":     am.Credentials.ClientID,
-		"cluster_client_secret": am.Credentials.ClientSecret,
+		"onboarding_client_id":     am.Credentials.ClientID,
+		"onboarding_client_secret": am.Credentials.ClientSecret,
 	}
-
+	var responseData OnboardResponse
 	// Convert the data to JSON
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		am.Logger.Error(err, "Unable to marshal json data")
-		return err
+		return responseData, err
 	}
 
 	// Create a new POST request with the JSON data
 	req, err := http.NewRequest("POST", OnboardingEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		am.Logger.Error(err, "Unable to structure post request")
-		return err
+		return responseData, err
 	}
 
 	// Set the appropriate headers
@@ -80,28 +77,21 @@ func (am *CredentialsManager) Pair(ctx context.Context, TlsSkipVerify bool, Onbo
 	resp, err := client.Do(req)
 	if err != nil {
 		am.Logger.Error(err, "Unable to send post request")
-		return err
+		return responseData, err
 	}
 	defer resp.Body.Close()
 
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		am.Logger.Error(err, "Unable to read response of Pair post request")
-		return err
+		am.Logger.Error(err, "Unable to read response of onboard post request")
+		return responseData, err
 	}
-	var responseData PairResponse
 	if err := json.Unmarshal(body, &responseData); err != nil {
 		am.Logger.Error(err, "Unable to unmarshal json data")
-		return err
+		return responseData, err
 	}
-	sm := &SecretManager{Logger: am.Logger}
-	err = sm.WriteK8sSecret(ctx, responseData, ClusterCredsSecretName)
-	time.Sleep(1 * time.Second)
-	if err != nil {
-		am.Logger.Error(err, "Failed to write secret to Kubernetes")
-	}
-	return nil
+	return responseData, nil
 }
 
 // SetUpOAuthConnection establishes a gRPC connection using OAuth credentials and logging the process.
