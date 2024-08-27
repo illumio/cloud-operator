@@ -40,8 +40,3 @@ env:
   # TODO: Replace with real endpoints when they are available.
   onboardingEndpoint: "https://192.168.65.254:50053/api/v1/cluster/onboard"
   tokenEndpoint: "https://192.168.65.254:50053/api/v1/authenticate"
-
-clusterCredsClientId: "cat"
-clusterCredsClientSecret: "dog"
-onboardingClientId: "client_id_1"
-onboardingClientSecret: "client_secret_1"
