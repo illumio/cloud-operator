@@ -25,4 +25,4 @@ jobs:
       run: go mod tidy
 
     - name: Run tests
-      run: cd internal/controller && go test -v
+      run: go test -v ./...

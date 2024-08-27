@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"log"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
@@ -12,7 +13,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
-// MODEL TEST FOR ALL OTHER TESTS
 func (suite *ControllerTestSuite) TestGetOnboardingCredentials() {
 	ctx := context.Background()
 	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
@@ -138,6 +138,7 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 
 	tests := map[string]struct {
 		namespaceExists bool
+		secretExists    bool
 		onboardResponse OnboardResponse
 		secretName      string
 		expectedError   bool
@@ -145,13 +146,15 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 	}{
 		"failure": {
 			namespaceExists: false,
+			secretExists:    false,
 			onboardResponse: OnboardResponse{ClusterClientId: "test-client-id", ClusterClientSecret: "test-client-secret"},
 			secretName:      "test-secret",
 			expectedError:   true,
-			expectedErrMsg:  "namespaces \"illumio-cloud\" not found",
+			expectedErrMsg:  "secrets \"test-secret\" not found",
 		},
 		"success": {
 			namespaceExists: true,
+			secretExists:    true,
 			onboardResponse: OnboardResponse{ClusterClientId: "test-client-id", ClusterClientSecret: "test-client-secret"},
 			secretName:      "test-secret",
 			expectedError:   false,
@@ -171,6 +174,21 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 				_, err := suite.clientset.CoreV1().Namespaces().Create(context.TODO(), namespaceObj, metav1.CreateOptions{})
 				if err != nil && !errors.IsAlreadyExists(err) {
 					suite.T().Fatal("Cannot create the illumio-cloud namespace for test " + err.Error())
+				}
+			}
+			if tt.secretExists {
+				secret := &v1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-secret",
+						Namespace: "illumio-cloud",
+					},
+					Type: v1.SecretTypeOpaque,
+				}
+
+				// Create the secret in the specified namespace
+				_, err := suite.clientset.CoreV1().Secrets("illumio-cloud").Create(context.TODO(), secret, metav1.CreateOptions{})
+				if err != nil {
+					log.Fatalf("Failed to create secret: %v", err)
 				}
 			}
 
