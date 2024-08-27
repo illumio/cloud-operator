@@ -10,7 +10,6 @@ import (
 
 	"context"
 
-	kuberneteserror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -68,13 +67,13 @@ func (sm *SecretManager) DoesK8sSecretExist(ctx context.Context, secretName stri
 	return err == nil
 }
 
-// WriteK8sSecret takes a the OnboardResponse and writes it to a locally kept secret.
+// WriteK8sSecret takes an OnboardResponse and writes it to a locally kept secret.
 func (sm *SecretManager) WriteK8sSecret(ctx context.Context, keyData OnboardResponse, ClusterCreds string) error {
 	clientset, err := NewClientSet()
 	if err != nil {
-		sm.Logger.Error(err, "Error creating clientset")
+		sm.Logger.Error(err, "Failed to create clientSet")
+		return err
 	}
-
 	secretData := map[string]string{
 		"client_id":     keyData.ClusterClientId,
 		"client_secret": keyData.ClusterClientSecret,
@@ -88,20 +87,10 @@ func (sm *SecretManager) WriteK8sSecret(ctx context.Context, keyData OnboardResp
 		StringData: secretData,
 	}
 
-	// Create or Update the Secret.
-	_, err = clientset.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{})
-	if kuberneteserror.IsAlreadyExists(err) {
-		_, err = clientset.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
-		if err != nil {
-			sm.Logger.Error(err, "Failed to update secret")
-			return err
-		}
-	}
+	_, err = clientset.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
 	if err != nil {
-		sm.Logger.Error(err, "Error creating or updating secret")
+		sm.Logger.Error(err, "Failed to update secret")
 		return err
-	} else {
-		sm.Logger.Info("Secret created or updated successfully")
 	}
 	return nil
 }
