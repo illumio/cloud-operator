@@ -2,27 +2,28 @@ package controller
 
 import (
 	"context"
-	"testing"
 
 	"github.com/cilium/cilium/api/v1/flow"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/go-logr/logr/funcr"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
-func TestDiscoverHubbleRelayAddress(t *testing.T) {
-	tests := []struct {
-		name           string
+func (suite *ControllerTestSuite) TestDiscoverHubbleRelayAddress() {
+	ctx := context.Background()
+	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
+	logger := zapLogger.WithName("test")
+
+	tests := map[string]struct {
 		service        *v1.Service
 		expectedAddr   string
 		expectedErrMsg string
 	}{
-		{
-			name: "successful discovery",
+		"successful discovery": {
 			service: &v1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "hubble-relay",
@@ -40,14 +41,12 @@ func TestDiscoverHubbleRelayAddress(t *testing.T) {
 			expectedAddr:   "10.0.0.1:80",
 			expectedErrMsg: "",
 		},
-		{
-			name:           "service not found",
+		"service not found": {
 			service:        nil,
 			expectedAddr:   "",
 			expectedErrMsg: "services \"hubble-relay\" not found",
 		},
-		{
-			name: "no ports in service",
+		"no ports in service": {
 			service: &v1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "hubble-relay",
@@ -63,44 +62,35 @@ func TestDiscoverHubbleRelayAddress(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		suite.Run(name, func() {
 			clientset := fake.NewSimpleClientset()
 			if tt.service != nil {
-				clientset.CoreV1().Services("kube-system").Create(context.TODO(), tt.service, metav1.CreateOptions{})
+				_, err := clientset.CoreV1().Services("kube-system").Create(context.TODO(), tt.service, metav1.CreateOptions{})
+				assert.NoError(suite.T(), err)
 			}
 
-			logger := funcr.New(func(prefix, args string) {
-				t.Logf("%s%s", prefix, args)
-			}, funcr.Options{})
-
-			addr, err := discoverHubbleRelayAddress(context.TODO(), logger, clientset)
-			if addr != tt.expectedAddr {
-				t.Errorf("expected address %s, got %s", tt.expectedAddr, addr)
-			}
+			addr, err := discoverHubbleRelayAddress(ctx, logger, clientset)
+			assert.Equal(suite.T(), tt.expectedAddr, addr)
 
 			if tt.expectedErrMsg != "" {
-				if err == nil || err.Error() != tt.expectedErrMsg {
-					t.Errorf("expected error message %s, got %v", tt.expectedErrMsg, err)
-				}
-			} else if err != nil {
-				t.Errorf("unexpected error: %v", err)
+				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
+			} else {
+				assert.NoError(suite.T(), err)
 			}
 		})
 	}
 }
 
-func TestGetPortFromFlows(t *testing.T) {
+func (suite *ControllerTestSuite) TestGetPortFromFlows() {
 	fm := &FlowManager{}
 
-	tests := []struct {
-		name         string
+	tests := map[string]struct {
 		l4Object     *flow.Layer4
 		isSourcePort bool
 		expectedPort uint32
 	}{
-		{
-			name: "TCP destination port",
+		"TCP destination port": {
 			l4Object: &flow.Layer4{
 				Protocol: &flow.Layer4_TCP{
 					TCP: &flow.TCP{
@@ -112,8 +102,7 @@ func TestGetPortFromFlows(t *testing.T) {
 			isSourcePort: false,
 			expectedPort: 80,
 		},
-		{
-			name: "TCP source port",
+		"TCP source port": {
 			l4Object: &flow.Layer4{
 				Protocol: &flow.Layer4_TCP{
 					TCP: &flow.TCP{
@@ -125,8 +114,7 @@ func TestGetPortFromFlows(t *testing.T) {
 			isSourcePort: true,
 			expectedPort: 12345,
 		},
-		{
-			name: "SCTP destination port",
+		"SCTP destination port": {
 			l4Object: &flow.Layer4{
 				Protocol: &flow.Layer4_SCTP{
 					SCTP: &flow.SCTP{
@@ -138,8 +126,7 @@ func TestGetPortFromFlows(t *testing.T) {
 			isSourcePort: false,
 			expectedPort: 5678,
 		},
-		{
-			name: "SCTP source port",
+		"SCTP source port": {
 			l4Object: &flow.Layer4{
 				Protocol: &flow.Layer4_SCTP{
 					SCTP: &flow.SCTP{
@@ -151,8 +138,7 @@ func TestGetPortFromFlows(t *testing.T) {
 			isSourcePort: true,
 			expectedPort: 6789,
 		},
-		{
-			name: "UDP destination port",
+		"UDP destination port": {
 			l4Object: &flow.Layer4{
 				Protocol: &flow.Layer4_UDP{
 					UDP: &flow.UDP{
@@ -164,8 +150,7 @@ func TestGetPortFromFlows(t *testing.T) {
 			isSourcePort: false,
 			expectedPort: 53,
 		},
-		{
-			name: "UDP source port",
+		"UDP source port": {
 			l4Object: &flow.Layer4{
 				Protocol: &flow.Layer4_UDP{
 					UDP: &flow.UDP{
@@ -177,41 +162,36 @@ func TestGetPortFromFlows(t *testing.T) {
 			isSourcePort: true,
 			expectedPort: 54321,
 		},
-		{
-			name:         "No L4 protocol",
+		"No L4 protocol": {
 			l4Object:     &flow.Layer4{},
 			isSourcePort: false,
 			expectedPort: 0,
 		},
-		{
-			name:         "Nil L4",
+		"Nil L4": {
 			l4Object:     nil,
 			isSourcePort: false,
 			expectedPort: 0,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		suite.Run(name, func() {
 			port := fm.getPortFromFlows(tt.l4Object, tt.isSourcePort)
-			assert.Equal(t, tt.expectedPort, port)
+			assert.Equal(suite.T(), tt.expectedPort, port)
 		})
 	}
 }
 
-func TestConvertToProtoWorkloads(t *testing.T) {
-	tests := []struct {
-		name     string
+func (suite *ControllerTestSuite) TestConvertToProtoWorkloads() {
+	tests := map[string]struct {
 		input    []*flow.Workload
 		expected []*pb.Workload
 	}{
-		{
-			name:     "empty input",
+		"empty input": {
 			input:    []*flow.Workload{},
 			expected: []*pb.Workload{},
 		},
-		{
-			name: "single workload",
+		"single workload": {
 			input: []*flow.Workload{
 				{
 					Name: "workload1",
@@ -225,8 +205,7 @@ func TestConvertToProtoWorkloads(t *testing.T) {
 				},
 			},
 		},
-		{
-			name: "multiple workloads",
+		"multiple workloads": {
 			input: []*flow.Workload{
 				{
 					Name: "workload1",
@@ -250,10 +229,10 @@ func TestConvertToProtoWorkloads(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		suite.Run(name, func() {
 			result := convertToProtoWorkloads(tt.input)
-			assert.Equal(t, tt.expected, result)
+			assert.Equal(suite.T(), tt.expected, result)
 		})
 	}
 }
