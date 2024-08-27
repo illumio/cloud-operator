@@ -4,7 +4,6 @@ package controller
 
 import (
 	"context"
-	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -24,20 +23,18 @@ func GetClusterIDWithClient(ctx context.Context, logger logr.Logger, clientset *
 	return string(namespace.UID), nil
 }
 
-func TestGetClusterID(t *testing.T) {
+func (suite *ControllerTestSuite) TestGetClusterID() {
 	ctx := context.Background()
 	logger := funcr.New(func(prefix, args string) {
-		t.Logf("%s%s", prefix, args)
+		suite.T().Logf("%s%s", prefix, args)
 	}, funcr.Options{})
 
-	tests := []struct {
-		name      string
+	tests := map[string]struct {
 		setup     func() *fake.Clientset
 		want      string
 		expectErr bool
 	}{
-		{
-			name: "Successful retrieval of cluster ID",
+		"success": {
 			setup: func() *fake.Clientset {
 				client := fake.NewSimpleClientset(&corev1.Namespace{
 					ObjectMeta: metav1.ObjectMeta{
@@ -50,8 +47,7 @@ func TestGetClusterID(t *testing.T) {
 			want:      "test-uid",
 			expectErr: false,
 		},
-		{
-			name: "Namespace not found",
+		"namespace-not-found": {
 			setup: func() *fake.Clientset {
 				client := fake.NewSimpleClientset()
 				return client
@@ -61,16 +57,16 @@ func TestGetClusterID(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		suite.Run(name, func() {
 			client := tt.setup()
 			got, err := GetClusterIDWithClient(ctx, logger, client)
 			if (err != nil) != tt.expectErr {
-				t.Errorf("GetClusterIDWithClient() error = %v, expectErr %v", err, tt.expectErr)
+				suite.T().Errorf("GetClusterIDWithClient() error = %v, expectErr %v", err, tt.expectErr)
 				return
 			}
 			if got != tt.want {
-				t.Errorf("GetClusterIDWithClient() got = %v, want %v", got, tt.want)
+				suite.T().Errorf("GetClusterIDWithClient() got = %v, want %v", got, tt.want)
 			}
 		})
 	}
