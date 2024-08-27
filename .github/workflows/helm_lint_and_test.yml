@@ -23,6 +23,10 @@ jobs:
           sudo mv /tmp/linux-amd64/helm /usr/local/bin/helm
           helm version
 
+      - name: Install helm-unittest plugin
+        run: |
+          helm plugin install https://github.com/helm-unittest/helm-unittest.git
+
       - name: Run Helm unit tests
         run: |
           helm lint cloud-operator
