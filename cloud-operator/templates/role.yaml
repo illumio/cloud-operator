@@ -9,4 +9,4 @@ rules:
 - apiGroups: [""] # "" indicates the core API group
   resources: ["secrets"]
   # resourceNames: ["onboardingcreds", "clustercreds"]
-  verbs: ["create","delete", "get", "list", "patch", "update", "watch"]
+  verbs: ["create", "get", "list", "patch", "update", "watch"]

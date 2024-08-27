@@ -25,11 +25,15 @@ resources:
     cpu: 100m
     memory: 128Mi
 
+clusterCredsSecret:
+  disableSecretCreation: false
+  forceSecretCreation: false
+
 env:
-  tlsSkipVerify: "false"
+  tlsSkipVerify: false
   # TODO: Replace with real endpoints when they are available.
   OnboardingEndpoint: "https://192.168.65.254:50053/api/v1/cluster/onboard"
-  tokenEndpoint:  "https://192.168.65.254:50053/api/v1/authenticate"
+  tokenEndpoint: "https://192.168.65.254:50053/api/v1/authenticate"
 
 onboardingClientId: "client_id_1"
 onboardingClientSecret: "client_secret_1"
