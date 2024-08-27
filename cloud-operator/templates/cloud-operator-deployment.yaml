@@ -46,7 +46,7 @@ spec:
             - name: TLS_SKIP_VERIFY
               value: "{{ .Values.env.tlsSkipVerify }}"
             - name: ONBOARDING_ENDPOINT
-              value: "{{ .Values.env.OnboardingEndpoint }}"
+              value: "{{ .Values.env.onboardingEndpoint }}"
             - name: TOKEN_ENDPOINT
               value: "{{ .Values.env.tokenEndpoint }}"
             - name: CLUSTER_CREDS_SECRET
