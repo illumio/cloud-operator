@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/golang-jwt/jwt"
 	"golang.org/x/oauth2"
@@ -26,6 +27,7 @@ var kacp = keepalive.ClientParameters{
 	Timeout:             time.Second,      // wait 1 second for ping ack before considering the connection dead
 	PermitWithoutStream: true,             // send pings even without active streams
 }
+
 // Credentials contains attributes that are needed for onboarding.
 type Credentials struct {
 	ClientID     string `json:"client_id"`
