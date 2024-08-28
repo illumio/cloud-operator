@@ -32,16 +32,14 @@ import (
 )
 
 var kaep = keepalive.EnforcementPolicy{
-	MinTime:             5 * time.Second, // If a client pings more than once every 5 seconds, terminate the connection
-	PermitWithoutStream: true,            // Allow pings even when there are no active streams
+	MinTime:             30 * time.Second, // Instruct the client to start sending keepalives after 30s (default is 5m, which may be too long for some proxies)
+	PermitWithoutStream: true,             // Allow pings even when there are no active streams
 }
 
 var kasp = keepalive.ServerParameters{
-	MaxConnectionIdle:     15 * time.Second, // If a client is idle for 15 seconds, send a GOAWAY
-	MaxConnectionAge:      30 * time.Second, // If any connection is alive for more than 30 seconds, send a GOAWAY
-	MaxConnectionAgeGrace: 5 * time.Second,  // Allow 5 seconds for pending RPCs to complete before forcibly closing connections
-	Time:                  5 * time.Second,  // Ping the client if it is idle for 5 seconds to ensure the connection is still active
-	Timeout:               2 * time.Second,  // Wait 2 second for the ping ack before assuming the connection is dead
+	MaxConnectionIdle: 30 * time.Second, // If a client is idle (i.e. doesn't send an RPC) for 30 seconds, send a GoAway to close the connection.
+	Time:              30 * time.Second, // Ping the client if it is idle for 30 seconds to ensure the connection is still active
+	Timeout:           10 * time.Second, // Wait 10 second for the ping ack before assuming the connection is dead
 }
 
 const (
