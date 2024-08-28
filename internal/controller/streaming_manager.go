@@ -13,6 +13,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/dynamic"
+
 	"k8s.io/client-go/rest"
 )
 
@@ -87,8 +88,8 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 		dynamicClient: dynamicClient,
 		streamManager: sm,
 	}
-
-	flowManager, err := initFlowManager(ctx, sm.logger)
+	// TODO: Add logic for a discoveribility function to decide which CNI to use.
+	ciliumFlowManager, err := initFlowManager(ctx, sm.logger)
 	if err != nil {
 		sm.logger.Error(err, "Cannot intialize FlowManager")
 	}
@@ -108,9 +109,9 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 		return err
 	}
 	snapshotCompleted.Done()
-	err = flowManager.listenToFlows(ctx, *sm)
+	err = ciliumFlowManager.listenToFlows(ctx, *sm)
 	if err != nil {
-		sm.logger.Error(err, "Failed to listen to flows")
+		sm.logger.Error(err, "Failed to listen to")
 		return err
 	}
 	<-ctx.Done()
