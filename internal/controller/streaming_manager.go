@@ -127,7 +127,7 @@ func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap ma
 				continue
 			}
 			am := CredentialsManager{Credentials: OnboardingCredentials, Logger: logger}
-			responseData, err := am.Onboard(ctx, envMap["TlsSkipVerify"].(bool), envMap["OnboardingEndpoint"].(string))
+			responseData, err := am.Onboard(ctx, envMap["TlsSkipVerify"].(string), envMap["OnboardingEndpoint"].(string))
 			if err != nil {
 				logger.Error(err, "Failed to register cluster")
 				continue
@@ -144,7 +144,7 @@ func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap ma
 				continue
 			}
 		}
-		conn, err := SetUpOAuthConnection(ctx, logger, envMap["TokenEndpoint"].(string), envMap["TlsSkipVerify"].(bool), clientID, clientSecret)
+		conn, err := SetUpOAuthConnection(ctx, logger, envMap["TokenEndpoint"].(string), envMap["TlsSkipVerify"].(string), clientID, clientSecret)
 		if err != nil {
 			logger.Error(err, "Failed to set up an OAuth connection")
 			continue

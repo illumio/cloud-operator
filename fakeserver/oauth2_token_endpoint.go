@@ -33,8 +33,8 @@ type OnboardRequest struct {
 	OnboardingClientSecret string `json:"onboarding_client_secret"`
 }
 type OnboardResponse struct {
-	ClusterClientId     string
-	ClusterClientSecret string
+	clusterClientId     string
+	clusterClientSecret string
 }
 
 const (
@@ -162,7 +162,7 @@ func (a *AuthService) onboardCluster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Just pass back what client sent for testing purposes.
-	resp := OnboardResponse{ClusterClientId: requestData.OnboardingClientId, ClusterClientSecret: requestData.OnboardingClientSecret}
+	resp := OnboardResponse{clusterClientId: requestData.OnboardingClientId, clusterClientSecret: requestData.OnboardingClientSecret}
 
 	jsonResponse(w, http.StatusOK, resp)
 }

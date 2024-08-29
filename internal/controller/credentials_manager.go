@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/golang-jwt/jwt"
 	"golang.org/x/oauth2"
@@ -33,15 +34,16 @@ type CredentialsManager struct {
 }
 
 type OnboardResponse struct {
-	ClusterClientId     string `json:"cluster_client_id"`
-	ClusterClientSecret string `json:"cluster_client_secret"`
+	ClusterClientId     string `json:"clusterClientId"`
+	ClusterClientSecret string `json:"clusterClientSecret"`
 }
 
 // Onboard onboards this cluster with CloudSecure using the onboarding credentials and obtains OAuth 2 credentials for this cluster.
-func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string) (OnboardResponse, error) {
+func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify string, OnboardingEndpoint string) (OnboardResponse, error) {
+	TlsSkipVerifyBool, _ := strconv.ParseBool(TlsSkipVerify)
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: TlsSkipVerify,
+		InsecureSkipVerify: TlsSkipVerifyBool,
 	}
 	transport := &http.Transport{
 		TLSClientConfig: tlsConfig,
@@ -73,20 +75,20 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, O
 
 	// Set the appropriate headers
 	req.Header.Set("Content-Type", "application/json")
-
 	resp, err := client.Do(req)
 	if err != nil {
 		am.Logger.Error(err, "Unable to send post request")
 		return responseData, err
 	}
 	defer resp.Body.Close()
-
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		am.Logger.Error(err, "Unable to read response of onboard post request")
 		return responseData, err
 	}
+	am.Logger.Info("body", "body", string(body))
+
 	if err := json.Unmarshal(body, &responseData); err != nil {
 		am.Logger.Error(err, "Unable to unmarshal json data")
 		return responseData, err
@@ -95,12 +97,13 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, O
 }
 
 // SetUpOAuthConnection establishes a gRPC connection using OAuth credentials and logging the process.
-func SetUpOAuthConnection(ctx context.Context, logger logr.Logger, tokenURL string, TlsSkipVerify bool, clientID string, clientSecret string) (*grpc.ClientConn, error) {
+func SetUpOAuthConnection(ctx context.Context, logger logr.Logger, tokenURL string, TlsSkipVerify string, clientID string, clientSecret string) (*grpc.ClientConn, error) {
+	TlsSkipVerifyBool, _ := strconv.ParseBool(TlsSkipVerify)
 	// Configure TLS settings
 	// nosemgrep: bypass-tls-verification
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: TlsSkipVerify,
+		InsecureSkipVerify: TlsSkipVerifyBool,
 	}
 
 	// Set up the OAuth2 config using the client credentials flow.

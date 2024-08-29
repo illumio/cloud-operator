@@ -36,7 +36,7 @@ import (
 )
 
 func main() {
-	var TlsSkipVerify bool
+	var TlsSkipVerify string
 	var OnboardingEndpoint string
 	var TokenEndpoint string
 	var OnboardingClientId string
@@ -61,7 +61,7 @@ func main() {
 	viper.SetDefault("cluster_creds", "clustercreds")
 
 	// Read environment variables
-	TlsSkipVerify = viper.GetBool("tls_skip_verify")
+	TlsSkipVerify = viper.GetString("tls_skip_verify")
 	OnboardingEndpoint = viper.GetString("onboarding_endpoint")
 	TokenEndpoint = viper.GetString("token_endpoint")
 	OnboardingClientId = viper.GetString("onboarding_client_id")

@@ -20,7 +20,7 @@ tests:
           value: "ONBOARDING_ENDPOINT"
       - equal:
           path: spec.template.spec.containers[0].env[1].value
-          value: "https://192.168.65.254:50053/api/v1/cluster/onboard"
+          value: "https://192.168.65.254:50053/api/v1/k8s_cluster/onboard"
       - equal:
           path: spec.template.spec.containers[0].env[2].name
           value: "TOKEN_ENDPOINT"
