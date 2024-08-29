@@ -132,6 +132,7 @@ func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap ma
 				logger.Error(err, "Failed to register cluster")
 				continue
 			}
+			logger.Info("write secret", "about to write secret", responseData)
 			err = sm.WriteK8sSecret(ctx, responseData, envMap["ClusterCreds"].(string))
 			time.Sleep(1 * time.Second)
 			if err != nil {

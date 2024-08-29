@@ -25,6 +25,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 
 	"github.com/google/gops/agent"
+	"github.com/spf13/viper"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	controller "github.com/illumio/cloud-operator/internal/controller"
@@ -41,12 +42,32 @@ func main() {
 	var OnboardingClientId string
 	var OnboardingClientSecret string
 	var ClusterCreds string
-	flag.BoolVar(&TlsSkipVerify, "tls_skip_verify", true, "If set, TLS connections will verify the x.509 certificate")
-	flag.StringVar(&OnboardingEndpoint, "onboarding_endpoint", "https://192.168.65.254:50053/api/v1/cluster/onboard", "The CloudSecure endpoint for onboarding this operator")
-	flag.StringVar(&TokenEndpoint, "token_endpoint", "https://192.168.65.254:50053/api/v1/authenticate", "The CloudSecure endpoint to authenticate this operator")
-	flag.StringVar(&OnboardingClientId, "onboarding_client_id", "client_id_1", "The client_id used to onboard this operator")
-	flag.StringVar(&OnboardingClientSecret, "onboarding_client_secret", "client_secret_1", "The client_secret_id used to onboard this operator")
-	flag.StringVar(&ClusterCreds, "cluster_creds_secret", "clustercreds", "The name of the Secret resource containing the OAuth 2 client credentials used to authenticate this operator after onboarding")
+	viper.AutomaticEnv()
+
+	// Bind specific environment variables to keys
+	viper.BindEnv("tls_skip_verify", "TLS_SKIP_VERIFY")
+	viper.BindEnv("onboarding_endpoint", "ONBOARDING_ENDPOINT")
+	viper.BindEnv("token_endpoint", "TOKEN_ENDPOINT")
+	viper.BindEnv("onboarding_client_id", "ONBOARDING_CLIENT_ID")
+	viper.BindEnv("onboarding_client_secret", "ONBOARDING_CLIENT_SECRET")
+	viper.BindEnv("cluster_creds", "CLUSTER_CREDS_SECRET")
+
+	// Set default values
+	viper.SetDefault("tls_skip_verify", "true")
+	viper.SetDefault("onboarding_endpoint", "https://192.168.65.254:50053/api/v1/k8s_cluster/onboard")
+	viper.SetDefault("token_endpoint", "https://192.168.65.254:50053/api/v1/authenticate")
+	viper.SetDefault("onboarding_client_id", "client_id_1")
+	viper.SetDefault("onboarding_client_secret", "client_secret_1")
+	viper.SetDefault("cluster_creds", "clustercreds")
+
+	// Read environment variables
+	TlsSkipVerify = viper.GetBool("tls_skip_verify")
+	OnboardingEndpoint = viper.GetString("onboarding_endpoint")
+	TokenEndpoint = viper.GetString("token_endpoint")
+	OnboardingClientId = viper.GetString("onboarding_client_id")
+	OnboardingClientSecret = viper.GetString("onboarding_client_secret")
+	ClusterCreds = viper.GetString("cluster_creds")
+
 	opts := zap.Options{
 		Development: true,
 	}

@@ -33,8 +33,8 @@ type CredentialsManager struct {
 }
 
 type OnboardResponse struct {
-	ClusterClientId     string
-	ClusterClientSecret string
+	ClusterClientId     string `json:"cluster_client_id"`
+	ClusterClientSecret string `json:"cluster_client_secret"`
 }
 
 // Onboard onboards this cluster with CloudSecure using the onboarding credentials and obtains OAuth 2 credentials for this cluster.

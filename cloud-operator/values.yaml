@@ -6,7 +6,7 @@ priorityClassName: ""
 image:
   repository: "illumioevanj80/operator"
   tag: "latest"
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
 
 imagePullSecrets:
   - name: regcred
