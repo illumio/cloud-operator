@@ -87,8 +87,6 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify string,
 		am.Logger.Error(err, "Unable to read response of onboard post request")
 		return responseData, err
 	}
-	am.Logger.Info("body", "body", string(body))
-
 	if err := json.Unmarshal(body, &responseData); err != nil {
 		am.Logger.Error(err, "Unable to unmarshal json data")
 		return responseData, err
