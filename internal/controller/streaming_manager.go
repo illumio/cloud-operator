@@ -26,6 +26,15 @@ type streamManager struct {
 	logger   logr.Logger
 }
 
+type EnvironmentConfig struct {
+	TlsSkipVerify          bool
+	OnboardingEndpoint     string
+	TokenEndpoint          string
+	OnboardingClientId     string
+	OnboardingClientSecret string
+	ClusterCreds           string
+}
+
 // TODO: Create a struct that holds all of the env variables to more easily pass them in with static types
 
 var resourceTypes = [2]string{"pods", "nodes"}
@@ -100,7 +109,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 }
 
 // ExponentialStreamConnect will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
-func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap map[string]interface{}) {
+func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap EnvironmentConfig) {
 	var backoff = 1 * time.Second
 	sm := SecretManager{Logger: logger}
 	max := big.NewInt(3)
@@ -116,34 +125,34 @@ func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap ma
 		logger.Info("Failed to establish connection; will retry", "delay", sleep)
 		time.Sleep(sleep)
 		backoff = backoff * 2 // Exponential increase
-		clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, envMap["ClusterCreds"].(string))
+		clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 		if err != nil {
 			logger.Error(err, "Could not read K8s credentials")
 		}
 		if clientID == "" && clientSecret == "" {
-			OnboardingCredentials, err := sm.GetOnboardingCredentials(ctx, envMap["OnboardingClientId"].(string), envMap["OnboardingClientSecret"].(string))
+			OnboardingCredentials, err := sm.GetOnboardingCredentials(ctx, envMap.OnboardingClientId, envMap.OnboardingClientSecret)
 			if err != nil {
 				logger.Error(err, "Failed to get onboarding credentials")
 				continue
 			}
 			am := CredentialsManager{Credentials: OnboardingCredentials, Logger: logger}
-			responseData, err := am.Onboard(ctx, envMap["TlsSkipVerify"].(string), envMap["OnboardingEndpoint"].(string))
+			responseData, err := am.Onboard(ctx, envMap.TlsSkipVerify, envMap.OnboardingEndpoint)
 			if err != nil {
 				logger.Error(err, "Failed to register cluster")
 				continue
 			}
-			err = sm.WriteK8sSecret(ctx, responseData, envMap["ClusterCreds"].(string))
+			err = sm.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
 			time.Sleep(1 * time.Second)
 			if err != nil {
 				am.Logger.Error(err, "Failed to write secret to Kubernetes")
 			}
-			clientID, clientSecret, err = sm.ReadCredentialsK8sSecrets(ctx, envMap["ClusterCreds"].(string))
+			clientID, clientSecret, err = sm.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 			if err != nil {
 				logger.Error(err, "Could not read K8s credentials")
 				continue
 			}
 		}
-		conn, err := SetUpOAuthConnection(ctx, logger, envMap["TokenEndpoint"].(string), envMap["TlsSkipVerify"].(string), clientID, clientSecret)
+		conn, err := SetUpOAuthConnection(ctx, logger, envMap.TokenEndpoint, envMap.TlsSkipVerify, clientID, clientSecret)
 		if err != nil {
 			logger.Error(err, "Failed to set up an OAuth connection")
 			continue

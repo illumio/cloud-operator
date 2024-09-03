@@ -80,7 +80,7 @@ func (suite *ControllerTestSuite) TestOnboard() {
 				Logger: logger,
 			}
 
-			response, err := am.Onboard(ctx, "true", tt.requestURL)
+			response, err := am.Onboard(ctx, true, tt.requestURL)
 			if tt.expectedError {
 				assert.Error(suite.T(), err)
 				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)

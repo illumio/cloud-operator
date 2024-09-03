@@ -7,9 +7,9 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
-	"strconv"
 
 	"github.com/golang-jwt/jwt"
 	"golang.org/x/oauth2"
@@ -39,11 +39,10 @@ type OnboardResponse struct {
 }
 
 // Onboard onboards this cluster with CloudSecure using the onboarding credentials and obtains OAuth 2 credentials for this cluster.
-func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify string, OnboardingEndpoint string) (OnboardResponse, error) {
-	TlsSkipVerifyBool, _ := strconv.ParseBool(TlsSkipVerify)
+func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string) (OnboardResponse, error) {
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: TlsSkipVerifyBool,
+		InsecureSkipVerify: TlsSkipVerify,
 	}
 	transport := &http.Transport{
 		TLSClientConfig: tlsConfig,
@@ -80,6 +79,31 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify string,
 		am.Logger.Error(err, "Unable to send post request")
 		return responseData, err
 	}
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// 200 OK - Continue processing the response
+	case http.StatusUnauthorized:
+		// 401 Unauthorized
+		err := errors.New("unauthorized: invalid credentials")
+		am.Logger.Error(err, "Received 401 Unauthorized")
+		return responseData, err
+	case http.StatusNotFound:
+		// 404 Not Found
+		err := errors.New("not found: the requested resource could not be found")
+		am.Logger.Error(err, "Received 404 Not Found")
+		return responseData, err
+	case http.StatusInternalServerError:
+		// 500 Internal Server Error
+		err := errors.New("internal server error: something went wrong on the server")
+		am.Logger.Error(err, "Received 500 Internal Server Error")
+		return responseData, err
+	default:
+		// Handle other status codes
+		err := errors.New("unexpected status code")
+		am.Logger.Error(err, "Received unexpected status code", "error code", resp.StatusCode)
+		return responseData, err
+	}
 	defer resp.Body.Close()
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
@@ -95,13 +119,12 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify string,
 }
 
 // SetUpOAuthConnection establishes a gRPC connection using OAuth credentials and logging the process.
-func SetUpOAuthConnection(ctx context.Context, logger logr.Logger, tokenURL string, TlsSkipVerify string, clientID string, clientSecret string) (*grpc.ClientConn, error) {
-	TlsSkipVerifyBool, _ := strconv.ParseBool(TlsSkipVerify)
+func SetUpOAuthConnection(ctx context.Context, logger logr.Logger, tokenURL string, TlsSkipVerify bool, clientID string, clientSecret string) (*grpc.ClientConn, error) {
 	// Configure TLS settings
 	// nosemgrep: bypass-tls-verification
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: TlsSkipVerifyBool,
+		InsecureSkipVerify: TlsSkipVerify,
 	}
 
 	// Set up the OAuth2 config using the client credentials flow.
