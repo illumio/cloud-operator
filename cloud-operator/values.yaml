@@ -36,7 +36,7 @@ onboardingSecret:
   clientSecret: "client_secret_1"
 
 env:
-  tlsSkipVerify: "true"
+  tlsSkipVerify: true
   # TODO: Replace with real endpoints when they are available.
   onboardingEndpoint: "https://192.168.65.254:50053/api/v1/k8s_cluster/onboard"
   tokenEndpoint: "https://192.168.65.254:50053/api/v1/authenticate"
