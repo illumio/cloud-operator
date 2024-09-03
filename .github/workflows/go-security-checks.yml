@@ -35,6 +35,9 @@ jobs:
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
+          # Needed to address this issue https://github.com/golangci/golangci-lint-action/issues/244
+          skip-pkg-cache: true
+          skip-build-cache: true
           version: v1.60.2
 
       - name: Run golangci-lint
