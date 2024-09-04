@@ -68,13 +68,10 @@ func main() {
 	)
 
 	// Create a zap logger with the core
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
 	defer logger.Sync() //nolint:errcheck
 
-	// Sugar logger to use for easier logging
-	sugar := logger.Sugar()
-
-	sugar.Infow("Starting application",
+	logger.Infow("Starting application",
 		"tls_skip_verify", TlsSkipVerify,
 		"onboarding_endpoint", OnboardingEndpoint,
 		"token_endpoint", TokenEndpoint,
@@ -100,9 +97,9 @@ func main() {
 
 	// Start the gops agent and listen on a specific address and port
 	if err := agent.Listen(agent.Options{}); err != nil {
-		sugar.Errorw("Failed to start gops agent", "error", err)
+		logger.Errorw("Failed to start gops agent", "error", err)
 	}
 
 	ctx := context.Background()
-	controller.ExponentialStreamConnect(ctx, sugar, varMap)
+	controller.ExponentialStreamConnect(ctx, logger, varMap)
 }
