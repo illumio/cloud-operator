@@ -69,7 +69,7 @@ func main() {
 
 	// Create a zap logger with the core
 	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
-	defer logger.Sync()
+	defer logger.Sync() //nolint:errcheck
 
 	// Sugar logger to use for easier logging
 	sugar := logger.Sugar()
