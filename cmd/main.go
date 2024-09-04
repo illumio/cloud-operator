@@ -87,7 +87,16 @@ func main() {
 		logger.Error(err, "Failed to start gops agent")
 	}
 	http.HandleFunc("/healthz", healthHandler)
-	go http.ListenAndServe(":8080", nil)
+
+	errChan := make(chan error, 1)
+
+	go func() {
+		errChan <- http.ListenAndServe(":8080", nil)
+	}()
+
+	if err := <-errChan; err != nil {
+		logger.Error(err, "healthz check server failed")
+	}
 
 	ctx := context.Background()
 	controller.ExponentialStreamConnect(ctx, logger, varMap)

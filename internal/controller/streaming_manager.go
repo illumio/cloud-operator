@@ -89,6 +89,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 	dd.timeStarted = time.Now()
 	dd.processingResources = true
 	ctx, cancel := context.WithCancel(ctx)
+	// time.Sleep(10 * time.Minute)
 	defer cancel()
 	resourceLister := &ResourceManager{
 		logger:        sm.logger,
