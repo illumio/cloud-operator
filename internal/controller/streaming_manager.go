@@ -17,8 +17,9 @@ import (
 )
 
 type streamClient struct {
-	conn   *grpc.ClientConn
-	stream pb.KubernetesInfoService_SendKubernetesResourcesClient
+	conn           *grpc.ClientConn
+	resourceStream pb.KubernetesInfoService_SendKubernetesResourcesClient
+	logStream      pb.KubernetesInfoService_KubernetesLogsClient
 }
 
 type streamManager struct {
@@ -31,23 +32,33 @@ type streamManager struct {
 var resourceTypes = [2]string{"pods", "nodes"}
 
 // NewStream returns a new stream.
-func NewStream(ctx context.Context, logger logr.Logger, conn *grpc.ClientConn) (*streamManager, error) {
+func NewStreams(ctx context.Context, logger logr.Logger, conn *grpc.ClientConn) (*streamManager, error) {
 	client := pb.NewKubernetesInfoServiceClient(conn)
-	stream, err := client.SendKubernetesResources(ctx)
+
+	KubernetesLogsStream, err := client.KubernetesLogs(ctx)
+	if err != nil {
+		// Proper error handling here; you might want to return the error, log it, etc.
+		logger.Error(err, "Failed to connect to server")
+		return &streamManager{}, err
+	}
+	SendKubernetesResourcesStream, err := client.SendKubernetesResources(ctx)
 	if err != nil {
 		// Proper error handling here; you might want to return the error, log it, etc.
 		logger.Error(err, "Failed to connect to server")
 		return &streamManager{}, err
 	}
 
-	// Create or update the instance with the new stream and connection
+	grpcSyncer := NewBufferedGrpcWriteSyncer(KubernetesLogsStream, conn)
+	newlogger := NewGrpclogger(grpcSyncer)
+
 	instance := &streamClient{
-		conn:   conn,
-		stream: stream,
+		conn:           conn,
+		resourceStream: SendKubernetesResourcesStream,
+		logStream:      KubernetesLogsStream,
 	}
 	sm := &streamManager{
 		instance: instance,
-		logger:   logger,
+		logger:   newlogger,
 	}
 	return sm, nil
 }
@@ -148,7 +159,7 @@ func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap ma
 			logger.Error(err, "Failed to set up an OAuth connection")
 			continue
 		}
-		sm, err := NewStream(ctx, logger, conn)
+		sm, err := NewStreams(ctx, logger, conn)
 		if err != nil {
 			logger.Error(err, "Failed to create a new stream")
 			continue

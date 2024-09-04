@@ -72,6 +72,15 @@ func main() {
 
 	logger := log.Log
 
+	defer func() {
+		// Ensure all buffered log entries are flushed before the program exits
+		if zapLogger, ok := logger.GetSink().(interface {
+			Sync() error
+		}); ok {
+			_ = zapLogger.Sync()
+		}
+	}()
+
 	// Start the gops agent and listen on a specific address and port
 	if err := agent.Listen(agent.Options{}); err != nil {
 		logger.Error(err, "Failed to start gops agent")

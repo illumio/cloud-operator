@@ -94,8 +94,24 @@ message KubernetesResourceMutation {
   }
 }
 
+enum LogLevels {
+  LOG_LEVELS_INFO_UNSPECIFIED = 0;
+  LOG_LEVELS_DEBUG = 1;
+  LOG_LEVELS_ERROR = 2;
+}
+
+message KubernetesLogsRequest {
+  string logs = 1;
+}
+
+message KubernetesLogsResponse {
+  LogLevels level = 1;
+}
+
 // Syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
 service KubernetesInfoService {
   // Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
   rpc SendKubernetesResources(stream SendKubernetesResourcesRequest) returns (stream SendKubernetesResourcesResponse);
+  // Continuously syncs logs from operator and cluster
+  rpc KubernetesLogs(stream KubernetesLogsRequest) returns (stream KubernetesLogsResponse);
 }
