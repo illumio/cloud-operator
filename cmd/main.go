@@ -51,7 +51,7 @@ func main() {
 	flag.Parse()
 
 	// Create a development encoder config
-	encoderConfig := zap.NewDevelopmentEncoderConfig()
+	encoderConfig := zap.NewProductionEncoderConfig()
 
 	// Create a JSON encoder
 	encoder := zapcore.NewJSONEncoder(encoderConfig)
@@ -76,7 +76,6 @@ func main() {
 		"onboarding_endpoint", OnboardingEndpoint,
 		"token_endpoint", TokenEndpoint,
 		"onboarding_client_id", OnboardingClientId,
-		"onboarding_client_secret", OnboardingClientSecret,
 		"cluster_creds_secret", ClusterCreds,
 	)
 
