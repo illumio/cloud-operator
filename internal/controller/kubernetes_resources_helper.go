@@ -95,12 +95,12 @@ func getMetadatafromResource(logger *zap.SugaredLogger, resource unstructured.Un
 		// Convert the metadata map to JSON and then unmarshal into metav1.ObjectMeta.
 		metadataJSON, err := json.Marshal(metadata)
 		if err != nil {
-			logger.Error(err, "Error marshalling metadata")
+			logger.Error("Error marshalling metadata", "error", err)
 			return &metav1.ObjectMeta{}, err
 		}
 		var objectMeta metav1.ObjectMeta
 		if err := json.Unmarshal(metadataJSON, &objectMeta); err != nil {
-			logger.Error(err, "Error unmarshalling metadata")
+			logger.Error("Error unmarshalling metadata", "error", err)
 			return &metav1.ObjectMeta{}, err
 		}
 		return &objectMeta, err

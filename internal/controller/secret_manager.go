@@ -31,26 +31,26 @@ func (sm *SecretManager) ReadCredentialsK8sSecrets(ctx context.Context, secretNa
 	// Create a new clientset
 	clientset, err := NewClientSet()
 	if err != nil {
-		sm.Logger.Error(err, "Failed to create clientSet")
+		sm.Logger.Error("Failed to create clientSet", "error", err)
 		return "", "", err
 	}
 
 	// Get the secret
 	secret, err := clientset.CoreV1().Secrets("illumio-cloud").Get(ctx, secretName, metav1.GetOptions{})
 	if err != nil {
-		sm.Logger.Error(err, "Failed to get secret")
+		sm.Logger.Error("Failed to get secret", "error", err)
 		return "", "", err
 	}
 
 	// Assuming your secret data has a "client_id" and "client_secret" key.
 	clientID := string(secret.Data["client_id"])
 	if clientID == "" {
-		sm.Logger.Error(err, "Cannot get client_id")
+		sm.Logger.Error("Cannot get client_id", "error", err)
 		return "", "", errors.New("failed to get client_id from secret")
 	}
 	clientSecret := string(secret.Data["client_secret"])
 	if clientSecret == "" {
-		sm.Logger.Error(err, "Cannot get client_secret")
+		sm.Logger.Error("Cannot get client_secret", "error", err)
 		return "", "", errors.New("failed to get client_secret from secret")
 	}
 	return clientID, clientSecret, nil
@@ -59,7 +59,7 @@ func (sm *SecretManager) ReadCredentialsK8sSecrets(ctx context.Context, secretNa
 func (sm *SecretManager) DoesK8sSecretExist(ctx context.Context, secretName string) bool {
 	clientset, err := NewClientSet()
 	if err != nil {
-		sm.Logger.Error(err, "Failed to create clientSet")
+		sm.Logger.Error("Failed to create clientSet", "error", err)
 	}
 
 	// Get the secret -> illumio-cloud will need to be configurable
@@ -71,7 +71,7 @@ func (sm *SecretManager) DoesK8sSecretExist(ctx context.Context, secretName stri
 func (sm *SecretManager) WriteK8sSecret(ctx context.Context, keyData OnboardResponse, ClusterCreds string) error {
 	clientset, err := NewClientSet()
 	if err != nil {
-		sm.Logger.Error(err, "Failed to create clientSet")
+		sm.Logger.Error("Failed to create clientSet", "error", err)
 		return err
 	}
 	secretData := map[string]string{
@@ -89,7 +89,7 @@ func (sm *SecretManager) WriteK8sSecret(ctx context.Context, keyData OnboardResp
 
 	_, err = clientset.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
 	if err != nil {
-		sm.Logger.Error(err, "Failed to update secret")
+		sm.Logger.Error("Failed to update secret", "error", err)
 		return err
 	}
 	return nil
