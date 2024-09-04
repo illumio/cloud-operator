@@ -36,8 +36,9 @@ type streamManager struct {
 var resourceTypes = [2]string{"pods", "nodes"}
 var dd = &deadlockDetector{}
 
+// ServerIsHealthy checks if a deadlock has occured within the threaded resource listing process.
 func ServerIsHealthy() bool {
-	if dd.processingResources && time.Since(dd.timeStarted) > 10*time.Minute {
+	if dd.processingResources && time.Since(dd.timeStarted) > 5*time.Minute {
 		return false
 	}
 	return true

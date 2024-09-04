@@ -35,8 +35,8 @@ import (
 	//+kubebuilder:scaffold:imports
 )
 
+// healthHandler checks the health of the server and returns a status code accordingly
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-	// Check the health of the server and return a status code accordingly
 	if controller.ServerIsHealthy() {
 		w.WriteHeader(http.StatusOK)
 	} else {
