@@ -35,8 +35,8 @@ func (suite *ControllerTestSuite) TestOnboard() {
 				var requestData map[string]string
 				err := json.NewDecoder(r.Body).Decode(&requestData)
 				assert.NoError(suite.T(), err)
-				assert.Equal(suite.T(), "test-client-id", requestData["onboarding_client_id"])
-				assert.Equal(suite.T(), "test-client-secret", requestData["onboarding_client_secret"])
+				assert.Equal(suite.T(), "test-client-id", requestData["onboardingClientId"])
+				assert.Equal(suite.T(), "test-client-secret", requestData["onboardingClientSecret"])
 
 				w.Header().Set("Content-Type", "application/json")
 				err = json.NewEncoder(w).Encode(OnboardResponse{

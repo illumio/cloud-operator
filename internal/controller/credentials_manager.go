@@ -54,8 +54,8 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, O
 
 	// Create the data to be sent in the POST request
 	data := map[string]string{
-		"onboarding_client_id":     am.Credentials.ClientID,
-		"onboarding_client_secret": am.Credentials.ClientSecret,
+		"onboardingClientId":     am.Credentials.ClientID,
+		"onboardingClientSecret": am.Credentials.ClientSecret,
 	}
 	var responseData OnboardResponse
 	// Convert the data to JSON

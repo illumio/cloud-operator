@@ -29,12 +29,12 @@ type TokenResponse struct {
 }
 
 type OnboardRequest struct {
-	OnboardingClientId     string `json:"onboarding_client_id"`
-	OnboardingClientSecret string `json:"onboarding_client_secret"`
+	OnboardingClientId     string `json:"onboardingClientId"`
+	OnboardingClientSecret string `json:"onboardingClientSecret"`
 }
 type OnboardResponse struct {
-	ClusterClientId     string
-	ClusterClientSecret string
+	ClusterClientId     string `json:"clusterClientId"`
+	ClusterClientSecret string `json:"clusterClientSecret"`
 }
 
 const (
