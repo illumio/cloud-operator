@@ -86,6 +86,29 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 	}
 }
 
+func (s *server) KubernetesLogs(stream pb.KubernetesInfoService_KubernetesLogsServer) error {
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		panic("Failed to build zap logger: " + err.Error())
+	}
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			// The client has closed the stream
+			logger.Info("Server has closed the stream")
+			return nil
+		}
+		if err != nil {
+			logger.Error("Error from stream", zap.Error(err))
+			return err // Return the error to terminate the stream
+		}
+
+		logs := req.Logs
+		logger.Info("Log messages")
+		logger.Info(logs)
+	}
+}
+
 func init() {
 	flag.StringVar(&network, "network", "tcp", "network of the address of the gRPC server, e.g., \"tcp\" or \"unix\"")
 	flag.StringVar(&address, "address", "127.0.0.1:50051", "address of the gRPC server to start at")

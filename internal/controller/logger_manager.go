@@ -159,7 +159,7 @@ func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
 // one to stdout and one for GRPC writestream
 func NewGrpclogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 	// Create a development encoder config
-	encoderConfig := zap.NewDevelopmentEncoderConfig()
+	encoderConfig := zap.NewProductionEncoderConfig()
 
 	// Create a JSON encoder
 	encoder := zapcore.NewJSONEncoder(encoderConfig)
