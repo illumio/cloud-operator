@@ -127,6 +127,7 @@ func SetUpOAuthConnection(ctx context.Context, logger logr.Logger, tokenURL stri
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		TokenURL:     tokenURL,
+		AuthStyle:    oauth2.AuthStyleInParams,
 	}
 	tokenSource := oauthConfig.TokenSource(context.WithValue(ctx, oauth2.HTTPClient, &http.Client{
 		// nosemgrep: bypass-tls-verification
