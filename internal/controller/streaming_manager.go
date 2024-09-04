@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-logr/logr"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -23,7 +23,7 @@ type streamClient struct {
 
 type streamManager struct {
 	instance *streamClient
-	logger   logr.Logger
+	logger   *zap.SugaredLogger
 }
 
 // TODO: Create a struct that holds all of the env variables to more easily pass them in with static types
@@ -31,7 +31,7 @@ type streamManager struct {
 var resourceTypes = [2]string{"pods", "nodes"}
 
 // NewStream returns a new stream.
-func NewStream(ctx context.Context, logger logr.Logger, conn *grpc.ClientConn) (*streamManager, error) {
+func NewStream(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.ClientConn) (*streamManager, error) {
 	client := pb.NewKubernetesInfoServiceClient(conn)
 	stream, err := client.SendKubernetesResources(ctx)
 	if err != nil {
@@ -100,7 +100,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 }
 
 // ExponentialStreamConnect will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
-func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap map[string]interface{}) {
+func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, envMap map[string]interface{}) {
 	var backoff = 1 * time.Second
 	sm := SecretManager{Logger: logger}
 	max := big.NewInt(3)
