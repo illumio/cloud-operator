@@ -19,6 +19,9 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
+	"os"
+	"reflect"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -26,12 +29,11 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/google/gops/agent"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	controller "github.com/illumio/cloud-operator/internal/controller"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -43,12 +45,26 @@ func bindEnv(logger logr.Logger, key, envVar string) {
 }
 
 func main() {
-	opts := zap.Options{
-		Development: true,
-	}
+	// Create a development encoder config
+	encoderConfig := zap.NewProductionEncoderConfig()
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
-	logger := log.Log
+	// Create a JSON encoder
+	encoder := zapcore.NewJSONEncoder(encoderConfig)
+
+	// Create syncers for console output
+	consoleSyncer := zapcore.AddSync(os.Stdout)
+
+	// Initialize the atomic level
+	atomicLevel := zap.NewAtomicLevelAt(zapcore.InfoLevel)
+
+	// Create the core with the atomic level
+	core := zapcore.NewTee(
+		zapcore.NewCore(encoder, consoleSyncer, atomicLevel),
+	)
+
+	// Create a zap logger with the core
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	defer logger.Sync() //nolint:errcheck
 
 	viper.AutomaticEnv()
 
@@ -74,9 +90,18 @@ func main() {
 		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
 		ClusterCreds:           viper.GetString("cluster_creds"),
 	}
+  
+  	logger.Infow("Starting application",
+		"tls_skip_verify", envConfig.TlsSkipVerify,
+		"onboarding_endpoint", envConfig.OnboardingEndpoint,
+		"token_endpoint", envConfig.TokenEndpoint,
+		"onboarding_client_id", envConfig.OnboardingClientId,
+		"cluster_creds_secret", envConfig.ClusterCreds,
+	)
+
 	// Start the gops agent and listen on a specific address and port
 	if err := agent.Listen(agent.Options{}); err != nil {
-		logger.Error(err, "Failed to start gops agent")
+		logger.Errorw("Failed to start gops agent", "error", err)
 	}
 
 	ctx := context.Background()

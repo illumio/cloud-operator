@@ -7,15 +7,27 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 
 	"github.com/stretchr/testify/assert"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 func (suite *ControllerTestSuite) TestOnboard() {
 	ctx := context.Background()
-	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
-	logger := zapLogger.WithName("test")
+	// Create a development encoder config
+	encoderConfig := zap.NewDevelopmentEncoderConfig()
+	// Create a JSON encoder
+	encoder := zapcore.NewJSONEncoder(encoderConfig)
+	// Create syncers for console output
+	consoleSyncer := zapcore.AddSync(os.Stdout)
+	// Create the core with the atomic level
+	core := zapcore.NewTee(
+		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
+	)
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	logger = logger.With(zap.String("name", "test"))
 
 	tests := map[string]struct {
 		clientID         string
