@@ -5,7 +5,6 @@ go 1.22.0
 toolchain go1.22.4
 
 require (
-	github.com/go-logr/logr v1.4.2
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	go.uber.org/zap v1.27.0
 	golang.org/x/oauth2 v0.22.0
@@ -19,6 +18,7 @@ require (
 require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
+	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
