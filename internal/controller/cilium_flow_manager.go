@@ -127,6 +127,7 @@ func (fm *FlowManager) listenToFlows(ctx context.Context, sm streamManager) erro
 	}
 }
 
+// convertLayer4 function converts a slice of flow.Layer4 objects to a slice of pb.Layer4 objects.
 func convertLayer4(l4 *flow.Layer4) *pb.Layer4 {
 	layer4 := &pb.Layer4{}
 
@@ -171,6 +172,8 @@ func convertLayer4(l4 *flow.Layer4) *pb.Layer4 {
 
 	return layer4
 }
+
+// convertCiliumWorkflows function converts a slice of flow.Workload objects to a slice of pb.Workload objects.
 func convertCiliumWorkflows(workloads []*flow.Workload) []*pb.Workload {
 	var protoWorkloads []*pb.Workload
 	for _, workload := range workloads {
@@ -184,6 +187,7 @@ func convertCiliumWorkflows(workloads []*flow.Workload) []*pb.Workload {
 	return protoWorkloads
 }
 
+// convertCiliumPolicies function converts a slice of flow.Policy objects to a slice of pb.Policy objects.
 func convertCiliumPolicies(policies []*flow.Policy) []*pb.Policy {
 	var protoPolicies []*pb.Policy
 
