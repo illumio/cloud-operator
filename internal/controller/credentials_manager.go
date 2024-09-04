@@ -88,11 +88,6 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, O
 		err := errors.New("unauthorized: invalid credentials")
 		am.Logger.Error(err, "Received 401 Unauthorized")
 		return responseData, err
-	case http.StatusNotFound:
-		// 404 Not Found
-		err := errors.New("not found: the requested resource could not be found")
-		am.Logger.Error(err, "Received 404 Not Found")
-		return responseData, err
 	case http.StatusInternalServerError:
 		// 500 Internal Server Error
 		err := errors.New("internal server error: something went wrong on the server")

@@ -61,11 +61,9 @@ func main() {
 	bindEnv(logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
 
 	// Set default values
-	viper.SetDefault("tls_skip_verify", true)
-	viper.SetDefault("onboarding_endpoint", "https://192.168.65.254:50053/api/v1/k8s_cluster/onboard")
-	viper.SetDefault("token_endpoint", "https://192.168.65.254:50053/api/v1/authenticate")
-	viper.SetDefault("onboarding_client_id", "client_id_1")
-	viper.SetDefault("onboarding_client_secret", "client_secret_1")
+	viper.SetDefault("tls_skip_verify", false)
+	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
+	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/authenticate")
 	viper.SetDefault("cluster_creds", "clustercreds")
 
 	envConfig := controller.EnvironmentConfig{

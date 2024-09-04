@@ -27,15 +27,19 @@ type streamManager struct {
 }
 
 type EnvironmentConfig struct {
-	TlsSkipVerify          bool
-	OnboardingEndpoint     string
-	TokenEndpoint          string
-	OnboardingClientId     string
+	// Whether to skip TLS certificate verification when starting a stream.
+	TlsSkipVerify bool
+	// URL of the onboarding endpoint.
+	OnboardingEndpoint string
+	// URL of the token endpoint.
+	TokenEndpoint string
+	// Client ID for onboarding.
+	OnboardingClientId string
+	// Client secret for onboarding.
 	OnboardingClientSecret string
-	ClusterCreds           string
+	// K8s cluster secret name.
+	ClusterCreds string
 }
-
-// TODO: Create a struct that holds all of the env variables to more easily pass them in with static types
 
 var resourceTypes = [2]string{"pods", "nodes"}
 
