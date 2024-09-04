@@ -19,15 +19,12 @@ package main
 import (
 	"context"
 	"flag"
-	"os"
 	"reflect"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 
 	"github.com/google/gops/agent"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	controller "github.com/illumio/cloud-operator/internal/controller"
@@ -50,31 +47,13 @@ func main() {
 	flag.StringVar(&ClusterCreds, "cluster_creds_secret", "clustercreds", "The name of the Secret resource containing the OAuth 2 client credentials used to authenticate this operator after onboarding")
 	flag.Parse()
 
-	// Create a development encoder config
-	encoderConfig := zap.NewDevelopmentEncoderConfig()
+	// Create a buffered grpc write syncer without a valid gRPC connection initially
+	// Using nil for the `pb.KubernetesInfoService_KubernetesLogsClient`.
+	bufferedGrpcSyncer := controller.NewBufferedGrpcWriteSyncer(nil, nil)
+	defer bufferedGrpcSyncer.Sync() // Ensure the buffer syncer is cleaned up
+	logger := controller.NewGrpclogger(bufferedGrpcSyncer)
 
-	// Create a JSON encoder
-	encoder := zapcore.NewJSONEncoder(encoderConfig)
-
-	// Create syncers for console output
-	consoleSyncer := zapcore.AddSync(os.Stdout)
-
-	// Initialize the atomic level
-	atomicLevel := zap.NewAtomicLevelAt(zapcore.InfoLevel)
-
-	// Create the core with the atomic level
-	core := zapcore.NewTee(
-		zapcore.NewCore(encoder, consoleSyncer, atomicLevel),
-	)
-
-	// Create a zap logger with the core
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
-	defer logger.Sync()
-
-	// Sugar logger to use for easier logging
-	sugar := logger.Sugar()
-
-	sugar.Infow("Starting application",
+	logger.Infow("Starting application",
 		"tls_skip_verify", TlsSkipVerify,
 		"onboarding_endpoint", OnboardingEndpoint,
 		"token_endpoint", TokenEndpoint,
@@ -100,9 +79,9 @@ func main() {
 
 	// Start the gops agent and listen on a specific address and port
 	if err := agent.Listen(agent.Options{}); err != nil {
-		sugar.Errorw("Failed to start gops agent", "error", err)
+		logger.Errorw("Failed to start gops agent", "error", err)
 	}
 
 	ctx := context.Background()
-	controller.ExponentialStreamConnect(ctx, sugar, varMap)
+	controller.ExponentialStreamConnect(ctx, logger, varMap, bufferedGrpcSyncer)
 }

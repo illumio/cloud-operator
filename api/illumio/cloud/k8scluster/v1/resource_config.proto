@@ -98,6 +98,7 @@ enum LogLevels {
   LOG_LEVELS_INFO_UNSPECIFIED = 0;
   LOG_LEVELS_DEBUG = 1;
   LOG_LEVELS_ERROR = 2;
+  LOG_LEVELS_PANIC = 3;
 }
 
 message KubernetesLogsRequest {

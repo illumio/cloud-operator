@@ -3,19 +3,16 @@
 package controller
 
 import (
+	"io"
 	"os"
 	"sync"
 	"time"
 
-	"github.com/go-logr/logr"
-	"github.com/go-logr/zapr"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
@@ -23,14 +20,19 @@ const (
 	flushInterval = 5 * time.Second
 )
 
+// BufferedGrpcWriteSyncer is a custom zap writesync that writes to a grpc stream
+// In case stream is not connected it will buffer to memory
 type BufferedGrpcWriteSyncer struct {
-	client pb.KubernetesInfoService_KubernetesLogsClient
-	conn   *grpc.ClientConn
-	buffer []string
-	mutex  sync.Mutex
-	done   chan struct{}
+	client   pb.KubernetesInfoService_KubernetesLogsClient
+	conn     *grpc.ClientConn
+	buffer   []string
+	mutex    sync.Mutex
+	done     chan struct{}
+	logger   *zap.SugaredLogger
+	logLevel *zap.AtomicLevel
 }
 
+// NewBufferedGrpcWriteSyncer returns a new BufferedGrpcWriteSyncer
 func NewBufferedGrpcWriteSyncer(client pb.KubernetesInfoService_KubernetesLogsClient, conn *grpc.ClientConn) *BufferedGrpcWriteSyncer {
 	bws := &BufferedGrpcWriteSyncer{
 		client: client,
@@ -42,11 +44,13 @@ func NewBufferedGrpcWriteSyncer(client pb.KubernetesInfoService_KubernetesLogsCl
 	return bws
 }
 
+// Write writes log data into GRPC, multiple Write calls will be batched,
+// and log data will written to into buffer in case GRPC stream is down
 func (b *BufferedGrpcWriteSyncer) Write(p []byte) (n int, err error) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
-	if b.conn.GetState() != connectivity.Ready {
+	if b.conn == nil || b.conn.GetState() != connectivity.Ready {
 		b.buffer = append(b.buffer, string(p))
 		if len(b.buffer) >= maxBufferSize {
 			b.flush()
@@ -62,6 +66,7 @@ func (b *BufferedGrpcWriteSyncer) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+// Sync flushes buffered log data into grpc stream if possible.
 func (b *BufferedGrpcWriteSyncer) Sync() error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
@@ -71,28 +76,32 @@ func (b *BufferedGrpcWriteSyncer) Sync() error {
 	return b.conn.Close()
 }
 
+// flush will attempt to dump buffer into GRPC stream if available
 func (b *BufferedGrpcWriteSyncer) flush() {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
-	if len(b.buffer) == 0 || b.conn.GetState() != connectivity.Ready {
+	if len(b.buffer) == 0 || b.conn == nil || b.conn.GetState() != connectivity.Ready {
 		return
 	}
 
 	for _, logEntry := range b.buffer {
 		if err := b.sendLog(logEntry); err != nil {
-			log.Log.Error(err, "Failed to send log")
+			b.logger.Error(err, "Failed to send log")
 			return
 		}
 	}
 	b.buffer = b.buffer[:0]
 }
 
+// sendlog will send log as string to server
 func (b *BufferedGrpcWriteSyncer) sendLog(logEntry string) error {
 	err := b.client.Send(&pb.KubernetesLogsRequest{Logs: logEntry})
 	return err
 }
 
+// run flushes the buffer at the configured interval until Stop is
+// called.
 func (b *BufferedGrpcWriteSyncer) run() {
 	ticker := time.NewTicker(flushInterval)
 	defer ticker.Stop()
@@ -107,7 +116,48 @@ func (b *BufferedGrpcWriteSyncer) run() {
 	}
 }
 
-func NewGrpclogger(grpcSyncer *BufferedGrpcWriteSyncer) logr.Logger {
+// UpdateClient will update BufferedGrpcWriteSyncer with new client stream and GRPC connection
+func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_KubernetesLogsClient, conn *grpc.ClientConn) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	b.client = client
+	b.conn = conn
+}
+
+// ListenToLogStream will wait for responses from server and will update log level
+// depending respone contents
+func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
+	for {
+		res, err := b.client.Recv()
+		if err == io.EOF {
+			// The client has closed the stream
+			b.logger.Info("Server has closed stream")
+			return nil
+		}
+		if err != nil {
+			b.logger.Error(err)
+			return err // Return the error to terminate the stream
+		}
+		switch res.Level {
+		case pb.LogLevels_LOG_LEVELS_DEBUG:
+			b.logger.Info("Set to DEBUG level log")
+			b.logLevel.SetLevel(zapcore.DebugLevel)
+		case pb.LogLevels_LOG_LEVELS_ERROR:
+			b.logger.Info("Set to ERROR level log")
+			b.logLevel.SetLevel(zapcore.ErrorLevel)
+		case pb.LogLevels_LOG_LEVELS_INFO_UNSPECIFIED:
+			b.logger.Info(("Set to INFO level log"))
+			b.logLevel.SetLevel(zapcore.InfoLevel)
+		case pb.LogLevels_LOG_LEVELS_PANIC:
+			b.logger.Info(("Set to PANIC level log"))
+			b.logLevel.SetLevel(zapcore.PanicLevel)
+		}
+	}
+}
+
+// NewGrpclogger will define a new zap logger with multiple writesyncs
+// one to stdout and one for GRPC writestream
+func NewGrpclogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 	// Create a development encoder config
 	encoderConfig := zap.NewDevelopmentEncoderConfig()
 
@@ -117,19 +167,18 @@ func NewGrpclogger(grpcSyncer *BufferedGrpcWriteSyncer) logr.Logger {
 	// Create syncers for console output
 	consoleSyncer := zapcore.AddSync(os.Stdout)
 
+	// Initialize the atomic level
+	atomicLevel := zap.NewAtomicLevelAt(zapcore.InfoLevel)
+
 	core := zapcore.NewTee(
-		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
-		zapcore.NewCore(encoder, grpcSyncer, zapcore.InfoLevel),
+		zapcore.NewCore(encoder, consoleSyncer, atomicLevel),
+		zapcore.NewCore(encoder, grpcSyncer, atomicLevel),
 	)
 
 	// Create a zap logger with the core
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
-
-	// Convert the zap.Logger to a logr.Logger via zapr
-	logrLogger := zapr.NewLogger(logger)
-
-	// Set the controller-runtime logger to the converted logr.Logger
-	ctrl.SetLogger(logrLogger)
-
-	return logrLogger
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	defer logger.Sync()
+	grpcSyncer.logger = logger
+	grpcSyncer.logLevel = &atomicLevel
+	return logger
 }

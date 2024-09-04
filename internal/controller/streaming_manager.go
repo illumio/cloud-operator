@@ -32,7 +32,7 @@ type streamManager struct {
 var resourceTypes = [2]string{"pods", "nodes"}
 
 // NewStream returns a new stream.
-func NewStream(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.ClientConn) (*streamManager, error) {
+func NewStreams(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.ClientConn) (*streamManager, error) {
 	client := pb.NewKubernetesInfoServiceClient(conn)
 
 	KubernetesLogsStream, err := client.KubernetesLogs(ctx)
@@ -48,9 +48,6 @@ func NewStream(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.Client
 		return &streamManager{}, err
 	}
 
-	grpcSyncer := NewBufferedGrpcWriteSyncer(KubernetesLogsStream, conn)
-	newlogger := NewGrpclogger(grpcSyncer)
-
 	instance := &streamClient{
 		conn:           conn,
 		resourceStream: SendKubernetesResourcesStream,
@@ -58,7 +55,7 @@ func NewStream(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.Client
 	}
 	sm := &streamManager{
 		instance: instance,
-		logger:   newlogger,
+		logger:   logger,
 	}
 	return sm, nil
 }
@@ -111,7 +108,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 }
 
 // ExponentialStreamConnect will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
-func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, envMap map[string]interface{}) {
+func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, envMap map[string]interface{}, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
 	var backoff = 1 * time.Second
 	sm := SecretManager{Logger: logger}
 	max := big.NewInt(3)
@@ -164,6 +161,11 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 			logger.Error(err, "Failed to create a new stream")
 			continue
 		}
+
+		// Update the gRPC client and connection in BufferedGrpcWriteSyncer
+		bufferedGrpcSyncer.UpdateClient(sm.instance.logStream, sm.instance.conn)
+		go bufferedGrpcSyncer.ListenToLogStream()
+
 		err = sm.BootUpStreamAndReconnect(ctx)
 		if err != nil {
 			logger.Error(err, "Failed to bootup and stream.")
