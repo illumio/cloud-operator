@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v2
@@ -33,7 +33,7 @@ jobs:
         run: staticcheck ./...
 
       - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v6
         with:
           # Needed to address this issue https://github.com/golangci/golangci-lint-action/issues/244
           skip-pkg-cache: true
