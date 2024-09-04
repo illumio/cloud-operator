@@ -74,29 +74,51 @@ func (fm *FlowManager) listenToFlows(ctx context.Context, sm streamManager) erro
 		// Process and store flows
 		for _, flow := range flows {
 			flowObj := flow.GetFlow()
-			sourceWorkloads := convertToProtoWorkloads(flowObj.GetSource().GetWorkloads())
-			sourcePort := fm.getPortFromFlows(flowObj.GetL4(), true)
-			source := pb.FlowMetadata{
-				Ip:        flowObj.GetIP().GetSource(),
-				Labels:    flowObj.GetSource().GetLabels(),
-				Namespace: flowObj.GetSource().GetNamespace(),
-				Name:      flowObj.GetNodeName(),
-				Port:      int32(sourcePort),
-				Protocol:  flowObj.GetL7().GetHttp().GetProtocol(),
-				Workload:  sourceWorkloads,
+			ciliumFlow := pb.CiliumFlow{
+				Time:             flowObj.GetTime(),
+				NodeName:         flowObj.GetNodeName(),
+				Verdict:          pb.Verdict(flowObj.GetVerdict()),
+				TrafficDirection: pb.TrafficDirection(flowObj.GetTrafficDirection()),
+				Layer3: &pb.IP{
+					Source:      flowObj.GetIP().GetSource(),
+					Destination: flowObj.GetIP().GetDestination(),
+					IpVersion:   pb.IPVersion(flowObj.GetIP().GetIpVersion()),
+				},
+				Layer4: convertLayer4(flowObj.GetL4()),
+				EventType: &pb.CiliumEventType{
+					Type:    flowObj.GetEventType().GetType(),
+					SubType: flowObj.GetEventType().GetSubType(),
+				},
+				SourceEndpoint: &pb.Endpoint{
+					Id:          flowObj.GetSource().GetID(),
+					Identity:    flowObj.GetSource().GetIdentity(),
+					ClusterName: flowObj.GetSource().GetClusterName(),
+					Namespace:   flowObj.GetSource().GetNamespace(),
+					Labels:      flowObj.GetSource().GetLabels(),
+					PodName:     flowObj.GetSource().GetPodName(),
+					Workloads:   convertCiliumWorkflows(flowObj.GetSource().GetWorkloads()),
+				},
+				DestinationEndpoint: &pb.Endpoint{
+					Id:          flowObj.GetDestination().GetID(),
+					Identity:    flowObj.GetDestination().GetIdentity(),
+					ClusterName: flowObj.GetDestination().GetClusterName(),
+					Namespace:   flowObj.GetDestination().GetNamespace(),
+					Labels:      flowObj.GetDestination().GetLabels(),
+					PodName:     flowObj.GetDestination().GetPodName(),
+					Workloads:   convertCiliumWorkflows(flowObj.GetDestination().GetWorkloads()),
+				},
+				Interface: &pb.NetworkInterface{
+					Index: flowObj.GetInterface().GetIndex(),
+					Name:  flowObj.GetInterface().GetName(),
+				},
+				ProxyPort:        int32(flowObj.GetProxyPort()),
+				EgressAllowedBy:  convertCiliumPolicies(flowObj.GetEgressAllowedBy()),
+				IngressAllowedBy: convertCiliumPolicies(flowObj.GetIngressAllowedBy()),
+				EgressDeniedBy:   convertCiliumPolicies(flowObj.GetEgressDeniedBy()),
+				IngressDeniedBy:  convertCiliumPolicies(flowObj.GetIngressDeniedBy()),
 			}
-			destinationWorkloads := convertToProtoWorkloads(flowObj.GetDestination().GetWorkloads())
-			destPort := fm.getPortFromFlows(flowObj.GetL4(), false)
-			destination := pb.FlowMetadata{
-				Ip:        flowObj.GetIP().GetDestination(),
-				Labels:    flowObj.GetDestination().GetLabels(),
-				Namespace: flowObj.GetDestination().GetNamespace(),
-				Name:      flowObj.GetNodeName(),
-				Port:      int32(destPort),
-				Protocol:  flowObj.GetL7().GetHttp().GetProtocol(),
-				Workload:  destinationWorkloads,
-			}
-			err = sendNetworkFlowsData(&sm, &source, &destination)
+
+			err = sendNetworkFlowsData(&sm, &ciliumFlow)
 			if err != nil {
 				fm.logger.Error(err, "Cannot send object metadata")
 				return err
@@ -105,39 +127,76 @@ func (fm *FlowManager) listenToFlows(ctx context.Context, sm streamManager) erro
 	}
 }
 
-// getPortFromFlows determines which port is being used in a given flow.
-func (fm *FlowManager) getPortFromFlows(l4Object *flow.Layer4, isSourcePort bool) uint32 {
-	if isSourcePort {
-		if l4Object.GetTCP() != nil {
-			return l4Object.GetTCP().GetSourcePort()
-		} else if l4Object.GetSCTP() != nil {
-			return l4Object.GetSCTP().GetSourcePort()
-		} else if l4Object.GetUDP() != nil {
-			return l4Object.GetUDP().GetSourcePort()
-		}
-	} else {
-		if l4Object.GetTCP() != nil {
-			return l4Object.GetTCP().GetDestinationPort()
-		} else if l4Object.GetSCTP() != nil {
-			return l4Object.GetSCTP().GetDestinationPort()
-		} else if l4Object.GetUDP() != nil {
-			return l4Object.GetUDP().GetDestinationPort()
-		}
-	}
-	return 0
-}
+func convertLayer4(l4 *flow.Layer4) *pb.Layer4 {
+	layer4 := &pb.Layer4{}
 
-// Conversion function for []*flow.Workflow to proto defined workload array.
-func convertToProtoWorkloads(workloads []*flow.Workload) []*pb.Workload {
-	protoWorkloads := []*pb.Workload{}
-	for _, wl := range workloads {
+	switch protocol := l4.Protocol.(type) {
+	case *flow.Layer4_TCP:
+		layer4.Protocol = &pb.Layer4_Tcp{
+			Tcp: &pb.TCP{
+				SourcePort:      protocol.TCP.SourcePort,
+				DestinationPort: protocol.TCP.DestinationPort,
+			},
+		}
+	case *flow.Layer4_UDP:
+		layer4.Protocol = &pb.Layer4_Udp{
+			Udp: &pb.UDP{
+				SourcePort:      protocol.UDP.SourcePort,
+				DestinationPort: protocol.UDP.DestinationPort,
+			},
+		}
+	case *flow.Layer4_ICMPv4:
+		layer4.Protocol = &pb.Layer4_Icmpv4{
+			Icmpv4: &pb.ICMPv4{
+				Type: protocol.ICMPv4.Type,
+				Code: protocol.ICMPv4.Code,
+			},
+		}
+	case *flow.Layer4_ICMPv6:
+		layer4.Protocol = &pb.Layer4_Icmpv6{
+			Icmpv6: &pb.ICMPv6{
+				Type: protocol.ICMPv6.Type,
+				Code: protocol.ICMPv6.Code,
+			},
+		}
+	case *flow.Layer4_SCTP:
+		layer4.Protocol = &pb.Layer4_Sctp{
+			Sctp: &pb.SCTP{
+				SourcePort:      protocol.SCTP.SourcePort,
+				DestinationPort: protocol.SCTP.DestinationPort,
+			},
+		}
+	default:
+	}
+
+	return layer4
+}
+func convertCiliumWorkflows(workloads []*flow.Workload) []*pb.Workload {
+	var protoWorkloads []*pb.Workload
+	for _, workload := range workloads {
 		protoWorkload := &pb.Workload{
-			Name: wl.Name,
-			Kind: wl.Kind,
+			Name: workload.GetName(),
+			Kind: workload.GetKind(),
+			// Add other fields as necessary
 		}
 		protoWorkloads = append(protoWorkloads, protoWorkload)
 	}
 	return protoWorkloads
+}
+
+func convertCiliumPolicies(policies []*flow.Policy) []*pb.Policy {
+	var protoPolicies []*pb.Policy
+
+	for _, policy := range policies {
+		protoPolicy := &pb.Policy{
+			Name:      policy.GetName(),
+			Namespace: policy.GetNamespace(),
+			Labels:    policy.GetLabels(),
+			Revision:  policy.GetRevision(),
+		}
+		protoPolicies = append(protoPolicies, protoPolicy)
+	}
+	return protoPolicies
 }
 
 // readFlows uses the observerClient to make gRPC calls to hubble-relay and grab the last x amount of flows.

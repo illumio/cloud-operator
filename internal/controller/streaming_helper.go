@@ -17,8 +17,8 @@ func sendObjectMetaData(sm *streamManager, metadata *pb.KubernetesObjectMetadata
 	return nil
 }
 
-func sendNetworkFlowsData(sm *streamManager, sourceFlow *pb.FlowMetadata, destinationFlow *pb.FlowMetadata) error {
-	if err := sm.instance.streamKubernetesFlows.Send(&pb.SendKubernetesNetworkFlowsRequest{Source: sourceFlow, Destination: destinationFlow}); err != nil {
+func sendNetworkFlowsData(sm *streamManager, flow *pb.CiliumFlow) error {
+	if err := sm.instance.streamKubernetesFlows.Send(&pb.SendKubernetesNetworkFlowsRequest{Flow: flow}); err != nil {
 		sm.logger.Error(err, "Failed to send flow metadata")
 		return err
 	}

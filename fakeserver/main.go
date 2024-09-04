@@ -116,8 +116,7 @@ func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_Send
 		}
 		// Logging for demo purposes
 		logger.Info("Network flow received")
-		logger.Info("source:", zap.String("source:", req.Source.String()))
-		logger.Info("dest:", zap.String("dest:", req.Destination.String()))
+		logger.Info("flow:", zap.String("flow:", req.String()))
 		if err := stream.Send(&pb.SendKubernetesNetworkFlowsResponse{}); err != nil {
 			return err
 		}

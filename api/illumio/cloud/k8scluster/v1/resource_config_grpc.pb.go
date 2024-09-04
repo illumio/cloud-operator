@@ -31,6 +31,7 @@ const (
 type KubernetesInfoServiceClient interface {
 	// Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
 	SendKubernetesResources(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendKubernetesResourcesClient, error)
+	// Continuously sends Network Flow traffic recorded via CNI in the cluster into CloudSecure.
 	SendKubernetesNetworkFlows(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendKubernetesNetworkFlowsClient, error)
 }
 
@@ -110,6 +111,7 @@ func (x *kubernetesInfoServiceSendKubernetesNetworkFlowsClient) Recv() (*SendKub
 type KubernetesInfoServiceServer interface {
 	// Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
 	SendKubernetesResources(KubernetesInfoService_SendKubernetesResourcesServer) error
+	// Continuously sends Network Flow traffic recorded via CNI in the cluster into CloudSecure.
 	SendKubernetesNetworkFlows(KubernetesInfoService_SendKubernetesNetworkFlowsServer) error
 	mustEmbedUnimplementedKubernetesInfoServiceServer()
 }

@@ -100,6 +100,7 @@ message CiliumFlow {
   google.protobuf.Timestamp time = 1;
   string node_name = 2;
   TrafficDirection traffic_direction = 3;
+  Verdict verdict = 4;
   IP layer3 = 5;
   Layer4 layer4 = 6;
   CiliumEventType event_type = 8;
@@ -119,9 +120,22 @@ message CiliumFlow {
 // Information identifying the direction of traffic in Cilium.
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-trafficdirection
 enum TrafficDirection {
-  TrafficDirection_TRAFFIC_DIRECTION_UNKNOWN = 0;
-  TrafficDirection_INGRESS = 1;
-  TrafficDirection_EGRESS = 2;
+  TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED = 0;
+  TRAFFIC_DIRECTION_INGRESS = 1;
+  TRAFFIC_DIRECTION_EGRESS = 2;
+}
+
+// Information about Verdict for determining what happens to a flow
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-verdict
+enum Verdict {
+  VERDICT_UNKNOWN_UNSPECIFIED = 0;
+  VERDICT_FORWARDED = 1;
+  VERDICT_DROPPED = 2;
+  VERDICT_ERROR = 3;
+  VERDICT_AUDIT = 4;
+  VERDICT_REDIRECTED = 5;
+  VERDICT_TRACED = 6;
+  VERDICT_TRANSLATED = 7;
 }
 
 // Information identifying an ip object in Cilium.
@@ -135,9 +149,9 @@ message IP {
 // Information about ip version for use in IP message.
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-ipversion
 enum IPVersion {
-  IPVersion_ip_not_used = 0;
-  IPVersion_ipv4 = 1;
-  IPVersion_ipv6 = 2;
+  IP_VERSION_IP_NOT_USED_UNSPECIFIED = 0;
+  IP_VERSION_IPV4 = 1;
+  IP_VERSION_IPV6 = 2;
 }
 
 // Information identifying Layer4 object in Cilium
@@ -219,11 +233,10 @@ message CiliumEventType {
 // Information identifying Endpoint object in Cilium
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-endpoint
 message Endpoint {
-  uint32 ID = 1;
+  uint32 id = 1;
   uint32 identity = 2;
   string cluster_name = 7;
   string namespace = 3;
-  // labels in `foo=bar` format.
   repeated string labels = 4;
   string pod_name = 5;
   repeated Workload workloads = 6;
@@ -250,7 +263,6 @@ message Policy {
   string namespace = 2;
   repeated string labels = 3;
   uint64 revision = 4;
-  string kind = 5;
 }
 
 // Message containing required metadata for flow logs
