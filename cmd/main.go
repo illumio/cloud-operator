@@ -58,7 +58,6 @@ func main() {
 		"onboarding_endpoint", OnboardingEndpoint,
 		"token_endpoint", TokenEndpoint,
 		"onboarding_client_id", OnboardingClientId,
-		"onboarding_client_secret", OnboardingClientSecret,
 		"cluster_creds_secret", ClusterCreds,
 	)
 
