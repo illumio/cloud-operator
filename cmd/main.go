@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"flag"
+	"net/http"
 	"reflect"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -33,6 +34,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	//+kubebuilder:scaffold:imports
 )
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	// Check the health of the server and return a status code accordingly
+	if controller.ServerIsHealthy() {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
 
 func main() {
 	var TlsSkipVerify bool
@@ -76,6 +86,8 @@ func main() {
 	if err := agent.Listen(agent.Options{}); err != nil {
 		logger.Error(err, "Failed to start gops agent")
 	}
+	http.HandleFunc("/healthz", healthHandler)
+	http.ListenAndServe(":8080", nil)
 
 	ctx := context.Background()
 	controller.ExponentialStreamConnect(ctx, logger, varMap)

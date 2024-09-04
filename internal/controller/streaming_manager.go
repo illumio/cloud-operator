@@ -21,6 +21,11 @@ type streamClient struct {
 	stream pb.KubernetesInfoService_SendKubernetesResourcesClient
 }
 
+type deadlockDetector struct {
+	processingResources bool
+	timeStarted         time.Time
+}
+
 type streamManager struct {
 	instance *streamClient
 	logger   logr.Logger
@@ -29,6 +34,14 @@ type streamManager struct {
 // TODO: Create a struct that holds all of the env variables to more easily pass them in with static types
 
 var resourceTypes = [2]string{"pods", "nodes"}
+var dd = &deadlockDetector{}
+
+func ServerIsHealthy() bool {
+	if dd.processingResources && time.Since(dd.timeStarted) > 10*time.Minute {
+		return false
+	}
+	return true
+}
 
 // NewStream returns a new stream.
 func NewStream(ctx context.Context, logger logr.Logger, conn *grpc.ClientConn) (*streamManager, error) {
@@ -72,6 +85,8 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 	}
 
 	snapshotCompleted.Add(1)
+	dd.timeStarted = time.Now()
+	dd.processingResources = true
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	resourceLister := &ResourceManager{
@@ -90,6 +105,8 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 	}
 	allResourcesSnapshotted.Wait()
 	err = resourceLister.sendResourceSnapshotComplete()
+	dd.timeStarted = time.Now()
+	dd.processingResources = false
 	if err != nil {
 		sm.logger.Error(err, "Failed to send resource snapshot complete")
 		return err
