@@ -5,7 +5,7 @@ package controller
 import (
 	"errors"
 
-	"github.com/go-logr/logr"
+	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 
 	"context"
@@ -15,7 +15,7 @@ import (
 
 // SecretManager keeps a logger for its own methods.
 type SecretManager struct {
-	Logger logr.Logger
+	Logger *zap.SugaredLogger
 }
 
 // GetOnboardingCredentials returns credentials to onboard this cluster with CloudSecure.

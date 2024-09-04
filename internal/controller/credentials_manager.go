@@ -11,10 +11,10 @@ import (
 	"net/http"
 
 	"github.com/golang-jwt/jwt"
+	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 
-	"github.com/go-logr/logr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"
@@ -29,7 +29,7 @@ type Credentials struct {
 // CredentialsManager holds credentials and a logger.
 type CredentialsManager struct {
 	Credentials Credentials
-	Logger      logr.Logger
+	Logger      *zap.SugaredLogger
 }
 
 type OnboardResponse struct {
@@ -95,7 +95,7 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, O
 }
 
 // SetUpOAuthConnection establishes a gRPC connection using OAuth credentials and logging the process.
-func SetUpOAuthConnection(ctx context.Context, logger logr.Logger, tokenURL string, TlsSkipVerify bool, clientID string, clientSecret string) (*grpc.ClientConn, error) {
+func SetUpOAuthConnection(ctx context.Context, logger *zap.SugaredLogger, tokenURL string, TlsSkipVerify bool, clientID string, clientSecret string) (*grpc.ClientConn, error) {
 	// Configure TLS settings
 	// nosemgrep: bypass-tls-verification
 	tlsConfig := &tls.Config{

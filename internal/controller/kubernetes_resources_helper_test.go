@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -144,8 +144,8 @@ func TestGetObjectMetadataFromRuntimeObject(t *testing.T) {
 }
 
 func TestGetMetadataFromResource(t *testing.T) {
-	// Initialize a logger (using testr for a simple testing logger here).
-	logger := logr.Discard()
+	// Create a no-op logger.
+	logger := zap.NewNop().Sugar()
 
 	// Create an `unstructured.Unstructured` object with metadata.
 	resource := unstructured.Unstructured{
