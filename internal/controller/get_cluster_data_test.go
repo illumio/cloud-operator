@@ -5,16 +5,15 @@ package controller
 import (
 	"context"
 
+	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/go-logr/logr"
-	"github.com/go-logr/logr/funcr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
 // Mocked function to replace the real GetClusterID function for testing
-func GetClusterIDWithClient(ctx context.Context, logger logr.Logger, clientset *fake.Clientset) (string, error) {
+func GetClusterIDWithClient(ctx context.Context, logger *zap.SugaredLogger, clientset *fake.Clientset) (string, error) {
 	namespace, err := clientset.CoreV1().Namespaces().Get(ctx, "kube-system", metav1.GetOptions{})
 	if err != nil {
 		logger.Error(err, "Failed to get kube-system namespace")
@@ -25,9 +24,7 @@ func GetClusterIDWithClient(ctx context.Context, logger logr.Logger, clientset *
 
 func (suite *ControllerTestSuite) TestGetClusterID() {
 	ctx := context.Background()
-	logger := funcr.New(func(prefix, args string) {
-		suite.T().Logf("%s%s", prefix, args)
-	}, funcr.Options{})
+	logger := newCustomLogger(suite.T())
 
 	tests := map[string]struct {
 		setup     func() *fake.Clientset

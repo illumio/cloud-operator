@@ -14,7 +14,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -27,7 +27,7 @@ jobs:
           load: true
 
       - name: Scan image
-        uses: anchore/scan-action@v3
+        uses: anchore/scan-action@v4
         with:
           image: "localbuild/testimage:latest"
           output-format: "table"

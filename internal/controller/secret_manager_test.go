@@ -4,18 +4,30 @@ package controller
 
 import (
 	"context"
+	"os"
 
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
 func (suite *ControllerTestSuite) TestGetOnboardingCredentials() {
 	ctx := context.Background()
-	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
-	logger := zapLogger.WithName("test")
+	// Create a development encoder config
+	encoderConfig := zap.NewDevelopmentEncoderConfig()
+	// Create a JSON encoder
+	encoder := zapcore.NewJSONEncoder(encoderConfig)
+	// Create syncers for console output
+	consoleSyncer := zapcore.AddSync(os.Stdout)
+	// Create the core with the atomic level
+	core := zapcore.NewTee(
+		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
+	)
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	logger = logger.With(zap.String("name", "test"))
 
 	tests := map[string]struct {
 		clientID      string
@@ -54,8 +66,18 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 		suite.T().Fatal("Cannot create the illumio-cloud namespace for test " + err.Error())
 	}
 	ctx := context.Background()
-	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
-	logger := zapLogger.WithName("test")
+	// Create a development encoder config
+	encoderConfig := zap.NewDevelopmentEncoderConfig()
+	// Create a JSON encoder
+	encoder := zapcore.NewJSONEncoder(encoderConfig)
+	// Create syncers for console output
+	consoleSyncer := zapcore.AddSync(os.Stdout)
+	// Create the core with the atomic level
+	core := zapcore.NewTee(
+		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
+	)
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	logger = logger.With(zap.String("name", "test"))
 
 	tests := map[string]struct {
 		secretName           string
@@ -132,8 +154,18 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 
 func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 	ctx := context.Background()
-	zapLogger := zap.New(zap.UseDevMode(true), zap.JSONEncoder())
-	logger := zapLogger.WithName("test")
+	// Create a development encoder config
+	encoderConfig := zap.NewDevelopmentEncoderConfig()
+	// Create a JSON encoder
+	encoder := zapcore.NewJSONEncoder(encoderConfig)
+	// Create syncers for console output
+	consoleSyncer := zapcore.AddSync(os.Stdout)
+	// Create the core with the atomic level
+	core := zapcore.NewTee(
+		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
+	)
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	logger = logger.With(zap.String("name", "test"))
 
 	tests := map[string]struct {
 		namespaceExists bool
