@@ -103,3 +103,76 @@ func (suite *ControllerTestSuite) TestOnboard() {
 		})
 	}
 }
+
+func (suite *ControllerTestSuite) TestGetFirstAudience() {
+	// Create a development encoder config
+	encoderConfig := zap.NewDevelopmentEncoderConfig()
+	// Create a JSON encoder
+	encoder := zapcore.NewJSONEncoder(encoderConfig)
+	// Create syncers for console output
+	consoleSyncer := zapcore.AddSync(os.Stdout)
+	// Create the core with the atomic level
+	core := zapcore.NewTee(
+		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
+	)
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	logger = logger.With(zap.String("name", "test"))
+
+	tests := map[string]struct {
+		claims         map[string]interface{}
+		expected       string
+		expectedError  bool
+		expectedErrMsg string
+	}{
+		"audience claim not found": {
+			claims:         map[string]interface{}{},
+			expected:       "",
+			expectedError:  true,
+			expectedErrMsg: "audience claim not found",
+		},
+		"audience claim is not a slice": {
+			claims: map[string]interface{}{
+				"aud": "not a slice",
+			},
+			expected:       "",
+			expectedError:  true,
+			expectedErrMsg: "audience claim is not a slice",
+		},
+		"audience slice is empty": {
+			claims: map[string]interface{}{
+				"aud": []interface{}{},
+			},
+			expected:       "",
+			expectedError:  true,
+			expectedErrMsg: "audience slice is empty",
+		},
+		"first audience claim is not a string": {
+			claims: map[string]interface{}{
+				"aud": []interface{}{123},
+			},
+			expected:       "",
+			expectedError:  true,
+			expectedErrMsg: "first audience claim is not a string",
+		},
+		"valid audience claim": {
+			claims: map[string]interface{}{
+				"aud": []interface{}{"exampleAudience"},
+			},
+			expected:      "exampleAudience",
+			expectedError: false,
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			got, err := getFirstAudience(logger, tt.claims)
+			if tt.expectedError {
+				assert.Error(suite.T(), err)
+				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
+			} else {
+				assert.NoError(suite.T(), err)
+				assert.Equal(suite.T(), tt.expected, got, "Expected audience: %v, got: %v", tt.expected, got)
+			}
+		})
+	}
+}
