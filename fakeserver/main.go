@@ -86,7 +86,7 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 	}
 }
 
-func (s *server) KubernetesLogs(stream pb.KubernetesInfoService_KubernetesLogsServer) error {
+func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error {
 	logger, err := zap.NewDevelopment()
 	if err != nil {
 		panic("Failed to build zap logger: " + err.Error())
@@ -103,9 +103,22 @@ func (s *server) KubernetesLogs(stream pb.KubernetesInfoService_KubernetesLogsSe
 			return err // Return the error to terminate the stream
 		}
 
-		logs := req.Logs
-		logger.Info("Log messages")
-		logger.Info(logs)
+		switch req.Request.(type) {
+		case *pb.SendLogsRequest_Log:
+			log := req.GetLog()
+			logger.Info("Log Message",
+				zap.String("level", log.Level.String()),
+				zap.Time("time", log.Time.AsTime()),
+				zap.String("message", log.Message),
+			)
+			// Send an empty response back to the client.
+			response := &pb.SendLogsResponse{}
+			if err := stream.Send(response); err != nil {
+				return err
+			}
+
+		}
+
 	}
 }
 

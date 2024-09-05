@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -23,9 +24,9 @@ const (
 // BufferedGrpcWriteSyncer is a custom zap writesync that writes to a grpc stream
 // In case stream is not connected it will buffer to memory
 type BufferedGrpcWriteSyncer struct {
-	client   pb.KubernetesInfoService_KubernetesLogsClient
+	client   pb.KubernetesInfoService_SendLogsClient
 	conn     *grpc.ClientConn
-	buffer   []string
+	buffer   []zapcore.Entry
 	mutex    sync.Mutex
 	done     chan struct{}
 	logger   *zap.SugaredLogger
@@ -33,11 +34,11 @@ type BufferedGrpcWriteSyncer struct {
 }
 
 // NewBufferedGrpcWriteSyncer returns a new BufferedGrpcWriteSyncer
-func NewBufferedGrpcWriteSyncer(client pb.KubernetesInfoService_KubernetesLogsClient, conn *grpc.ClientConn) *BufferedGrpcWriteSyncer {
+func NewBufferedGrpcWriteSyncer(client pb.KubernetesInfoService_SendLogsClient, conn *grpc.ClientConn) *BufferedGrpcWriteSyncer {
 	bws := &BufferedGrpcWriteSyncer{
 		client: client,
 		conn:   conn,
-		buffer: make([]string, 0, maxBufferSize),
+		buffer: make([]zapcore.Entry, 0, maxBufferSize),
 		done:   make(chan struct{}),
 	}
 	go bws.run()
@@ -47,19 +48,24 @@ func NewBufferedGrpcWriteSyncer(client pb.KubernetesInfoService_KubernetesLogsCl
 // Write writes log data into GRPC, multiple Write calls will be batched,
 // and log data will written to into buffer in case GRPC stream is down
 func (b *BufferedGrpcWriteSyncer) Write(p []byte) (n int, err error) {
+	entry := zapcore.Entry{
+		Message: string(p),
+		Time:    time.Now(),
+		Level:   b.logger.Level(),
+	}
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
 	if b.conn == nil || b.conn.GetState() != connectivity.Ready {
-		b.buffer = append(b.buffer, string(p))
+		b.buffer = append(b.buffer, entry)
 		if len(b.buffer) >= maxBufferSize {
 			b.flush()
 		}
 		return len(p), nil
 	}
 
-	if err := b.sendLog(string(p)); err != nil {
-		b.buffer = append(b.buffer, string(p))
+	if err := b.sendLog(entry); err != nil {
+		b.buffer = append(b.buffer, entry)
 		b.flush()
 		return 0, err
 	}
@@ -96,9 +102,17 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	b.buffer = b.buffer[:0]
 }
 
-// sendlog will send log as string to server
-func (b *BufferedGrpcWriteSyncer) sendLog(logEntry string) error {
-	err := b.client.Send(&pb.KubernetesLogsRequest{Logs: logEntry})
+// sendLog sends the log as a string to the server.
+func (b *BufferedGrpcWriteSyncer) sendLog(logEntry zapcore.Entry) error {
+	err := b.client.Send(&pb.SendLogsRequest{
+		Request: &pb.SendLogsRequest_Log{
+			Log: &pb.Log{
+				Level:   pb.LogLevel(logEntry.Level),
+				Time:    timestamppb.New(logEntry.Time),
+				Message: logEntry.Message,
+			},
+		},
+	})
 	return err
 }
 
@@ -119,7 +133,7 @@ func (b *BufferedGrpcWriteSyncer) run() {
 }
 
 // UpdateClient will update BufferedGrpcWriteSyncer with new client stream and GRPC connection
-func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_KubernetesLogsClient, conn *grpc.ClientConn) {
+func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_SendLogsClient, conn *grpc.ClientConn) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	b.client = client
@@ -137,23 +151,40 @@ func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
 			return nil
 		}
 		if err != nil {
-			b.logger.Error(err)
+			b.logger.Errorw("Stream terminated",
+				"error", err,
+			)
 			return err // Return the error to terminate the stream
 		}
-		switch res.Level {
-		case pb.LogLevels_LOG_LEVELS_DEBUG:
-			b.logger.Info("Set to DEBUG level log")
-			b.logLevel.SetLevel(zapcore.DebugLevel)
-		case pb.LogLevels_LOG_LEVELS_ERROR:
-			b.logger.Info("Set to ERROR level log")
-			b.logLevel.SetLevel(zapcore.ErrorLevel)
-		case pb.LogLevels_LOG_LEVELS_INFO_UNSPECIFIED:
-			b.logger.Info(("Set to INFO level log"))
-			b.logLevel.SetLevel(zapcore.InfoLevel)
-		case pb.LogLevels_LOG_LEVELS_PANIC:
-			b.logger.Info(("Set to PANIC level log"))
-			b.logLevel.SetLevel(zapcore.PanicLevel)
+		switch res.Response.(type) {
+		case *pb.SendLogsResponse_SetLogLevel:
+			newLevel := res.GetSetLogLevel().Level
+			b.updateLogLevel(newLevel)
 		}
+	}
+}
+
+// updateLogLevel sets the logger's log level based on the response from the server.
+func (b *BufferedGrpcWriteSyncer) updateLogLevel(level pb.LogLevel) {
+	switch level {
+	case pb.LogLevel_LOG_LEVEL_DEBUG:
+		b.logger.Info("Set to DEBUG level log")
+		b.logLevel.SetLevel(zapcore.DebugLevel)
+	case pb.LogLevel_LOG_LEVEL_ERROR:
+		b.logger.Info("Set to ERROR level log")
+		b.logLevel.SetLevel(zapcore.ErrorLevel)
+	case pb.LogLevel_LOG_LEVEL_INFO:
+		b.logger.Info("Set to INFO level log")
+		b.logLevel.SetLevel(zapcore.InfoLevel)
+	case pb.LogLevel_LOG_LEVEL_WARN:
+		b.logger.Info("Set to WARN level log")
+		b.logLevel.SetLevel(zapcore.WarnLevel)
+	case pb.LogLevel_LOG_LEVEL_UNSPECIFIED:
+		b.logger.Info("Set to UNSPECIFIED level log")
+		b.logLevel.SetLevel(zapcore.InfoLevel) // Defaulting to INFO level for unspecified
+	default:
+		b.logger.Warn("Unknown log level received, defaulting to INFO")
+		b.logLevel.SetLevel(zapcore.InfoLevel)
 	}
 }
 

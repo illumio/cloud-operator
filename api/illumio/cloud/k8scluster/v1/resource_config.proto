@@ -94,19 +94,50 @@ message KubernetesResourceMutation {
   }
 }
 
-enum LogLevels {
-  LOG_LEVELS_INFO_UNSPECIFIED = 0;
-  LOG_LEVELS_DEBUG = 1;
-  LOG_LEVELS_ERROR = 2;
-  LOG_LEVELS_PANIC = 3;
+// Enumeration to define the different levels of logging.
+enum LogLevel {
+  // Default unspecified log level.
+  LOG_LEVEL_UNSPECIFIED = 0;
+  // Debug log level, useful for development and troubleshooting.
+  LOG_LEVEL_DEBUG = 1;
+  // Informational log level for general application information.
+  LOG_LEVEL_INFO = 2;
+  // Error log level indicating something went wrong.
+  LOG_LEVEL_ERROR = 3;
+  // Warning log level for potentially problematic situations.
+  LOG_LEVEL_WARN = 4;
 }
 
-message KubernetesLogsRequest {
-  string logs = 1;
+// Message representing a log entry.
+message Log {
+  // The log level of the log entry.
+  LogLevel level = 1;
+  // The timestamp when the log entry was recorded.
+  google.protobuf.Timestamp time = 2;
+  // The actual log message content.
+  string message = 3;
 }
 
-message KubernetesLogsResponse {
-  LogLevels level = 1;
+// Message to encapsulate a request to send logs.
+message SendLogsRequest {
+  oneof request {
+    // A single log entry to be sent.
+    Log log = 1;
+  }
+}
+
+// Message to encapsulate setting the log level.
+message SetLogLevel {
+  // The new log level to be set.
+  LogLevel level = 1;
+}
+
+// Message to encapsulate the response for sending logs.
+message SendLogsResponse {
+  oneof response {
+    // set_log_level sets the operator's log level to the given level.
+    SetLogLevel set_log_level = 1;
+  }
 }
 
 // Syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
@@ -114,5 +145,5 @@ service KubernetesInfoService {
   // Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
   rpc SendKubernetesResources(stream SendKubernetesResourcesRequest) returns (stream SendKubernetesResourcesResponse);
   // Continuously syncs logs from operator and cluster
-  rpc KubernetesLogs(stream KubernetesLogsRequest) returns (stream KubernetesLogsResponse);
+  rpc SendLogs(stream SendLogsRequest) returns (stream SendLogsResponse);
 }

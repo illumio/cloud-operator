@@ -19,7 +19,7 @@ import (
 type streamClient struct {
 	conn           *grpc.ClientConn
 	resourceStream pb.KubernetesInfoService_SendKubernetesResourcesClient
-	logStream      pb.KubernetesInfoService_KubernetesLogsClient
+	logStream      pb.KubernetesInfoService_SendLogsClient
 }
 
 type streamManager struct {
@@ -48,10 +48,12 @@ var resourceTypes = [2]string{"pods", "nodes"}
 func NewStreams(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.ClientConn) (*streamManager, error) {
 	client := pb.NewKubernetesInfoServiceClient(conn)
 
-	KubernetesLogsStream, err := client.KubernetesLogs(ctx)
+	SendLogsStream, err := client.SendLogs(ctx)
 	if err != nil {
 		// Proper error handling here; you might want to return the error, log it, etc.
-		logger.Error(err, "Failed to connect to server")
+		logger.Errorw("Failed to connect to server",
+			"error", err,
+		)
 		return &streamManager{}, err
 	}
 	SendKubernetesResourcesStream, err := client.SendKubernetesResources(ctx)
@@ -64,7 +66,7 @@ func NewStreams(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.Clien
 	instance := &streamClient{
 		conn:           conn,
 		resourceStream: SendKubernetesResourcesStream,
-		logStream:      KubernetesLogsStream,
+		logStream:      SendLogsStream,
 	}
 	sm := &streamManager{
 		instance: instance,
