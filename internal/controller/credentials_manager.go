@@ -161,7 +161,7 @@ func SetUpOAuthConnection(ctx context.Context, logger *zap.SugaredLogger, tokenU
 		logger.Error(err, "Error parsing token")
 		return &grpc.ClientConn{}, err
 	}
-	aud, err := getFirstAudience(claims)
+	aud, err := getFirstAudience(logger, claims)
 	if err != nil {
 		logger.Error(err, "Error pulling audience out of token")
 	}
@@ -180,7 +180,7 @@ func SetUpOAuthConnection(ctx context.Context, logger *zap.SugaredLogger, tokenU
 }
 
 // getFirstAudience extracts the first audience from the claims map
-func getFirstAudience(claims map[string]interface{}, logger *zap.SugaredLogger) (string, error) {
+func getFirstAudience(logger *zap.SugaredLogger, claims map[string]interface{}) (string, error) {
 	aud, ok := claims["aud"]
 	if !ok {
 		err := errors.New("audience claim not found")
