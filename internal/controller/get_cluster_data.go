@@ -13,11 +13,11 @@ import (
 func GetClusterID(ctx context.Context, logger *zap.SugaredLogger) (string, error) {
 	clientset, err := NewClientSet()
 	if err != nil {
-		logger.Error(err, "Error creating clientset")
+		logger.Errorw("Error creating clientset", "error", err)
 	}
 	namespace, err := clientset.CoreV1().Namespaces().Get(ctx, "kube-system", v1.GetOptions{})
 	if err != nil {
-		logger.Error(err, "Could not find kube-system namespace")
+		logger.Errorw("Could not find kube-system namespace", "error", err)
 	}
 	return string(namespace.UID), nil
 }
