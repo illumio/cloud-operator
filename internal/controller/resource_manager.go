@@ -5,9 +5,9 @@ import (
 	"context"
 	"sync"
 
-	"github.com/go-logr/logr"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
 	"github.com/illumio/cloud-operator/internal/version"
+	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
@@ -17,7 +17,7 @@ import (
 // ResourceManager encapsulates components for listing and managing Kubernetes resources.
 type ResourceManager struct {
 	// Logger provides strucuted logging interface.
-	logger logr.Logger
+	logger *zap.SugaredLogger
 	// DynamicClient offers generic Kubernetes API operations.
 	dynamicClient dynamic.Interface
 	// StreamManager abstracts logic related to starting, using, and managing streams.

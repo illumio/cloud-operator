@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/go-logr/logr"
+	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -87,7 +87,7 @@ func getObjectMetadataFromRuntimeObject(obj runtime.Object) (*metav1.ObjectMeta,
 
 // getMetadatafromResource extracts the metav1.ObjectMeta from an unstructured.Unstructured resource.
 // It utilizes the unstructured's inherent methods to access the metadata directly.
-func getMetadatafromResource(logger logr.Logger, resource unstructured.Unstructured) (*metav1.ObjectMeta, error) {
+func getMetadatafromResource(logger *zap.SugaredLogger, resource unstructured.Unstructured) (*metav1.ObjectMeta, error) {
 	// Convert unstructured object to a map.
 	itemMap := resource.Object
 	// Extract metadata from map.

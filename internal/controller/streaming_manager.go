@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-logr/logr"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -23,15 +23,28 @@ type streamClient struct {
 
 type streamManager struct {
 	instance *streamClient
-	logger   logr.Logger
+	logger   *zap.SugaredLogger
 }
 
-// TODO: Create a struct that holds all of the env variables to more easily pass them in with static types
+type EnvironmentConfig struct {
+	// Whether to skip TLS certificate verification when starting a stream.
+	TlsSkipVerify bool
+	// URL of the onboarding endpoint.
+	OnboardingEndpoint string
+	// URL of the token endpoint.
+	TokenEndpoint string
+	// Client ID for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
+	OnboardingClientId string
+	// Client secret for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
+	OnboardingClientSecret string
+	// K8s cluster secret name.
+	ClusterCreds string
+}
 
 var resourceTypes = [2]string{"pods", "nodes"}
 
 // NewStream returns a new stream.
-func NewStream(ctx context.Context, logger logr.Logger, conn *grpc.ClientConn) (*streamManager, error) {
+func NewStream(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.ClientConn) (*streamManager, error) {
 	client := pb.NewKubernetesInfoServiceClient(conn)
 	stream, err := client.SendKubernetesResources(ctx)
 	if err != nil {
@@ -100,7 +113,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 }
 
 // ExponentialStreamConnect will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
-func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap map[string]interface{}) {
+func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig) {
 	var backoff = 1 * time.Second
 	sm := SecretManager{Logger: logger}
 	max := big.NewInt(3)
@@ -116,34 +129,34 @@ func ExponentialStreamConnect(ctx context.Context, logger logr.Logger, envMap ma
 		logger.Info("Failed to establish connection; will retry", "delay", sleep)
 		time.Sleep(sleep)
 		backoff = backoff * 2 // Exponential increase
-		clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, envMap["ClusterCreds"].(string))
+		clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 		if err != nil {
 			logger.Error(err, "Could not read K8s credentials")
 		}
 		if clientID == "" && clientSecret == "" {
-			OnboardingCredentials, err := sm.GetOnboardingCredentials(ctx, envMap["OnboardingClientId"].(string), envMap["OnboardingClientSecret"].(string))
+			OnboardingCredentials, err := sm.GetOnboardingCredentials(ctx, envMap.OnboardingClientId, envMap.OnboardingClientSecret)
 			if err != nil {
 				logger.Error(err, "Failed to get onboarding credentials")
 				continue
 			}
 			am := CredentialsManager{Credentials: OnboardingCredentials, Logger: logger}
-			responseData, err := am.Onboard(ctx, envMap["TlsSkipVerify"].(bool), envMap["OnboardingEndpoint"].(string))
+			responseData, err := am.Onboard(ctx, envMap.TlsSkipVerify, envMap.OnboardingEndpoint)
 			if err != nil {
 				logger.Error(err, "Failed to register cluster")
 				continue
 			}
-			err = sm.WriteK8sSecret(ctx, responseData, envMap["ClusterCreds"].(string))
+			err = sm.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
 			time.Sleep(1 * time.Second)
 			if err != nil {
 				am.Logger.Error(err, "Failed to write secret to Kubernetes")
 			}
-			clientID, clientSecret, err = sm.ReadCredentialsK8sSecrets(ctx, envMap["ClusterCreds"].(string))
+			clientID, clientSecret, err = sm.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 			if err != nil {
 				logger.Error(err, "Could not read K8s credentials")
 				continue
 			}
 		}
-		conn, err := SetUpOAuthConnection(ctx, logger, envMap["TokenEndpoint"].(string), envMap["TlsSkipVerify"].(bool), clientID, clientSecret)
+		conn, err := SetUpOAuthConnection(ctx, logger, envMap.TokenEndpoint, envMap.TlsSkipVerify, clientID, clientSecret)
 		if err != nil {
 			logger.Error(err, "Failed to set up an OAuth connection")
 			continue
