@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/go-logr/logr"
+	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -87,7 +87,7 @@ func getObjectMetadataFromRuntimeObject(obj runtime.Object) (*metav1.ObjectMeta,
 
 // getMetadatafromResource extracts the metav1.ObjectMeta from an unstructured.Unstructured resource.
 // It utilizes the unstructured's inherent methods to access the metadata directly.
-func getMetadatafromResource(logger logr.Logger, resource unstructured.Unstructured) (*metav1.ObjectMeta, error) {
+func getMetadatafromResource(logger *zap.SugaredLogger, resource unstructured.Unstructured) (*metav1.ObjectMeta, error) {
 	// Convert unstructured object to a map.
 	itemMap := resource.Object
 	// Extract metadata from map.
@@ -95,12 +95,12 @@ func getMetadatafromResource(logger logr.Logger, resource unstructured.Unstructu
 		// Convert the metadata map to JSON and then unmarshal into metav1.ObjectMeta.
 		metadataJSON, err := json.Marshal(metadata)
 		if err != nil {
-			logger.Error(err, "Error marshalling metadata")
+			logger.Errorw("Error marshalling metadata", "error", err)
 			return &metav1.ObjectMeta{}, err
 		}
 		var objectMeta metav1.ObjectMeta
 		if err := json.Unmarshal(metadataJSON, &objectMeta); err != nil {
-			logger.Error(err, "Error unmarshalling metadata")
+			logger.Errorw("Error unmarshalling metadata", "error", err)
 			return &metav1.ObjectMeta{}, err
 		}
 		return &objectMeta, err

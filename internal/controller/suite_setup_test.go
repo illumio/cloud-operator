@@ -7,6 +7,8 @@ import (
 
 	testhelper "github.com/illumio/cloud-operator/internal/controller/testhelper"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -59,4 +61,32 @@ func (suite *ControllerTestSuite) SetupTest() {
 		}
 		time.Sleep(1 * time.Second)
 	}
+}
+
+// LogWriter is a writer that writes to a custom function
+type LogWriter struct {
+	logFunc func(string, ...interface{})
+}
+
+func (w *LogWriter) Write(p []byte) (n int, err error) {
+	w.logFunc("%s", p)
+	return len(p), nil
+}
+
+func (w *LogWriter) Sync() error {
+	return nil
+}
+
+func newCustomLogger(t *testing.T) *zap.SugaredLogger {
+	logWriter := &LogWriter{
+		logFunc: t.Logf,
+	}
+
+	syncWriter := zapcore.AddSync(logWriter)
+	encoderConfig := zap.NewDevelopmentEncoderConfig()
+	encoder := zapcore.NewConsoleEncoder(encoderConfig)
+
+	core := zapcore.NewCore(encoder, syncWriter, zap.DebugLevel)
+
+	return zap.New(core).Sugar()
 }
