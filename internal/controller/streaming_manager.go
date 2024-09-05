@@ -33,9 +33,9 @@ type EnvironmentConfig struct {
 	OnboardingEndpoint string
 	// URL of the token endpoint.
 	TokenEndpoint string
-	// Client ID for onboarding.
+	// Client ID for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
 	OnboardingClientId string
-	// Client secret for onboarding.
+	// Client secret for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
 	OnboardingClientSecret string
 	// K8s cluster secret name.
 	ClusterCreds string

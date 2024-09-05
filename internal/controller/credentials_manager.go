@@ -86,17 +86,28 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, O
 	case http.StatusUnauthorized:
 		// 401 Unauthorized
 		err := errors.New("unauthorized: invalid credentials")
-		am.Logger.Error(err, "Received 401 Unauthorized")
+		am.Logger.Errorw("Received 401 Unauthorized",
+			"error", err,
+			"status_code", 401,
+			"description", "invalid credentials",
+		)
 		return responseData, err
 	case http.StatusInternalServerError:
 		// 500 Internal Server Error
 		err := errors.New("internal server error: something went wrong on the server")
-		am.Logger.Error(err, "Received 500 Internal Server Error")
+		am.Logger.Errorw("Received 500 Internal Server Error",
+			"error", err,
+			"status_code", http.StatusInternalServerError,
+			"description", "something went wrong on the server",
+		)
 		return responseData, err
 	default:
 		// Handle other status codes
 		err := errors.New("unexpected status code")
-		am.Logger.Error(err, "Received unexpected status code", "error code", resp.StatusCode)
+		am.Logger.Errorw("Received unexpected status code",
+			"error", err,
+			"status_code", resp.StatusCode,
+		)
 		return responseData, err
 	}
 	defer resp.Body.Close()
@@ -169,26 +180,41 @@ func SetUpOAuthConnection(ctx context.Context, logger *zap.SugaredLogger, tokenU
 }
 
 // getFirstAudience extracts the first audience from the claims map
-func getFirstAudience(claims map[string]interface{}) (string, error) {
+func getFirstAudience(claims map[string]interface{}, logger *zap.SugaredLogger) (string, error) {
 	aud, ok := claims["aud"]
 	if !ok {
 		err := errors.New("audience claim not found")
+		logger.Errorw("Error extracting audience claim",
+			"error", err,
+		)
 		return "", err
 	}
+
 	audSlice, ok := aud.([]interface{})
 	if !ok {
 		err := errors.New("audience claim is not a slice")
+		logger.Errorw("Error extracting audience claim",
+			"error", err,
+			"aud", aud,
+		)
 		return "", err
 	}
 
 	if len(audSlice) == 0 {
 		err := errors.New("audience slice is empty")
+		logger.Errorw("Error extracting audience claim",
+			"error", err,
+		)
 		return "", err
 	}
 
 	firstAud, ok := audSlice[0].(string)
 	if !ok {
 		err := errors.New("first audience claim is not a string")
+		logger.Errorw("Error extracting audience claim",
+			"error", err,
+			"first_aud", audSlice[0],
+		)
 		return "", err
 	}
 

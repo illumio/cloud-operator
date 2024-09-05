@@ -37,7 +37,10 @@ import (
 // bindEnv is a helper function that binds an environment variable to a key and handles errors.
 func bindEnv(logger zap.SugaredLogger, key, envVar string) {
 	if err := viper.BindEnv(key, envVar); err != nil {
-		logger.Error(errors.New("error binding environment variable"), "variable:", envVar)
+		logger.Errorw("Error binding environment variable",
+			"error", errors.New("error binding environment variable"),
+			"variable", envVar,
+		)
 	}
 }
 
