@@ -81,7 +81,7 @@ func NewStream(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.Client
 func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 	clusterConfig, err := rest.InClusterConfig()
 	if err != nil {
-		sm.logger.Error(err, "Error getting in-cluster config")
+		sm.logger.Errorw("Error getting in-cluster config", "error", err)
 		return err
 	}
 	var allResourcesSnapshotted sync.WaitGroup
@@ -89,7 +89,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 	// Create a dynamic client
 	dynamicClient, err := dynamic.NewForConfig(clusterConfig)
 	if err != nil {
-		sm.logger.Error(err, "Error creating dynamic client")
+		sm.logger.Errorw("Error creating dynamic client", "error", err)
 		return err
 	}
 
@@ -104,11 +104,11 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	ciliumFlowManager, err := initFlowManager(ctx, sm.logger)
 	if err != nil {
-		sm.logger.Error(err, "Cannot intialize FlowManager")
+		sm.logger.Errorw("Cannot intialize flow manager", "error", err)
 	}
 	err = resourceLister.sendClusterMetadata(ctx)
 	if err != nil {
-		sm.logger.Error(err, "Failed to send cluster metadata")
+		sm.logger.Errorw("Failed to send resource cluster metadata", "error", err)
 		return err
 	}
 	for _, resourceType := range resourceTypes {
@@ -118,13 +118,13 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 	allResourcesSnapshotted.Wait()
 	err = resourceLister.sendResourceSnapshotComplete()
 	if err != nil {
-		sm.logger.Error(err, "Failed to send resource snapshot complete")
+		sm.logger.Errorw("Failed to send resource snapshot complete", "error", err)
 		return err
 	}
 	snapshotCompleted.Done()
 	err = ciliumFlowManager.listenToFlows(ctx, *sm)
 	if err != nil {
-		sm.logger.Error(err, "Failed to listen to")
+		sm.logger.Errorw("Failed to listen to flows", "error", err)
 		return err
 	}
 	<-ctx.Done()
@@ -140,7 +140,7 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 		// Generate a random number
 		randomInt, err := rand.Int(rand.Reader, max)
 		if err != nil {
-			logger.Error(err, "Could not generate a random int")
+			logger.Errorw("Could not generate random int", "error", err)
 			continue
 		}
 		result := randomInt.Int64()
@@ -150,44 +150,44 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 		backoff = backoff * 2 // Exponential increase
 		clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 		if err != nil {
-			logger.Error(err, "Could not read K8s credentials")
+			logger.Errorw("Could not read K8s secret", "error", err)
 		}
 		if clientID == "" && clientSecret == "" {
 			OnboardingCredentials, err := sm.GetOnboardingCredentials(ctx, envMap.OnboardingClientId, envMap.OnboardingClientSecret)
 			if err != nil {
-				logger.Error(err, "Failed to get onboarding credentials")
+				logger.Errorw("Failed to get onboarding credentials", "error", err)
 				continue
 			}
 			am := CredentialsManager{Credentials: OnboardingCredentials, Logger: logger}
 			responseData, err := am.Onboard(ctx, envMap.TlsSkipVerify, envMap.OnboardingEndpoint)
 			if err != nil {
-				logger.Error(err, "Failed to register cluster")
+				logger.Errorw("Failed to register cluster", "error", err)
 				continue
 			}
 			err = sm.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
 			time.Sleep(1 * time.Second)
 			if err != nil {
-				am.Logger.Error(err, "Failed to write secret to Kubernetes")
+				am.Logger.Errorw("Failed to write K8s secret", "error", err)
 			}
 			clientID, clientSecret, err = sm.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 			if err != nil {
-				logger.Error(err, "Could not read K8s credentials")
+				logger.Errorw("Could not read K8s credentials", "error", err)
 				continue
 			}
 		}
 		conn, err := SetUpOAuthConnection(ctx, logger, envMap.TokenEndpoint, envMap.TlsSkipVerify, clientID, clientSecret)
 		if err != nil {
-			logger.Error(err, "Failed to set up an OAuth connection")
+			logger.Errorw("Failed to set up an OAuth connection", "error", err)
 			continue
 		}
 		sm, err := NewStream(ctx, logger, conn)
 		if err != nil {
-			logger.Error(err, "Failed to create a new stream")
+			logger.Errorw("Failed to create a new stream", "error", err)
 			continue
 		}
 		err = sm.BootUpStreamAndReconnect(ctx)
 		if err != nil {
-			logger.Error(err, "Failed to bootup and stream.")
+			logger.Errorw("Failed to bootup and stream", "error", err)
 		}
 	}
 }
