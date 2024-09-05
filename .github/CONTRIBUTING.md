@@ -30,7 +30,7 @@ While reporting a bug, please provide a minimal example to reproduce the issue.
 kind create cluster
 
 helm package .
-helm install iilumio cloud-operator-0.0.1.tgz --namespace illumio-cloud --create-namespace
+helm install illumio cloud-operator-0.0.1.tgz --namespace illumio-cloud --create-namespace
 ```
 
 > [!NOTE]
@@ -38,11 +38,11 @@ helm install iilumio cloud-operator-0.0.1.tgz --namespace illumio-cloud --create
 
 ##### Wait for the deployment to be ready
 ```
-kubectl rollout status deployment/iilumio-cloud-operator -n illumio-cloud
+kubectl rollout status deployment/illumio-cloud-operator -n illumio-cloud
 ```
 ##### Verify the deployment status
 ```
-DEPLOYMENT_STATUS=$(kubectl get deployment iilumio-cloud-operator -n illumio-cloud -o jsonpath="{.status.conditions[?(@.type=='Available')].status}")
+DEPLOYMENT_STATUS=$(kubectl get deployment illumio-cloud-operator -n illumio-cloud -o jsonpath="{.status.conditions[?(@.type=='Available')].status}")
 if [ "$DEPLOYMENT_STATUS" != "True" ]; then
   echo "Deployment is not available"
   exit 1
