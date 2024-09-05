@@ -18,14 +18,14 @@ package main
 
 import (
 	"context"
-	"flag"
+	"errors"
 	"os"
-	"reflect"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 
 	"github.com/google/gops/agent"
+	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -34,22 +34,17 @@ import (
 	//+kubebuilder:scaffold:imports
 )
 
+// bindEnv is a helper function that binds an environment variable to a key and handles errors.
+func bindEnv(logger zap.SugaredLogger, key, envVar string) {
+	if err := viper.BindEnv(key, envVar); err != nil {
+		logger.Errorw("Error binding environment variable",
+			"error", errors.New("error binding environment variable"),
+			"variable", envVar,
+		)
+	}
+}
+
 func main() {
-	var TlsSkipVerify bool
-	var OnboardingEndpoint string
-	var TokenEndpoint string
-	var OnboardingClientId string
-	var OnboardingClientSecret string
-	var ClusterCreds string
-
-	flag.BoolVar(&TlsSkipVerify, "tls_skip_verify", true, "If set, TLS connections will verify the x.509 certificate")
-	flag.StringVar(&OnboardingEndpoint, "onboarding_endpoint", "https://192.168.65.254:50053/api/v1/cluster/onboard", "The CloudSecure endpoint for onboarding this operator")
-	flag.StringVar(&TokenEndpoint, "token_endpoint", "https://192.168.65.254:50053/api/v1/authenticate", "The CloudSecure endpoint to authenticate this operator")
-	flag.StringVar(&OnboardingClientId, "onboarding_client_id", "client_id_1", "The client_id used to onboard this operator")
-	flag.StringVar(&OnboardingClientSecret, "onboarding_client_secret", "client_secret_1", "The client_secret_id used to onboard this operator")
-	flag.StringVar(&ClusterCreds, "cluster_creds_secret", "clustercreds", "The name of the Secret resource containing the OAuth 2 client credentials used to authenticate this operator after onboarding")
-	flag.Parse()
-
 	// Create a development encoder config
 	encoderConfig := zap.NewProductionEncoderConfig()
 
@@ -71,28 +66,38 @@ func main() {
 	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
 	defer logger.Sync() //nolint:errcheck
 
-	logger.Infow("Starting application",
-		"tls_skip_verify", TlsSkipVerify,
-		"onboarding_endpoint", OnboardingEndpoint,
-		"token_endpoint", TokenEndpoint,
-		"onboarding_client_id", OnboardingClientId,
-		"cluster_creds_secret", ClusterCreds,
-	)
+	viper.AutomaticEnv()
 
-	varMap := make(map[string]interface{})
-	// Use reflection to get variable names and values
-	v := reflect.ValueOf(map[string]interface{}{
-		"TlsSkipVerify":          TlsSkipVerify,
-		"OnboardingEndpoint":     OnboardingEndpoint,
-		"TokenEndpoint":          TokenEndpoint,
-		"OnboardingClientId":     OnboardingClientId,
-		"OnboardingClientSecret": OnboardingClientSecret,
-		"ClusterCreds":           ClusterCreds,
-	})
+	// Bind specific environment variables to keys
+	bindEnv(*logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
+	bindEnv(*logger, "onboarding_endpoint", "ONBOARDING_ENDPOINT")
+	bindEnv(*logger, "token_endpoint", "TOKEN_ENDPOINT")
+	bindEnv(*logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
+	bindEnv(*logger, "onboarding_client_secret", "ONBOARDING_CLIENT_SECRET")
+	bindEnv(*logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
 
-	for _, key := range v.MapKeys() {
-		varMap[key.String()] = v.MapIndex(key).Interface()
+	// Set default values
+	viper.SetDefault("tls_skip_verify", false)
+	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
+	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
+	viper.SetDefault("cluster_creds", "clustercreds")
+
+	envConfig := controller.EnvironmentConfig{
+		TlsSkipVerify:          viper.GetBool("tls_skip_verify"),
+		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
+		TokenEndpoint:          viper.GetString("token_endpoint"),
+		OnboardingClientId:     viper.GetString("onboarding_client_id"),
+		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
+		ClusterCreds:           viper.GetString("cluster_creds"),
 	}
+
+	logger.Infow("Starting application",
+		"tls_skip_verify", envConfig.TlsSkipVerify,
+		"onboarding_endpoint", envConfig.OnboardingEndpoint,
+		"token_endpoint", envConfig.TokenEndpoint,
+		"onboarding_client_id", envConfig.OnboardingClientId,
+		"cluster_creds_secret", envConfig.ClusterCreds,
+	)
 
 	// Start the gops agent and listen on a specific address and port
 	if err := agent.Listen(agent.Options{}); err != nil {
@@ -100,5 +105,5 @@ func main() {
 	}
 
 	ctx := context.Background()
-	controller.ExponentialStreamConnect(ctx, logger, varMap)
+	controller.ExponentialStreamConnect(ctx, logger, envConfig)
 }
