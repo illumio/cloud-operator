@@ -7,8 +7,8 @@ import (
 
 	"github.com/cilium/cilium/api/v1/flow"
 	observer "github.com/cilium/cilium/api/v1/observer"
-	"github.com/go-logr/logr"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,12 +17,12 @@ import (
 
 // FlowManager holds a logger and Cilium client
 type FlowManager struct {
-	logger logr.Logger
+	logger *zap.SugaredLogger
 	client observer.ObserverClient
 }
 
 // discoverHubbleRelayAddress uses a kubernetes clientset in order to discover the address of hubble-relay within kube-system.
-func discoverHubbleRelayAddress(ctx context.Context, logger logr.Logger, clientset kubernetes.Interface) (string, error) {
+func discoverHubbleRelayAddress(ctx context.Context, logger *zap.SugaredLogger, clientset kubernetes.Interface) (string, error) {
 	service, err := clientset.CoreV1().Services("kube-system").Get(ctx, "hubble-relay", metav1.GetOptions{})
 	if err != nil {
 		logger.Error(err, "Failed to get Hubble Relay service")
@@ -39,7 +39,7 @@ func discoverHubbleRelayAddress(ctx context.Context, logger logr.Logger, clients
 }
 
 // initFlowManager connects to hubble, sets up a observerClient and creates a new FlowManager object.
-func initFlowManager(ctx context.Context, logger logr.Logger) (FlowManager, error) {
+func initFlowManager(ctx context.Context, logger *zap.SugaredLogger) (FlowManager, error) {
 	// Connect to Hubble
 	config, err := NewClientSet()
 	if err != nil {
@@ -175,7 +175,7 @@ func convertLayer4(l4 *flow.Layer4) *pb.Layer4 {
 
 // convertCiliumWorkflows function converts a slice of flow.Workload objects to a slice of pb.Workload objects.
 func convertCiliumWorkflows(workloads []*flow.Workload) []*pb.Workload {
-	var protoWorkloads []*pb.Workload
+	protoWorkloads := []*pb.Workload{}
 	for _, workload := range workloads {
 		protoWorkload := &pb.Workload{
 			Name: workload.GetName(),
@@ -189,7 +189,7 @@ func convertCiliumWorkflows(workloads []*flow.Workload) []*pb.Workload {
 
 // convertCiliumPolicies function converts a slice of flow.Policy objects to a slice of pb.Policy objects.
 func convertCiliumPolicies(policies []*flow.Policy) []*pb.Policy {
-	var protoPolicies []*pb.Policy
+	protoPolicies := []*pb.Policy{}
 
 	for _, policy := range policies {
 		protoPolicy := &pb.Policy{
