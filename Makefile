@@ -31,7 +31,7 @@ clean:
 .PHONY: docker-build
 docker-build:
 	@echo "Building Docker image..."
-	docker build -t $(DOCKER_IMAGE):latest .
+	docker buildx build --load -t $(DOCKER_IMAGE):latest .
 
 # Push Docker image to Docker Hub
 .PHONY: docker-push
