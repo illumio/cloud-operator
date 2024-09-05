@@ -29,12 +29,12 @@ type TokenResponse struct {
 }
 
 type OnboardRequest struct {
-	ClusterClientID     string `json:"cluster_client_id"`
-	ClusterClientSecret string `json:"cluster_client_secret"`
+	OnboardingClientId     string `json:"onboardingClientId"`
+	OnboardingClientSecret string `json:"onboardingClientSecret"`
 }
 type OnboardResponse struct {
-	ClusterClientId     string
-	ClusterClientSecret string
+	ClusterClientId     string `json:"cluster_client_id"`
+	ClusterClientSecret string `json:"cluster_client_secret"`
 }
 
 const (
@@ -71,8 +71,8 @@ func startHTTPServer(address string, loggerToUse *zap.Logger, clientID string, c
 		clientSecret: clientSecret,
 		token:        tokenString,
 	}
-	http.HandleFunc("/api/v1/authenticate", authService.authenticateHandler)
-	http.HandleFunc("/api/v1/cluster/onboard", authService.onboardCluster)
+	http.HandleFunc("/api/v1/k8s_cluster/authenticate", authService.authenticateHandler)
+	http.HandleFunc("/api/v1/k8s_cluster/onboard", authService.onboardCluster)
 
 	server := &http.Server{
 		Addr:         address,
@@ -156,13 +156,12 @@ func (a *AuthService) onboardCluster(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error unmarshalling JSON", http.StatusBadRequest)
 		return
 	}
-
-	if !(reflect.TypeOf(requestData.ClusterClientID).Kind() == reflect.String && reflect.TypeOf(requestData.ClusterClientSecret).Kind() == reflect.String) {
+	if !(reflect.TypeOf(requestData.OnboardingClientId).Kind() == reflect.String && reflect.TypeOf(requestData.OnboardingClientSecret).Kind() == reflect.String) {
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "Bad format request"})
 		return
 	}
 	// Just pass back what client sent for testing purposes.
-	resp := OnboardResponse{ClusterClientId: requestData.ClusterClientID, ClusterClientSecret: requestData.ClusterClientSecret}
+	resp := OnboardResponse{ClusterClientId: requestData.OnboardingClientId, ClusterClientSecret: requestData.OnboardingClientSecret}
 
 	jsonResponse(w, http.StatusOK, resp)
 }
