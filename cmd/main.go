@@ -18,10 +18,8 @@ package main
 
 import (
 	"context"
-	"flag"
-	"net/http"
-	"reflect"
 	"errors"
+	"net/http"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -121,11 +119,8 @@ func main() {
 
 	go func() {
 		errChan <- http.ListenAndServe(":8080", nil)
+		logger.Error(errChan, "healthz check server failed")
 	}()
-
-	if err := <-errChan; err != nil {
-		logger.Error(err, "healthz check server failed")
-	}
 
 	ctx := context.Background()
 	controller.ExponentialStreamConnect(ctx, logger, envConfig)
