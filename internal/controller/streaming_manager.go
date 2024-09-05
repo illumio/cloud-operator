@@ -126,7 +126,7 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 		}
 		result := randomInt.Int64()
 		sleep := 1*time.Second + backoff + time.Duration(result)*time.Millisecond // Add randomness
-		logger.Info("Failed to establish connection; will retry", "delay", sleep)
+		logger.Infow("Failed to establish connection; will retry", "delay", sleep)
 		time.Sleep(sleep)
 		backoff = backoff * 2 // Exponential increase
 		clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
