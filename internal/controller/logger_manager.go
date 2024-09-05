@@ -87,7 +87,9 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 
 	for _, logEntry := range b.buffer {
 		if err := b.sendLog(logEntry); err != nil {
-			b.logger.Error(err, "Failed to send log")
+			b.logger.Errorw("Failed to send log",
+				"error", err,
+			)
 			return
 		}
 	}
@@ -177,7 +179,6 @@ func NewGrpclogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 
 	// Create a zap logger with the core
 	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
-	defer logger.Sync()
 	grpcSyncer.logger = logger
 	grpcSyncer.logLevel = &atomicLevel
 	return logger
