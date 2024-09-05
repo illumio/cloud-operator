@@ -33,8 +33,8 @@ type OnboardRequest struct {
 	OnboardingClientSecret string `json:"onboardingClientSecret"`
 }
 type OnboardResponse struct {
-	ClusterClientId     string `json:"clusterClientId"`
-	ClusterClientSecret string `json:"clusterClientSecret"`
+	ClusterClientId     string `json:"cluster_client_id"`
+	ClusterClientSecret string `json:"cluster_client_secret"`
 }
 
 const (

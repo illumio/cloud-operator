@@ -76,7 +76,7 @@ func main() {
 	// Set default values
 	viper.SetDefault("tls_skip_verify", false)
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
-	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/authenticate")
+	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("cluster_creds", "clustercreds")
 
 	envConfig := controller.EnvironmentConfig{

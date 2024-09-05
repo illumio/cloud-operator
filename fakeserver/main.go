@@ -180,7 +180,7 @@ func main() {
 	// Example of generating a JWT with an "aud" claim
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": token,
-		"aud": aud,
+		"aud": []string{aud},
 		"exp": time.Now().Add(time.Hour * 72).Unix(),
 	})
 	// Just using "secret" for test signing

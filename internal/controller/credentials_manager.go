@@ -11,7 +11,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v4"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
@@ -34,8 +34,8 @@ type CredentialsManager struct {
 }
 
 type OnboardResponse struct {
-	ClusterClientId     string `json:"clusterClientId"`
-	ClusterClientSecret string `json:"clusterClientSecret"`
+	ClusterClientId     string `json:"cluster_client_id"`
+	ClusterClientSecret string `json:"cluster_client_secret"`
 }
 
 // Onboard onboards this cluster with CloudSecure using the onboarding credentials and obtains OAuth 2 credentials for this cluster.
@@ -142,23 +142,18 @@ func SetUpOAuthConnection(ctx context.Context, logger *zap.SugaredLogger, tokenU
 		logger.Error(err, "Error retrieving a valid token")
 		return &grpc.ClientConn{}, err
 	}
+	claims := jwt.MapClaims{}
 	// Parse the token.
 	// nosemgrep: jwt-go-parse-unverified
-	parsedJWT, _, err := new(jwt.Parser).ParseUnverified(token.AccessToken, jwt.MapClaims{})
+	_, _, err = jwt.NewParser().ParseUnverified(token.AccessToken, claims)
 	if err != nil {
 		logger.Error(err, "Error parsing token")
 		return &grpc.ClientConn{}, err
 	}
-	var aud string
-	if claims, ok := parsedJWT.Claims.(jwt.MapClaims); ok {
-		// Access custom claims to get aud value.
-		aud, _ = claims["aud"].(string)
-
-	} else {
-		logger.Error(err, "Error retrieving aud value from JWT")
-		return &grpc.ClientConn{}, err
+	aud, err := getFirstAudience(claims)
+	if err != nil {
+		logger.Error(err, "Error pulling audience out of token")
 	}
-
 	// Establish gRPC connection with TLS config.
 	creds := credentials.NewTLS(tlsConfig)
 	conn, err := grpc.NewClient(
@@ -171,4 +166,31 @@ func SetUpOAuthConnection(ctx context.Context, logger *zap.SugaredLogger, tokenU
 		return nil, err
 	}
 	return conn, nil
+}
+
+// getFirstAudience extracts the first audience from the claims map
+func getFirstAudience(claims map[string]interface{}) (string, error) {
+	aud, ok := claims["aud"]
+	if !ok {
+		err := errors.New("audience claim not found")
+		return "", err
+	}
+	audSlice, ok := aud.([]interface{})
+	if !ok {
+		err := errors.New("audience claim is not a slice")
+		return "", err
+	}
+
+	if len(audSlice) == 0 {
+		err := errors.New("audience slice is empty")
+		return "", err
+	}
+
+	firstAud, ok := audSlice[0].(string)
+	if !ok {
+		err := errors.New("first audience claim is not a string")
+		return "", err
+	}
+
+	return firstAud, nil
 }
