@@ -16,7 +16,7 @@ import (
 func GetClusterIDWithClient(ctx context.Context, logger *zap.SugaredLogger, clientset *fake.Clientset) (string, error) {
 	namespace, err := clientset.CoreV1().Namespaces().Get(ctx, "kube-system", metav1.GetOptions{})
 	if err != nil {
-		logger.Error("Failed to get kube-system namespace", "error", err)
+		logger.Errorw("Failed to get kube-system namespace", "error", err)
 		return "", err
 	}
 	return string(namespace.UID), nil
