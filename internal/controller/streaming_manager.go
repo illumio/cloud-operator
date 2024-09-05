@@ -121,7 +121,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 }
 
 // ExponentialStreamConnect will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
-func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, envMap map[string]interface{}, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
+func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
 	var backoff = 1 * time.Second
 	sm := SecretManager{Logger: logger}
 	max := big.NewInt(3)

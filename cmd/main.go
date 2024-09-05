@@ -18,24 +18,14 @@ package main
 
 import (
 	"context"
-<<<<<<< HEAD
-	"flag"
-	"reflect"
-=======
 	"errors"
-	"os"
->>>>>>> origin/main
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 
 	"github.com/google/gops/agent"
-<<<<<<< HEAD
-=======
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
->>>>>>> origin/main
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	controller "github.com/illumio/cloud-operator/internal/controller"
@@ -53,25 +43,10 @@ func bindEnv(logger zap.SugaredLogger, key, envVar string) {
 }
 
 func main() {
-	var TlsSkipVerify bool
-	var OnboardingEndpoint string
-	var TokenEndpoint string
-	var OnboardingClientId string
-	var OnboardingClientSecret string
-	var ClusterCreds string
-
-	flag.BoolVar(&TlsSkipVerify, "tls_skip_verify", true, "If set, TLS connections will verify the x.509 certificate")
-	flag.StringVar(&OnboardingEndpoint, "onboarding_endpoint", "https://192.168.65.254:50053/api/v1/cluster/onboard", "The CloudSecure endpoint for onboarding this operator")
-	flag.StringVar(&TokenEndpoint, "token_endpoint", "https://192.168.65.254:50053/api/v1/authenticate", "The CloudSecure endpoint to authenticate this operator")
-	flag.StringVar(&OnboardingClientId, "onboarding_client_id", "client_id_1", "The client_id used to onboard this operator")
-	flag.StringVar(&OnboardingClientSecret, "onboarding_client_secret", "client_secret_1", "The client_secret_id used to onboard this operator")
-	flag.StringVar(&ClusterCreds, "cluster_creds_secret", "clustercreds", "The name of the Secret resource containing the OAuth 2 client credentials used to authenticate this operator after onboarding")
-	flag.Parse()
-
 	// Create a buffered grpc write syncer without a valid gRPC connection initially
 	// Using nil for the `pb.KubernetesInfoService_KubernetesLogsClient`.
 	bufferedGrpcSyncer := controller.NewBufferedGrpcWriteSyncer(nil, nil)
-	defer bufferedGrpcSyncer.Sync() // Ensure the buffer syncer is cleaned up
+	defer bufferedGrpcSyncer.Sync() // Ensure the buffer syncer is cleaned up //nolint:errcheck
 	logger := controller.NewGrpclogger(bufferedGrpcSyncer)
 
 	viper.AutomaticEnv()
@@ -113,5 +88,5 @@ func main() {
 	}
 
 	ctx := context.Background()
-	controller.ExponentialStreamConnect(ctx, logger, varMap, bufferedGrpcSyncer)
+	controller.ExponentialStreamConnect(ctx, logger, envConfig, bufferedGrpcSyncer)
 }
