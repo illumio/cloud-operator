@@ -50,13 +50,11 @@ func NewStream(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.Client
 	client := pb.NewKubernetesInfoServiceClient(conn)
 	streamKubernetesResources, err := client.SendKubernetesResources(ctx)
 	if err != nil {
-		// Proper error handling here; you might want to return the error, log it, etc.
 		logger.Error(err, "Failed to create a kubernetes resource client")
 		return &streamManager{}, err
 	}
 	streamKubernetesFlows, err := client.SendKubernetesNetworkFlows(ctx)
 	if err != nil {
-		// Proper error handling here; you might want to return the error, log it, etc.
 		logger.Error(err, "Failed to create a kubernetes network flows client")
 		return &streamManager{}, err
 	}

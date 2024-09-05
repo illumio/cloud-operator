@@ -25,12 +25,12 @@ type FlowManager struct {
 func discoverHubbleRelayAddress(ctx context.Context, logger *zap.SugaredLogger, clientset kubernetes.Interface) (string, error) {
 	service, err := clientset.CoreV1().Services("kube-system").Get(ctx, "hubble-relay", metav1.GetOptions{})
 	if err != nil {
-		logger.Error(err, "Failed to get Hubble Relay service")
+		logger.Errorw("Failed to get Hubble Relay service", "error", err)
 		return "", err
 	}
 
 	if len(service.Spec.Ports) == 0 {
-		logger.Error(err, "Hubble Relay service has no ports")
+		logger.Errorw("Hubble Relay service has no ports", "error", err)
 		return "", errors.New("hubble relay service has no ports")
 	}
 
@@ -43,18 +43,18 @@ func initFlowManager(ctx context.Context, logger *zap.SugaredLogger) (FlowManage
 	// Connect to Hubble
 	config, err := NewClientSet()
 	if err != nil {
-		logger.Error(err, "Could not create a new client set")
+		logger.Errorw("Could not create a new client set", "error", err)
 		return FlowManager{}, err
 	}
 	hubbleAddress, err := discoverHubbleRelayAddress(ctx, logger, config)
 	if err != nil {
-		logger.Error(err, "Cannot find hubble-relay address")
+		logger.Errorw("Cannot find hubble-relay address", "error", err)
 		return FlowManager{}, err
 	}
 	// Adjust this address if needed
 	conn, err := grpc.NewClient(hubbleAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		logger.Error(err, "Failed to connect to Hubble")
+		logger.Errorw("Failed to connect to Hubble", "error", err)
 		return FlowManager{}, err
 	}
 	hubbleClient := observer.NewObserverClient(conn)
@@ -67,7 +67,7 @@ func (fm *FlowManager) listenToFlows(ctx context.Context, sm streamManager) erro
 	for {
 		flows, err := fm.readFlows(ctx)
 		if err != nil {
-			fm.logger.Error(err, "Error fetching network flows")
+			fm.logger.Errorw("Error fetching network flows", "error", err)
 			return err
 		}
 
@@ -120,7 +120,7 @@ func (fm *FlowManager) listenToFlows(ctx context.Context, sm streamManager) erro
 
 			err = sendNetworkFlowsData(&sm, &ciliumFlow)
 			if err != nil {
-				fm.logger.Error(err, "Cannot send object metadata")
+				fm.logger.Errorw("Cannot send object metadata", "error", err)
 				return err
 			}
 		}
@@ -180,7 +180,6 @@ func convertCiliumWorkflows(workloads []*flow.Workload) []*pb.Workload {
 		protoWorkload := &pb.Workload{
 			Name: workload.GetName(),
 			Kind: workload.GetKind(),
-			// Add other fields as necessary
 		}
 		protoWorkloads = append(protoWorkloads, protoWorkload)
 	}
@@ -190,7 +189,6 @@ func convertCiliumWorkflows(workloads []*flow.Workload) []*pb.Workload {
 // convertCiliumPolicies function converts a slice of flow.Policy objects to a slice of pb.Policy objects.
 func convertCiliumPolicies(policies []*flow.Policy) []*pb.Policy {
 	protoPolicies := []*pb.Policy{}
-
 	for _, policy := range policies {
 		protoPolicy := &pb.Policy{
 			Name:      policy.GetName(),
@@ -211,7 +209,7 @@ func (fm *FlowManager) readFlows(ctx context.Context) ([]*observer.GetFlowsRespo
 	observerClient := fm.client
 	stream, err := observerClient.GetFlows(ctx, req)
 	if err != nil {
-		fm.logger.Error(err, "Error getting network flows")
+		fm.logger.Errorw("Error getting network flows", "error", err)
 		return []*observer.GetFlowsResponse{}, err
 	}
 
