@@ -109,8 +109,6 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 	dd.timeStarted = time.Now()
 	dd.processingResources = true
 	dd.mutex.Unlock()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	resourceLister := &ResourceManager{
 		logger:        sm.logger,
 		dynamicClient: dynamicClient,
@@ -193,9 +191,12 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 			logger.Errorw("Failed to create a new stream", "error", err)
 			continue
 		}
+		ctx, cancel := context.WithCancel(ctx)
 		err = sm.BootUpStreamAndReconnect(ctx)
 		if err != nil {
+			cancel()
 			logger.Errorw("Failed to bootup and stream", "error", err)
+			continue
 		}
 		<-ctx.Done()
 	}
