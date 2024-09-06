@@ -123,7 +123,11 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	defer b.mutex.Unlock()
 
 	if len(b.buffer) == 0 || b.conn == nil || b.conn.GetState() != connectivity.Ready {
-		b.logger.Warn("Unable to flush buffer will wait to retry")
+		b.logger.Warn("Unable to flush buffer will wait to retry",
+			zap.Any("logBufferSize", len(b.buffer)),
+			zap.Any("maxBufferSize", maxBufferSize),
+			zap.Any("clientConn", b.conn),
+		)
 		return
 	}
 
@@ -131,6 +135,7 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 		if err := b.sendLog(logEntry); err != nil {
 			b.logger.Errorw("Failed to send log",
 				"error", err,
+				zap.Any("logBufferSize", len(b.buffer)),
 			)
 			return
 		}
