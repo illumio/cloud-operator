@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -33,6 +34,17 @@ import (
 	controller "github.com/illumio/cloud-operator/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
+
+// newHealthHandler returns an HTTP HandlerFunc that checks the health of the server by calling the given function and returns a status code accordingly
+func newHealthHandler(checkFunc func() bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if checkFunc() {
+			w.WriteHeader(http.StatusOK)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}
+}
 
 // bindEnv is a helper function that binds an environment variable to a key and handles errors.
 func bindEnv(logger zap.SugaredLogger, key, envVar string) {
@@ -103,6 +115,14 @@ func main() {
 	if err := agent.Listen(agent.Options{}); err != nil {
 		logger.Errorw("Failed to start gops agent", "error", err)
 	}
+	http.HandleFunc("/healthz", newHealthHandler(controller.ServerIsHealthy))
+	errChan := make(chan error, 1)
+
+	go func() {
+		errChan <- http.ListenAndServe(":8080", nil)
+		err := <-errChan
+		logger.Fatal("healthz check server failed", zap.Error(err))
+	}()
 
 	ctx := context.Background()
 	controller.ExponentialStreamConnect(ctx, logger, envConfig)
