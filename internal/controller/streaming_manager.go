@@ -24,6 +24,7 @@ type streamClient struct {
 type deadlockDetector struct {
 	processingResources bool
 	timeStarted         time.Time
+	mutex               sync.RWMutex
 }
 
 type streamManager struct {
@@ -51,6 +52,8 @@ var dd = &deadlockDetector{}
 
 // ServerIsHealthy checks if a deadlock has occured within the threaded resource listing process.
 func ServerIsHealthy() bool {
+	dd.mutex.RLock()
+	defer dd.mutex.RUnlock()
 	if dd.processingResources && time.Since(dd.timeStarted) > 5*time.Minute {
 		return false
 	}
@@ -84,6 +87,9 @@ func NewStream(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.Client
 // different resource types. This is also handling the asyc nature of listing resources and properly sending our commit
 // message on intial boot when we have the state of the cluster.
 func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
+	defer func() {
+		dd.processingResources = false
+	}()
 	clusterConfig, err := rest.InClusterConfig()
 	if err != nil {
 		sm.logger.Errorw("Error getting in-cluster config", "error", err)
@@ -99,8 +105,10 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 	}
 
 	snapshotCompleted.Add(1)
+	dd.mutex.Lock()
 	dd.timeStarted = time.Now()
 	dd.processingResources = true
+	dd.mutex.Unlock()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	resourceLister := &ResourceManager{
@@ -120,14 +128,15 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 	allResourcesSnapshotted.Wait()
 	err = resourceLister.sendResourceSnapshotComplete()
 	dd.timeStarted = time.Now()
+	dd.mutex.Lock()
 	dd.processingResources = false
+	dd.mutex.Unlock()
 	if err != nil {
 		sm.logger.Errorw("Failed to send resource snapshot complete", "error", err)
 		return err
 	}
 	snapshotCompleted.Done()
-	<-ctx.Done()
-	return err
+	return nil
 }
 
 // ExponentialStreamConnect will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
@@ -186,7 +195,8 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 		}
 		err = sm.BootUpStreamAndReconnect(ctx)
 		if err != nil {
-			logger.Errorw("Failed to bootup and stream.", "error", err)
+			logger.Errorw("Failed to bootup and stream", "error", err)
 		}
+		<-ctx.Done()
 	}
 }

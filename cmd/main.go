@@ -35,12 +35,14 @@ import (
 	//+kubebuilder:scaffold:imports
 )
 
-// healthHandler checks the health of the server and returns a status code accordingly
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	if controller.ServerIsHealthy() {
-		w.WriteHeader(http.StatusOK)
-	} else {
-		w.WriteHeader(http.StatusInternalServerError)
+// newHealthHandler returns an HTTP HandlerFunc that checks the health of the server by calling the given function and returns a status code accordingly
+func newHealthHandler(checkFunc func() bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if checkFunc() {
+			w.WriteHeader(http.StatusOK)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	}
 }
 
@@ -113,13 +115,13 @@ func main() {
 	if err := agent.Listen(agent.Options{}); err != nil {
 		logger.Errorw("Failed to start gops agent", "error", err)
 	}
-	http.HandleFunc("/healthz", healthHandler)
-
+	http.HandleFunc("/healthz", newHealthHandler(controller.ServerIsHealthy))
 	errChan := make(chan error, 1)
 
 	go func() {
 		errChan <- http.ListenAndServe(":8080", nil)
-		logger.Error(errChan, "healthz check server failed")
+		err := <-errChan
+		logger.Fatal("healthz check server failed", zap.Error(err))
 	}()
 
 	ctx := context.Background()
