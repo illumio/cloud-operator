@@ -71,6 +71,10 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 			zap.Any("maxBufferSize", maxBufferSize),
 			zap.Any("clientConn", b.conn),
 		)
+		if len(b.buffer) > maxBufferSize {
+			b.lostLogs = true
+			b.lostBytes += maxBufferSize - len(b.buffer)
+		}
 		return
 	}
 
