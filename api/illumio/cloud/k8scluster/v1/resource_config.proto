@@ -102,10 +102,10 @@ enum LogLevel {
   LOG_LEVEL_DEBUG = 1;
   // Informational log level for general application information.
   LOG_LEVEL_INFO = 2;
-  // Error log level indicating something went wrong.
-  LOG_LEVEL_ERROR = 3;
   // Warning log level for potentially problematic situations.
-  LOG_LEVEL_WARN = 4;
+  LOG_LEVEL_WARN = 3;
+  // Error log level indicating something went wrong.
+  LOG_LEVEL_ERROR = 4;
 }
 
 // Message representing a log entry.
@@ -114,8 +114,8 @@ message Log {
   LogLevel level = 1;
   // The timestamp when the log entry was recorded.
   google.protobuf.Timestamp time = 2;
-  // The actual log message content.
-  string message = 3;
+  // The actual log message contents, as a JSON object.
+  string json_message = 3;
 }
 
 // Message to encapsulate a request to send logs.
@@ -128,7 +128,7 @@ message SendLogsRequest {
 
 // Message to encapsulate setting the log level.
 message SetLogLevel {
-  // The new log level to be set.
+  // A single log entry to be logged by the server.
   LogLevel level = 1;
 }
 

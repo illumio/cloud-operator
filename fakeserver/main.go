@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"flag"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -51,6 +53,21 @@ var (
 
 type server struct {
 	pb.UnimplementedKubernetesInfoServiceServer
+}
+
+// LogEntry represents the structure of a zapcore.Entry with additional fields
+type LogEntry struct {
+	Level   string          `json:"Level"`
+	Time    string          `json:"Time"`
+	Message string          `json:"Message"`
+	Caller  string          `json:"Caller"`
+	Stack   string          `json:"Stack"`
+	Fields  json.RawMessage `json:"Fields"` // For additional fields
+}
+
+// RawMessageWrapper wraps json.RawMessage to implement zapcore.ObjectMarshaler
+type RawMessageWrapper struct {
+	Raw json.RawMessage
 }
 
 // SendKubernetesResources handles all gPRC requests related to streaming resources
@@ -95,7 +112,7 @@ func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error 
 		req, err := stream.Recv()
 		if err == io.EOF {
 			// The client has closed the stream
-			logger.Info("Server has closed the stream")
+			logger.Info("Client has closed the SendLogs stream")
 			return nil
 		}
 		if err != nil {
@@ -106,19 +123,8 @@ func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error 
 		switch req.Request.(type) {
 		case *pb.SendLogsRequest_Log:
 			log := req.GetLog()
-			logger.Info("Log Message",
-				zap.String("level", log.Level.String()),
-				zap.Time("time", log.Time.AsTime()),
-				zap.String("message", log.Message),
-			)
-			// Send an empty response back to the client.
-			response := &pb.SendLogsResponse{}
-			if err := stream.Send(response); err != nil {
-				return err
-			}
-
+			recordStreamedLog(log, *logger)
 		}
-
 	}
 }
 
@@ -192,6 +198,54 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 		// Call the handler if the token is valid.
 		return handler(srv, ss)
 	}
+}
+
+// MarshalLogObject implements the zapcore.ObjectMarshaler interface
+func (r *RawMessageWrapper) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	var data map[string]interface{}
+	if err := json.Unmarshal(r.Raw, &data); err != nil {
+		return err
+	}
+	// Use the encoder to add the fields to the log
+	for k, v := range data {
+		enc.AddReflected(k, v)
+	}
+	return nil
+}
+
+func recordStreamedLog(log *pb.Log, logger zap.Logger) error {
+	// Decode the JSON-encoded string into a LogEntry struct
+	var logEntry LogEntry
+	if err := json.Unmarshal([]byte(log.JsonMessage), &logEntry); err != nil {
+		logger.Error("Error decoding JSON:", zap.Error(err))
+	}
+
+	// Convert the level from string to zapcore.Level
+	var level zapcore.Level
+	if err := level.UnmarshalText([]byte(logEntry.Level)); err != nil {
+		logger.Error("Error converting log level", zap.Error(err))
+	}
+
+	// Declare a variable of type json.RawMessage to hold the decoded data
+	var rawMessage json.RawMessage
+
+	// Decode the JSON-encoded string into the rawMessage
+	err := json.Unmarshal([]byte(log.JsonMessage), &rawMessage)
+	if err != nil {
+		logger.Error("Error decoding JSON:", zap.Error(err))
+		return err
+	}
+
+	// Wrap the rawMessage in RawMessageWrapper
+	wrappedRawMessage := &RawMessageWrapper{Raw: rawMessage}
+
+	if ce := logger.Check(level, "Received log from cloud-operator"); ce != nil {
+		ce.Write(
+			//zap.String("cluster_id", ...),
+			zap.Object("message", wrappedRawMessage),
+		)
+	}
+	return nil
 }
 
 // unaryInterceptor is a generic message handler that DOES NOT check for any access token

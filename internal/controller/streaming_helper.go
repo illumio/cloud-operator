@@ -11,7 +11,9 @@ import (
 // Its used for the intial boot up of the operator so that is can stream everything currently in the cluster.
 func sendObjectMetaData(sm *streamManager, metadata *pb.KubernetesObjectMetadata) error {
 	if err := sm.instance.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceMetadata{ResourceMetadata: metadata}}); err != nil {
-		sm.logger.Error(err, "Failed to send resource metadata")
+		sm.logger.Errorw("Failed to send resource metadata",
+			"error", err,
+		)
 		return err
 	}
 	return nil

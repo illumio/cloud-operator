@@ -31,6 +31,7 @@ type BufferedGrpcWriteSyncer struct {
 	done     chan struct{}
 	logger   *zap.SugaredLogger
 	logLevel *zap.AtomicLevel
+	encoder  zapcore.Encoder
 }
 
 // NewBufferedGrpcWriteSyncer returns a new BufferedGrpcWriteSyncer
@@ -45,33 +46,6 @@ func NewBufferedGrpcWriteSyncer(client pb.KubernetesInfoService_SendLogsClient, 
 	return bws
 }
 
-// Write writes log data into GRPC, multiple Write calls will be batched,
-// and log data will written to into buffer in case GRPC stream is down
-func (b *BufferedGrpcWriteSyncer) Write(p []byte) (n int, err error) {
-	entry := zapcore.Entry{
-		Message: string(p),
-		Time:    time.Now(),
-		Level:   b.logger.Level(),
-	}
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-
-	if b.conn == nil || b.conn.GetState() != connectivity.Ready {
-		b.buffer = append(b.buffer, entry)
-		if len(b.buffer) >= maxBufferSize {
-			b.flush()
-		}
-		return len(p), nil
-	}
-
-	if err := b.sendLog(entry); err != nil {
-		b.buffer = append(b.buffer, entry)
-		b.flush()
-		return 0, err
-	}
-	return len(p), nil
-}
-
 // Sync flushes buffered log data into grpc stream if possible.
 func (b *BufferedGrpcWriteSyncer) Sync() error {
 	b.mutex.Lock()
@@ -80,6 +54,67 @@ func (b *BufferedGrpcWriteSyncer) Sync() error {
 	b.flush()
 	close(b.done)
 	return b.conn.Close()
+}
+
+// sendLog sends the log as a string to the server.
+func (b *BufferedGrpcWriteSyncer) sendLog(logEntry zapcore.Entry) error {
+	buf, err := b.encoder.EncodeEntry(logEntry, nil)
+	if err != nil {
+		return err
+	}
+	err = b.client.Send(&pb.SendLogsRequest{
+		Request: &pb.SendLogsRequest_Log{
+			Log: &pb.Log{
+				Level:       pb.LogLevel(logEntry.Level),
+				Time:        timestamppb.New(logEntry.Time),
+				JsonMessage: buf.String(),
+			},
+		},
+	})
+	return err
+}
+
+// UpdateClient will update BufferedGrpcWriteSyncer with new client stream and GRPC connection
+func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_SendLogsClient, conn *grpc.ClientConn) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	b.client = client
+	b.conn = conn
+}
+
+// ListenToLogStream will wait for responses from server and will update log level
+// depending respone contents
+func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
+	for {
+		res, err := b.client.Recv()
+		if err == io.EOF {
+			// The client has closed the stream
+			b.logger.Info("Server has closed the SendLogs stream")
+			return nil
+		}
+		if err != nil {
+			b.logger.Errorw("Stream terminated",
+				"error", err,
+			)
+			return err // Return the error to terminate the stream
+		}
+		switch res.Response.(type) {
+		case *pb.SendLogsResponse_SetLogLevel:
+			newLevel := res.GetSetLogLevel().Level
+			b.updateLogLevel(newLevel)
+		}
+	}
+}
+
+// bufferLog adds the log entry to in-memory buffer
+func (b *BufferedGrpcWriteSyncer) bufferLog(entry zapcore.Entry) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	b.buffer = append(b.buffer, entry)
+	if len(b.buffer) >= maxBufferSize {
+		b.flush()
+	}
 }
 
 // flush will attempt to dump buffer into GRPC stream if available
@@ -102,22 +137,7 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	b.buffer = b.buffer[:0]
 }
 
-// sendLog sends the log as a string to the server.
-func (b *BufferedGrpcWriteSyncer) sendLog(logEntry zapcore.Entry) error {
-	err := b.client.Send(&pb.SendLogsRequest{
-		Request: &pb.SendLogsRequest_Log{
-			Log: &pb.Log{
-				Level:   pb.LogLevel(logEntry.Level),
-				Time:    timestamppb.New(logEntry.Time),
-				Message: logEntry.Message,
-			},
-		},
-	})
-	return err
-}
-
-// run flushes the buffer at the configured interval until Stop is
-// called.
+// run flushes the buffer at the configured interval until Stop is called.
 func (b *BufferedGrpcWriteSyncer) run() {
 	ticker := time.NewTicker(flushInterval)
 	defer ticker.Stop()
@@ -128,38 +148,6 @@ func (b *BufferedGrpcWriteSyncer) run() {
 			b.flush()
 		case <-b.done:
 			return
-		}
-	}
-}
-
-// UpdateClient will update BufferedGrpcWriteSyncer with new client stream and GRPC connection
-func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_SendLogsClient, conn *grpc.ClientConn) {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	b.client = client
-	b.conn = conn
-}
-
-// ListenToLogStream will wait for responses from server and will update log level
-// depending respone contents
-func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
-	for {
-		res, err := b.client.Recv()
-		if err == io.EOF {
-			// The client has closed the stream
-			b.logger.Info("Server has closed stream")
-			return nil
-		}
-		if err != nil {
-			b.logger.Errorw("Stream terminated",
-				"error", err,
-			)
-			return err // Return the error to terminate the stream
-		}
-		switch res.Response.(type) {
-		case *pb.SendLogsResponse_SetLogLevel:
-			newLevel := res.GetSetLogLevel().Level
-			b.updateLogLevel(newLevel)
 		}
 	}
 }
@@ -203,14 +191,28 @@ func NewGrpclogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 	// Initialize the atomic level
 	atomicLevel := zap.NewAtomicLevelAt(zapcore.InfoLevel)
 
-	core := zapcore.NewTee(
-		zapcore.NewCore(encoder, consoleSyncer, atomicLevel),
-		zapcore.NewCore(encoder, grpcSyncer, atomicLevel),
-	)
+	consoleCore := zapcore.NewCore(encoder, consoleSyncer, atomicLevel)
 
-	// Create a zap logger with the core
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
-	grpcSyncer.logger = logger
+	// Create zap logger with the console core
+	logger := zap.New(consoleCore, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+
+	// Add a custom hook to handle logs for grpcSyncer
+	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+		if grpcSyncer.conn == nil || grpcSyncer.conn.GetState() != connectivity.Ready {
+			grpcSyncer.bufferLog(entry)
+			return nil
+		}
+		if err := grpcSyncer.sendLog(entry); err != nil {
+			grpcSyncer.bufferLog(entry)
+			return err
+		}
+		return nil
+	}))
+
+	sugaredLogger := logger.Sugar()
+
+	grpcSyncer.logger = sugaredLogger
 	grpcSyncer.logLevel = &atomicLevel
-	return logger
+	grpcSyncer.encoder = encoder
+	return sugaredLogger
 }
