@@ -123,6 +123,7 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	defer b.mutex.Unlock()
 
 	if len(b.buffer) == 0 || b.conn == nil || b.conn.GetState() != connectivity.Ready {
+		b.logger.Warn("Unable to flush buffer will wait to retry")
 		return
 	}
 
@@ -167,9 +168,6 @@ func (b *BufferedGrpcWriteSyncer) updateLogLevel(level pb.LogLevel) {
 	case pb.LogLevel_LOG_LEVEL_WARN:
 		b.logger.Info("Set to WARN level log")
 		b.logLevel.SetLevel(zapcore.WarnLevel)
-	case pb.LogLevel_LOG_LEVEL_UNSPECIFIED:
-		b.logger.Info("Set to UNSPECIFIED level log")
-		b.logLevel.SetLevel(zapcore.InfoLevel) // Defaulting to INFO level for unspecified
 	default:
 		b.logger.Warn("Unknown log level received, defaulting to INFO")
 		b.logLevel.SetLevel(zapcore.InfoLevel)
@@ -199,10 +197,12 @@ func NewGrpclogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 	// Add a custom hook to handle logs for grpcSyncer
 	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
 		if grpcSyncer.conn == nil || grpcSyncer.conn.GetState() != connectivity.Ready {
+			logger.Info("Unable to send log to server buffering")
 			grpcSyncer.bufferLog(entry)
 			return nil
 		}
 		if err := grpcSyncer.sendLog(entry); err != nil {
+			logger.Error("Error when sending logs to server", zap.Error(err))
 			grpcSyncer.bufferLog(entry)
 			return err
 		}

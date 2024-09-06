@@ -108,6 +108,18 @@ func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error 
 	if err != nil {
 		panic("Failed to build zap logger: " + err.Error())
 	}
+	// Set the client's log level to DEBUG.
+	setLogLevelMsg := &pb.SendLogsResponse{
+		Response: &pb.SendLogsResponse_SetLogLevel{
+			SetLogLevel: &pb.SetLogLevel{
+				Level: pb.LogLevel_LOG_LEVEL_DEBUG,
+			},
+		},
+	}
+	if err := stream.Send(setLogLevelMsg); err != nil {
+		logger.Error("Failed to send message to set log level", zap.Error(err))
+		return err
+	}
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
