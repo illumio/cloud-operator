@@ -86,7 +86,7 @@ func NewStream(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.Client
 // also creates all of the objects that help organize and pass info to the goroutines that are listing and watching
 // different resource types. This is also handling the asyc nature of listing resources and properly sending our commit
 // message on intial boot when we have the state of the cluster.
-func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
+func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel context.CancelFunc) error {
 	defer func() {
 		dd.processingResources = false
 	}()
@@ -192,7 +192,7 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 			continue
 		}
 		ctx, cancel := context.WithCancel(ctx)
-		err = sm.BootUpStreamAndReconnect(ctx)
+		err = sm.BootUpStreamAndReconnect(ctx, cancel)
 		if err != nil {
 			cancel()
 			logger.Errorw("Failed to bootup and stream", "error", err)
