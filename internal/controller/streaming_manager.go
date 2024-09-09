@@ -21,6 +21,12 @@ type streamClient struct {
 	stream pb.KubernetesInfoService_SendKubernetesResourcesClient
 }
 
+type deadlockDetector struct {
+	processingResources bool
+	timeStarted         time.Time
+	mutex               sync.RWMutex
+}
+
 type streamManager struct {
 	instance *streamClient
 	logger   *zap.SugaredLogger
@@ -42,6 +48,17 @@ type EnvironmentConfig struct {
 }
 
 var resourceTypes = [2]string{"pods", "nodes"}
+var dd = &deadlockDetector{}
+
+// ServerIsHealthy checks if a deadlock has occured within the threaded resource listing process.
+func ServerIsHealthy() bool {
+	dd.mutex.RLock()
+	defer dd.mutex.RUnlock()
+	if dd.processingResources && time.Since(dd.timeStarted) > 5*time.Minute {
+		return false
+	}
+	return true
+}
 
 // NewStream returns a new stream.
 func NewStream(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.ClientConn) (*streamManager, error) {
@@ -69,7 +86,10 @@ func NewStream(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.Client
 // also creates all of the objects that help organize and pass info to the goroutines that are listing and watching
 // different resource types. This is also handling the asyc nature of listing resources and properly sending our commit
 // message on intial boot when we have the state of the cluster.
-func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
+func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel context.CancelFunc) error {
+	defer func() {
+		dd.processingResources = false
+	}()
 	clusterConfig, err := rest.InClusterConfig()
 	if err != nil {
 		sm.logger.Errorw("Error getting in-cluster config", "error", err)
@@ -85,8 +105,10 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 	}
 
 	snapshotCompleted.Add(1)
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	dd.mutex.Lock()
+	dd.timeStarted = time.Now()
+	dd.processingResources = true
+	dd.mutex.Unlock()
 	resourceLister := &ResourceManager{
 		logger:        sm.logger,
 		dynamicClient: dynamicClient,
@@ -103,13 +125,16 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context) error {
 	}
 	allResourcesSnapshotted.Wait()
 	err = resourceLister.sendResourceSnapshotComplete()
+	dd.timeStarted = time.Now()
+	dd.mutex.Lock()
+	dd.processingResources = false
+	dd.mutex.Unlock()
 	if err != nil {
 		sm.logger.Errorw("Failed to send resource snapshot complete", "error", err)
 		return err
 	}
 	snapshotCompleted.Done()
-	<-ctx.Done()
-	return err
+	return nil
 }
 
 // ExponentialStreamConnect will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
@@ -166,9 +191,13 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 			logger.Errorw("Failed to create a new stream", "error", err)
 			continue
 		}
-		err = sm.BootUpStreamAndReconnect(ctx)
+		ctx, cancel := context.WithCancel(ctx)
+		err = sm.BootUpStreamAndReconnect(ctx, cancel)
 		if err != nil {
-			logger.Errorw("Failed to bootup and stream.", "error", err)
+			cancel()
+			logger.Errorw("Failed to bootup and stream", "error", err)
+			continue
 		}
+		<-ctx.Done()
 	}
 }
