@@ -4,12 +4,9 @@ defaultNamespace: "illumio-cloud"
 replicaCount: 1
 priorityClassName: ""
 image:
-  repository: "illumioevanj80/operator"
-  tag: "0.0.1"
+  repository: "ghcr.io/illumio/cloud-operator"
+  tag: "dev"
   pullPolicy: IfNotPresent
-
-imagePullSecrets:
-  - name: regcred
 
 serviceAccount:
   create: true
@@ -17,15 +14,13 @@ serviceAccount:
   annotations: {}
   automount: true
 
-resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user
-  # limits:
-  #   cpu: 500m
-  #   memory: 512Mi
-  # requests:
-  #   cpu: 250m
-  #   memory: 256Mi
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
 
 clusterCredsSecret:
   clientId: ""
@@ -39,6 +34,5 @@ onboardingSecret:
 
 env:
   tlsSkipVerify: false
-  # TODO: Replace with real endpoints when they are available.
-  onboardingEndpoint: "prod/api/v1/k8s_cluster/onboard"
-  tokenEndpoint: "prod/api/v1/k8s_cluster/authenticate"
+  onboardingEndpoint: "cloud.illum.io/api/v1/k8s_cluster/onboard"
+  tokenEndpoint: "cloud.illum.io/api/v1/k8s_cluster/authenticate"
