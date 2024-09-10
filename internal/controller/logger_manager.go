@@ -90,7 +90,7 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	if lostLogs {
 		b.logger.Error("Lost logs due to buffer overflow",
 			zap.Int("lost_log_entries", lostLogEntries),
-			zap.Errors("array_of_errors", lostLogsErrs),
+			zap.Error(lostLogsErrs[len(lostLogsErrs)-1]),
 		)
 	}
 
