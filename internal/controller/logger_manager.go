@@ -93,7 +93,12 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 			Time:    time.Now(),
 			Message: b.lostLogMessage(),
 		}
-		b.sendLog(lostLogMessage)
+		err := b.sendLog(lostLogMessage)
+		if err != nil {
+			b.logger.Warn("Error while sending log",
+				"error", err,
+			)
+		}
 		b.lostLogs = false
 		b.lostBytes = 0
 	}
@@ -147,7 +152,12 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 			Time:    time.Now(),
 			Message: b.lostLogMessage(),
 		}
-		b.sendLog(lostLogMessage)
+		err := b.sendLog(lostLogMessage)
+		if err != nil {
+			b.logger.Warn("Error while sending log",
+				"error", err,
+			)
+		}
 		b.lostLogs = false
 		b.lostBytes = 0
 	}
@@ -155,19 +165,19 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 
 // ListenToLogStream will wait for responses from server and will update log level
 // depending respone contents
-func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
+func (b *BufferedGrpcWriteSyncer) ListenToLogStream() {
 	for {
 		res, err := b.client.Recv()
 		if err == io.EOF {
 			// The client has closed the stream
 			b.logger.Info("Server has closed the SendLogs stream")
-			return nil
+			return
 		}
 		if err != nil {
 			b.logger.Errorw("Stream terminated",
 				"error", err,
 			)
-			return err // Return the error to terminate the stream
+			return
 		}
 		switch res.Response.(type) {
 		case *pb.SendLogsResponse_SetLogLevel:

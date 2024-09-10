@@ -227,7 +227,10 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 // MarshalLogObject implements the zapcore.ObjectMarshaler interface
 func (l LogEntry) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	for k, v := range l {
-		enc.AddReflected(k, v)
+		err := enc.AddReflected(k, v)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
