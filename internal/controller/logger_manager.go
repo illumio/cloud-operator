@@ -5,16 +5,13 @@ package controller
 import (
 	"io"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -22,40 +19,48 @@ const (
 	flushInterval = 5 * time.Second
 )
 
+type ClientConnInterface interface {
+	GetState() connectivity.State
+	Close() error
+}
+
 // BufferedGrpcWriteSyncer is a custom zap writesync that writes to a grpc stream
 // In case stream is not connected it will buffer to memory
 type BufferedGrpcWriteSyncer struct {
-	client    pb.KubernetesInfoService_SendLogsClient
-	conn      *grpc.ClientConn
-	buffer    []zapcore.Entry
-	mutex     sync.Mutex
-	done      chan struct{}
-	logger    *zap.SugaredLogger
-	logLevel  *zap.AtomicLevel
-	encoder   zapcore.Encoder
-	lostLogs  bool
-	lostBytes int
+	client   pb.KubernetesInfoService_SendLogsClient
+	conn     ClientConnInterface
+	buffer   []*zapcore.Entry
+	mutex    sync.Mutex
+	done     chan struct{}
+	logger   *zap.SugaredLogger
+	logLevel zap.AtomicLevel
+	encoder  zapcore.Encoder
 }
 
 // NewBufferedGrpcWriteSyncer returns a new BufferedGrpcWriteSyncer
-func NewBufferedGrpcWriteSyncer(client pb.KubernetesInfoService_SendLogsClient, conn *grpc.ClientConn) *BufferedGrpcWriteSyncer {
+func NewBufferedGrpcWriteSyncer(client pb.KubernetesInfoService_SendLogsClient, conn ClientConnInterface) *BufferedGrpcWriteSyncer {
 	bws := &BufferedGrpcWriteSyncer{
-		client:   client,
-		conn:     conn,
-		buffer:   make([]zapcore.Entry, 0, maxBufferSize),
-		done:     make(chan struct{}),
-		lostLogs: false,
+		client: client,
+		conn:   conn,
+		buffer: make([]*zapcore.Entry, 0, maxBufferSize),
+		done:   make(chan struct{}),
 	}
 	go bws.run()
 	return bws
 }
 
-// Sync flushes buffered log data into grpc stream if possible.
-func (b *BufferedGrpcWriteSyncer) Sync() error {
+// Close flushes buffered log data into grpc stream if possible, and closes the connection.
+func (b *BufferedGrpcWriteSyncer) Close() error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
-
 	b.flush()
+	// Close the channel if not already closed.
+	select {
+	case <-b.done:
+		// Already closed; do nothing
+		return nil
+	default:
+	}
 	close(b.done)
 	return b.conn.Close()
 }
@@ -66,41 +71,28 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	defer b.mutex.Unlock()
 
 	if len(b.buffer) == 0 || b.conn == nil || b.conn.GetState() != connectivity.Ready {
-		if len(b.buffer) > maxBufferSize {
-			b.lostLogs = true
-			b.lostBytes += maxBufferSize - len(b.buffer)
-		}
 		return
 	}
+	lostLogs := false
+	lostLogEntries := 0
 
 	for _, logEntry := range b.buffer {
 		if err := b.sendLog(logEntry); err != nil {
-			b.logger.Errorw("Failed to send log",
-				"error", err,
-				zap.Any("logBufferSize", len(b.buffer)),
+			b.logger.Error("Failed to send log entry",
+				zap.Error(err),
+				zap.Int("buffered_log_entries_count", len(b.buffer)),
 			)
-			b.lostLogs = true
-			b.lostBytes += len(logEntry.Message)
-			return
+			lostLogs = true
+			lostLogEntries += 1
 		}
 	}
 	b.buffer = b.buffer[:0]
 
 	// If previously logs were lost, send a log message to indicate that
-	if b.lostLogs {
-		lostLogMessage := zapcore.Entry{
-			Level:   zapcore.ErrorLevel,
-			Time:    time.Now(),
-			Message: b.lostLogMessage(),
-		}
-		err := b.sendLog(lostLogMessage)
-		if err != nil {
-			b.logger.Warn("Error while sending log",
-				"error", err,
-			)
-		}
-		b.lostLogs = false
-		b.lostBytes = 0
+	if lostLogs {
+		b.logger.Error("Lost logs due to buffer overflow",
+			zap.Int("lost_log_entries", lostLogEntries),
+		)
 	}
 
 }
@@ -121,16 +113,14 @@ func (b *BufferedGrpcWriteSyncer) run() {
 }
 
 // sendLog sends the log as a string to the server.
-func (b *BufferedGrpcWriteSyncer) sendLog(logEntry zapcore.Entry) error {
-	buf, err := b.encoder.EncodeEntry(logEntry, nil)
+func (b *BufferedGrpcWriteSyncer) sendLog(logEntry *zapcore.Entry) error {
+	buf, err := b.encoder.EncodeEntry(*logEntry, nil)
 	if err != nil {
 		return err
 	}
 	err = b.client.Send(&pb.SendLogsRequest{
 		Request: &pb.SendLogsRequest_LogEntry{
 			LogEntry: &pb.LogEntry{
-				Level:       pb.LogLevel(logEntry.Level),
-				Time:        timestamppb.New(logEntry.Time),
 				JsonMessage: buf.String(),
 			},
 		},
@@ -139,28 +129,12 @@ func (b *BufferedGrpcWriteSyncer) sendLog(logEntry zapcore.Entry) error {
 }
 
 // UpdateClient will update BufferedGrpcWriteSyncer with new client stream and GRPC connection
-func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_SendLogsClient, conn *grpc.ClientConn) {
+func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_SendLogsClient, conn ClientConnInterface) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	b.client = client
 	b.conn = conn
-
-	// If logs were lost, send a log message about it
-	if b.conn.GetState() == connectivity.Ready && b.lostLogs {
-		lostLogMessage := zapcore.Entry{
-			Level:   zapcore.ErrorLevel,
-			Time:    time.Now(),
-			Message: b.lostLogMessage(),
-		}
-		err := b.sendLog(lostLogMessage)
-		if err != nil {
-			b.logger.Warn("Error while sending log",
-				"error", err,
-			)
-		}
-		b.lostLogs = false
-		b.lostBytes = 0
-	}
+	b.mutex.Unlock()
+	b.flush()
 }
 
 // ListenToLogStream will wait for responses from server and will update log level
@@ -188,7 +162,7 @@ func (b *BufferedGrpcWriteSyncer) ListenToLogStream() {
 }
 
 // bufferLog adds the log entry to in-memory buffer
-func (b *BufferedGrpcWriteSyncer) bufferLog(entry zapcore.Entry) {
+func (b *BufferedGrpcWriteSyncer) bufferLogEntry(entry *zapcore.Entry) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
@@ -196,11 +170,6 @@ func (b *BufferedGrpcWriteSyncer) bufferLog(entry zapcore.Entry) {
 	if len(b.buffer) >= maxBufferSize {
 		b.flush()
 	}
-}
-
-// lostLogMessage generates a message about lost logs
-func (b *BufferedGrpcWriteSyncer) lostLogMessage() string {
-	return "Lost logs due to buffer overflow. Total lost bytes: " + strconv.Itoa(b.lostBytes)
 }
 
 // updateLogLevel sets the logger's log level based on the response from the server.
@@ -224,10 +193,10 @@ func (b *BufferedGrpcWriteSyncer) updateLogLevel(level pb.LogLevel) {
 	}
 }
 
-// NewGrpclogger will define a new zap logger with multiple writesyncs
+// NewGRPClogger will define a new zap logger with multiple writesyncs
 // one to stdout and one for GRPC writestream
-func NewGrpclogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
-	// Create a development encoder config
+func NewGRPClogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
+	// Create a production encoder config
 	encoderConfig := zap.NewProductionEncoderConfig()
 
 	// Create a JSON encoder
@@ -247,12 +216,12 @@ func NewGrpclogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 	// Add a custom hook to handle logs for grpcSyncer
 	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
 		if grpcSyncer.conn == nil || grpcSyncer.conn.GetState() != connectivity.Ready {
-			grpcSyncer.bufferLog(entry)
+			grpcSyncer.bufferLogEntry(&entry)
 			return nil
 		}
-		if err := grpcSyncer.sendLog(entry); err != nil {
+		if err := grpcSyncer.sendLog(&entry); err != nil {
 			logger.Error("Error when sending logs to server", zap.Error(err))
-			grpcSyncer.bufferLog(entry)
+			grpcSyncer.bufferLogEntry(&entry)
 			return err
 		}
 		return nil
@@ -261,7 +230,7 @@ func NewGrpclogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 	sugaredLogger := logger.Sugar()
 
 	grpcSyncer.logger = sugaredLogger
-	grpcSyncer.logLevel = &atomicLevel
+	grpcSyncer.logLevel = atomicLevel
 	grpcSyncer.encoder = encoder
 	return sugaredLogger
 }

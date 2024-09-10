@@ -31,7 +31,7 @@ const (
 type KubernetesInfoServiceClient interface {
 	// Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
 	SendKubernetesResources(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendKubernetesResourcesClient, error)
-	// Continuously syncs logs from operator and cluster
+	// Continuously syncs logs from operator and cluster.
 	SendLogs(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendLogsClient, error)
 }
 
@@ -111,7 +111,7 @@ func (x *kubernetesInfoServiceSendLogsClient) Recv() (*SendLogsResponse, error) 
 type KubernetesInfoServiceServer interface {
 	// Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
 	SendKubernetesResources(KubernetesInfoService_SendKubernetesResourcesServer) error
-	// Continuously syncs logs from operator and cluster
+	// Continuously syncs logs from operator and cluster.
 	SendLogs(KubernetesInfoService_SendLogsServer) error
 	mustEmbedUnimplementedKubernetesInfoServiceServer()
 }
