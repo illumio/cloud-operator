@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - revise-helm-default-values
 
 permissions:
   # Required to generate OIDC tokens for `sigstore/cosign-installer` authentication

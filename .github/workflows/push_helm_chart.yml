@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - revise-helm-default-values
 
 jobs:
   push-helm-chart:
