@@ -58,7 +58,4 @@ jobs:
             ghcr.io/${{ github.repository }}:${{ env.VERSION }}
   
       - name: Sign the images with GitHub OIDC Token
-        env:
-          TAGS: |
-            ghcr.io/${{ github.repository }}:${{ env.VERSION }}
-        run: cosign sign --yes ${images}
+        run: cosign sign --yes ghcr.io/${{ github.repository }}:${{ env.VERSION }}
