@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-    #   - revise-helm-default-values
+      - revise-helm-default-values
 
 permissions:
   # Required to generate OIDC tokens for `sigstore/cosign-installer` authentication
@@ -34,15 +34,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Getting image tag
-        id: tag
-        run: 
-          if [ "${{ github.ref_name }}" == "${{ github.event.repository.default_branch }}" ]; then
-              echo tag=latest >> $GITHUB_OUTPUT
-          else
-              echo tag=${{ github.ref_name }} >> $GITHUB_OUTPUT
+      - name: Determine version from Git
+        id: determine_version
+        run: |
+          # Get the latest tag reachable from the current commit
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$VERSION" ]; then
+            # If no tag is found, use the commit SHA
+            VERSION=${GITHUB_SHA}
           fi
-
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+  
       - name: Build and push Docker image
         id: build-and-push
         uses: docker/build-push-action@v3
@@ -50,12 +52,20 @@ jobs:
           context: .
           push: true
           build-args: |
-            VERSION=${{ steps.tag.outputs.tag }}
+            VERSION=${{ env.VERSION }}
           tags: |
             ghcr.io/${{ github.repository }}:${{ env.VERSION }}
             ghcr.io/${{ github.repository }}:latest
+  
       - name: Sign the images with GitHub OIDC Token
         env:
-            DIGEST: ${{ steps.build-and-push.outputs.digest }}
-            TAG: ${{ steps.tag.outputs.tag }}
-        run: cosign sign --yes ${tag}@${DIGEST}
+          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+          TAGS: |
+            ghcr.io/${{ github.repository }}:${{ env.VERSION }}
+            ghcr.io/${{ github.repository }}:latest
+        run: |
+          images=""
+          for tag in ${TAGS}; do
+            images+="${tag}@${DIGEST} "
+          done
+          cosign sign --yes ${images}

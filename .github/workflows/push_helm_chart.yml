@@ -19,22 +19,24 @@ jobs:
           uses: azure/setup-helm@v1
           with:
             version: v3.8.0
+s
         - name: Log in to GitHub Container Registry for Helm
           run: echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
-
-        - name: Getting image tag
-          id: tag
+        - name: Determine version from Git
+          id: determine_version
           run: |
-                if [ "${{ github.event.pull_request.head.sha }}" != "" ]; then
-                    echo tag=${{ github.event.pull_request.head.sha }} >> $GITHUB_OUTPUT
-                else
-                    echo tag=${{ github.sha }} >> $GITHUB_OUTPUT
-                fi
+            # Get the latest tag reachable from the current commit
+            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -z "$VERSION" ]; then
+            # If no tag is found, use the commit SHA
+            VERSION=${GITHUB_SHA}
+            fi
+            echo "VERSION=$VERSION" >> $GITHUB_ENV
 
         - name: Package Helm chart
-          run: helm package cloud-operator/ --version ${{ steps.tag.outputs.tag }}
+          run: helm package cloud-operator/ --version ${{ env.VERSION }}
         
         - name: Push Helm chart to GHCR
           run: |
-            CHART_NAME=$(basename cloud-operator/Chart.yaml)
-            helm push ${CHART_NAME}-$${{ steps.tag.outputs.tag }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+            CHART_NAME=$(basename cloud-operator)
+            helm push ${CHART_NAME}-$${{ env.VERSION }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
