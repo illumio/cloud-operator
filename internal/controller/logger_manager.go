@@ -66,11 +66,6 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	defer b.mutex.Unlock()
 
 	if len(b.buffer) == 0 || b.conn == nil || b.conn.GetState() != connectivity.Ready {
-		b.logger.Warn("Unable to flush buffer will wait to retry",
-			zap.Any("logBufferSize", len(b.buffer)),
-			zap.Any("maxBufferSize", maxBufferSize),
-			zap.Any("clientConn", b.conn),
-		)
 		if len(b.buffer) > maxBufferSize {
 			b.lostLogs = true
 			b.lostBytes += maxBufferSize - len(b.buffer)
@@ -127,8 +122,8 @@ func (b *BufferedGrpcWriteSyncer) sendLog(logEntry zapcore.Entry) error {
 		return err
 	}
 	err = b.client.Send(&pb.SendLogsRequest{
-		Request: &pb.SendLogsRequest_Log{
-			Log: &pb.Log{
+		Request: &pb.SendLogsRequest_LogEntry{
+			LogEntry: &pb.LogEntry{
 				Level:       pb.LogLevel(logEntry.Level),
 				Time:        timestamppb.New(logEntry.Time),
 				JsonMessage: buf.String(),
@@ -242,7 +237,6 @@ func NewGrpclogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 	// Add a custom hook to handle logs for grpcSyncer
 	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
 		if grpcSyncer.conn == nil || grpcSyncer.conn.GetState() != connectivity.Ready {
-			logger.Info("Unable to send log to server buffering")
 			grpcSyncer.bufferLog(entry)
 			return nil
 		}

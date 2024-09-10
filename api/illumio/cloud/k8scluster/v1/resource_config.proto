@@ -109,7 +109,7 @@ enum LogLevel {
 }
 
 // Message representing a log entry.
-message Log {
+message LogEntry {
   // The log level of the log entry.
   LogLevel level = 1;
   // The timestamp when the log entry was recorded.
@@ -122,7 +122,7 @@ message Log {
 message SendLogsRequest {
   oneof request {
     // A single log entry to be sent.
-    Log log = 1;
+    LogEntry log_entry = 1;
   }
 }
 

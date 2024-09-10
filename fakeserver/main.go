@@ -11,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -55,14 +56,22 @@ type server struct {
 	pb.UnimplementedKubernetesInfoServiceServer
 }
 
-// LogEntry represents the structure of a zapcore.Entry with additional fields
-type LogEntry struct {
-	Level   string          `json:"Level"`
-	Time    string          `json:"Time"`
-	Message string          `json:"Message"`
-	Caller  string          `json:"Caller"`
-	Stack   string          `json:"Stack"`
-	Fields  json.RawMessage `json:"Fields"` // For additional fields
+// LogEntry represents the structure of a zapcore.Entry encoded using Zap's JSON encoder with the production encoder config.
+type LogEntry map[string]any
+
+// Level returns the log level of the LogEntry.
+func (l LogEntry) Level() (zapcore.Level, error) {
+	var levelStr string
+	levelStr, found := l["level"].(string)
+	if !found {
+		return zapcore.InvalidLevel, errors.New("no level field found in log entry")
+	}
+	var level zapcore.Level
+	err := level.UnmarshalText([]byte(levelStr))
+	if err != nil {
+		return zapcore.InvalidLevel, fmt.Errorf("invalid level field %s found in log entry: %w", levelStr, err)
+	}
+	return level, nil
 }
 
 // RawMessageWrapper wraps json.RawMessage to implement zapcore.ObjectMarshaler
@@ -133,8 +142,8 @@ func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error 
 		}
 
 		switch req.Request.(type) {
-		case *pb.SendLogsRequest_Log:
-			log := req.GetLog()
+		case *pb.SendLogsRequest_LogEntry:
+			log := req.GetLogEntry()
 			recordStreamedLog(log, *logger)
 		}
 	}
@@ -213,48 +222,30 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 }
 
 // MarshalLogObject implements the zapcore.ObjectMarshaler interface
-func (r *RawMessageWrapper) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	var data map[string]interface{}
-	if err := json.Unmarshal(r.Raw, &data); err != nil {
-		return err
-	}
-	// Use the encoder to add the fields to the log
-	for k, v := range data {
+func (l LogEntry) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	for k, v := range l {
 		enc.AddReflected(k, v)
 	}
 	return nil
 }
 
-func recordStreamedLog(log *pb.Log, logger zap.Logger) error {
+func recordStreamedLog(log *pb.LogEntry, logger zap.Logger) error {
 	// Decode the JSON-encoded string into a LogEntry struct
-	var logEntry LogEntry
+	var logEntry LogEntry = make(map[string]any)
 	if err := json.Unmarshal([]byte(log.JsonMessage), &logEntry); err != nil {
-		logger.Error("Error decoding JSON:", zap.Error(err))
+		logger.Error("Error decoding JSON log message", zap.Error(err))
 	}
 
-	// Convert the level from string to zapcore.Level
-	var level zapcore.Level
-	if err := level.UnmarshalText([]byte(logEntry.Level)); err != nil {
-		logger.Error("Error converting log level", zap.Error(err))
-	}
-
-	// Declare a variable of type json.RawMessage to hold the decoded data
-	var rawMessage json.RawMessage
-
-	// Decode the JSON-encoded string into the rawMessage
-	err := json.Unmarshal([]byte(log.JsonMessage), &rawMessage)
+	level, err := logEntry.Level()
 	if err != nil {
-		logger.Error("Error decoding JSON:", zap.Error(err))
+		logger.Error("Error converting log level", zap.Error(err))
 		return err
 	}
 
-	// Wrap the rawMessage in RawMessageWrapper
-	wrappedRawMessage := &RawMessageWrapper{Raw: rawMessage}
-
-	if ce := logger.Check(level, "Received log from cloud-operator"); ce != nil {
+	if ce := logger.Check(level, "Received log entry from cloud-operator"); ce != nil {
 		ce.Write(
 			//zap.String("cluster_id", ...),
-			zap.Object("message", wrappedRawMessage),
+			zap.Object("entry", logEntry),
 		)
 	}
 	return nil
