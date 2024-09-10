@@ -144,7 +144,10 @@ func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error 
 		switch req.Request.(type) {
 		case *pb.SendLogsRequest_LogEntry:
 			log := req.GetLogEntry()
-			recordStreamedLog(log, *logger)
+			err = recordStreamedLog(log, *logger)
+			if err != nil {
+				logger.Error("Error recording logs from operator", zap.Error(err))
+			}
 		}
 	}
 }
