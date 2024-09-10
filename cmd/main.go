@@ -58,7 +58,7 @@ func main() {
 	// Create a buffered grpc write syncer without a valid gRPC connection initially
 	// Using nil for the `pb.KubernetesInfoService_KubernetesLogsClient`.
 	bufferedGrpcSyncer := controller.NewBufferedGrpcWriteSyncer(nil, nil)
-	logger := controller.NewGRPClogger(bufferedGrpcSyncer)
+	logger := controller.NewGrpclogger(bufferedGrpcSyncer)
 	defer logger.Sync() //nolint:errcheck
 
 	viper.AutomaticEnv()
