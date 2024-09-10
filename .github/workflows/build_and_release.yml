@@ -56,17 +56,9 @@ jobs:
             VERSION=${{ env.VERSION }}
           tags: |
             ghcr.io/${{ github.repository }}:${{ env.VERSION }}
-            ghcr.io/${{ github.repository }}:latest
   
       - name: Sign the images with GitHub OIDC Token
         env:
-          DIGEST: ${{ steps.build-and-push.outputs.digest }}
           TAGS: |
             ghcr.io/${{ github.repository }}:${{ env.VERSION }}
-            ghcr.io/${{ github.repository }}:latest
-        run: |
-          images=""
-          for tag in ${TAGS}; do
-            images+="${tag}@${DIGEST} "
-          done
-          cosign sign --yes ${images}
+        run: cosign sign --yes ${images}
