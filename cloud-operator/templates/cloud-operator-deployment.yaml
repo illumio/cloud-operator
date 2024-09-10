@@ -40,7 +40,17 @@ spec:
             capabilities:
               drop:
                 - ALL
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          ports:
+            - containerPort: 8080
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: TLS_SKIP_VERIFY
