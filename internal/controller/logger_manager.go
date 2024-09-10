@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	maxBufferSize = 100
+	maxBufferSize = 2048
 	flushInterval = 5 * time.Second
 )
 
@@ -38,10 +38,10 @@ type BufferedGrpcWriteSyncer struct {
 }
 
 // NewBufferedGrpcWriteSyncer returns a new BufferedGrpcWriteSyncer
-func NewBufferedGrpcWriteSyncer(client pb.KubernetesInfoService_SendLogsClient, conn ClientConnInterface) *BufferedGrpcWriteSyncer {
+func NewBufferedGrpcWriteSyncer() *BufferedGrpcWriteSyncer {
 	bws := &BufferedGrpcWriteSyncer{
-		client: client,
-		conn:   conn,
+		client: nil,
+		conn:   nil,
 		buffer: make([]*zapcore.Entry, 0, maxBufferSize),
 		done:   make(chan struct{}),
 	}
@@ -75,15 +75,13 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	}
 	lostLogs := false
 	lostLogEntries := 0
+	lostLogsErrs := make([]error, 0, maxBufferSize)
 
 	for _, logEntry := range b.buffer {
 		if err := b.sendLog(logEntry); err != nil {
-			b.logger.Error("Failed to send log entry",
-				zap.Error(err),
-				zap.Int("buffered_log_entries_count", len(b.buffer)),
-			)
 			lostLogs = true
 			lostLogEntries += 1
+			lostLogsErrs = append(lostLogsErrs, err)
 		}
 	}
 	b.buffer = b.buffer[:0]
@@ -92,6 +90,7 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	if lostLogs {
 		b.logger.Error("Lost logs due to buffer overflow",
 			zap.Int("lost_log_entries", lostLogEntries),
+			zap.Errors("array_of_errors", lostLogsErrs),
 		)
 	}
 
@@ -133,6 +132,7 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 	b.mutex.Lock()
 	b.client = client
 	b.conn = conn
+	b.done = make(chan struct{})
 	b.mutex.Unlock()
 	b.flush()
 }

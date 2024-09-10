@@ -12,7 +12,6 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 )
@@ -32,18 +31,6 @@ type deadlockDetector struct {
 type streamManager struct {
 	instance *streamClient
 	logger   *zap.SugaredLogger
-}
-
-type ClientConnWrapper struct {
-	conn *grpc.ClientConn
-}
-
-func (w *ClientConnWrapper) GetState() connectivity.State {
-	return w.conn.GetState()
-}
-
-func (w *ClientConnWrapper) Close() error {
-	return w.conn.Close()
 }
 
 type EnvironmentConfig struct {
@@ -216,7 +203,7 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 		}
 
 		// Update the gRPC client and connection in BufferedGrpcWriteSyncer
-		bufferedGrpcSyncer.UpdateClient(sm.instance.logStream, &ClientConnWrapper{conn: sm.instance.conn})
+		bufferedGrpcSyncer.UpdateClient(sm.instance.logStream, sm.instance.conn)
 		go bufferedGrpcSyncer.ListenToLogStream()
 
 		ctx, cancel := context.WithCancel(ctx)

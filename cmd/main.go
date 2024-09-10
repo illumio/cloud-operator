@@ -57,7 +57,7 @@ func bindEnv(logger zap.SugaredLogger, key, envVar string) {
 func main() {
 	// Create a buffered grpc write syncer without a valid gRPC connection initially
 	// Using nil for the `pb.KubernetesInfoService_KubernetesLogsClient`.
-	bufferedGrpcSyncer := controller.NewBufferedGrpcWriteSyncer(nil, nil)
+	bufferedGrpcSyncer := controller.NewBufferedGrpcWriteSyncer()
 	logger := controller.NewGRPClogger(bufferedGrpcSyncer)
 	defer logger.Sync() //nolint:errcheck
 
