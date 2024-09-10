@@ -14,7 +14,6 @@ import (
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -31,7 +30,7 @@ type BufferedGrpcWriteSyncer struct {
 	mutex     sync.Mutex
 	done      chan struct{}
 	logger    *zap.SugaredLogger
-	logLevel  *zap.AtomicLevel
+	logLevel  zap.AtomicLevel
 	encoder   zapcore.Encoder
 	lostLogs  bool
 	lostBytes int
@@ -129,8 +128,6 @@ func (b *BufferedGrpcWriteSyncer) sendLog(logEntry zapcore.Entry) error {
 	err = b.client.Send(&pb.SendLogsRequest{
 		Request: &pb.SendLogsRequest_LogEntry{
 			LogEntry: &pb.LogEntry{
-				Level:       pb.LogLevel(logEntry.Level),
-				Time:        timestamppb.New(logEntry.Time),
 				JsonMessage: buf.String(),
 			},
 		},
@@ -144,23 +141,7 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 	defer b.mutex.Unlock()
 	b.client = client
 	b.conn = conn
-
-	// If logs were lost, send a log message about it
-	if b.conn.GetState() == connectivity.Ready && b.lostLogs {
-		lostLogMessage := zapcore.Entry{
-			Level:   zapcore.ErrorLevel,
-			Time:    time.Now(),
-			Message: b.lostLogMessage(),
-		}
-		err := b.sendLog(lostLogMessage)
-		if err != nil {
-			b.logger.Warn("Error while sending log",
-				"error", err,
-			)
-		}
-		b.lostLogs = false
-		b.lostBytes = 0
-	}
+	b.flush()
 }
 
 // ListenToLogStream will wait for responses from server and will update log level
@@ -188,7 +169,7 @@ func (b *BufferedGrpcWriteSyncer) ListenToLogStream() {
 }
 
 // bufferLog adds the log entry to in-memory buffer
-func (b *BufferedGrpcWriteSyncer) bufferLog(entry zapcore.Entry) {
+func (b *BufferedGrpcWriteSyncer) bufferLogEntry(entry zapcore.Entry) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
@@ -224,10 +205,10 @@ func (b *BufferedGrpcWriteSyncer) updateLogLevel(level pb.LogLevel) {
 	}
 }
 
-// NewGrpclogger will define a new zap logger with multiple writesyncs
+// NewGRPClogger will define a new zap logger with multiple writesyncs
 // one to stdout and one for GRPC writestream
-func NewGrpclogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
-	// Create a development encoder config
+func NewGRPClogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
+	// Create a production encoder config
 	encoderConfig := zap.NewProductionEncoderConfig()
 
 	// Create a JSON encoder
@@ -247,12 +228,12 @@ func NewGrpclogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 	// Add a custom hook to handle logs for grpcSyncer
 	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
 		if grpcSyncer.conn == nil || grpcSyncer.conn.GetState() != connectivity.Ready {
-			grpcSyncer.bufferLog(entry)
+			grpcSyncer.bufferLogEntry(entry)
 			return nil
 		}
 		if err := grpcSyncer.sendLog(entry); err != nil {
 			logger.Error("Error when sending logs to server", zap.Error(err))
-			grpcSyncer.bufferLog(entry)
+			grpcSyncer.bufferLogEntry(entry)
 			return err
 		}
 		return nil
@@ -261,7 +242,7 @@ func NewGrpclogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 	sugaredLogger := logger.Sugar()
 
 	grpcSyncer.logger = sugaredLogger
-	grpcSyncer.logLevel = &atomicLevel
+	grpcSyncer.logLevel = atomicLevel
 	grpcSyncer.encoder = encoder
 	return sugaredLogger
 }

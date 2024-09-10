@@ -74,9 +74,15 @@ func (l LogEntry) Level() (zapcore.Level, error) {
 	return level, nil
 }
 
-// RawMessageWrapper wraps json.RawMessage to implement zapcore.ObjectMarshaler
-type RawMessageWrapper struct {
-	Raw json.RawMessage
+// MarshalLogObject implements the zapcore.ObjectMarshaler interface
+func (l LogEntry) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	for k, v := range l {
+		err := enc.AddReflected(k, v)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SendKubernetesResources handles all gPRC requests related to streaming resources
@@ -143,8 +149,8 @@ func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error 
 
 		switch req.Request.(type) {
 		case *pb.SendLogsRequest_LogEntry:
-			log := req.GetLogEntry()
-			err = recordStreamedLog(log, *logger)
+			logEntry := req.GetLogEntry()
+			err = logReceivedLogEntry(logger, logEntry)
 			if err != nil {
 				logger.Error("Error recording logs from operator", zap.Error(err))
 			}
@@ -224,18 +230,7 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 	}
 }
 
-// MarshalLogObject implements the zapcore.ObjectMarshaler interface
-func (l LogEntry) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	for k, v := range l {
-		err := enc.AddReflected(k, v)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func recordStreamedLog(log *pb.LogEntry, logger zap.Logger) error {
+func logReceivedLogEntry(logger *zap.Logger, log *pb.LogEntry) error {
 	// Decode the JSON-encoded string into a LogEntry struct
 	var logEntry LogEntry = make(map[string]any)
 	if err := json.Unmarshal([]byte(log.JsonMessage), &logEntry); err != nil {

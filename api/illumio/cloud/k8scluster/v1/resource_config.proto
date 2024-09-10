@@ -110,10 +110,6 @@ enum LogLevel {
 
 // Message representing a log entry.
 message LogEntry {
-  // The log level of the log entry.
-  LogLevel level = 1;
-  // The timestamp when the log entry was recorded.
-  google.protobuf.Timestamp time = 2;
   // The actual log message contents, as a JSON object.
   string json_message = 3;
 }
@@ -128,7 +124,7 @@ message SendLogsRequest {
 
 // Message to encapsulate setting the log level.
 message SetLogLevel {
-  // A single log entry to be logged by the server.
+  // The log level to be set in the operator.
   LogLevel level = 1;
 }
 
@@ -144,6 +140,6 @@ message SendLogsResponse {
 service KubernetesInfoService {
   // Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
   rpc SendKubernetesResources(stream SendKubernetesResourcesRequest) returns (stream SendKubernetesResourcesResponse);
-  // Continuously syncs logs from operator and cluster
+  // Continuously syncs logs from operator and cluster.
   rpc SendLogs(stream SendLogsRequest) returns (stream SendLogsResponse);
 }

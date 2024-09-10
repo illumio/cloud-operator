@@ -203,8 +203,8 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 		}
 
 		// Update the gRPC client and connection in BufferedGrpcWriteSyncer
-		bufferedGrpcSyncer.UpdateClient(sm.instance.logStream, sm.instance.conn)
-		go bufferedGrpcSyncer.ListenToLogStream()
+		//bufferedGrpcSyncer.UpdateClient(sm.instance.logStream, sm.instance.conn)
+		//go bufferedGrpcSyncer.ListenToLogStream()
 
 		ctx, cancel := context.WithCancel(ctx)
 		err = sm.BootUpStreamAndReconnect(ctx, cancel)
