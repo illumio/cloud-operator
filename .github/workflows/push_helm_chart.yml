@@ -27,7 +27,7 @@ jobs:
                     echo tag=${{ github.sha }} >> $GITHUB_OUTPUT
                 fi
         - name: Package Helm chart
-          run: helm package cloud-operator/ --version ${{ steps.tag.outputs.tag }}
+          run: ls && helm package cloud-operator/ --version ${{ steps.tag.outputs.tag }}
         
         - name: Push Helm chart to GHCR
           run: |
