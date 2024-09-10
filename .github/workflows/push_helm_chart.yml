@@ -19,7 +19,7 @@ jobs:
           uses: azure/setup-helm@v1
           with:
             version: v3.8.0
-s
+
         - name: Log in to GitHub Container Registry for Helm
           run: echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
         - name: Determine version from Git
