@@ -1,0 +1,35 @@
+name: Push Helm Chart
+
+on:
+  push:
+    branches:
+      - main
+      - revise-helm-default-values
+
+jobs:
+  push-helm-chart:
+    runs-on: ubuntu-latest
+
+    steps: 
+        - name: Set up Helm
+          uses: azure/setup-helm@v1
+          with:
+            version: v3.7.0
+        - name: Log in to GitHub Container Registry for Helm
+          run: echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
+
+        - name: Getting image tag
+          id: tag
+          run: |
+                if [ "${{ github.event.pull_request.head.sha }}" != "" ]; then
+                    echo tag=${{ github.event.pull_request.head.sha }} >> $GITHUB_OUTPUT
+                else
+                    echo tag=${{ github.sha }} >> $GITHUB_OUTPUT
+                fi
+        - name: Package Helm chart
+          run: helm package cloud-operator/ --version ${{ steps.tag.outputs.tag }}
+        
+        - name: Push Helm chart to GHCR
+          run: |
+            CHART_NAME=$(basename cloud-operator/Chart.yaml)
+            helm push ${CHART_NAME}-$${{ steps.tag.outputs.tag }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts

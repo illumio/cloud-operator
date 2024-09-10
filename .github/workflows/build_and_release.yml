@@ -42,11 +42,6 @@ jobs:
             else
                 echo tag=${{ github.sha }} >> $GITHUB_OUTPUT
             fi
-            if [ "${{ github.ref_name }}" == "${{ github.event.repository.default_branch }}" ]; then
-                echo floating_tag=latest >> $GITHUB_OUTPUT
-            else
-                echo floating_tag=${{ github.ref_name }} >> $GITHUB_OUTPUT
-            fi
 
       - name: Build and push Docker image
         id: build-and-push
@@ -56,19 +51,10 @@ jobs:
           push: true
           build-args: |
             VERSION=${{ steps.tag.outputs.tag }}
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.floating_tag }}
-            ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.tag }}
+          tag: ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.tag }}
 
       - name: Sign the images with GitHub OIDC Token
         env:
             DIGEST: ${{ steps.build-and-push.outputs.digest }}
-            TAGS: | 
-                ${{ steps.tag.outputs.tag }}
-                ${{ steps.tag.outputs.floating_tag }}
-        run: |
-            images=""
-            for tag in ${TAGS}; do
-            images+="${tag}@${DIGEST} "
-            done
-            cosign sign --yes ${images}
+            TAG: ${{ steps.tag.outputs.tag }}
+        run: cosign sign --yes ${tag}@${DIGEST}
