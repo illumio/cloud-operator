@@ -37,12 +37,11 @@ jobs:
       - name: Getting image tag
         id: tag
         run: |
-            if [ "${{ github.event.pull_request.head.sha }}" != "" ]; then
-                echo tag=${{ github.event.pull_request.head.sha }} >> $GITHUB_OUTPUT
-            else
-                echo tag=${{ github.sha }} >> $GITHUB_OUTPUT
-            fi
-
+          if [ "${{ github.ref_name }}" == "${{ github.event.repository.default_branch }}" ]; then
+              echo tag=latest >> $GITHUB_OUTPUT
+          else
+              echo tag=${{ github.ref_name }} >> $GITHUB_OUTPUT
+          fi
       - name: Build and push Docker image
         id: build-and-push
         uses: docker/build-push-action@v3
