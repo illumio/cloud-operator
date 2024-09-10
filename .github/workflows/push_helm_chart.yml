@@ -30,8 +30,6 @@ jobs:
                 else
                     echo tag=${{ github.sha }} >> $GITHUB_OUTPUT
                 fi
-        - name: List files
-          run: ls -la
 
         - name: Package Helm chart
           run: helm package cloud-operator/ --version ${{ steps.tag.outputs.tag }}

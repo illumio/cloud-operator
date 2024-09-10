@@ -36,12 +36,13 @@ jobs:
 
       - name: Getting image tag
         id: tag
-        run: |
+        run: 
           if [ "${{ github.ref_name }}" == "${{ github.event.repository.default_branch }}" ]; then
               echo tag=latest >> $GITHUB_OUTPUT
           else
               echo tag=${{ github.ref_name }} >> $GITHUB_OUTPUT
           fi
+
       - name: Build and push Docker image
         id: build-and-push
         uses: docker/build-push-action@v3
@@ -50,8 +51,9 @@ jobs:
           push: true
           build-args: |
             VERSION=${{ steps.tag.outputs.tag }}
-          tag: ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.tag }}
-
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ env.VERSION }}
+            ghcr.io/${{ github.repository }}:latest
       - name: Sign the images with GitHub OIDC Token
         env:
             DIGEST: ${{ steps.build-and-push.outputs.digest }}
