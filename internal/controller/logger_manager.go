@@ -75,13 +75,13 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	}
 	lostLogs := false
 	lostLogEntries := 0
-	lostLogsErrs := make([]error, 0, maxBufferSize)
+	var lostLogsErr error
 
 	for _, logEntry := range b.buffer {
 		if err := b.sendLog(logEntry); err != nil {
 			lostLogs = true
 			lostLogEntries += 1
-			lostLogsErrs = append(lostLogsErrs, err)
+			lostLogsErr = err
 		}
 	}
 	b.buffer = b.buffer[:0]
@@ -90,7 +90,7 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	if lostLogs {
 		b.logger.Error("Lost logs due to buffer overflow",
 			zap.Int("lost_log_entries", lostLogEntries),
-			zap.Error(lostLogsErrs[len(lostLogsErrs)-1]),
+			zap.Error(lostLogsErr),
 		)
 	}
 
