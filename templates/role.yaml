@@ -1,0 +1,12 @@
+# Copyright 2024 Illumio, Inc. All Rights Reserved.
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cloud-operator-secret-manager
+  namespace: {{ .Release.Namespace }}
+rules:
+- apiGroups: [""] # "" indicates the core API group
+  resources: ["secrets"]
+  # resourceNames: ["onboardingcreds", "clustercreds"]
+  verbs: ["get", "list", "patch", "update", "watch"]
