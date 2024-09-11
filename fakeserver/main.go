@@ -35,7 +35,7 @@ import (
 )
 
 var kaep = keepalive.EnforcementPolicy{
-	MinTime:             30 * time.Second, // Instruct the client to start sending keepalives after 30s (default is 5m, which may be too long for some proxies)
+	MinTime:             10 * time.Second, // Instruct the client to start sending keepalives after 30s (default is 5m, which may be too long for some proxies)
 	PermitWithoutStream: true,             // Allow pings even when there are no active streams
 }
 

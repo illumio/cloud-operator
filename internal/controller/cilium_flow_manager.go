@@ -130,7 +130,9 @@ func (fm *FlowManager) listenToFlows(ctx context.Context, sm streamManager) erro
 // convertLayer4 function converts a slice of flow.Layer4 objects to a slice of pb.Layer4 objects.
 func convertLayer4(l4 *flow.Layer4) *pb.Layer4 {
 	layer4 := &pb.Layer4{}
-
+	if l4 == nil {
+		return layer4
+	}
 	switch protocol := l4.Protocol.(type) {
 	case *flow.Layer4_TCP:
 		layer4.Protocol = &pb.Layer4_Tcp{

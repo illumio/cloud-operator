@@ -4,12 +4,9 @@ defaultNamespace: "illumio-cloud"
 replicaCount: 1
 priorityClassName: ""
 image:
-  repository: "illumioevanj80/operator"
-  tag: "latest"
-  pullPolicy: Always
-
-imagePullSecrets:
-  - name: regcred
+  repository: "ghcr.io/illumio/cloud-operator"
+  tag: "0.0.1"
+  pullPolicy: IfNotPresent
 
 serviceAccount:
   create: true
@@ -32,10 +29,10 @@ clusterCredsSecret:
   forceSecretCreation: true
 
 onboardingSecret:
-  clientId: "client_1"
-  clientSecret: "client_secret_1"
+  clientId: ""
+  clientSecret: ""
 
 env:
-  tlsSkipVerify: true
-  onboardingEndpoint: "https://192.168.65.254:50053/api/v1/k8s_cluster/onboard"
-  tokenEndpoint: "https://192.168.65.254:50053/api/v1/k8s_cluster/authenticate"
+  tlsSkipVerify: false
+  onboardingEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
+  tokenEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
