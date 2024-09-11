@@ -2,8 +2,8 @@ name: Push Helm Chart
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
 
 jobs:
   push-helm-chart:
@@ -31,6 +31,13 @@ jobs:
             VERSION=${GITHUB_SHA}
             fi
             echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+        - name: Update Helm chart version
+          run: |
+            # Update the version in Chart.yaml
+            sed -i "s/^version:.*/version: ${VERSION}/" cloud-operator/Chart.yaml
+            # Update the tag in values.yaml
+            sed -i "s/^  tag:.*/  tag: ${VERSION}/" cloud-operator/values.yaml
 
         - name: Package Helm chart
           run: helm package cloud-operator/ --version ${{ env.VERSION }}
