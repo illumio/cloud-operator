@@ -20,13 +20,13 @@ tests:
           value: "ONBOARDING_ENDPOINT"
       - equal:
           path: spec.template.spec.containers[0].env[1].value
-          value: "https://192.168.65.254:50053/api/v1/k8s_cluster/onboard"
+          value: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
       - equal:
           path: spec.template.spec.containers[0].env[2].name
           value: "TOKEN_ENDPOINT"
       - equal:
           path: spec.template.spec.containers[0].env[2].value
-          value: "https://192.168.65.254:50053/api/v1/k8s_cluster/authenticate"
+          value: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
       - equal:
           path: spec.template.spec.containers[0].env[3].name
           value: "CLUSTER_CREDS_SECRET"
