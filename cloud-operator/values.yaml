@@ -4,7 +4,7 @@ defaultNamespace: "illumio-cloud"
 replicaCount: 1
 priorityClassName: ""
 image:
-  repository: "illumioevanj80/operator"
+  repository: "aaronnguyenillumio/operator"
   tag: "latest"
   pullPolicy: Always
 
