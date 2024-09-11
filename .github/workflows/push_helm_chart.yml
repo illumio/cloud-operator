@@ -2,8 +2,9 @@ name: Push Helm Chart
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
+      - revise-helm-default-values
 
 jobs:
   push-helm-chart:
