@@ -2,9 +2,8 @@ name: Push Helm Chart
 
 on:
   push:
-    branches:
-      - main
-      - revise-helm-default-values
+    tags:
+      - "v*"
 
 jobs:
   push-helm-chart:
@@ -22,16 +21,6 @@ jobs:
 
         - name: Log in to GitHub Container Registry for Helm
           run: echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
-        # - name: Determine version from Git
-        #   id: determine_version
-        #   run: |
-        #     # Get the latest tag reachable from the current commit
-        #     VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-        #     if [ -z "$VERSION" ]; then
-        #     # If no tag is found, use the commit SHA
-        #     VERSION=${GITHUB_SHA}
-        #     fi
-        #     echo "VERSION=$VERSION" >> $GITHUB_ENV
 
         - name: Update Helm chart version
           run: |

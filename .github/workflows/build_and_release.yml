@@ -2,9 +2,8 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches:
-      - main
-      - revise-helm-default-values
+    tags:
+      - "v*"
 
 permissions:
   # Required to generate OIDC tokens for `sigstore/cosign-installer` authentication
@@ -34,17 +33,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      # - name: Determine version from Git
-      #   id: determine_version
-      #   run: |
-      #     # Get the latest tag reachable from the current commit
-      #     VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-      #     if [ -z "$VERSION" ]; then
-      #       # If no tag is found, use the commit SHA
-      #       VERSION=${GITHUB_SHA}
-      #     fi
-      #     echo "VERSION=$VERSION" >> $GITHUB_ENV
   
       - name: Build and push Docker image
         id: build-and-push
