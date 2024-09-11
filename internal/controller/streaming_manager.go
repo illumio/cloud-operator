@@ -21,6 +21,7 @@ type streamClient struct {
 	conn                      *grpc.ClientConn
 	streamKubernetesResources pb.KubernetesInfoService_SendKubernetesResourcesClient
 	streamKubernetesFlows     pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
+	logStream                 pb.KubernetesInfoService_SendLogsClient
 }
 
 type deadlockDetector struct {
@@ -87,9 +88,9 @@ func NewStreams(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.Clien
 	}
 
 	instance := &streamClient{
-		conn:           conn,
-		resourceStream: SendKubernetesResourcesStream,
-		logStream:      SendLogsStream,
+		conn:                      conn,
+		streamKubernetesResources: SendKubernetesResourcesStream,
+		logStream:                 SendLogsStream,
 		streamKubernetesFlows:     streamKubernetesFlows,
 	}
 	sm := &streamManager{

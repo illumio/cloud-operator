@@ -26,7 +26,7 @@ type ResourceManager struct {
 
 // sendResourceSnapshotComplete sends a message to indicate that the initial inventory snapshot has been completely streamed into the given stream.
 func (rm *ResourceManager) sendResourceSnapshotComplete() error {
-	if err := rm.streamManager.instance.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
+	if err := rm.streamManager.instance.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
 		rm.logger.Errorw("Falied to send resource snapshot complete",
 			"error", err,
 		)
@@ -49,7 +49,7 @@ func (rm *ResourceManager) sendClusterMetadata(ctx context.Context) error {
 	if err != nil {
 		rm.logger.Errorw("Error getting Kubernetes version", "error", err)
 	}
-	if err := rm.streamManager.instance.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: version.Version()}}}); err != nil {
+	if err := rm.streamManager.instance.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: version.Version()}}}); err != nil {
 		rm.logger.Errorw("Failed to send cluster metadata",
 			"error", err,
 		)
@@ -63,7 +63,7 @@ func (rm *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, can
 	resourceListVersion, cm, err := rm.DynamicListResources(ctx, resource)
 	if err != nil {
 		allResourcesSnapshotted.Done()
-		r.logger.Errorw("Unable to list resources", "error", err)
+		rm.logger.Errorw("Unable to list resources", "error", err)
 		cancel()
 		return
 	}
@@ -76,7 +76,7 @@ func (rm *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, can
 	}
 	err = rm.watchEvents(ctx, resource, watchOptions, cm)
 	if err != nil {
-		r.logger.Errorw("Unable to watch events", "error", err)
+		rm.logger.Errorw("Unable to watch events", "error", err)
 		cancel()
 		return
 	}
@@ -94,12 +94,12 @@ func (rm *ResourceManager) DynamicListResources(ctx context.Context, resource st
 		metadataObj := convertMetaObjectToMetadata(obj, resource)
 		err := sendObjectMetaData(rm.streamManager, metadataObj)
 		if err != nil {
-			r.logger.Errorw("Cannot send object metadata", "error", err)
+			rm.logger.Errorw("Cannot send object metadata", "error", err)
 			return "", cm, err
 		}
 		hashValue, err := hashObjectMeta(obj)
 		if err != nil {
-			r.logger.Errorw("Cannot hash current object", "error", err)
+			rm.logger.Errorw("Cannot hash current object", "error", err)
 			return "", cm, err
 		}
 		cacheCurrentEvent(obj, hashValue, cm)
@@ -119,13 +119,13 @@ func (rm *ResourceManager) watchEvents(ctx context.Context, resource string, wat
 	objGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: resource}
 	watcher, err := rm.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
-		r.logger.Errorw("Error setting up watch on resource", "error", err)
+		rm.logger.Errorw("Error setting up watch on resource", "error", err)
 		return err
 	}
 	for event := range watcher.ResultChan() {
 		switch event.Type {
 		case watch.Error:
-			r.logger.Errorw("Watcher event has returned an error", "error", err)
+			rm.logger.Errorw("Watcher event has returned an error", "error", err)
 			return err
 		case watch.Bookmark:
 			continue
@@ -133,14 +133,14 @@ func (rm *ResourceManager) watchEvents(ctx context.Context, resource string, wat
 		}
 		convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
 		if err != nil {
-			r.logger.Errorw("Cannot convert runtime.Object to metav1.ObjectMeta", "error", err)
+			rm.logger.Errorw("Cannot convert runtime.Object to metav1.ObjectMeta", "error", err)
 			return err
 		}
 		metadataObj := convertMetaObjectToMetadata(*convertedData, resource)
 
 		wasUniqueEvent, err := uniqueEvent(*convertedData, c, event)
 		if err != nil {
-			r.logger.Errorw("Failed to hash object metadata", "error", err)
+			rm.logger.Errorw("Failed to hash object metadata", "error", err)
 			return err
 		}
 		// This event has been seen before, do not stream the event to CloudSecure.
@@ -149,7 +149,7 @@ func (rm *ResourceManager) watchEvents(ctx context.Context, resource string, wat
 		}
 		err = streamMutationObjectMetaData(rm.streamManager, metadataObj, event.Type)
 		if err != nil {
-			r.logger.Errorw("Cannot send resource mutation", "error", err)
+			rm.logger.Errorw("Cannot send resource mutation", "error", err)
 			return err
 		}
 
@@ -162,14 +162,14 @@ func (rm *ResourceManager) watchEvents(ctx context.Context, resource string, wat
 func (rm *ResourceManager) listResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) ([]metav1.ObjectMeta, string, error) {
 	unstructuredResources, err := rm.dynamicClient.Resource(resource).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		r.logger.Errorw("Cannot list resource", "error", err, "kind", resource)
+		rm.logger.Errorw("Cannot list resource", "error", err, "kind", resource)
 		return nil, "", err
 	}
 	objectMetas := make([]metav1.ObjectMeta, 0, len(unstructuredResources.Items))
 	for _, item := range unstructuredResources.Items {
 		objMeta, err := getMetadatafromResource(rm.logger, item)
 		if err != nil {
-			r.logger.Errorw("Cannot get Metadata from resource", "error", err)
+			rm.logger.Errorw("Cannot get Metadata from resource", "error", err)
 			return nil, "", err
 		}
 		objectMetas = append(objectMetas, *objMeta)

@@ -23,8 +23,7 @@ const _ = grpc.SupportPackageIsVersion7
 const (
 	KubernetesInfoService_SendKubernetesResources_FullMethodName    = "/illumio.cloud.k8scluster.v1.KubernetesInfoService/SendKubernetesResources"
 	KubernetesInfoService_SendKubernetesNetworkFlows_FullMethodName = "/illumio.cloud.k8scluster.v1.KubernetesInfoService/SendKubernetesNetworkFlows"
-	KubernetesInfoService_SendKubernetesResources_FullMethodName = "/illumio.cloud.k8scluster.v1.KubernetesInfoService/SendKubernetesResources"
-	KubernetesInfoService_SendLogs_FullMethodName                = "/illumio.cloud.k8scluster.v1.KubernetesInfoService/SendLogs"
+	KubernetesInfoService_SendLogs_FullMethodName                   = "/illumio.cloud.k8scluster.v1.KubernetesInfoService/SendLogs"
 )
 
 // KubernetesInfoServiceClient is the client API for KubernetesInfoService service.
@@ -78,37 +77,6 @@ func (x *kubernetesInfoServiceSendKubernetesResourcesClient) Recv() (*SendKubern
 	return m, nil
 }
 
-func (c *kubernetesInfoServiceClient) SendLogs(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendLogsClient, error) {
-	stream, err := c.cc.NewStream(ctx, &KubernetesInfoService_ServiceDesc.Streams[1], KubernetesInfoService_SendLogs_FullMethodName, opts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &kubernetesInfoServiceSendLogsClient{stream}
-	return x, nil
-}
-
-type KubernetesInfoService_SendLogsClient interface {
-	Send(*SendLogsRequest) error
-	Recv() (*SendLogsResponse, error)
-	grpc.ClientStream
-}
-
-type kubernetesInfoServiceSendLogsClient struct {
-	grpc.ClientStream
-}
-
-func (x *kubernetesInfoServiceSendLogsClient) Send(m *SendLogsRequest) error {
-	return x.ClientStream.SendMsg(m)
-}
-
-func (x *kubernetesInfoServiceSendLogsClient) Recv() (*SendLogsResponse, error) {
-	m := new(SendLogsResponse)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
 func (c *kubernetesInfoServiceClient) SendKubernetesNetworkFlows(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendKubernetesNetworkFlowsClient, error) {
 	stream, err := c.cc.NewStream(ctx, &KubernetesInfoService_ServiceDesc.Streams[1], KubernetesInfoService_SendKubernetesNetworkFlows_FullMethodName, opts...)
 	if err != nil {
@@ -140,6 +108,37 @@ func (x *kubernetesInfoServiceSendKubernetesNetworkFlowsClient) Recv() (*SendKub
 	return m, nil
 }
 
+func (c *kubernetesInfoServiceClient) SendLogs(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendLogsClient, error) {
+	stream, err := c.cc.NewStream(ctx, &KubernetesInfoService_ServiceDesc.Streams[2], KubernetesInfoService_SendLogs_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &kubernetesInfoServiceSendLogsClient{stream}
+	return x, nil
+}
+
+type KubernetesInfoService_SendLogsClient interface {
+	Send(*SendLogsRequest) error
+	Recv() (*SendLogsResponse, error)
+	grpc.ClientStream
+}
+
+type kubernetesInfoServiceSendLogsClient struct {
+	grpc.ClientStream
+}
+
+func (x *kubernetesInfoServiceSendLogsClient) Send(m *SendLogsRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *kubernetesInfoServiceSendLogsClient) Recv() (*SendLogsResponse, error) {
+	m := new(SendLogsResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // KubernetesInfoServiceServer is the server API for KubernetesInfoService service.
 // All implementations must embed UnimplementedKubernetesInfoServiceServer
 // for forward compatibility
@@ -148,6 +147,8 @@ type KubernetesInfoServiceServer interface {
 	SendKubernetesResources(KubernetesInfoService_SendKubernetesResourcesServer) error
 	// Continuously sends Network Flow traffic recorded via CNI in the cluster into CloudSecure.
 	SendKubernetesNetworkFlows(KubernetesInfoService_SendKubernetesNetworkFlowsServer) error
+	// Continuously syncs logs from operator and cluster.
+	SendLogs(KubernetesInfoService_SendLogsServer) error
 	mustEmbedUnimplementedKubernetesInfoServiceServer()
 }
 
@@ -157,6 +158,9 @@ type UnimplementedKubernetesInfoServiceServer struct {
 
 func (UnimplementedKubernetesInfoServiceServer) SendKubernetesResources(KubernetesInfoService_SendKubernetesResourcesServer) error {
 	return status.Errorf(codes.Unimplemented, "method SendKubernetesResources not implemented")
+}
+func (UnimplementedKubernetesInfoServiceServer) SendKubernetesNetworkFlows(KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
+	return status.Errorf(codes.Unimplemented, "method SendKubernetesNetworkFlows not implemented")
 }
 func (UnimplementedKubernetesInfoServiceServer) SendLogs(KubernetesInfoService_SendLogsServer) error {
 	return status.Errorf(codes.Unimplemented, "method SendLogs not implemented")
@@ -194,6 +198,32 @@ func (x *kubernetesInfoServiceSendKubernetesResourcesServer) Send(m *SendKuberne
 
 func (x *kubernetesInfoServiceSendKubernetesResourcesServer) Recv() (*SendKubernetesResourcesRequest, error) {
 	m := new(SendKubernetesResourcesRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func _KubernetesInfoService_SendKubernetesNetworkFlows_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(KubernetesInfoServiceServer).SendKubernetesNetworkFlows(&kubernetesInfoServiceSendKubernetesNetworkFlowsServer{stream})
+}
+
+type KubernetesInfoService_SendKubernetesNetworkFlowsServer interface {
+	Send(*SendKubernetesNetworkFlowsResponse) error
+	Recv() (*SendKubernetesNetworkFlowsRequest, error)
+	grpc.ServerStream
+}
+
+type kubernetesInfoServiceSendKubernetesNetworkFlowsServer struct {
+	grpc.ServerStream
+}
+
+func (x *kubernetesInfoServiceSendKubernetesNetworkFlowsServer) Send(m *SendKubernetesNetworkFlowsResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *kubernetesInfoServiceSendKubernetesNetworkFlowsServer) Recv() (*SendKubernetesNetworkFlowsRequest, error) {
+	m := new(SendKubernetesNetworkFlowsRequest)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -241,14 +271,14 @@ var KubernetesInfoService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 		{
-			StreamName:    "SendLogs",
-			Handler:       _KubernetesInfoService_SendLogs_Handler,
+			StreamName:    "SendKubernetesNetworkFlows",
+			Handler:       _KubernetesInfoService_SendKubernetesNetworkFlows_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
 		{
-			StreamName:    "SendKubernetesNetworkFlows",
-			Handler:       _KubernetesInfoService_SendKubernetesNetworkFlows_Handler,
+			StreamName:    "SendLogs",
+			Handler:       _KubernetesInfoService_SendLogs_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
