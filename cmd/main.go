@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -28,7 +27,6 @@ import (
 	"github.com/google/gops/agent"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	controller "github.com/illumio/cloud-operator/internal/controller"
@@ -57,25 +55,10 @@ func bindEnv(logger zap.SugaredLogger, key, envVar string) {
 }
 
 func main() {
-	// Create a development encoder config
-	encoderConfig := zap.NewProductionEncoderConfig()
-
-	// Create a JSON encoder
-	encoder := zapcore.NewJSONEncoder(encoderConfig)
-
-	// Create syncers for console output
-	consoleSyncer := zapcore.AddSync(os.Stdout)
-
-	// Initialize the atomic level
-	atomicLevel := zap.NewAtomicLevelAt(zapcore.InfoLevel)
-
-	// Create the core with the atomic level
-	core := zapcore.NewTee(
-		zapcore.NewCore(encoder, consoleSyncer, atomicLevel),
-	)
-
-	// Create a zap logger with the core
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	// Create a buffered grpc write syncer without a valid gRPC connection initially
+	// Using nil for the `pb.KubernetesInfoService_KubernetesLogsClient`.
+	bufferedGrpcSyncer := controller.NewBufferedGrpcWriteSyncer()
+	logger := controller.NewGRPClogger(bufferedGrpcSyncer)
 	defer logger.Sync() //nolint:errcheck
 
 	viper.AutomaticEnv()
@@ -125,5 +108,5 @@ func main() {
 	}()
 
 	ctx := context.Background()
-	controller.ExponentialStreamConnect(ctx, logger, envConfig)
+	controller.ExponentialStreamConnect(ctx, logger, envConfig, bufferedGrpcSyncer)
 }
