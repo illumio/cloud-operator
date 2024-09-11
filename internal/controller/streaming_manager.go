@@ -135,7 +135,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	ciliumFlowManager, err := initFlowManager(ctx, sm.logger)
 	if err != nil {
-		sm.logger.Errorw("Cannot intialize flow manager", "error", err)
+		sm.logger.Infow("Cannot intialize flow manager", "error", err)
 	}
 	err = resourceLister.sendClusterMetadata(ctx)
 	if err != nil {
@@ -157,10 +157,15 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 		return err
 	}
 	snapshotCompleted.Done()
-	err = ciliumFlowManager.listenToFlows(ctx, *sm)
-	if err != nil {
-		sm.logger.Errorw("Failed to listen to flows", "error", err)
-		return err
+	if ciliumFlowManager.client != nil {
+		go func() {
+			err = ciliumFlowManager.listenToFlows(ctx, *sm)
+			if err != nil {
+				sm.logger.Errorw("Failed to listen to flows", "error", err)
+				cancel()
+				return
+			}
+		}()
 	}
 	return nil
 }
