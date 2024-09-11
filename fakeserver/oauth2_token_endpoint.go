@@ -110,6 +110,7 @@ func (a *AuthService) authenticateHandler(w http.ResponseWriter, r *http.Request
 
 		return
 	}
+
 	req.GrantType = r.FormValue("grant_type")
 	req.ClientID = r.FormValue("client_id")
 	req.ClientSecret = r.FormValue("client_secret")
@@ -119,6 +120,7 @@ func (a *AuthService) authenticateHandler(w http.ResponseWriter, r *http.Request
 
 		return
 	}
+
 	if req.ClientID == a.clientID && req.ClientSecret == a.clientSecret {
 		response := TokenResponse{AccessToken: a.token}
 		jsonResponse(w, http.StatusOK, response)
