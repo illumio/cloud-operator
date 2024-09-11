@@ -27,26 +27,26 @@ type ClientConnInterface interface {
 // BufferedGrpcWriteSyncer is a custom zap writesync that writes to a grpc stream
 // In case stream is not connected it will buffer to memory
 type BufferedGrpcWriteSyncer struct {
-	client         pb.KubernetesInfoService_SendLogsClient
-	conn           ClientConnInterface
-	buffer         []*zapcore.Entry
-	mutex          sync.Mutex
-	done           chan struct{}
-	logger         *zap.SugaredLogger
-	logLevel       zap.AtomicLevel
-	encoder        zapcore.Encoder
-	lostLogEntries int
-	lostLogsErr    error
+	client              pb.KubernetesInfoService_SendLogsClient
+	conn                ClientConnInterface
+	buffer              []*zapcore.Entry
+	mutex               sync.Mutex
+	done                chan struct{}
+	logger              *zap.SugaredLogger
+	logLevel            zap.AtomicLevel
+	encoder             zapcore.Encoder
+	lostLogEntriesCount int
+	lostLogEntriesErr   error
 }
 
 // NewBufferedGrpcWriteSyncer returns a new BufferedGrpcWriteSyncer
 func NewBufferedGrpcWriteSyncer() *BufferedGrpcWriteSyncer {
 	bws := &BufferedGrpcWriteSyncer{
-		client:         nil,
-		conn:           nil,
-		buffer:         make([]*zapcore.Entry, 0, maxBufferSize),
-		done:           make(chan struct{}),
-		lostLogEntries: 0,
+		client:              nil,
+		conn:                nil,
+		buffer:              make([]*zapcore.Entry, 0, maxBufferSize),
+		done:                make(chan struct{}),
+		lostLogEntriesCount: 0,
 	}
 	go bws.run()
 	return bws
@@ -77,7 +77,7 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 		return
 	}
 
-	if b.lostLogEntries > 0 {
+	if b.lostLogEntriesCount > 0 {
 		lostLogEntry := &zapcore.Entry{
 			Level:   zap.ErrorLevel,
 			Time:    time.Now(),
@@ -86,21 +86,21 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 
 		// Additional fields
 		extraFields := []zap.Field{
-			zap.Error(b.lostLogsErr),
-			zap.Int("lost_log_entries", b.lostLogEntries),
+			zap.Error(b.lostLogEntriesErr),
+			zap.Int("lost_log_entries", b.lostLogEntriesCount),
 		}
 
 		if err := b.sendLog(lostLogEntry, extraFields); err != nil {
-			b.lostLogsErr = err
+			b.lostLogEntriesErr = err
 			return
 		}
-		b.lostLogEntries = 0
+		b.lostLogEntriesCount = 0
 	}
 
 	for _, logEntry := range b.buffer {
 		if err := b.sendLog(logEntry, nil); err != nil {
-			b.lostLogEntries += 1
-			b.lostLogsErr = err
+			b.lostLogEntriesCount += 1
+			b.lostLogEntriesErr = err
 		}
 	}
 	b.buffer = b.buffer[:0]
