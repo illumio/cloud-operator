@@ -20,27 +20,32 @@ func sendObjectMetaData(sm *streamManager, metadata *pb.KubernetesObjectMetadata
 func sendNetworkFlowsData(sm *streamManager, flow *pb.CiliumFlow) error {
 	if err := sm.instance.streamKubernetesFlows.Send(&pb.SendKubernetesNetworkFlowsRequest{Flow: flow}); err != nil {
 		sm.logger.Errorw("Failed to send flow metadata", "error", err)
-		return err
+		if err := sm.instance.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceMetadata{ResourceMetadata: metadata}}); err != nil {
+			sm.logger.Errorw("Failed to send resource metadata",
+				"error", err,
+			)
+			return err
+		}
+		return nil
 	}
-	return nil
 }
 
 // streamMutationObjectMetaData sends a resource mutation message into the given stream.
 func streamMutationObjectMetaData(sm *streamManager, metadata *pb.KubernetesObjectMetadata, eventType watch.EventType) error {
 	switch eventType {
 	case watch.Added:
-		if err := sm.instance.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_KubernetesResourceMutation{KubernetesResourceMutation: &pb.KubernetesResourceMutation{Mutation: &pb.KubernetesResourceMutation_CreateResource{CreateResource: metadata}}}}); err != nil {
-			sm.logger.Errorw("Failed to send create resource mutatuion", "error", err)
+		if err := sm.instance.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_KubernetesResourceMutation{KubernetesResourceMutation: &pb.KubernetesResourceMutation{Mutation: &pb.KubernetesResourceMutation_CreateResource{CreateResource: metadata}}}}); err != nil {
+			sm.logger.Errorw("Failed to send create resource mutation", "error", err)
 			return err
 		}
 	case watch.Deleted:
-		if err := sm.instance.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_KubernetesResourceMutation{KubernetesResourceMutation: &pb.KubernetesResourceMutation{Mutation: &pb.KubernetesResourceMutation_DeleteResource{DeleteResource: metadata}}}}); err != nil {
-			sm.logger.Errorw("Failed to send delete resource mutatuion", "error", err)
+		if err := sm.instance.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_KubernetesResourceMutation{KubernetesResourceMutation: &pb.KubernetesResourceMutation{Mutation: &pb.KubernetesResourceMutation_DeleteResource{DeleteResource: metadata}}}}); err != nil {
+			sm.logger.Errorw("Failed to send delete resource mutation", "error", err)
 			return err
 		}
 	case watch.Modified:
-		if err := sm.instance.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_KubernetesResourceMutation{KubernetesResourceMutation: &pb.KubernetesResourceMutation{Mutation: &pb.KubernetesResourceMutation_UpdateResource{UpdateResource: metadata}}}}); err != nil {
-			sm.logger.Errorw("Failed to send update resource mutatuion", "error", err)
+		if err := sm.instance.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_KubernetesResourceMutation{KubernetesResourceMutation: &pb.KubernetesResourceMutation{Mutation: &pb.KubernetesResourceMutation_UpdateResource{UpdateResource: metadata}}}}); err != nil {
+			sm.logger.Errorw("Failed to send update resource mutation", "error", err)
 			return err
 		}
 	}

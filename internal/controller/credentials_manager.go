@@ -69,14 +69,14 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, O
 	// Convert the data to JSON
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		am.Logger.Error(err, "Unable to marshal json data")
+		am.Logger.Errorw("Unable to marshal json data", "error", err)
 		return responseData, err
 	}
 
 	// Create a new POST request with the JSON data
 	req, err := http.NewRequest("POST", OnboardingEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
-		am.Logger.Error(err, "Unable to structure post request")
+		am.Logger.Errorw("Unable to structure post request", "error", err)
 		return responseData, err
 	}
 
@@ -84,7 +84,7 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, O
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
-		am.Logger.Error(err, "Unable to send post request")
+		am.Logger.Errorw("Unable to send post request", "error", err)
 		return responseData, err
 	}
 
@@ -122,11 +122,11 @@ func (am *CredentialsManager) Onboard(ctx context.Context, TlsSkipVerify bool, O
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		am.Logger.Error(err, "Unable to read response of onboard post request")
+		am.Logger.Errorw("Unable to read response of onboard post request", "error", err)
 		return responseData, err
 	}
 	if err := json.Unmarshal(body, &responseData); err != nil {
-		am.Logger.Error(err, "Unable to unmarshal json data")
+		am.Logger.Errorw("Unable to unmarshal json data", "error", err)
 		return responseData, err
 	}
 	return responseData, nil
@@ -158,7 +158,7 @@ func SetUpOAuthConnection(ctx context.Context, logger *zap.SugaredLogger, tokenU
 	// Retrieve the token, we need the AUD value for the enpoint.
 	token, err := tokenSource.Token()
 	if err != nil {
-		logger.Error(err, "Error retrieving a valid token")
+		logger.Errorw("Error retrieving a valid token", "error", err)
 		return &grpc.ClientConn{}, err
 	}
 	claims := jwt.MapClaims{}
@@ -166,12 +166,14 @@ func SetUpOAuthConnection(ctx context.Context, logger *zap.SugaredLogger, tokenU
 	// nosemgrep: jwt-go-parse-unverified
 	_, _, err = jwt.NewParser().ParseUnverified(token.AccessToken, claims)
 	if err != nil {
-		logger.Error(err, "Error parsing token")
+		logger.Errorw("Error parsing token", "error", err)
 		return &grpc.ClientConn{}, err
 	}
 	aud, err := getFirstAudience(logger, claims)
 	if err != nil {
-		logger.Error(err, "Error pulling audience out of token")
+		logger.Errorw("Error pulling audience out of token",
+			"error", err,
+		)
 	}
 	// Establish gRPC connection with TLS config.
 	creds := credentials.NewTLS(tlsConfig)

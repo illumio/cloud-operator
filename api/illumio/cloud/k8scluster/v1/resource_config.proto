@@ -273,11 +273,56 @@ message SendKubernetesNetworkFlowsRequest {
 // Message sent to the operator in a KubernetesNetworkFlows response stream.
 message SendKubernetesNetworkFlowsResponse {}
 
+// Enumeration to define the different levels of logging.
+enum LogLevel {
+  // Default unspecified log level.
+  LOG_LEVEL_UNSPECIFIED = 0;
+  // Debug log level, useful for development and troubleshooting.
+  LOG_LEVEL_DEBUG = 1;
+  // Informational log level for general application information.
+  LOG_LEVEL_INFO = 2;
+  // Warning log level for potentially problematic situations.
+  LOG_LEVEL_WARN = 3;
+  // Error log level indicating something went wrong.
+  LOG_LEVEL_ERROR = 4;
+}
+
+// Message representing a log entry.
+message LogEntry {
+  // The actual log message contents, as a JSON object.
+  string json_message = 3;
+}
+
+// Message to encapsulate a request to send logs.
+message SendLogsRequest {
+  oneof request {
+    // A single log entry to be sent.
+    LogEntry log_entry = 1;
+  }
+}
+
+// Message to encapsulate setting the log level.
+message SetLogLevel {
+  // The log level to be set in the operator.
+  LogLevel level = 1;
+}
+
+// Message to encapsulate the response for sending logs.
+message SendLogsResponse {
+  oneof response {
+    // set_log_level sets the operator's log level to the given level.
+    SetLogLevel set_log_level = 1;
+  }
+}
+
 // Syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
 service KubernetesInfoService {
   // Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
   rpc SendKubernetesResources(stream SendKubernetesResourcesRequest) returns (stream SendKubernetesResourcesResponse);
-
+  // Continuously sends Network Flow traffic recorded via CNI in the cluster into CloudSecure.
+  rpc SendKubernetesNetworkFlows(stream SendKubernetesNetworkFlowsRequest) returns (stream SendKubernetesNetworkFlowsResponse);
+  // Continuously syncs logs from operator and cluster.
+  rpc SendLogs(stream SendLogsRequest) returns (stream SendLogsResponse);
   // Continuously sends Network Flow traffic recorded via CNI in the cluster into CloudSecure.
   rpc SendKubernetesNetworkFlows(stream SendKubernetesNetworkFlowsRequest) returns (stream SendKubernetesNetworkFlowsResponse);
 }

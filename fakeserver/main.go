@@ -9,7 +9,9 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -22,6 +24,7 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -65,6 +68,35 @@ type server struct {
 	pb.UnimplementedKubernetesInfoServiceServer
 }
 
+// LogEntry represents the structure of a zapcore.Entry encoded using Zap's JSON encoder with the production encoder config.
+type LogEntry map[string]any
+
+// Level returns the log level of the LogEntry.
+func (l LogEntry) Level() (zapcore.Level, error) {
+	var levelStr string
+	levelStr, found := l["level"].(string)
+	if !found {
+		return zapcore.InvalidLevel, errors.New("no level field found in log entry")
+	}
+	var level zapcore.Level
+	err := level.UnmarshalText([]byte(levelStr))
+	if err != nil {
+		return zapcore.InvalidLevel, fmt.Errorf("invalid level field %s found in log entry: %w", levelStr, err)
+	}
+	return level, nil
+}
+
+// MarshalLogObject implements the zapcore.ObjectMarshaler interface
+func (l LogEntry) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	for k, v := range l {
+		err := enc.AddReflected(k, v)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // SendKubernetesResources handles all gPRC requests related to streaming resources
 func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKubernetesResourcesServer) error {
 	logger, err := zap.NewDevelopment()
@@ -98,6 +130,45 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 	}
 }
 
+func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error {
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		panic("Failed to build zap logger: " + err.Error())
+	}
+	// Set the client's log level to DEBUG.
+	setLogLevelMsg := &pb.SendLogsResponse{
+		Response: &pb.SendLogsResponse_SetLogLevel{
+			SetLogLevel: &pb.SetLogLevel{
+				Level: pb.LogLevel_LOG_LEVEL_DEBUG,
+			},
+		},
+	}
+	if err := stream.Send(setLogLevelMsg); err != nil {
+		logger.Error("Failed to send message to set log level", zap.Error(err))
+		return err
+	}
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			// The client has closed the stream
+			logger.Info("Client has closed the SendLogs stream")
+			return nil
+		}
+		if err != nil {
+			logger.Error("Error from stream", zap.Error(err))
+			return err // Return the error to terminate the stream
+		}
+
+		switch req.Request.(type) {
+		case *pb.SendLogsRequest_LogEntry:
+			logEntry := req.GetLogEntry()
+			err = logReceivedLogEntry(logEntry, logger)
+			if err != nil {
+				logger.Error("Error recording logs from operator", zap.Error(err))
+			}
+		}
+	}
+}
 // SendKubernetesNetworkFlows handles all gPRC requests related to streaming network flows
 func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
 	logger, err := zap.NewDevelopment()
@@ -193,6 +264,28 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 		// Call the handler if the token is valid.
 		return handler(srv, ss)
 	}
+}
+
+func logReceivedLogEntry(log *pb.LogEntry, logger *zap.Logger) error {
+	// Decode the JSON-encoded string into a LogEntry struct
+	var logEntry LogEntry = make(map[string]any)
+	if err := json.Unmarshal([]byte(log.JsonMessage), &logEntry); err != nil {
+		logger.Error("Error decoding JSON log message", zap.Error(err))
+	}
+
+	level, err := logEntry.Level()
+	if err != nil {
+		logger.Error("Error converting log level", zap.Error(err))
+		return err
+	}
+
+	if ce := logger.Check(level, "Received log entry from cloud-operator"); ce != nil {
+		ce.Write(
+			//zap.String("cluster_id", ...),
+			zap.Object("entry", logEntry),
+		)
+	}
+	return nil
 }
 
 // unaryInterceptor is a generic message handler that DOES NOT check for any access token

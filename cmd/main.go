@@ -19,7 +19,7 @@ package main
 import (
 	"context"
 	"errors"
-	"os"
+	"net/http"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -27,12 +27,22 @@ import (
 	"github.com/google/gops/agent"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	controller "github.com/illumio/cloud-operator/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
+
+// newHealthHandler returns an HTTP HandlerFunc that checks the health of the server by calling the given function and returns a status code accordingly
+func newHealthHandler(checkFunc func() bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if checkFunc() {
+			w.WriteHeader(http.StatusOK)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}
+}
 
 // bindEnv is a helper function that binds an environment variable to a key and handles errors.
 func bindEnv(logger zap.SugaredLogger, key, envVar string) {
@@ -45,25 +55,10 @@ func bindEnv(logger zap.SugaredLogger, key, envVar string) {
 }
 
 func main() {
-	// Create a development encoder config
-	encoderConfig := zap.NewProductionEncoderConfig()
-
-	// Create a JSON encoder
-	encoder := zapcore.NewJSONEncoder(encoderConfig)
-
-	// Create syncers for console output
-	consoleSyncer := zapcore.AddSync(os.Stdout)
-
-	// Initialize the atomic level
-	atomicLevel := zap.NewAtomicLevelAt(zapcore.InfoLevel)
-
-	// Create the core with the atomic level
-	core := zapcore.NewTee(
-		zapcore.NewCore(encoder, consoleSyncer, atomicLevel),
-	)
-
-	// Create a zap logger with the core
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	// Create a buffered grpc write syncer without a valid gRPC connection initially
+	// Using nil for the `pb.KubernetesInfoService_KubernetesLogsClient`.
+	bufferedGrpcSyncer := controller.NewBufferedGrpcWriteSyncer()
+	logger := controller.NewGRPClogger(bufferedGrpcSyncer)
 	defer logger.Sync() //nolint:errcheck
 
 	viper.AutomaticEnv()
@@ -103,7 +98,15 @@ func main() {
 	if err := agent.Listen(agent.Options{}); err != nil {
 		logger.Errorw("Failed to start gops agent", "error", err)
 	}
+	http.HandleFunc("/healthz", newHealthHandler(controller.ServerIsHealthy))
+	errChan := make(chan error, 1)
+
+	go func() {
+		errChan <- http.ListenAndServe(":8080", nil)
+		err := <-errChan
+		logger.Fatal("healthz check server failed", zap.Error(err))
+	}()
 
 	ctx := context.Background()
-	controller.ExponentialStreamConnect(ctx, logger, envConfig)
+	controller.ExponentialStreamConnect(ctx, logger, envConfig, bufferedGrpcSyncer)
 }
