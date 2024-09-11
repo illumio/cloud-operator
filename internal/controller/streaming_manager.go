@@ -17,8 +17,9 @@ import (
 )
 
 type streamClient struct {
-	conn   *grpc.ClientConn
-	stream pb.KubernetesInfoService_SendKubernetesResourcesClient
+	conn           *grpc.ClientConn
+	resourceStream pb.KubernetesInfoService_SendKubernetesResourcesClient
+	logStream      pb.KubernetesInfoService_SendLogsClient
 }
 
 type deadlockDetector struct {
@@ -61,19 +62,28 @@ func ServerIsHealthy() bool {
 }
 
 // NewStream returns a new stream.
-func NewStream(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.ClientConn) (*streamManager, error) {
+func NewStreams(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.ClientConn) (*streamManager, error) {
 	client := pb.NewKubernetesInfoServiceClient(conn)
-	stream, err := client.SendKubernetesResources(ctx)
+
+	SendLogsStream, err := client.SendLogs(ctx)
+	if err != nil {
+		// Proper error handling here; you might want to return the error, log it, etc.
+		logger.Errorw("Failed to connect to server",
+			"error", err,
+		)
+		return &streamManager{}, err
+	}
+	SendKubernetesResourcesStream, err := client.SendKubernetesResources(ctx)
 	if err != nil {
 		// Proper error handling here; you might want to return the error, log it, etc.
 		logger.Errorw("Failed to connect to server", "error", err)
 		return &streamManager{}, err
 	}
 
-	// Create or update the instance with the new stream and connection
 	instance := &streamClient{
-		conn:   conn,
-		stream: stream,
+		conn:           conn,
+		resourceStream: SendKubernetesResourcesStream,
+		logStream:      SendLogsStream,
 	}
 	sm := &streamManager{
 		instance: instance,
@@ -138,7 +148,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 }
 
 // ExponentialStreamConnect will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
-func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig) {
+func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
 	var backoff = 1 * time.Second
 	sm := SecretManager{Logger: logger}
 	max := big.NewInt(3)
@@ -186,11 +196,16 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 			logger.Errorw("Failed to set up an OAuth connection", "error", err)
 			continue
 		}
-		sm, err := NewStream(ctx, logger, conn)
+		sm, err := NewStreams(ctx, logger, conn)
 		if err != nil {
 			logger.Errorw("Failed to create a new stream", "error", err)
 			continue
 		}
+
+		// Update the gRPC client and connection in BufferedGrpcWriteSyncer
+		bufferedGrpcSyncer.UpdateClient(sm.instance.logStream, sm.instance.conn)
+		go bufferedGrpcSyncer.ListenToLogStream()
+
 		ctx, cancel := context.WithCancel(ctx)
 		err = sm.BootUpStreamAndReconnect(ctx, cancel)
 		if err != nil {
