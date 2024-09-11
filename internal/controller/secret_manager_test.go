@@ -196,7 +196,7 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 		suite.Run(name, func() {
 			sm := &SecretManager{Logger: logger}
 			// Since go test does not follow any order, always make sure namespace is deleted before each test
-			suite.clientset.CoreV1().Namespaces().Delete(context.TODO(), "illumio-cloud", metav1.DeleteOptions{})
+			_ = suite.clientset.CoreV1().Namespaces().Delete(context.TODO(), "illumio-cloud", metav1.DeleteOptions{})
 			if tt.namespaceExists {
 				namespaceObj := &v1.Namespace{
 					ObjectMeta: metav1.ObjectMeta{
