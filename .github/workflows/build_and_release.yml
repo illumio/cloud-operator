@@ -35,16 +35,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine version from Git
-        id: determine_version
-        run: |
-          # Get the latest tag reachable from the current commit
-          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          if [ -z "$VERSION" ]; then
-            # If no tag is found, use the commit SHA
-            VERSION=${GITHUB_SHA}
-          fi
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      # - name: Determine version from Git
+      #   id: determine_version
+      #   run: |
+      #     # Get the latest tag reachable from the current commit
+      #     VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+      #     if [ -z "$VERSION" ]; then
+      #       # If no tag is found, use the commit SHA
+      #       VERSION=${GITHUB_SHA}
+      #     fi
+      #     echo "VERSION=$VERSION" >> $GITHUB_ENV
   
       - name: Build and push Docker image
         id: build-and-push
@@ -53,9 +53,9 @@ jobs:
           context: .
           push: true
           build-args: |
-            VERSION=${{ env.VERSION }}
+            VERSION=${{ github.ref_name }}
           tags: |
-            ghcr.io/${{ github.repository }}:${{ env.VERSION }}
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
   
       - name: Sign the images with GitHub OIDC Token
-        run: cosign sign --yes ghcr.io/${{ github.repository }}:${{ env.VERSION }}
+        run: cosign sign --yes ghcr.io/${{ github.repository }}:${{ github.ref_name }}
