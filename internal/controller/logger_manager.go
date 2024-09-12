@@ -24,6 +24,9 @@ type ClientConnInterface interface {
 	Close() error
 }
 
+// mutex lock in close, run, and hook
+// remove from everything else
+
 // BufferedGrpcWriteSyncer is a custom zap writesync that writes to a grpc stream
 // In case stream is not connected it will buffer to memory
 type BufferedGrpcWriteSyncer struct {
@@ -67,9 +70,6 @@ func (b *BufferedGrpcWriteSyncer) Close() error {
 
 // flush will attempt to dump buffer into GRPC stream if available
 func (b *BufferedGrpcWriteSyncer) flush() {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-
 	if len(b.buffer) == 0 || b.conn == nil || b.conn.GetState() != connectivity.Ready {
 		return
 	}
@@ -104,7 +104,9 @@ func (b *BufferedGrpcWriteSyncer) run() {
 	for {
 		select {
 		case <-ticker.C:
+			b.mutex.Lock()
 			b.flush()
+			b.mutex.Unlock()
 		case <-b.done:
 			return
 		}
@@ -133,8 +135,8 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 	b.client = client
 	b.conn = conn
 	b.done = make(chan struct{})
-	b.mutex.Unlock()
 	b.flush()
+	b.mutex.Unlock()
 }
 
 // ListenToLogStream will wait for responses from server and will update log level
@@ -163,9 +165,6 @@ func (b *BufferedGrpcWriteSyncer) ListenToLogStream() {
 
 // bufferLog adds the log entry to in-memory buffer
 func (b *BufferedGrpcWriteSyncer) bufferLogEntry(entry *zapcore.Entry) {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-
 	b.buffer = append(b.buffer, entry)
 	if len(b.buffer) >= maxBufferSize {
 		b.flush()
@@ -215,6 +214,8 @@ func NewGRPClogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 
 	// Add a custom hook to handle logs for grpcSyncer
 	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+		grpcSyncer.mutex.Lock()
+		defer grpcSyncer.mutex.Unlock()
 		if grpcSyncer.conn == nil || grpcSyncer.conn.GetState() != connectivity.Ready {
 			grpcSyncer.bufferLogEntry(&entry)
 			return nil
