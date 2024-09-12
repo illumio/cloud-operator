@@ -24,9 +24,6 @@ type ClientConnInterface interface {
 	Close() error
 }
 
-// mutex lock in close, run, and hook
-// remove from everything else
-
 // BufferedGrpcWriteSyncer is a custom zap writesync that writes to a grpc stream
 // In case stream is not connected it will buffer to memory
 type BufferedGrpcWriteSyncer struct {
