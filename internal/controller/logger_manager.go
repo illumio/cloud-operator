@@ -218,7 +218,7 @@ func NewGRPClogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 			return nil
 		}
 
-		// flush buffer so logs are sent in order to the server
+		// Flush buffer so logs are sent in order to the server
 		grpcSyncer.flush()
 
 		if err := grpcSyncer.sendLog(&entry); err != nil {
