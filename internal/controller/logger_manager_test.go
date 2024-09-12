@@ -135,7 +135,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLog() {
 		},
 	}).Return(nil).Once()
 
-	err = suite.grpcSyncer.sendLog(entry)
+	err = suite.grpcSyncer.sendLog(entry, nil)
 	suite.NoError(err)
 	suite.mockClient.AssertExpectations(suite.T())
 
