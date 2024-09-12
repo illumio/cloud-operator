@@ -70,9 +70,6 @@ func (b *BufferedGrpcWriteSyncer) Close() error {
 
 // flush will attempt to dump buffer into GRPC stream if available
 func (b *BufferedGrpcWriteSyncer) flush() {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-
 	if len(b.buffer) == 0 || b.conn == nil || b.conn.GetState() != connectivity.Ready {
 		return
 	}
@@ -114,7 +111,9 @@ func (b *BufferedGrpcWriteSyncer) run() {
 	for {
 		select {
 		case <-ticker.C:
+			b.mutex.Lock()
 			b.flush()
+			b.mutex.Unlock()
 		case <-b.done:
 			return
 		}
@@ -143,8 +142,8 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 	b.client = client
 	b.conn = conn
 	b.done = make(chan struct{})
-	b.mutex.Unlock()
 	b.flush()
+	b.mutex.Unlock()
 }
 
 // ListenToLogStream will wait for responses from server and will update log level
@@ -173,13 +172,10 @@ func (b *BufferedGrpcWriteSyncer) ListenToLogStream() {
 
 // bufferLog adds the log entry to in-memory buffer
 func (b *BufferedGrpcWriteSyncer) bufferLogEntry(entry *zapcore.Entry) {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-
-	b.buffer = append(b.buffer, entry)
 	if len(b.buffer) >= maxBufferSize {
-		b.flush()
+		b.lostLogEntriesCount += 1
 	}
+	b.buffer = append(b.buffer, entry)
 }
 
 // updateLogLevel sets the logger's log level based on the response from the server.
@@ -225,10 +221,16 @@ func NewGRPClogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 
 	// Add a custom hook to handle logs for grpcSyncer
 	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+		grpcSyncer.mutex.Lock()
+		defer grpcSyncer.mutex.Unlock()
 		if grpcSyncer.conn == nil || grpcSyncer.conn.GetState() != connectivity.Ready {
 			grpcSyncer.bufferLogEntry(&entry)
 			return nil
 		}
+
+		// Flush buffer so logs are sent in order to the server
+		grpcSyncer.flush()
+
 		if err := grpcSyncer.sendLog(&entry, nil); err != nil {
 			logger.Error("Error when sending logs to server", zap.Error(err))
 			grpcSyncer.bufferLogEntry(&entry)
