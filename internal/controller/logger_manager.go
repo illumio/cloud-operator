@@ -27,23 +27,26 @@ type ClientConnInterface interface {
 // BufferedGrpcWriteSyncer is a custom zap writesync that writes to a grpc stream
 // In case stream is not connected it will buffer to memory
 type BufferedGrpcWriteSyncer struct {
-	client   pb.KubernetesInfoService_SendLogsClient
-	conn     ClientConnInterface
-	buffer   []*zapcore.Entry
-	mutex    sync.Mutex
-	done     chan struct{}
-	logger   *zap.SugaredLogger
-	logLevel zap.AtomicLevel
-	encoder  zapcore.Encoder
+	client              pb.KubernetesInfoService_SendLogsClient
+	conn                ClientConnInterface
+	buffer              []*zapcore.Entry
+	mutex               sync.Mutex
+	done                chan struct{}
+	logger              *zap.SugaredLogger
+	logLevel            zap.AtomicLevel
+	encoder             zapcore.Encoder
+	lostLogEntriesCount int
+	lostLogEntriesErr   error
 }
 
 // NewBufferedGrpcWriteSyncer returns a new BufferedGrpcWriteSyncer
 func NewBufferedGrpcWriteSyncer() *BufferedGrpcWriteSyncer {
 	bws := &BufferedGrpcWriteSyncer{
-		client: nil,
-		conn:   nil,
-		buffer: make([]*zapcore.Entry, 0, maxBufferSize),
-		done:   make(chan struct{}),
+		client:              nil,
+		conn:                nil,
+		buffer:              make([]*zapcore.Entry, 0, maxBufferSize),
+		done:                make(chan struct{}),
+		lostLogEntriesCount: 0,
 	}
 	go bws.run()
 	return bws
@@ -70,27 +73,34 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	if len(b.buffer) == 0 || b.conn == nil || b.conn.GetState() != connectivity.Ready {
 		return
 	}
-	lostLogs := false
-	lostLogEntries := 0
-	var lostLogsErr error
+
+	if b.lostLogEntriesCount > 0 {
+		lostLogEntry := &zapcore.Entry{
+			Level:   zap.ErrorLevel,
+			Time:    time.Now(),
+			Message: "Lost logs due to buffer overflow",
+		}
+
+		// Additional fields
+		extraFields := []zap.Field{
+			zap.Error(b.lostLogEntriesErr),
+			zap.Int("lost_log_entries", b.lostLogEntriesCount),
+		}
+
+		if err := b.sendLog(lostLogEntry, extraFields); err != nil {
+			b.lostLogEntriesErr = err
+			return
+		}
+		b.lostLogEntriesCount = 0
+	}
 
 	for _, logEntry := range b.buffer {
-		if err := b.sendLog(logEntry); err != nil {
-			lostLogs = true
-			lostLogEntries += 1
-			lostLogsErr = err
+		if err := b.sendLog(logEntry, nil); err != nil {
+			b.lostLogEntriesCount += 1
+			b.lostLogEntriesErr = err
 		}
 	}
 	b.buffer = b.buffer[:0]
-
-	// If previously logs were lost, send a log message to indicate that
-	if lostLogs {
-		b.logger.Error("Lost logs due to buffer overflow",
-			zap.Int("lost_log_entries", lostLogEntries),
-			zap.Error(lostLogsErr),
-		)
-	}
-
 }
 
 // run flushes the buffer at the configured interval until Stop is called.
@@ -111,8 +121,8 @@ func (b *BufferedGrpcWriteSyncer) run() {
 }
 
 // sendLog sends the log as a string to the server.
-func (b *BufferedGrpcWriteSyncer) sendLog(logEntry *zapcore.Entry) error {
-	buf, err := b.encoder.EncodeEntry(*logEntry, nil)
+func (b *BufferedGrpcWriteSyncer) sendLog(logEntry *zapcore.Entry, extraFields []zap.Field) error {
+	buf, err := b.encoder.EncodeEntry(*logEntry, extraFields)
 	if err != nil {
 		return err
 	}
@@ -221,7 +231,7 @@ func NewGRPClogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 		// Flush buffer so logs are sent in order to the server
 		grpcSyncer.flush()
 
-		if err := grpcSyncer.sendLog(&entry); err != nil {
+		if err := grpcSyncer.sendLog(&entry, nil); err != nil {
 			logger.Error("Error when sending logs to server", zap.Error(err))
 			grpcSyncer.bufferLogEntry(&entry)
 			return err
