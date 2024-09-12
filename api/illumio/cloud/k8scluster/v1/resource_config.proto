@@ -17,6 +17,7 @@ message KubernetesObjectMetadata {
   map<string, string> labels = 4;
   string name = 5;
   string namespace = 6;
+  // Add pod ip address if this object is a pod, optional field
   repeated KubernetesOwnerReference owner_references = 7;
   string resource_version = 8;
   string uid = 9;
