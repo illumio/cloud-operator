@@ -219,6 +219,9 @@ func NewGRPClogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 			grpcSyncer.bufferLogEntry(&entry)
 			return nil
 		}
+
+		grpcSyncer.flush()
+
 		if err := grpcSyncer.sendLog(&entry); err != nil {
 			logger.Error("Error when sending logs to server", zap.Error(err))
 			grpcSyncer.bufferLogEntry(&entry)
