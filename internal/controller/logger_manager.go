@@ -172,10 +172,10 @@ func (b *BufferedGrpcWriteSyncer) ListenToLogStream() {
 
 // bufferLog adds the log entry to in-memory buffer
 func (b *BufferedGrpcWriteSyncer) bufferLogEntry(entry *zapcore.Entry) {
-	b.buffer = append(b.buffer, entry)
 	if len(b.buffer) >= maxBufferSize {
-		b.flush()
+		b.lostLogEntriesCount += 1
 	}
+	b.buffer = append(b.buffer, entry)
 }
 
 // updateLogLevel sets the logger's log level based on the response from the server.
