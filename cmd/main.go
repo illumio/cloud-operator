@@ -70,12 +70,14 @@ func main() {
 	bindEnv(*logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
 	bindEnv(*logger, "onboarding_client_secret", "ONBOARDING_CLIENT_SECRET")
 	bindEnv(*logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
+	bindEnv(*logger, "cilium_namespace", "CILIUM_NAMESPACE")
 
 	// Set default values
 	viper.SetDefault("tls_skip_verify", false)
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("cluster_creds", "clustercreds")
+	viper.SetDefault("cilium_namespace", "kube-system")
 
 	envConfig := controller.EnvironmentConfig{
 		TlsSkipVerify:          viper.GetBool("tls_skip_verify"),
@@ -84,6 +86,7 @@ func main() {
 		OnboardingClientId:     viper.GetString("onboarding_client_id"),
 		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
 		ClusterCreds:           viper.GetString("cluster_creds"),
+		CiliumNamespace:        viper.GetString("cilium_namespace"),
 	}
 
 	logger.Infow("Starting application",
@@ -92,6 +95,7 @@ func main() {
 		"token_endpoint", envConfig.TokenEndpoint,
 		"onboarding_client_id", envConfig.OnboardingClientId,
 		"cluster_creds_secret", envConfig.ClusterCreds,
+		"cilium_namespace", envConfig.CiliumNamespace,
 	)
 
 	// Start the gops agent and listen on a specific address and port

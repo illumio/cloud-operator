@@ -15,56 +15,56 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// FlowManager holds a logger and Cilium client
-type FlowManager struct {
+// Collector collects flows from Cilium Hubble Relay running in this cluster.
+type Collector struct {
 	logger *zap.SugaredLogger
 	client observer.ObserverClient
 }
 
 // discoverHubbleRelayAddress uses a kubernetes clientset in order to discover the address of hubble-relay within kube-system.
-func discoverHubbleRelayAddress(ctx context.Context, logger *zap.SugaredLogger, clientset kubernetes.Interface) (string, error) {
-	service, err := clientset.CoreV1().Services("kube-system").Get(ctx, "hubble-relay", metav1.GetOptions{})
+func discoverHubbleRelayAddress(ctx context.Context, logger *zap.SugaredLogger, ciliumNamespace string, clientset kubernetes.Interface) (string, error) {
+	service, err := clientset.CoreV1().Services("kube-system").Get(ctx, ciliumNamespace, metav1.GetOptions{})
 	if err != nil {
-		logger.Errorw("Failed to get Hubble Relay service", "error", err)
-		return "", err
+		return "", errors.New("hubble Relay service not found; disabling Cilium flow collection")
 	}
 
 	if len(service.Spec.Ports) == 0 {
-		logger.Errorw("Hubble Relay service has no ports", "error", err)
-		return "", errors.New("hubble relay service has no ports")
+		return "", errors.New("hubble Relay service has no ports; disabling Cilium flow collection")
 	}
 
 	address := fmt.Sprintf("%s:%d", service.Spec.ClusterIP, service.Spec.Ports[0].Port)
 	return address, nil
 }
 
-// initFlowManager connects to hubble, sets up a observerClient and creates a new FlowManager object.
-func initFlowManager(ctx context.Context, logger *zap.SugaredLogger) (FlowManager, error) {
-	// Connect to Hubble
+// NewCollector connects to Hubble Relay, sets up an Observer client, and returns a new Collector using it.
+func NewCollector(ctx context.Context, logger *zap.SugaredLogger, ciliumNamespace string) (*Collector, error) {
 	config, err := NewClientSet()
 	if err != nil {
-		logger.Errorw("Could not create a new client set", "error", err)
-		return FlowManager{}, err
+		return nil, fmt.Errorf("failed to create new client set: %w", err)
 	}
-	hubbleAddress, err := discoverHubbleRelayAddress(ctx, logger, config)
+	hubbleAddress, err := discoverHubbleRelayAddress(ctx, logger, ciliumNamespace, config)
 	if err != nil {
-		logger.Errorw("Cannot find hubble-relay address", "error", err)
-		return FlowManager{}, err
+		return nil, err
 	}
 	// Adjust this address if needed
 	conn, err := grpc.NewClient(hubbleAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		logger.Errorw("Failed to connect to Hubble", "error", err)
-		return FlowManager{}, err
+		return nil, fmt.Errorf("failed to connect to Cilium Hubble Relay: %w", err)
 	}
 	hubbleClient := observer.NewObserverClient(conn)
-	return FlowManager{logger: logger, client: hubbleClient}, nil
+	return &Collector{logger: logger, client: hubbleClient}, nil
 }
 
-// listenToFlows and fetches network flows in batches indefinitely.
-func (fm *FlowManager) listenToFlows(ctx context.Context, sm streamManager) error {
+// collectFlows continuously collects flows and sends them to CloudSecure.
+func (fm *Collector) collectFlows(ctx context.Context, sm streamManager) error {
 	// Fetch network flows
 	for {
+		// Check if context is canceled
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		flows, err := fm.readFlows(ctx)
 		if err != nil {
 			fm.logger.Errorw("Error fetching network flows", "error", err)
@@ -204,7 +204,7 @@ func convertCiliumPolicies(policies []*flow.Policy) []*pb.Policy {
 }
 
 // readFlows uses the observerClient to make gRPC calls to hubble-relay and grab the last x amount of flows.
-func (fm *FlowManager) readFlows(ctx context.Context) ([]*observer.GetFlowsResponse, error) {
+func (fm *Collector) readFlows(ctx context.Context) ([]*observer.GetFlowsResponse, error) {
 	req := &observer.GetFlowsRequest{
 		Number: 10,
 	}

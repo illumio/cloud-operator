@@ -169,6 +169,7 @@ func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error 
 		}
 	}
 }
+
 // SendKubernetesNetworkFlows handles all gPRC requests related to streaming network flows
 func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
 	logger, err := zap.NewDevelopment()
@@ -186,8 +187,7 @@ func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_Send
 			return err
 		}
 		// Logging for demo purposes
-		logger.Info("Network flow received")
-		logger.Info("flow:", zap.String("flow:", req.String()))
+		logger.Info("Received flow", zap.Stringer("flow", req))
 		if err := stream.Send(&pb.SendKubernetesNetworkFlowsResponse{}); err != nil {
 			return err
 		}

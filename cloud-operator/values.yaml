@@ -36,3 +36,4 @@ env:
   tlsSkipVerify: false
   onboardingEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
   tokenEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
+  ciliumNamespace: "kube-system"

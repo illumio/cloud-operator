@@ -132,9 +132,9 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 		streamManager: sm,
 	}
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
-	ciliumFlowManager, err := initFlowManager(ctx, sm.logger)
+	ciliumFlowManager, err := NewCollector(ctx, sm.logger)
 	if err != nil {
-		sm.logger.Infow("Cannot intialize flow manager", "error", err)
+		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
 	}
 	err = resourceLister.sendClusterMetadata(ctx)
 	if err != nil {
@@ -229,7 +229,7 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 		go bufferedGrpcSyncer.ListenToLogStream()
 
 		ctx, cancel := context.WithCancel(ctx)
-		err = sm.BootUpStreamAndReconnect(ctx, cancel)
+		err = sm.BootUpStreamAndReconnect(ctx, cancel, envMap.ciliumNamespace)
 		if err != nil {
 			cancel()
 			logger.Errorw("Failed to bootup and stream", "error", err)
