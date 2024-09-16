@@ -95,8 +95,8 @@ message KubernetesResourceMutation {
   }
 }
 
-// Information identifying a Cilium flow.
-// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#section-readme
+// A flow received from Cilium Hubble Relay using the Observer service's GetFlows RPC.
+// https://github.com/cilium/cilium/blob/main/api/v1/observer/observer.proto
 message CiliumFlow {
   google.protobuf.Timestamp time = 1;
   string node_name = 2;
@@ -107,15 +107,14 @@ message CiliumFlow {
   CiliumEventType event_type = 8;
   optional Endpoint source_endpoint = 9;
   optional Endpoint destination_endpoint = 10;
-  NetworkInterface interface = 11;
-  int32 proxy_port = 12;
-  repeated Policy egress_allowed_by = 13;
+  int32 proxy_port = 11;
+  repeated Policy egress_allowed_by = 12;
   // The CiliumNetworkPolicies allowing the ingress of the flow.
-  repeated Policy ingress_allowed_by = 14;
+  repeated Policy ingress_allowed_by = 13;
   // The CiliumNetworkPolicies denying the egress of the flow.
-  repeated Policy egress_denied_by = 15;
+  repeated Policy egress_denied_by = 14;
   // The CiliumNetworkPolicies denying the ingress of the flow.
-  repeated Policy ingress_denied_by = 16;
+  repeated Policy ingress_denied_by = 15;
 }
 
 // Information identifying the direction of traffic in Cilium.
@@ -234,20 +233,12 @@ message CiliumEventType {
 // Information identifying Endpoint object in Cilium
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-endpoint
 message Endpoint {
-  uint32 id = 1;
-  uint32 identity = 2;
+  uint32 uid = 1;
   string cluster_name = 7;
   string namespace = 3;
   repeated string labels = 4;
   string pod_name = 5;
   repeated Workload workloads = 6;
-}
-
-// Information identifying NetworkInterface object in Cilium
-// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-networkinterface
-message NetworkInterface {
-  uint32 index = 1;
-  string name = 2;
 }
 
 // Information about Workload for use in Endpoint message.
@@ -266,12 +257,14 @@ message Policy {
   uint64 revision = 4;
 }
 
-// Message containing required metadata for flow logs
+// Flow exported by the CNI plugin in the cluster.
 message SendKubernetesNetworkFlowsRequest {
-  CiliumFlow flow = 1;
+  oneof request {
+    CiliumFlow flow = 1;
+  }
 }
 
-// Message sent to the operator in a KubernetesNetworkFlows response stream.
+// Message sent to the operator in a SendKubernetesNetworkFlows response stream.
 message SendKubernetesNetworkFlowsResponse {}
 
 // Enumeration to define the different levels of logging.
@@ -320,7 +313,7 @@ message SendLogsResponse {
 service KubernetesInfoService {
   // Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
   rpc SendKubernetesResources(stream SendKubernetesResourcesRequest) returns (stream SendKubernetesResourcesResponse);
-  // Continuously sends Network Flow traffic recorded via CNI in the cluster into CloudSecure.
+ // Continuously sends network flows exported by the CNI plugin in the cluster to CloudSecure.
   rpc SendKubernetesNetworkFlows(stream SendKubernetesNetworkFlowsRequest) returns (stream SendKubernetesNetworkFlowsResponse);
   // Continuously syncs logs from operator and cluster.
   rpc SendLogs(stream SendLogsRequest) returns (stream SendLogsResponse);
