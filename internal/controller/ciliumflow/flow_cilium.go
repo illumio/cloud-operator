@@ -21,6 +21,10 @@ type Collector struct {
 	client observer.ObserverClient
 }
 
+var (
+	flowCount uint64 = 20
+)
+
 // discoverHubbleRelayAddress uses a kubernetes clientset in order to discover the address of hubble-relay within kube-system.
 func discoverHubbleRelayAddress(ctx context.Context, logger *zap.SugaredLogger, ciliumNamespace string, clientset kubernetes.Interface) (string, error) {
 	service, err := clientset.CoreV1().Services("kube-system").Get(ctx, ciliumNamespace, metav1.GetOptions{})
@@ -206,19 +210,20 @@ func convertCiliumPolicies(policies []*flow.Policy) []*pb.Policy {
 // readFlows uses the observerClient to make gRPC calls to hubble-relay and grab the last x amount of flows.
 func (fm *Collector) readFlows(ctx context.Context) ([]*observer.GetFlowsResponse, error) {
 	req := &observer.GetFlowsRequest{
-		Number: 10,
+		Number: flowCount,
 	}
 	observerClient := fm.client
 	stream, err := observerClient.GetFlows(ctx, req)
 	if err != nil {
 		fm.logger.Errorw("Error getting network flows", "error", err)
-		return []*observer.GetFlowsResponse{}, err
+		return nil, err
 	}
 
 	var flows []*observer.GetFlowsResponse
 	for {
 		flow, err := stream.Recv()
 		if err != nil {
+			fm.logger.Warnw("Failed to get flow log from stream", "error", err)
 			break
 		}
 		flows = append(flows, flow)

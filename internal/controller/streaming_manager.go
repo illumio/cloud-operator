@@ -103,7 +103,7 @@ func NewStreams(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.Clien
 // also creates all of the objects that help organize and pass info to the goroutines that are listing and watching
 // different resource types. This is also handling the asyc nature of listing resources and properly sending our commit
 // message on intial boot when we have the state of the cluster.
-func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel context.CancelFunc) error {
+func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel context.CancelFunc, ciliumNamespace string) error {
 	defer func() {
 		dd.processingResources = false
 	}()
@@ -158,11 +158,11 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 	snapshotCompleted.Done()
 	if ciliumFlowManager.client != nil {
 		go func() {
-			err = ciliumFlowManager.listenToFlows(ctx, *sm)
-			if err != nil {
-				sm.logger.Errorw("Failed to listen to flows", "error", err)
-				cancel()
-				return
+			for {
+				err = ciliumFlowManager.collectFlows(ctx, *sm)
+				if err != nil {
+					sm.logger.Warnw("Failed to listen to flows", "error", err)
+				}
 			}
 		}()
 	}
