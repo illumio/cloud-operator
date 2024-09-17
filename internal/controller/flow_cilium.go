@@ -22,12 +22,13 @@ type Collector struct {
 }
 
 var (
-	flowCount uint64 = 20
+	flowCount         uint64 = 20
+	hubble_relay_name        = "hubble-relay"
 )
 
 // discoverHubbleRelayAddress uses a kubernetes clientset in order to discover the address of hubble-relay within kube-system.
-func discoverHubbleRelayAddress(ctx context.Context, logger *zap.SugaredLogger, ciliumNamespace string, clientset kubernetes.Interface) (string, error) {
-	service, err := clientset.CoreV1().Services("kube-system").Get(ctx, ciliumNamespace, metav1.GetOptions{})
+func discoverHubbleRelayAddress(ctx context.Context, ciliumNamespace string, clientset kubernetes.Interface) (string, error) {
+	service, err := clientset.CoreV1().Services(ciliumNamespace).Get(ctx, hubble_relay_name, metav1.GetOptions{})
 	if err != nil {
 		return "", errors.New("hubble Relay service not found; disabling Cilium flow collection")
 	}
@@ -41,12 +42,12 @@ func discoverHubbleRelayAddress(ctx context.Context, logger *zap.SugaredLogger, 
 }
 
 // NewCollector connects to Hubble Relay, sets up an Observer client, and returns a new Collector using it.
-func NewCollector(ctx context.Context, logger *zap.SugaredLogger, ciliumNamespace string) (*Collector, error) {
+func newCollector(ctx context.Context, logger *zap.SugaredLogger, ciliumNamespace string) (*Collector, error) {
 	config, err := NewClientSet()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new client set: %w", err)
 	}
-	hubbleAddress, err := discoverHubbleRelayAddress(ctx, logger, ciliumNamespace, config)
+	hubbleAddress, err := discoverHubbleRelayAddress(ctx, ciliumNamespace, config)
 	if err != nil {
 		return nil, err
 	}

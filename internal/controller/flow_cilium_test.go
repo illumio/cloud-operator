@@ -2,10 +2,6 @@ package controller
 
 import (
 	"context"
-	"os"
-
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 
 	"github.com/cilium/cilium/api/v1/flow"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
@@ -17,17 +13,6 @@ import (
 
 func (suite *ControllerTestSuite) TestDiscoverHubbleRelayAddress() {
 	ctx := context.Background()
-	encoderConfig := zap.NewDevelopmentEncoderConfig()
-	// Create a JSON encoder
-	encoder := zapcore.NewJSONEncoder(encoderConfig)
-	// Create syncers for console output
-	consoleSyncer := zapcore.AddSync(os.Stdout)
-	// Create the core with the atomic level
-	core := zapcore.NewTee(
-		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
-	)
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
-	logger = logger.With(zap.String("name", "test"))
 
 	tests := map[string]struct {
 		service        *v1.Service
@@ -81,7 +66,7 @@ func (suite *ControllerTestSuite) TestDiscoverHubbleRelayAddress() {
 				assert.NoError(suite.T(), err)
 			}
 
-			addr, err := discoverHubbleRelayAddress(ctx, logger, clientset)
+			addr, err := discoverHubbleRelayAddress(ctx, "kube-system", clientset)
 			assert.Equal(suite.T(), tt.expectedAddr, addr)
 
 			if tt.expectedErrMsg != "" {

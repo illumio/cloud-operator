@@ -35,18 +35,20 @@ type streamManager struct {
 }
 
 type EnvironmentConfig struct {
-	// Whether to skip TLS certificate verification when starting a stream.
-	TlsSkipVerify bool
-	// URL of the onboarding endpoint.
-	OnboardingEndpoint string
-	// URL of the token endpoint.
-	TokenEndpoint string
+	// Namspace of Cilium.
+	CiliumNamespace string
+	// K8s cluster secret name.
+	ClusterCreds string
 	// Client ID for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
 	OnboardingClientId string
 	// Client secret for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
 	OnboardingClientSecret string
-	// K8s cluster secret name.
-	ClusterCreds string
+	// URL of the onboarding endpoint.
+	OnboardingEndpoint string
+	// URL of the token endpoint.
+	TokenEndpoint string
+	// Whether to skip TLS certificate verification when starting a stream.
+	TlsSkipVerify bool
 }
 
 var resourceTypes = [2]string{"pods", "nodes"}
@@ -132,7 +134,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 		streamManager: sm,
 	}
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
-	ciliumFlowManager, err := NewCollector(ctx, sm.logger)
+	ciliumFlowManager, err := newCollector(ctx, sm.logger, ciliumNamespace)
 	if err != nil {
 		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
 	}
@@ -229,7 +231,7 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 		go bufferedGrpcSyncer.ListenToLogStream()
 
 		ctx, cancel := context.WithCancel(ctx)
-		err = sm.BootUpStreamAndReconnect(ctx, cancel, envMap.ciliumNamespace)
+		err = sm.BootUpStreamAndReconnect(ctx, cancel, envMap.CiliumNamespace)
 		if err != nil {
 			cancel()
 			logger.Errorw("Failed to bootup and stream", "error", err)

@@ -64,38 +64,38 @@ func main() {
 	viper.AutomaticEnv()
 
 	// Bind specific environment variables to keys
-	bindEnv(*logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
-	bindEnv(*logger, "onboarding_endpoint", "ONBOARDING_ENDPOINT")
-	bindEnv(*logger, "token_endpoint", "TOKEN_ENDPOINT")
-	bindEnv(*logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
-	bindEnv(*logger, "onboarding_client_secret", "ONBOARDING_CLIENT_SECRET")
 	bindEnv(*logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
 	bindEnv(*logger, "cilium_namespace", "CILIUM_NAMESPACE")
+	bindEnv(*logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
+	bindEnv(*logger, "onboarding_client_secret", "ONBOARDING_CLIENT_SECRET")
+	bindEnv(*logger, "onboarding_endpoint", "ONBOARDING_ENDPOINT")
+	bindEnv(*logger, "token_endpoint", "TOKEN_ENDPOINT")
+	bindEnv(*logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
 
 	// Set default values
-	viper.SetDefault("tls_skip_verify", false)
-	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
-	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("cluster_creds", "clustercreds")
 	viper.SetDefault("cilium_namespace", "kube-system")
+	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
+	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
+	viper.SetDefault("tls_skip_verify", false)
 
 	envConfig := controller.EnvironmentConfig{
-		TlsSkipVerify:          viper.GetBool("tls_skip_verify"),
-		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
-		TokenEndpoint:          viper.GetString("token_endpoint"),
-		OnboardingClientId:     viper.GetString("onboarding_client_id"),
-		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
 		ClusterCreds:           viper.GetString("cluster_creds"),
 		CiliumNamespace:        viper.GetString("cilium_namespace"),
+		OnboardingClientId:     viper.GetString("onboarding_client_id"),
+		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
+		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
+		TokenEndpoint:          viper.GetString("token_endpoint"),
+		TlsSkipVerify:          viper.GetBool("tls_skip_verify"),
 	}
 
 	logger.Infow("Starting application",
-		"tls_skip_verify", envConfig.TlsSkipVerify,
-		"onboarding_endpoint", envConfig.OnboardingEndpoint,
-		"token_endpoint", envConfig.TokenEndpoint,
-		"onboarding_client_id", envConfig.OnboardingClientId,
 		"cluster_creds_secret", envConfig.ClusterCreds,
 		"cilium_namespace", envConfig.CiliumNamespace,
+		"onboarding_client_id", envConfig.OnboardingClientId,
+		"onboarding_endpoint", envConfig.OnboardingEndpoint,
+		"token_endpoint", envConfig.TokenEndpoint,
+		"tls_skip_verify", envConfig.TlsSkipVerify,
 	)
 
 	// Start the gops agent and listen on a specific address and port

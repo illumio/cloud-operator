@@ -20,7 +20,7 @@ type ResourceManager struct {
 	logger *zap.SugaredLogger
 	// DynamicClient offers generic Kubernetes API operations.
 	dynamicClient dynamic.Interface
-	// StreamManager abstracts logic related to starting, using, and managing streams.
+	// streamManager abstracts logic related to starting, using, and managing streams.
 	streamManager *streamManager
 }
 
