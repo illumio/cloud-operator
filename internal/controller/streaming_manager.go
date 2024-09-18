@@ -150,7 +150,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 // ExponentialStreamConnect will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
 func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
 	var backoff = 1 * time.Second
-	sm := SecretManager{Logger: logger}
+	secrets := Secrets{Logger: logger}
 	max := big.NewInt(3)
 	for {
 		// Generate a random number
@@ -164,12 +164,12 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 		logger.Infow("Failed to establish connection; will retry", "delay", sleep)
 		time.Sleep(sleep)
 		backoff = backoff * 2 // Exponential increase
-		clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+		clientID, clientSecret, err := secrets.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 		if err != nil {
 			logger.Errorw("Could not read K8s credentials", "error", err)
 		}
 		if clientID == "" && clientSecret == "" {
-			OnboardingCredentials, err := sm.GetOnboardingCredentials(ctx, envMap.OnboardingClientId, envMap.OnboardingClientSecret)
+			OnboardingCredentials, err := secrets.GetOnboardingCredentials(ctx, envMap.OnboardingClientId, envMap.OnboardingClientSecret)
 			if err != nil {
 				logger.Errorw("Failed to get onboarding credentials", "error", err)
 				continue
@@ -180,12 +180,12 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 				logger.Errorw("Failed to register cluster", "error", err)
 				continue
 			}
-			err = sm.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
+			err = secrets.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
 			time.Sleep(1 * time.Second)
 			if err != nil {
 				am.Logger.Errorw("Failed to write secret to Kubernetes", "error", err)
 			}
-			clientID, clientSecret, err = sm.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+			clientID, clientSecret, err = secrets.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 			if err != nil {
 				logger.Errorw("Could not read K8s credentials", "error", err)
 				continue
