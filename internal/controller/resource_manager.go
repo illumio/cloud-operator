@@ -14,7 +14,7 @@ import (
 	"k8s.io/client-go/dynamic"
 )
 
-// Resources encapsulates components for listing and managing Kubernetes resources.
+// ResourceManager encapsulates components for listing and managing Kubernetes resources.
 type ResourceManager struct {
 	// Logger provides strucuted logging interface.
 	logger *zap.SugaredLogger
