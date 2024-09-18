@@ -11,33 +11,39 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].env[0].name
-          value: "CLUSTER_CREDS_SECRET"
+          value: "CILIUM_NAMESPACE"
       - equal:
           path: spec.template.spec.containers[0].env[0].value
-          value: "clustercreds"
+          value: "kube-system"
       - equal:
           path: spec.template.spec.containers[0].env[1].name
-          value: "ONBOARDING_CLIENT_ID"
+          value: "CLUSTER_CREDS_SECRET"
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: "clustercreds"
       - equal:
           path: spec.template.spec.containers[0].env[2].name
-          value: "ONBOARDING_CLIENT_SECRET"
+          value: "ONBOARDING_CLIENT_ID"
       - equal:
           path: spec.template.spec.containers[0].env[3].name
-          value: "ONBOARDING_ENDPOINT"
-      - equal:
-          path: spec.template.spec.containers[0].env[3].value
-          value: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
+          value: "ONBOARDING_CLIENT_SECRET"
       - equal:
           path: spec.template.spec.containers[0].env[4].name
-          value: "TOKEN_ENDPOINT"
+          value: "ONBOARDING_ENDPOINT"
       - equal:
           path: spec.template.spec.containers[0].env[4].value
-          value: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate" 
+          value: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
       - equal:
           path: spec.template.spec.containers[0].env[5].name
-          value: "TLS_SKIP_VERIFY"
+          value: "TOKEN_ENDPOINT"
       - equal:
           path: spec.template.spec.containers[0].env[5].value
+          value: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate" 
+      - equal:
+          path: spec.template.spec.containers[0].env[6].name
+          value: "TLS_SKIP_VERIFY"
+      - equal:
+          path: spec.template.spec.containers[0].env[6].value
           value: "true"
 
   # Test for replicaCount value

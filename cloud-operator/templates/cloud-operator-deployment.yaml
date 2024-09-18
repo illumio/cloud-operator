@@ -53,6 +53,8 @@ spec:
             - containerPort: 8080
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
+            - name: CILIUM_NAMESPACE
+              value: "{{ .Values.env.ciliumNamespace }}"
             - name: CLUSTER_CREDS_SECRET
               value: "clustercreds"
             - name: ONBOARDING_CLIENT_ID
