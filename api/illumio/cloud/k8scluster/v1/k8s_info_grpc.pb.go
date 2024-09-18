@@ -4,7 +4,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             (unknown)
-// source: illumio/cloud/k8scluster/v1/resource_config.proto
+// source: illumio/cloud/k8scluster/v1/k8s_info.proto
 
 package k8sclusterv1
 
@@ -32,7 +32,7 @@ const (
 type KubernetesInfoServiceClient interface {
 	// Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
 	SendKubernetesResources(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendKubernetesResourcesClient, error)
-	// Continuously sends Network Flow traffic recorded via CNI in the cluster into CloudSecure.
+	// Continuously sends network flows exported by the CNI plugin in the cluster to CloudSecure.
 	SendKubernetesNetworkFlows(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendKubernetesNetworkFlowsClient, error)
 	// Continuously syncs logs from operator and cluster.
 	SendLogs(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendLogsClient, error)
@@ -145,7 +145,7 @@ func (x *kubernetesInfoServiceSendLogsClient) Recv() (*SendLogsResponse, error) 
 type KubernetesInfoServiceServer interface {
 	// Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
 	SendKubernetesResources(KubernetesInfoService_SendKubernetesResourcesServer) error
-	// Continuously sends Network Flow traffic recorded via CNI in the cluster into CloudSecure.
+	// Continuously sends network flows exported by the CNI plugin in the cluster to CloudSecure.
 	SendKubernetesNetworkFlows(KubernetesInfoService_SendKubernetesNetworkFlowsServer) error
 	// Continuously syncs logs from operator and cluster.
 	SendLogs(KubernetesInfoService_SendLogsServer) error
@@ -283,5 +283,5 @@ var KubernetesInfoService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "illumio/cloud/k8scluster/v1/resource_config.proto",
+	Metadata: "illumio/cloud/k8scluster/v1/k8s_info.proto",
 }

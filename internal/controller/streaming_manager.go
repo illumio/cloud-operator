@@ -133,11 +133,6 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 		dynamicClient: dynamicClient,
 		streamManager: sm,
 	}
-	// TODO: Add logic for a discoveribility function to decide which CNI to use.
-	ciliumFlowManager, err := newCollector(ctx, sm.logger, ciliumNamespace)
-	if err != nil {
-		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
-	}
 	err = resourceLister.sendClusterMetadata(ctx)
 	if err != nil {
 		sm.logger.Errorw("Failed to send cluster metadata", "error", err)
@@ -158,10 +153,15 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 		return err
 	}
 	snapshotCompleted.Done()
+	// TODO: Add logic for a discoveribility function to decide which CNI to use.
+	ciliumFlowManager, err := newCollector(ctx, sm.logger, ciliumNamespace)
+	if err != nil {
+		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
+	}
 	if ciliumFlowManager.client != nil {
 		go func() {
 			for {
-				err = ciliumFlowManager.collectFlows(ctx, *sm)
+				err = ciliumFlowManager.readFlows(ctx, *sm)
 				if err != nil {
 					sm.logger.Warnw("Failed to listen to flows", "error", err)
 				}

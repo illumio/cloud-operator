@@ -7,6 +7,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
@@ -40,7 +41,7 @@ func (suite *ControllerTestSuite) TestDiscoverHubbleRelayAddress() {
 		"service not found": {
 			service:        nil,
 			expectedAddr:   "",
-			expectedErrMsg: "services \"hubble-relay\" not found",
+			expectedErrMsg: "hubble Relay service not found; disabling Cilium flow collection",
 		},
 		"no ports in service": {
 			service: &v1.Service{
@@ -54,7 +55,7 @@ func (suite *ControllerTestSuite) TestDiscoverHubbleRelayAddress() {
 				},
 			},
 			expectedAddr:   "",
-			expectedErrMsg: "hubble relay service has no ports",
+			expectedErrMsg: "hubble Relay service has no ports; disabling Cilium flow collection",
 		},
 	}
 

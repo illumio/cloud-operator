@@ -6,10 +6,6 @@ package illumio.cloud.k8scluster.v1;
 
 import "google/protobuf/timestamp.proto";
 
-import "illumio/cloud/k8scluster/v1/flow/flow.proto";
-import "illumio/cloud/k8scluster/v1/observer/observer.proto";
-
-
 option go_package = "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1";
 
 // Metadata associated with a Kubernetes resource.
@@ -102,9 +98,13 @@ message KubernetesResourceMutation {
 // A flow received from Cilium Hubble Relay using the Observer service's GetFlows RPC.
 // https://github.com/cilium/cilium/blob/main/api/v1/observer/observer.proto
 message CiliumFlow {
+  // Time when flow occured.
   google.protobuf.Timestamp time = 1;
+  // node_name is the name of the node from which this Flow was captured.
   string node_name = 2;
+  // traffic_direction distinguishes direction of the connection, e.g. ingress or egress.
   TrafficDirection traffic_direction = 3;
+  // Verdict of the flow, indicating the outcome of the network packet processing.
   Verdict verdict = 4;
   IP layer3 = 5;
   Layer4 layer4 = 6;
@@ -317,7 +317,7 @@ message SendLogsResponse {
 service KubernetesInfoService {
   // Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
   rpc SendKubernetesResources(stream SendKubernetesResourcesRequest) returns (stream SendKubernetesResourcesResponse);
- // Continuously sends network flows exported by the CNI plugin in the cluster to CloudSecure.
+  // Continuously sends network flows exported by the CNI plugin in the cluster to CloudSecure.
   rpc SendKubernetesNetworkFlows(stream SendKubernetesNetworkFlowsRequest) returns (stream SendKubernetesNetworkFlowsResponse);
   // Continuously syncs logs from operator and cluster.
   rpc SendLogs(stream SendLogsRequest) returns (stream SendLogsResponse);

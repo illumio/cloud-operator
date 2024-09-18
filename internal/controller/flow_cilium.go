@@ -22,7 +22,7 @@ type Collector struct {
 }
 
 var (
-	flowCount         uint64 = 20
+	flowCount         uint64 = 100
 	hubble_relay_name        = "hubble-relay"
 )
 
@@ -58,78 +58,6 @@ func newCollector(ctx context.Context, logger *zap.SugaredLogger, ciliumNamespac
 	}
 	hubbleClient := observer.NewObserverClient(conn)
 	return &Collector{logger: logger, client: hubbleClient}, nil
-}
-
-// collectFlows continuously collects flows and sends them to CloudSecure.
-func (fm *Collector) collectFlows(ctx context.Context, sm streamManager) error {
-	// Fetch network flows
-	for {
-		// Check if context is canceled
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		flows, err := fm.readFlows(ctx)
-		if err != nil {
-			fm.logger.Errorw("Error fetching network flows", "error", err)
-			return err
-		}
-
-		// Process and store flows
-		for _, flow := range flows {
-			flowObj := flow.GetFlow()
-			ciliumFlow := pb.CiliumFlow{
-				Time:             flowObj.GetTime(),
-				NodeName:         flowObj.GetNodeName(),
-				Verdict:          pb.Verdict(flowObj.GetVerdict()),
-				TrafficDirection: pb.TrafficDirection(flowObj.GetTrafficDirection()),
-				Layer3: &pb.IP{
-					Source:      flowObj.GetIP().GetSource(),
-					Destination: flowObj.GetIP().GetDestination(),
-					IpVersion:   pb.IPVersion(flowObj.GetIP().GetIpVersion()),
-				},
-				Layer4: convertLayer4(flowObj.GetL4()),
-				EventType: &pb.CiliumEventType{
-					Type:    flowObj.GetEventType().GetType(),
-					SubType: flowObj.GetEventType().GetSubType(),
-				},
-				SourceEndpoint: &pb.Endpoint{
-					Id:          flowObj.GetSource().GetID(),
-					Identity:    flowObj.GetSource().GetIdentity(),
-					ClusterName: flowObj.GetSource().GetClusterName(),
-					Namespace:   flowObj.GetSource().GetNamespace(),
-					Labels:      flowObj.GetSource().GetLabels(),
-					PodName:     flowObj.GetSource().GetPodName(),
-					Workloads:   convertCiliumWorkflows(flowObj.GetSource().GetWorkloads()),
-				},
-				DestinationEndpoint: &pb.Endpoint{
-					Id:          flowObj.GetDestination().GetID(),
-					Identity:    flowObj.GetDestination().GetIdentity(),
-					ClusterName: flowObj.GetDestination().GetClusterName(),
-					Namespace:   flowObj.GetDestination().GetNamespace(),
-					Labels:      flowObj.GetDestination().GetLabels(),
-					PodName:     flowObj.GetDestination().GetPodName(),
-					Workloads:   convertCiliumWorkflows(flowObj.GetDestination().GetWorkloads()),
-				},
-				Interface: &pb.NetworkInterface{
-					Index: flowObj.GetInterface().GetIndex(),
-					Name:  flowObj.GetInterface().GetName(),
-				},
-				ProxyPort:        int32(flowObj.GetProxyPort()),
-				EgressAllowedBy:  convertCiliumPolicies(flowObj.GetEgressAllowedBy()),
-				IngressAllowedBy: convertCiliumPolicies(flowObj.GetIngressAllowedBy()),
-				EgressDeniedBy:   convertCiliumPolicies(flowObj.GetEgressDeniedBy()),
-				IngressDeniedBy:  convertCiliumPolicies(flowObj.GetIngressDeniedBy()),
-			}
-
-			err = sendNetworkFlowsData(&sm, &ciliumFlow)
-			if err != nil {
-				fm.logger.Errorw("Cannot send object metadata", "error", err)
-				return err
-			}
-		}
-	}
 }
 
 // convertLayer4 function converts a slice of flow.Layer4 objects to a slice of pb.Layer4 objects.
@@ -208,27 +136,77 @@ func convertCiliumPolicies(policies []*flow.Policy) []*pb.Policy {
 	return protoPolicies
 }
 
-// readFlows uses the observerClient to make gRPC calls to hubble-relay and grab the last x amount of flows.
-func (fm *Collector) readFlows(ctx context.Context) ([]*observer.GetFlowsResponse, error) {
+// readFlows loops continously while using the observerClient to make gRPC calls to hubble-relay and grabs the last x amount of flows.
+// It sends converts those flows to ciliumFlows then sends them over the open stream.
+func (fm *Collector) readFlows(ctx context.Context, sm streamManager) error {
 	req := &observer.GetFlowsRequest{
 		Number: flowCount,
+		Follow: true,
 	}
 	observerClient := fm.client
 	stream, err := observerClient.GetFlows(ctx, req)
 	if err != nil {
 		fm.logger.Errorw("Error getting network flows", "error", err)
-		return nil, err
+		return err
 	}
-
-	var flows []*observer.GetFlowsResponse
 	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		flow, err := stream.Recv()
 		if err != nil {
 			fm.logger.Warnw("Failed to get flow log from stream", "error", err)
-			break
+			return err
 		}
-		flows = append(flows, flow)
+		ciliumFlow := createCiliumFlow(flow)
+		err = sendNetworkFlowsData(&sm, ciliumFlow)
+		if err != nil {
+			fm.logger.Errorw("Cannot send object metadata", "error", err)
+			return err
+		}
 	}
+}
 
-	return flows, nil
+func createCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
+	flowObj := flow.GetFlow()
+	ciliumFlow := pb.CiliumFlow{
+		Time:             flowObj.GetTime(),
+		NodeName:         flowObj.GetNodeName(),
+		Verdict:          pb.Verdict(flowObj.GetVerdict()),
+		TrafficDirection: pb.TrafficDirection(flowObj.GetTrafficDirection()),
+		Layer3: &pb.IP{
+			Source:      flowObj.GetIP().GetSource(),
+			Destination: flowObj.GetIP().GetDestination(),
+			IpVersion:   pb.IPVersion(flowObj.GetIP().GetIpVersion()),
+		},
+		Layer4: convertLayer4(flowObj.GetL4()),
+		EventType: &pb.CiliumEventType{
+			Type:    flowObj.GetEventType().GetType(),
+			SubType: flowObj.GetEventType().GetSubType(),
+		},
+		SourceEndpoint: &pb.Endpoint{
+			Uid:         flowObj.GetSource().GetID(),
+			ClusterName: flowObj.GetSource().GetClusterName(),
+			Namespace:   flowObj.GetSource().GetNamespace(),
+			Labels:      flowObj.GetSource().GetLabels(),
+			PodName:     flowObj.GetSource().GetPodName(),
+			Workloads:   convertCiliumWorkflows(flowObj.GetSource().GetWorkloads()),
+		},
+		DestinationEndpoint: &pb.Endpoint{
+			Uid:         flowObj.GetDestination().GetID(),
+			ClusterName: flowObj.GetDestination().GetClusterName(),
+			Namespace:   flowObj.GetDestination().GetNamespace(),
+			Labels:      flowObj.GetDestination().GetLabels(),
+			PodName:     flowObj.GetDestination().GetPodName(),
+			Workloads:   convertCiliumWorkflows(flowObj.GetDestination().GetWorkloads()),
+		},
+		ProxyPort:        int32(flowObj.GetProxyPort()),
+		EgressAllowedBy:  convertCiliumPolicies(flowObj.GetEgressAllowedBy()),
+		IngressAllowedBy: convertCiliumPolicies(flowObj.GetIngressAllowedBy()),
+		EgressDeniedBy:   convertCiliumPolicies(flowObj.GetEgressDeniedBy()),
+		IngressDeniedBy:  convertCiliumPolicies(flowObj.GetIngressDeniedBy()),
+	}
+	return &ciliumFlow
 }
