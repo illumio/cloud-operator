@@ -87,15 +87,12 @@ func (suite *ControllerTestSuite) TestOnboard() {
 				tt.requestURL = server.URL
 			}
 
-			am := &CredentialsManager{
-				Credentials: Credentials{
-					ClientID:     tt.clientID,
-					ClientSecret: tt.clientSecret,
-				},
-				Logger: logger,
+			credentials := Credentials{
+				ClientID:     tt.clientID,
+				ClientSecret: tt.clientSecret,
 			}
 
-			response, err := am.Onboard(ctx, true, tt.requestURL)
+			response, err := Onboard(ctx, true, tt.requestURL, credentials, logger)
 			if tt.expectedError {
 				assert.Error(suite.T(), err)
 				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)

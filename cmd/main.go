@@ -29,6 +29,7 @@ import (
 	"go.uber.org/zap"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	config "github.com/illumio/cloud-operator/internal/config"
 	controller "github.com/illumio/cloud-operator/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
@@ -77,7 +78,7 @@ func main() {
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("cluster_creds", "clustercreds")
 
-	envConfig := controller.EnvironmentConfig{
+	envConfig := config.EnvironmentConfig{
 		TlsSkipVerify:          viper.GetBool("tls_skip_verify"),
 		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
 		TokenEndpoint:          viper.GetString("token_endpoint"),

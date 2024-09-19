@@ -42,8 +42,8 @@ func (suite *ControllerTestSuite) TestGetOnboardingCredentials() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			secrets := &Secrets{Logger: logger}
-			creds, err := secrets.GetOnboardingCredentials(ctx, tt.clientID, tt.clientSecret)
+			authn := &Authenticator{Logger: logger}
+			creds, err := authn.GetOnboardingCredentials(ctx, tt.clientID, tt.clientSecret)
 			if tt.expectedError {
 				assert.Error(suite.T(), err)
 				assert.Equal(suite.T(), Credentials{}, creds)
@@ -123,7 +123,7 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			secrets := &Secrets{Logger: logger}
+			authn := &Authenticator{Logger: logger}
 
 			if tt.secretData != nil {
 				secret := &v1.Secret{
@@ -138,7 +138,7 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 				}
 			}
 
-			clientID, clientSecret, err := secrets.ReadCredentialsK8sSecrets(ctx, tt.secretName)
+			clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, tt.secretName)
 			if tt.expectedError {
 				assert.Error(suite.T(), err)
 				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
@@ -195,7 +195,7 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			secrets := &Secrets{Logger: logger}
+			authn := &Authenticator{Logger: logger}
 
 			if tt.namespaceExists {
 				namespaceObj := &v1.Namespace{
@@ -224,7 +224,7 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 				}
 			}
 
-			err := secrets.WriteK8sSecret(ctx, tt.onboardResponse, tt.secretName)
+			err := authn.WriteK8sSecret(ctx, tt.onboardResponse, tt.secretName)
 			if tt.expectedError {
 				assert.Error(suite.T(), err)
 				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
