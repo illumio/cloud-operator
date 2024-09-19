@@ -111,6 +111,7 @@ func (b *BufferedGrpcWriteSyncer) run() {
 	for {
 		select {
 		case <-ticker.C:
+			b.logger.Info("here")
 			b.mutex.Lock()
 			b.flush()
 			b.mutex.Unlock()
@@ -154,12 +155,14 @@ func (b *BufferedGrpcWriteSyncer) ListenToLogStream() {
 		if err == io.EOF {
 			// The client has closed the stream
 			b.logger.Info("Server has closed the SendLogs stream")
+			b.conn = nil
 			return
 		}
 		if err != nil {
 			b.logger.Errorw("Stream terminated",
 				"error", err,
 			)
+			b.conn = nil
 			return
 		}
 		switch res.Response.(type) {

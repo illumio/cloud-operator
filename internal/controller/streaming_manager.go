@@ -153,6 +153,7 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 	sm := SecretManager{Logger: logger}
 	max := big.NewInt(3)
 	for {
+		logger.Info("Top of Reconnect")
 		// Generate a random number
 		randomInt, err := rand.Int(rand.Reader, max)
 		if err != nil {
