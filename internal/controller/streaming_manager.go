@@ -164,6 +164,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 				err = ciliumFlowManager.readFlows(ctx, *sm)
 				if err != nil {
 					sm.logger.Warnw("Failed to listen to flows", "error", err)
+					backoff := 1 * time.Second
 					// Attempt to rediscover new hubble address and reconnect
 					for {
 						ciliumFlowManager, err = newCollector(ctx, sm.logger, ciliumNamespace)
@@ -172,6 +173,8 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 						} else {
 							break
 						}
+						// TODO: Add exponetial backoff so that this isnt spammed as hubble relay is restarted/deployed
+						// TODO: redo looping logic to be cleaner
 					}
 				}
 			}
