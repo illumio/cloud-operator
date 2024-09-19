@@ -164,6 +164,15 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 				err = ciliumFlowManager.readFlows(ctx, *sm)
 				if err != nil {
 					sm.logger.Warnw("Failed to listen to flows", "error", err)
+					// Attempt to rediscover new hubble address and reconnect
+					for {
+						ciliumFlowManager, err = newCollector(ctx, sm.logger, ciliumNamespace)
+						if err != nil {
+							sm.logger.Error("Failed to recreate new Collector", "error", err)
+						} else {
+							break
+						}
+					}
 				}
 			}
 		}()
