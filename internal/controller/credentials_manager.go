@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -221,4 +222,17 @@ func getFirstAudience(logger *zap.SugaredLogger, claims map[string]interface{}) 
 	}
 
 	return firstAud, nil
+}
+
+// GetClusterID returns the uid of the k8s cluster's kube-system namespace, which is used as the cluster's globally unique ID.
+func GetClusterID(ctx context.Context, logger *zap.SugaredLogger) (string, error) {
+	clientset, err := NewClientSet()
+	if err != nil {
+		logger.Errorw("Error creating clientset", "error", err)
+	}
+	namespace, err := clientset.CoreV1().Namespaces().Get(ctx, "kube-system", v1.GetOptions{})
+	if err != nil {
+		logger.Errorw("Could not find kube-system namespace", "error", err)
+	}
+	return string(namespace.UID), nil
 }
