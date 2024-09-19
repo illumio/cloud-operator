@@ -48,7 +48,9 @@ type EnvironmentConfig struct {
 	ClusterCreds string
 }
 
-var resourceTypes = [2]string{"pods", "nodes"}
+var resourceTypes = []string{"pods", "nodes", "serviceaccounts", "replicationcontrollers", "replicasets", "deployments", "statefulsets",
+	"daemonsets", "ingresses", "ingressclasses", "jobs", "cronjobs", "services", "networkpolicies", "customresourcedefinitions", "endpoints"}
+
 var dd = &deadlockDetector{}
 
 // ServerIsHealthy checks if a deadlock has occured within the threaded resource listing process.
@@ -112,6 +114,25 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 	if err != nil {
 		sm.logger.Errorw("Error creating dynamic client", "error", err)
 		return err
+	}
+
+	clientset, err := NewClientSet()
+	if err != nil {
+		sm.logger.Errorw("Failed to create clientset", "error", err)
+		return err
+	}
+	apiGroups, err := clientset.Discovery().ServerGroups()
+	if err != nil {
+		sm.logger.Error("Failed to discover API groups", "error", err)
+	}
+
+	// Check if the "gateway.networking.k8s.io" API group is available.
+	for _, group := range apiGroups.Groups {
+		if group.Name == "gateway.networking.k8s.io" {
+			gatewayResources := []string{"gateways", "gatewayclasses", "httproutes"}
+			resourceTypes = append(resourceTypes, gatewayResources...)
+			break
+		}
 	}
 
 	snapshotCompleted.Add(1)
