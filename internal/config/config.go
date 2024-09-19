@@ -1,3 +1,5 @@
+// Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 package config
 
 type EnvironmentConfig struct {
