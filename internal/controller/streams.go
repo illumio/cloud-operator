@@ -44,7 +44,7 @@ func ServerIsHealthy() bool {
 }
 
 // NewStream returns a new stream.
-func NewStreams(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.ClientConn) (*streamClient, error) {
+func NewStreamClient(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.ClientConn) (*streamClient, error) {
 	client := pb.NewKubernetesInfoServiceClient(conn)
 
 	SendLogsStream, err := client.SendLogs(ctx)
@@ -174,7 +174,7 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 			logger.Errorw("Failed to set up an OAuth connection", "error", err)
 			continue
 		}
-		client, err := NewStreams(ctx, logger, conn)
+		client, err := NewStreamClient(ctx, logger, conn)
 		if err != nil {
 			logger.Errorw("Failed to create a new stream", "error", err)
 			continue

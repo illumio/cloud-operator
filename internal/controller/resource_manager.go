@@ -115,7 +115,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 
 // watchEvents watches Kubernetes resources and updates cache based on events.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
-func (r *ResourceManager) watchEvents(ctx context.Context, resource string, watchOptions metav1.ListOptions, c Cache) error {
+func (r *ResourceManager) watchEvents(ctx context.Context, resource string, watchOptions metav1.ListOptions, cache Cache) error {
 	objGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: resource}
 	watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
@@ -138,7 +138,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, watc
 		}
 		metadataObj := convertMetaObjectToMetadata(*convertedData, resource)
 
-		wasUniqueEvent, err := uniqueEvent(*convertedData, c, event)
+		wasUniqueEvent, err := uniqueEvent(*convertedData, cache, event)
 		if err != nil {
 			r.logger.Errorw("Failed to hash object metadata", "error", err)
 			return err
