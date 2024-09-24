@@ -110,8 +110,6 @@ message CiliumFlow {
   IP layer3 = 5;
   // layer4 contains protocol used
   Layer4 layer4 = 6;
-  // CiliumEventType contains type of event and sub_type with more detail  
-  CiliumEventType event_type = 8;
   // endpoint of source ip with metadata
   optional Endpoint source_endpoint = 9;
   // endpoint of destination ip with metadata
@@ -226,19 +224,6 @@ message ICMPv4 {
 message ICMPv6 {
   uint32 type = 1;
   uint32 code = 2;
-}
-
-// CiliumEventType from which the flow originated.
-// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-ciliumeventtype
-message CiliumEventType {
-  // type of event the flow originated from, i.e.
-  // github.com/cilium/cilium/pkg/monitor/api.MessageType*
-  int32 type = 1;
-  // sub_type may indicate more details depending on type, e.g.
-  // - github.com/cilium/cilium/pkg/monitor/api.Trace*
-  // - github.com/cilium/cilium/pkg/monitor/api.Drop*
-  // - github.com/cilium/cilium/pkg/monitor/api.DbgCapture*
-  int32 sub_type = 2;
 }
 
 // Information identifying Endpoint object in Cilium
