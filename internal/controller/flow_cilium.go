@@ -182,10 +182,6 @@ func createCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 			IpVersion:   pb.IPVersion(flowObj.GetIP().GetIpVersion()),
 		},
 		Layer4: convertLayer4(flowObj.GetL4()),
-		EventType: &pb.CiliumEventType{
-			Type:    flowObj.GetEventType().GetType(),
-			SubType: flowObj.GetEventType().GetSubType(),
-		},
 		SourceEndpoint: &pb.Endpoint{
 			Uid:         flowObj.GetSource().GetID(),
 			ClusterName: flowObj.GetSource().GetClusterName(),
