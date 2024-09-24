@@ -76,8 +76,8 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 		ResourceVersion: resourceListVersion,
 	}
 	// Prevent us from overwhelming K8 api
-	limiter := rate.NewLimiter(1, 3)
-	limiter.Wait(context.Background())
+	limiter := rate.NewLimiter(1, 5)
+	limiter.Wait(ctx)
 
 	err = r.watchEvents(ctx, resource, apiGroup, watchOptions, cm)
 	if err != nil {
