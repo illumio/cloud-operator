@@ -4,12 +4,11 @@ package controller
 import (
 	"context"
 	"sync"
-	"time"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
 	"github.com/illumio/cloud-operator/internal/version"
 	"go.uber.org/zap"
-	"golang.org/x/exp/rand"
+	"golang.org/x/time/rate"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
@@ -25,30 +24,6 @@ type ResourceManager struct {
 	// StreamManager abstracts logic related to starting, using, and managing streams.
 	streamManager *streamManager
 }
-
-var (
-	resourceAPIGroupMap = map[string]string{
-		"pods":                      "",
-		"nodes":                     "",
-		"serviceaccounts":           "",
-		"replicationcontrollers":    "",
-		"replicasets":               "apps",
-		"deployments":               "apps",
-		"statefulsets":              "apps",
-		"daemonsets":                "apps",
-		"ingresses":                 "networking.k8s.io",
-		"ingressclasses":            "networking.k8s.io",
-		"jobs":                      "batch",
-		"cronjobs":                  "batch",
-		"services":                  "",
-		"networkpolicies":           "networking.k8s.io",
-		"customresourcedefinitions": "apiextensions.k8s.io",
-		"endpoints":                 "",
-		"gateways":                  "gateway.networking.k8s.io",
-		"httproutes":                "gateway.networking.k8s.io",
-		"gatewayclasses":            "gateway.networking.k8s.io",
-	}
-)
 
 // sendResourceSnapshotComplete sends a message to indicate that the initial inventory snapshot has been completely streamed into the given stream.
 func (rm *ResourceManager) sendResourceSnapshotComplete() error {
@@ -85,8 +60,8 @@ func (rm *ResourceManager) sendClusterMetadata(ctx context.Context) error {
 }
 
 // DynamicListAndWatchResources lists and watches the specified resource dynamically, managing context cancellation and synchronization with wait groups.
-func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, cancel context.CancelFunc, resource string, allResourcesSnapshotted *sync.WaitGroup, snapshotCompleted *sync.WaitGroup) {
-	resourceListVersion, cm, err := r.DynamicListResources(ctx, resource)
+func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, allResourcesSnapshotted *sync.WaitGroup, snapshotCompleted *sync.WaitGroup) {
+	resourceListVersion, cm, err := r.DynamicListResources(ctx, resource, apiGroup)
 	if err != nil {
 		allResourcesSnapshotted.Done()
 		r.logger.Errorw("Unable to list resources", "error", err)
@@ -101,9 +76,10 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 		ResourceVersion: resourceListVersion,
 	}
 	// Prevent us from overwhelming K8 api
-	randomDuration := time.Duration(rand.Intn(5-1+1)+1) * time.Second
-	time.Sleep(randomDuration)
-	err = r.watchEvents(ctx, resource, watchOptions, cm)
+	limiter := rate.NewLimiter(1, 3)
+	limiter.Wait(context.Background())
+
+	err = r.watchEvents(ctx, resource, apiGroup, watchOptions, cm)
 	if err != nil {
 		r.logger.Errorw("Unable to watch events", "error", err)
 		cancel()
@@ -112,9 +88,9 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 }
 
 // DynamicListResources lists a specifed resource dynamically and sends down the current gRPC stream.
-func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string) (string, CacheManager, error) {
+func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string, apiGroup string) (string, CacheManager, error) {
 	cm := CacheManager{cache: make(map[string][32]byte)}
-	objGVR := schema.GroupVersionResource{Group: resourceAPIGroupMap[resource], Version: "v1", Resource: resource}
+	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	objs, resourceListVersion, err := r.listResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
 		return "", cm, err
@@ -144,8 +120,8 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 
 // watchEvents watches Kubernetes resources and updates cache based on events.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
-func (r *ResourceManager) watchEvents(ctx context.Context, resource string, watchOptions metav1.ListOptions, c CacheManager) error {
-	objGVR := schema.GroupVersionResource{Group: resourceAPIGroupMap[resource], Version: "v1", Resource: resource}
+func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiGroup string, watchOptions metav1.ListOptions, c CacheManager) error {
+	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
 		r.logger.Errorw("Error setting up watch on resource", "error", err)
