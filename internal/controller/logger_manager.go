@@ -111,6 +111,7 @@ func (b *BufferedGrpcWriteSyncer) run() {
 	for {
 		select {
 		case <-ticker.C:
+			b.logger.Info("here")
 			b.mutex.Lock()
 			b.flush()
 			b.mutex.Unlock()
