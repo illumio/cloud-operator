@@ -4,14 +4,20 @@ package controller
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 )
 
 func (suite *ControllerTestSuite) TestOnboard() {
@@ -175,4 +181,78 @@ func (suite *ControllerTestSuite) TestGetFirstAudience() {
 			}
 		})
 	}
+}
+
+// MockTokenSource is a mock implementation of oauth2.TokenSource
+type MockTokenSource struct {
+	mock.Mock
+}
+
+func (m *MockTokenSource) Token() (*oauth2.Token, error) {
+	args := m.Called()
+	return args.Get(0).(*oauth2.Token), args.Error(1)
+}
+
+// MockGRPCClientConn is a mock implementation of grpc.ClientConnInterface
+type MockGRPCClientConn struct {
+	mock.Mock
+}
+
+// MockHTTPClient is a mock HTTP client for testing purposes.
+type MockHTTPClient struct{}
+
+func (m *MockHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	return nil, errors.New("mock error")
+}
+
+// TestGetTLSConfig tests the GetTLSConfig function.
+func TestGetTLSConfig(t *testing.T) {
+	tlsConfig := GetTLSConfig(true)
+	assert.Equal(t, tls.VersionTLS12, tlsConfig.MinVersion)
+	assert.True(t, tlsConfig.InsecureSkipVerify)
+
+	tlsConfig = GetTLSConfig(false)
+	assert.Equal(t, tls.VersionTLS12, tlsConfig.MinVersion)
+	assert.False(t, tlsConfig.InsecureSkipVerify)
+}
+
+// TestGetTokenSource tests the GetTokenSource function.
+func TestGetTokenSource(t *testing.T) {
+	ctx := context.Background()
+	config := clientcredentials.Config{
+		ClientID:     "test-client-id",
+		ClientSecret: "test-client-secret",
+		TokenURL:     "https://example.com/token",
+	}
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+
+	// Test successful token retrieval
+	tokenSource := GetTokenSource(ctx, config, tlsConfig)
+	_, err := tokenSource.Token()
+	assert.NoError(t, err)
+
+	// Test error scenario with mock HTTP client
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, &MockHTTPClient{})
+	tokenSource = GetTokenSource(ctx, config, tlsConfig)
+	_, err = tokenSource.Token()
+	assert.Error(t, err)
+	assert.Equal(t, "mock error", err.Error())
+}
+
+// TestParseToken tests the ParseToken function.
+func TestParseToken(t *testing.T) {
+	// Test successful token parsing
+	tokenString := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiYXVkMSIsImF1ZDIiXX0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	claims, err := ParseToken(tokenString)
+	assert.NoError(t, err)
+	assert.NotNil(t, claims)
+	assert.Contains(t, claims["aud"], "aud1")
+
+	// Test error scenario with invalid token
+	invalidTokenString := "invalid.token.string"
+	claims, err = ParseToken(invalidTokenString)
+	assert.Error(t, err)
+	assert.Nil(t, claims)
 }

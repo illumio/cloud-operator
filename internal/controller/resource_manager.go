@@ -9,6 +9,7 @@ import (
 	"github.com/illumio/cloud-operator/internal/version"
 	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
@@ -86,7 +87,7 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string) (string, CacheManager, error) {
 	cm := CacheManager{cache: make(map[string][32]byte)}
 	objGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: resource}
-	objs, resourceListVersion, err := r.listResources(ctx, objGVR, metav1.NamespaceAll)
+	objs, resourceListVersion, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
 		return "", cm, err
 	}
@@ -152,27 +153,47 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, watc
 			r.logger.Errorw("Cannot send resource mutation", "error", err)
 			return err
 		}
-
 	}
 	return nil
+	
 }
 
-// listResources fetches resources of a specified type and namespace, returning their ObjectMeta,
-// the last resource version observed, and any error encountered.
-func (r *ResourceManager) listResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) ([]metav1.ObjectMeta, string, error) {
+// FetchResources retrieves unstructured resources from the Kubernetes API.
+func (r *ResourceManager) FetchResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) (*unstructured.UnstructuredList, error) {
 	unstructuredResources, err := r.dynamicClient.Resource(resource).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		r.logger.Errorw("Cannot list resource", "error", err, "kind", resource)
-		return nil, "", err
+		return nil, err
 	}
-	objectMetas := make([]metav1.ObjectMeta, 0, len(unstructuredResources.Items))
-	for _, item := range unstructuredResources.Items {
+	return unstructuredResources, nil
+}
+
+// ExtractObjectMetas extracts ObjectMeta from a list of unstructured resources.
+func (r *ResourceManager) ExtractObjectMetas(resources *unstructured.UnstructuredList) ([]metav1.ObjectMeta, error) {
+	objectMetas := make([]metav1.ObjectMeta, 0, len(resources.Items))
+	for _, item := range resources.Items {
 		objMeta, err := getMetadatafromResource(r.logger, item)
 		if err != nil {
 			r.logger.Errorw("Cannot get Metadata from resource", "error", err)
-			return nil, "", err
+			return nil, err
 		}
 		objectMetas = append(objectMetas, *objMeta)
 	}
+	return objectMetas, nil
+}
+
+// ListResources fetches resources of a specified type and namespace, returning their ObjectMeta,
+// the last resource version observed, and any error encountered.
+func (r *ResourceManager) ListResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) ([]metav1.ObjectMeta, string, error) {
+	unstructuredResources, err := r.FetchResources(ctx, resource, namespace)
+	if err != nil {
+		return nil, "", err
+	}
+
+	objectMetas, err := r.ExtractObjectMetas(unstructuredResources)
+	if err != nil {
+		return nil, "", err
+	}
+
 	return objectMetas, unstructuredResources.GetResourceVersion(), nil
 }

@@ -6,6 +6,7 @@ toolchain go1.22.4
 
 require (
 	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/golang/mock v1.6.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/oauth2 v0.23.0
 	google.golang.org/grpc v1.67.0

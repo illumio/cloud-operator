@@ -152,6 +152,72 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 	}
 }
 
+func (suite *ControllerTestSuite) TestDoesK8sSecretExist() {
+	ctx := context.Background()
+	// Create a development encoder config
+	encoderConfig := zap.NewDevelopmentEncoderConfig()
+	// Create a JSON encoder
+	encoder := zapcore.NewJSONEncoder(encoderConfig)
+	// Create syncers for console output
+	consoleSyncer := zapcore.AddSync(os.Stdout)
+	// Create the core with the atomic level
+	core := zapcore.NewTee(
+		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
+	)
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	logger = logger.With(zap.String("name", "test"))
+	namespaceObj := &v1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "illumio-cloud",
+		},
+	}
+	_, err := suite.clientset.CoreV1().Namespaces().Create(context.TODO(), namespaceObj, metav1.CreateOptions{})
+	if err != nil {
+		suite.T().Fatal("Cannot create the illumio-cloud namespace for test " + err.Error())
+	}
+	tests := map[string]struct {
+		secretExists  bool
+		secretName    string
+		expectedExist bool
+	}{
+		"secret exists": {
+			secretExists:  true,
+			secretName:    "existing-secret",
+			expectedExist: true,
+		},
+		"secret does not exist": {
+			secretExists:  false,
+			secretName:    "nonexistent-secret",
+			expectedExist: false,
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			if tt.secretExists {
+				secret := &v1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      tt.secretName,
+						Namespace: "illumio-cloud",
+					},
+					Type: v1.SecretTypeOpaque,
+				}
+				_, err := suite.clientset.CoreV1().Secrets("illumio-cloud").Create(ctx, secret, metav1.CreateOptions{})
+				if err != nil {
+					suite.T().Fatal("Failed to create secret for test " + err.Error())
+				}
+			}
+
+			sm := &SecretManager{
+				Logger: logger,
+			}
+
+			exists := sm.DoesK8sSecretExist(ctx, tt.secretName)
+			assert.Equal(suite.T(), tt.expectedExist, exists)
+		})
+	}
+}
+
 func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 	ctx := context.Background()
 	// Create a development encoder config
