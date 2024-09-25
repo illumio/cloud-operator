@@ -18,6 +18,7 @@ import (
 
 type streamClient struct {
 	conn           *grpc.ClientConn
+	client         pb.KubernetesInfoServiceClient
 	resourceStream pb.KubernetesInfoService_SendKubernetesResourcesClient
 	logStream      pb.KubernetesInfoService_SendLogsClient
 }
@@ -29,8 +30,9 @@ type deadlockDetector struct {
 }
 
 type streamManager struct {
-	instance *streamClient
-	logger   *zap.SugaredLogger
+	instance           *streamClient
+	logger             *zap.SugaredLogger
+	bufferedGrpcSyncer *BufferedGrpcWriteSyncer
 }
 
 type EnvironmentConfig struct {
@@ -59,34 +61,6 @@ func ServerIsHealthy() bool {
 		return false
 	}
 	return true
-}
-
-// NewStreams returns a new stream.
-func NewStreams(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.ClientConn, resourceCtx context.Context, logCtx context.Context) (*streamManager, error) {
-	client := pb.NewKubernetesInfoServiceClient(conn)
-
-	SendLogsStream, err := client.SendLogs(logCtx)
-	if err != nil {
-		logger.Errorw("Failed to connect to server", "error", err)
-		return &streamManager{}, err
-	}
-
-	SendKubernetesResourcesStream, err := client.SendKubernetesResources(resourceCtx)
-	if err != nil {
-		logger.Errorw("Failed to connect to server", "error", err)
-		return &streamManager{}, err
-	}
-
-	instance := &streamClient{
-		conn:           conn,
-		resourceStream: SendKubernetesResourcesStream,
-		logStream:      SendLogsStream,
-	}
-	sm := &streamManager{
-		instance: instance,
-		logger:   logger,
-	}
-	return sm, nil
 }
 
 // StreamResources handles the resource stream.
@@ -138,23 +112,85 @@ func (sm *streamManager) StreamResources(ctx context.Context, cancel context.Can
 		return err
 	}
 	snapshotCompleted.Done()
-	return nil
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // StreamLogs handles the log stream.
 func (sm *streamManager) StreamLogs(ctx context.Context, cancel context.CancelFunc) error {
-	// Implement the logic to handle the log stream
-	// This should be similar to StreamResources but for logs
+	errCh := make(chan error, 1)
+
+	go func() {
+		errCh <- sm.bufferedGrpcSyncer.ListenToLogStream()
+	}()
+
+	select {
+	case <-ctx.Done():
+		cancel()
+		return ctx.Err()
+	case err := <-errCh:
+		if err != nil {
+			cancel()
+			return err
+		}
+	}
+	return nil
+}
+
+// Connect and Stream Functions
+
+func connectAndStreamResources(logger *zap.SugaredLogger, sm *streamManager) error {
+	resourceCtx, resourceCancel := context.WithCancel(context.Background())
+	defer resourceCancel()
+
+	SendKubernetesResourcesStream, err := sm.instance.client.SendKubernetesResources(resourceCtx)
+	if err != nil {
+		logger.Errorw("Failed to connect to server", "error", err)
+		return err
+	}
+
+	sm.instance.resourceStream = SendKubernetesResourcesStream
+
+	err = sm.StreamResources(resourceCtx, resourceCancel)
+	if err != nil {
+		logger.Errorw("Failed to bootup and stream resources", "error", err)
+		return err
+	}
+
+	return nil
+}
+
+func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager) error {
+	logCtx, logCancel := context.WithCancel(context.Background())
+	defer logCancel()
+
+	SendLogsStream, err := sm.instance.client.SendLogs(logCtx)
+	if err != nil {
+		logger.Errorw("Failed to connect to server", "error", err)
+		return err
+	}
+
+	sm.instance.logStream = SendLogsStream
+	sm.bufferedGrpcSyncer.UpdateClient(sm.instance.logStream, sm.instance.conn)
+
+	err = sm.StreamLogs(logCtx, logCancel)
+	if err != nil {
+		logger.Errorw("Failed to bootup and stream logs", "error", err)
+		return err
+	}
+
 	return nil
 }
 
 // Generic function to manage any stream with backoff and reconnection logic.
-func manageStream(ctx context.Context, ctxCancel context.CancelFunc, logger *zap.SugaredLogger, connectAndStream func(context.Context, context.CancelFunc, *zap.SugaredLogger, *streamManager) error, sm *streamManager, done chan struct{}) {
+func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *streamManager) error, sm *streamManager, done chan struct{}) {
 	var backoff = 1 * time.Second
 	max := big.NewInt(3)
 
 	for {
-		err := connectAndStream(ctx, ctxCancel, logger, sm)
+		err := connectAndStream(logger, sm)
 		if err != nil {
 			logger.Errorw("Failed to establish stream connection; will retry", "error", err)
 			randomInt, err := rand.Int(rand.Reader, max)
@@ -176,23 +212,30 @@ func manageStream(ctx context.Context, ctxCancel context.CancelFunc, logger *zap
 // ExponentialStreamConnect will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
 func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
 	for {
-		sm, resourceCtx, resourceCancel, logCtx, logCancel, err := initialConnect(ctx, logger, envMap)
+		authConn, client, err := streamAuth(ctx, logger, envMap)
 		if err != nil {
 			logger.Errorw("Failed to establish initial connection; will retry", "error", err)
 			time.Sleep(5 * time.Second) // Retry after a delay
 			continue
 		}
 
-		// Update the gRPC client and connection in BufferedGrpcWriteSyncer
-		// This might go into the connectAndStreamLogs function
-		bufferedGrpcSyncer.UpdateClient(sm.instance.logStream, sm.instance.conn)
-		go bufferedGrpcSyncer.ListenToLogStream()
+		instance := &streamClient{
+			conn:   authConn,
+			client: client,
+		}
+
+		sm := &streamManager{
+			instance:           instance,
+			logger:             logger,
+			bufferedGrpcSyncer: bufferedGrpcSyncer,
+		}
 
 		resourceDone := make(chan struct{})
 		logDone := make(chan struct{})
+		sm.bufferedGrpcSyncer.done = logDone
 
-		go manageStream(resourceCtx, resourceCancel, logger, connectAndStreamResources, sm, resourceDone)
-		go manageStream(logCtx, logCancel, logger, connectAndStreamLogs, sm, logDone)
+		go manageStream(logger, connectAndStreamResources, sm, resourceDone)
+		go manageStream(logger, connectAndStreamLogs, sm, logDone)
 
 		select {
 		case <-resourceDone:
@@ -203,82 +246,42 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 	}
 }
 
-func initialConnect(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig) (*streamManager, context.Context, context.CancelFunc, context.Context, context.CancelFunc, error) {
+func streamAuth(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig) (*grpc.ClientConn, pb.KubernetesInfoServiceClient, error) {
 	sm := SecretManager{Logger: logger}
 
 	clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 	if err != nil {
 		logger.Errorw("Could not read K8s credentials", "error", err)
-		return nil, nil, nil, nil, nil, err
 	}
 
 	if clientID == "" && clientSecret == "" {
 		OnboardingCredentials, err := sm.GetOnboardingCredentials(ctx, envMap.OnboardingClientId, envMap.OnboardingClientSecret)
 		if err != nil {
 			logger.Errorw("Failed to get onboarding credentials", "error", err)
-			return nil, nil, nil, nil, nil, err
 		}
 		am := CredentialsManager{Credentials: OnboardingCredentials, Logger: logger}
 		responseData, err := am.Onboard(ctx, envMap.TlsSkipVerify, envMap.OnboardingEndpoint)
 		if err != nil {
 			logger.Errorw("Failed to register cluster", "error", err)
-			return nil, nil, nil, nil, nil, err
 		}
 		err = sm.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
 		time.Sleep(1 * time.Second)
 		if err != nil {
 			am.Logger.Errorw("Failed to write secret to Kubernetes", "error", err)
-			return nil, nil, nil, nil, nil, err
 		}
 		clientID, clientSecret, err = sm.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 		if err != nil {
 			logger.Errorw("Could not read K8s credentials", "error", err)
-			return nil, nil, nil, nil, nil, err
 		}
 	}
 
 	conn, err := SetUpOAuthConnection(ctx, logger, envMap.TokenEndpoint, envMap.TlsSkipVerify, clientID, clientSecret)
 	if err != nil {
 		logger.Errorw("Failed to set up an OAuth connection", "error", err)
-		return nil, nil, nil, nil, nil, err
+		return nil, nil, err
 	}
 
-	resourceCtx, resourceCancel := context.WithCancel(context.Background())
-	logCtx, logCancel := context.WithCancel(context.Background())
+	client := pb.NewKubernetesInfoServiceClient(conn)
 
-	streamManager, err := NewStreams(ctx, logger, conn, resourceCtx, logCtx)
-	if err != nil {
-		logger.Errorw("Failed to create a new stream", "error", err)
-		logCancel()
-		resourceCancel()
-		return nil, nil, nil, nil, nil, err
-	}
-
-	return streamManager, resourceCtx, resourceCancel, logCtx, logCancel, nil
-}
-
-func connectAndStreamResources(ctx context.Context, ctxCancel context.CancelFunc, logger *zap.SugaredLogger, sm *streamManager) error {
-	defer ctxCancel()
-
-	err := sm.StreamResources(ctx, ctxCancel)
-	if err != nil {
-		logger.Errorw("Failed to bootup and stream resources", "error", err)
-		return err
-	}
-
-	<-ctx.Done()
-	return nil
-}
-
-func connectAndStreamLogs(ctx context.Context, ctxCancel context.CancelFunc, logger *zap.SugaredLogger, sm *streamManager) error {
-	defer ctxCancel()
-
-	err := sm.StreamLogs(ctx, ctxCancel)
-	if err != nil {
-		logger.Errorw("Failed to bootup and stream logs", "error", err)
-		return err
-	}
-
-	<-ctx.Done()
-	return nil
+	return conn, client, err
 }
