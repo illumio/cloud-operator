@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ type ControllerTestSuite struct {
 	suite.Suite
 	ctx       context.Context
 	clientset *kubernetes.Clientset
+	logger    *zap.SugaredLogger
 }
 
 func TestGenerateTestSuite(t *testing.T) {
@@ -25,6 +27,15 @@ func TestGenerateTestSuite(t *testing.T) {
 }
 
 func (suite *ControllerTestSuite) SetupSuite() {
+	// Setup logger
+	encoderConfig := zap.NewDevelopmentEncoderConfig()
+	encoder := zapcore.NewJSONEncoder(encoderConfig)
+	consoleSyncer := zapcore.AddSync(os.Stdout)
+	core := zapcore.NewTee(
+		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
+	)
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	suite.logger = logger.With(zap.String("name", "test"))
 	suite.ctx = context.Background()
 	var err error
 	err = testhelper.SetupTestCluster()

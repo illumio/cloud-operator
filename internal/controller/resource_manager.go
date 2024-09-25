@@ -3,6 +3,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
@@ -155,7 +156,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, watc
 		}
 	}
 	return nil
-	
+
 }
 
 // FetchResources retrieves unstructured resources from the Kubernetes API.
@@ -173,6 +174,7 @@ func (r *ResourceManager) ExtractObjectMetas(resources *unstructured.Unstructure
 	objectMetas := make([]metav1.ObjectMeta, 0, len(resources.Items))
 	for _, item := range resources.Items {
 		objMeta, err := getMetadatafromResource(r.logger, item)
+		fmt.Println(objMeta, err)
 		if err != nil {
 			r.logger.Errorw("Cannot get Metadata from resource", "error", err)
 			return nil, err
