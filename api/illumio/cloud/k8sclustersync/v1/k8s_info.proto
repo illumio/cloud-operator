@@ -2,7 +2,7 @@
 
 syntax = "proto3";
 
-package illumio.cloud.k8scluster.v1;
+package illumio.cloud.k8sclustersync.v1;
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";

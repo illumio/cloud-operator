@@ -6,7 +6,7 @@ import (
 	"context"
 
 	"github.com/cilium/cilium/api/v1/flow"
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 

@@ -5,7 +5,7 @@ import (
 	"context"
 	"sync"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/version"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"

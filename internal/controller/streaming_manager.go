@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/dynamic"

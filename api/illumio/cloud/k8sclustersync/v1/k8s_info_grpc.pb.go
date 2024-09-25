@@ -4,9 +4,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             (unknown)
-// source: illumio/cloud/k8scluster/v1/k8s_info.proto
+// source: illumio/cloud/k8sclustersync/v1/k8s_info.proto
 
-package k8sclusterv1
+package k8sclustersyncv1
 
 import (
 	context "context"
@@ -21,9 +21,9 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	KubernetesInfoService_SendKubernetesResources_FullMethodName    = "/illumio.cloud.k8scluster.v1.KubernetesInfoService/SendKubernetesResources"
-	KubernetesInfoService_SendKubernetesNetworkFlows_FullMethodName = "/illumio.cloud.k8scluster.v1.KubernetesInfoService/SendKubernetesNetworkFlows"
-	KubernetesInfoService_SendLogs_FullMethodName                   = "/illumio.cloud.k8scluster.v1.KubernetesInfoService/SendLogs"
+	KubernetesInfoService_SendKubernetesResources_FullMethodName    = "/illumio.cloud.k8sclustersync.v1.KubernetesInfoService/SendKubernetesResources"
+	KubernetesInfoService_SendKubernetesNetworkFlows_FullMethodName = "/illumio.cloud.k8sclustersync.v1.KubernetesInfoService/SendKubernetesNetworkFlows"
+	KubernetesInfoService_SendLogs_FullMethodName                   = "/illumio.cloud.k8sclustersync.v1.KubernetesInfoService/SendLogs"
 )
 
 // KubernetesInfoServiceClient is the client API for KubernetesInfoService service.
@@ -260,7 +260,7 @@ func (x *kubernetesInfoServiceSendLogsServer) Recv() (*SendLogsRequest, error) {
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var KubernetesInfoService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "illumio.cloud.k8scluster.v1.KubernetesInfoService",
+	ServiceName: "illumio.cloud.k8sclustersync.v1.KubernetesInfoService",
 	HandlerType: (*KubernetesInfoServiceServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
@@ -283,5 +283,5 @@ var KubernetesInfoService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "illumio/cloud/k8scluster/v1/k8s_info.proto",
+	Metadata: "illumio/cloud/k8sclustersync/v1/k8s_info.proto",
 }
