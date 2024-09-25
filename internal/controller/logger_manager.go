@@ -150,7 +150,7 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 // depending response contents
 func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
 	for {
-		//nolint:gosimple // we need to use select because of future expansion to multiple cases
+		//nolint:gosimple,staticcheck // we need to use select because of future expansion to multiple cases
 		select {
 		default:
 			res, err := b.client.Recv()
