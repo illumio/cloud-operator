@@ -1,3 +1,5 @@
+// Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 package controller
 
 import (
@@ -15,20 +17,20 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// Collector collects flows from Cilium Hubble Relay running in this cluster.
-type Collector struct {
+// CiliumFlowCollector collects flows from Cilium Hubble Relay running in this cluster.
+type CiliumFlowCollector struct {
 	logger *zap.SugaredLogger
 	client observer.ObserverClient
 }
 
-var (
-	flowCount         uint64 = 100
-	hubble_relay_name        = "hubble-relay"
+const (
+	ciliumHubbleRelayMaxFlowCount uint64 = 100
+	ciliumHubbleRelayServiceName  string = "hubble-relay"
 )
 
-// discoverHubbleRelayAddress uses a kubernetes clientset in order to discover the address of hubble-relay within kube-system.
-func discoverHubbleRelayAddress(ctx context.Context, ciliumNamespace string, clientset kubernetes.Interface) (string, error) {
-	service, err := clientset.CoreV1().Services(ciliumNamespace).Get(ctx, hubble_relay_name, metav1.GetOptions{})
+// discoverCiliumHubbleRelayAddress uses a kubernetes clientset in order to discover the address of the hubble-relay service within kube-system.
+func discoverCiliumHubbleRelayAddress(ctx context.Context, ciliumNamespace string, clientset kubernetes.Interface) (string, error) {
+	service, err := clientset.CoreV1().Services(ciliumNamespace).Get(ctx, ciliumHubbleRelayServiceName, metav1.GetOptions{})
 	if err != nil {
 		return "", errors.New("hubble Relay service not found; disabling Cilium flow collection")
 	}
@@ -41,31 +43,30 @@ func discoverHubbleRelayAddress(ctx context.Context, ciliumNamespace string, cli
 	return address, nil
 }
 
-// NewCollector connects to Hubble Relay, sets up an Observer client, and returns a new Collector using it.
-func newCollector(ctx context.Context, logger *zap.SugaredLogger, ciliumNamespace string) (*Collector, error) {
+// newCiliumCollector connects to Ciilium Hubble Relay, sets up an Observer client, and returns a new Collector using it.
+func newCiliumCollector(ctx context.Context, logger *zap.SugaredLogger, ciliumNamespace string) (*CiliumFlowCollector, error) {
 	config, err := NewClientSet()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new client set: %w", err)
 	}
-	hubbleAddress, err := discoverHubbleRelayAddress(ctx, ciliumNamespace, config)
+	hubbleAddress, err := discoverCiliumHubbleRelayAddress(ctx, ciliumNamespace, config)
 	if err != nil {
 		return nil, err
 	}
-	// Adjust this address if needed
 	conn, err := grpc.NewClient(hubbleAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Cilium Hubble Relay: %w", err)
 	}
 	hubbleClient := observer.NewObserverClient(conn)
-	return &Collector{logger: logger, client: hubbleClient}, nil
+	return &CiliumFlowCollector{logger: logger, client: hubbleClient}, nil
 }
 
-// convertLayer4 function converts a slice of flow.Layer4 objects to a slice of pb.Layer4 objects.
-func convertLayer4(l4 *flow.Layer4) *pb.Layer4 {
-	layer4 := &pb.Layer4{}
+// convertCiliumLayer4 function converts a slice of flow.Layer4 objects to a slice of pb.Layer4 objects.
+func convertCiliumLayer4(l4 *flow.Layer4) *pb.Layer4 {
 	if l4 == nil {
-		return layer4
+		return nil
 	}
+	layer4 := &pb.Layer4{}
 	switch protocol := l4.Protocol.(type) {
 	case *flow.Layer4_TCP:
 		layer4.Protocol = &pb.Layer4_Tcp{
@@ -108,9 +109,9 @@ func convertLayer4(l4 *flow.Layer4) *pb.Layer4 {
 	return layer4
 }
 
-// convertCiliumWorkflows function converts a slice of flow.Workload objects to a slice of pb.Workload objects.
+// convertCiliumWorkflows converts a slice of flow.Workload objects to a slice of pb.Workload objects.
 func convertCiliumWorkflows(workloads []*flow.Workload) []*pb.Workload {
-	protoWorkloads := []*pb.Workload{}
+	protoWorkloads := make([]*pb.Workload, 0, len(workloads))
 	for _, workload := range workloads {
 		protoWorkload := &pb.Workload{
 			Name: workload.GetName(),
@@ -121,9 +122,9 @@ func convertCiliumWorkflows(workloads []*flow.Workload) []*pb.Workload {
 	return protoWorkloads
 }
 
-// convertCiliumPolicies function converts a slice of flow.Policy objects to a slice of pb.Policy objects.
+// convertCiliumPolicies converts a slice of flow.Policy objects to a slice of pb.Policy objects.
 func convertCiliumPolicies(policies []*flow.Policy) []*pb.Policy {
-	protoPolicies := []*pb.Policy{}
+	protoPolicies := make([]*pb.Policy, 0, len(policies))
 	for _, policy := range policies {
 		protoPolicy := &pb.Policy{
 			Name:      policy.GetName(),
@@ -136,11 +137,10 @@ func convertCiliumPolicies(policies []*flow.Policy) []*pb.Policy {
 	return protoPolicies
 }
 
-// readFlows loops continously while using the observerClient to make gRPC calls to hubble-relay and grabs the last x amount of flows.
-// It sends converts those flows to ciliumFlows then sends them over the open stream.
-func (fm *Collector) readFlows(ctx context.Context, sm streamManager) error {
+// exportFlows makes one stream gRPC call to hubble-relay to collect, convert, and export flows into the given stream.
+func (fm *CiliumFlowCollector) exportFlows(ctx context.Context, sm streamManager) error {
 	req := &observer.GetFlowsRequest{
-		Number: flowCount,
+		Number: ciliumHubbleRelayMaxFlowCount,
 		Follow: true,
 	}
 	observerClient := fm.client
@@ -160,8 +160,8 @@ func (fm *Collector) readFlows(ctx context.Context, sm streamManager) error {
 			fm.logger.Warnw("Failed to get flow log from stream", "error", err)
 			return err
 		}
-		ciliumFlow := createCiliumFlow(flow)
-		err = sendNetworkFlowsData(&sm, ciliumFlow)
+		ciliumFlow := convertCiliumFlow(flow)
+		err = sendCiliumFlow(&sm, ciliumFlow)
 		if err != nil {
 			fm.logger.Errorw("Cannot send object metadata", "error", err)
 			return err
@@ -169,7 +169,8 @@ func (fm *Collector) readFlows(ctx context.Context, sm streamManager) error {
 	}
 }
 
-func createCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
+// Make a function comment
+func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 	flowObj := flow.GetFlow()
 	ciliumFlow := pb.CiliumFlow{
 		Time:             flowObj.GetTime(),
@@ -181,7 +182,7 @@ func createCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 			Destination: flowObj.GetIP().GetDestination(),
 			IpVersion:   pb.IPVersion(flowObj.GetIP().GetIpVersion()),
 		},
-		Layer4: convertLayer4(flowObj.GetL4()),
+		Layer4: convertCiliumLayer4(flowObj.GetL4()),
 		SourceEndpoint: &pb.Endpoint{
 			Uid:         flowObj.GetSource().GetID(),
 			ClusterName: flowObj.GetSource().GetClusterName(),
@@ -198,7 +199,6 @@ func createCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 			PodName:     flowObj.GetDestination().GetPodName(),
 			Workloads:   convertCiliumWorkflows(flowObj.GetDestination().GetWorkloads()),
 		},
-		ProxyPort:        int32(flowObj.GetProxyPort()),
 		EgressAllowedBy:  convertCiliumPolicies(flowObj.GetEgressAllowedBy()),
 		IngressAllowedBy: convertCiliumPolicies(flowObj.GetIngressAllowedBy()),
 		EgressDeniedBy:   convertCiliumPolicies(flowObj.GetEgressDeniedBy()),

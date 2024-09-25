@@ -5,6 +5,7 @@ syntax = "proto3";
 package illumio.cloud.k8scluster.v1;
 
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
 
 option go_package = "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1";
 
@@ -17,7 +18,6 @@ message KubernetesObjectMetadata {
   map<string, string> labels = 4;
   string name = 5;
   string namespace = 6;
-  // Add pod ip address if this object is a pod, optional field
   repeated KubernetesOwnerReference owner_references = 7;
   string resource_version = 8;
   string uid = 9;
@@ -114,16 +114,26 @@ message CiliumFlow {
   optional Endpoint source_endpoint = 9;
   // endpoint of destination ip with metadata
   optional Endpoint destination_endpoint = 10;
-  // proxy_port indicates the port of the proxy to which the flow was forwarded
-  int32 proxy_port = 11;
+  // destination_service contains the service name of the destination
+  Service destination_service = 11;
   // The CiliumNetworkPolicies allowing the egress of the flow.
-  repeated Policy egress_allowed_by = 12;
+  repeated Policy egress_allowed_by = 13;
   // The CiliumNetworkPolicies allowing the ingress of the flow.
-  repeated Policy ingress_allowed_by = 13;
+  repeated Policy ingress_allowed_by = 14;
   // The CiliumNetworkPolicies denying the egress of the flow.
-  repeated Policy egress_denied_by = 14;
+  repeated Policy egress_denied_by = 15;
   // The CiliumNetworkPolicies denying the ingress of the flow.
-  repeated Policy ingress_denied_by = 15;
+  repeated Policy ingress_denied_by = 16;
+
+  // is_reply indicates that this was a packet (L4) or message (L7) in the
+  // reply direction. May be absent (in which case it is unknown whether it
+  // is a reply or not).
+  google.protobuf.BoolValue is_reply = 17;
+}
+
+message Service {
+  string name = 1;
+  string namespace = 2;
 }
 
 // Information identifying the direction of traffic in Cilium.
@@ -147,7 +157,7 @@ enum Verdict {
   VERDICT_TRANSLATED = 7;
 }
 
-// Information identifying an ip object in Cilium.
+// IP contains the IP header fields of a flow.
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-ip
 message IP {
   string source = 1;
@@ -155,7 +165,7 @@ message IP {
   IPVersion ip_version = 3;
 }
 
-// Information about ip version for use in IP message.
+// IPVersion contains the IPVersion header fields of a flow.
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-ipversion
 enum IPVersion {
   IP_VERSION_IP_NOT_USED_UNSPECIFIED = 0;
@@ -163,7 +173,7 @@ enum IPVersion {
   IP_VERSION_IPV6 = 2;
 }
 
-// Information identifying Layer4 object in Cilium
+// Layer4 contains the Layer-4 header fields of a flow.
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-layer4
 message Layer4 {
   oneof protocol {
@@ -176,7 +186,7 @@ message Layer4 {
   }
 }
 
-// Information identifying an TCP object in Cilium
+// TCP contains the TCP header fields of a flow.
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-tcp
 message TCP {
   uint32 source_port = 1;
@@ -184,7 +194,7 @@ message TCP {
   TCPFlags flags = 3;
 }
 
-// Information identifying possible TCPFlags in TCP message.
+// TCPFlags is the mask of TCP header flags observed in TCP packets in a flow.
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-tcpflags
 message TCPFlags {
   bool fin = 1;
@@ -198,35 +208,35 @@ message TCPFlags {
   bool ns = 9;
 }
 
-// Information identifying an UDP object in Cilium
+// UDP contains the UDP header fields of a flow.
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-udp
 message UDP {
   uint32 source_port = 1;
   uint32 destination_port = 2;
 }
 
-// Information identifying an SCTP object in Cilium
+// SCTP contains the SCTP header fields of a flow.
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-sctp
 message SCTP {
   uint32 source_port = 1;
   uint32 destination_port = 2;
 }
 
-// Information identifying an ICMPv4 object in Cilium
+// ICMPv4 contains the ICMPv4 header fields of a flow.
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-icmpv4
 message ICMPv4 {
   uint32 type = 1;
   uint32 code = 2;
 }
 
-// Information identifying an ICMPv6 object in Cilium
+// ICMPv6 contains the ICMPv6 header fields of a flow.
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-icmpv6
 message ICMPv6 {
   uint32 type = 1;
   uint32 code = 2;
 }
 
-// Information identifying Endpoint object in Cilium
+// Endpoint contains the Endpoint header fields of a flow
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-endpoint
 message Endpoint {
   uint32 uid = 1;
@@ -237,14 +247,14 @@ message Endpoint {
   repeated Workload workloads = 6;
 }
 
-// Information about Workload for use in Endpoint message.
+// Workload contains the Workload header fields of a flow
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-workload
 message Workload {
   string name = 1;
   string kind = 2;
 }
 
-// Information identifying Policy object in Cilium
+// Policy contains the Policy header fields of a flow.
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-policy
 message Policy {
   string name = 1;
@@ -256,7 +266,7 @@ message Policy {
 // Flow exported by the CNI plugin in the cluster.
 message SendKubernetesNetworkFlowsRequest {
   oneof request {
-    CiliumFlow flow = 1;
+    CiliumFlow cilium_flow = 1;
   }
 }
 

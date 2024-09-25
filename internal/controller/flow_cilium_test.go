@@ -1,3 +1,5 @@
+// Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 package controller
 
 import (
@@ -67,7 +69,7 @@ func (suite *ControllerTestSuite) TestDiscoverHubbleRelayAddress() {
 				assert.NoError(suite.T(), err)
 			}
 
-			addr, err := discoverHubbleRelayAddress(ctx, "kube-system", clientset)
+			addr, err := discoverCiliumHubbleRelayAddress(ctx, "kube-system", clientset)
 			assert.Equal(suite.T(), tt.expectedAddr, addr)
 
 			if tt.expectedErrMsg != "" {
@@ -178,7 +180,7 @@ func (suite *ControllerTestSuite) TestConvertLayer4() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			got := convertLayer4(tt.input)
+			got := convertCiliumLayer4(tt.input)
 			assert.Equal(suite.T(), tt.expected, got, "Expected: %v, got: %v", tt.expected, got)
 		})
 	}

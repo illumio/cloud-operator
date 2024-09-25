@@ -154,19 +154,19 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 	}
 	snapshotCompleted.Done()
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
-	ciliumFlowManager, err := newCollector(ctx, sm.logger, ciliumNamespace)
+	ciliumFlowManager, err := newCiliumCollector(ctx, sm.logger, ciliumNamespace)
 	if err != nil {
 		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
 	}
 	if ciliumFlowManager.client != nil {
 		go func() {
 			for {
-				err = ciliumFlowManager.readFlows(ctx, *sm)
+				err = ciliumFlowManager.exportFlows(ctx, *sm)
 				if err != nil {
 					sm.logger.Warnw("Failed to listen to flows", "error", err)
 					// Attempt to rediscover new hubble address and reconnect
 					for {
-						ciliumFlowManager, err = newCollector(ctx, sm.logger, ciliumNamespace)
+						ciliumFlowManager, err = newCiliumCollector(ctx, sm.logger, ciliumNamespace)
 						if err != nil {
 							sm.logger.Warnw("Failed to recreate new Collector", "error", err)
 						} else {
