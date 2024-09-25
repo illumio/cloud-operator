@@ -50,7 +50,28 @@ type EnvironmentConfig struct {
 	ClusterCreds string
 }
 
-var resourceTypes = [2]string{"pods", "nodes"}
+var resourceAPIGroupMap = map[string]string{
+	"cronjobs":                  "batch",
+	"customresourcedefinitions": "apiextensions.k8s.io",
+	"daemonsets":                "apps",
+	"deployments":               "apps",
+	"endpoints":                 "",
+	"gateways":                  "gateway.networking.k8s.io",
+	"gatewayclasses":            "gateway.networking.k8s.io",
+	"httproutes":                "gateway.networking.k8s.io",
+	"ingresses":                 "networking.k8s.io",
+	"ingressclasses":            "networking.k8s.io",
+	"jobs":                      "batch",
+	"networkpolicies":           "networking.k8s.io",
+	"nodes":                     "",
+	"pods":                      "",
+	"replicasets":               "apps",
+	"replicationcontrollers":    "",
+	"serviceaccounts":           "",
+	"services":                  "",
+	"statefulsets":              "apps",
+}
+
 var dd = &deadlockDetector{}
 
 // ServerIsHealthy checks if a deadlock has occured within the threaded resource listing process.
@@ -82,6 +103,33 @@ func (sm *streamManager) StreamResources(ctx context.Context, cancel context.Can
 		return err
 	}
 
+	clientset, err := NewClientSet()
+	if err != nil {
+		sm.logger.Errorw("Failed to create clientset", "error", err)
+		return err
+	}
+	apiGroups, err := clientset.Discovery().ServerGroups()
+	if err != nil {
+		sm.logger.Error("Failed to discover API groups", "error", err)
+	}
+	foundGatewayAPIGroup := false
+
+	// Check if the "gateway.networking.k8s.io" API group is not available, if it is not delete those resources and groups
+	for _, group := range apiGroups.Groups {
+		if group.Name == "gateway.networking.k8s.io" {
+			foundGatewayAPIGroup = true
+			break
+		}
+	}
+
+	// If the "gateway.networking.k8s.io" API group is not found, remove the resources
+	if !foundGatewayAPIGroup {
+		gatewayResources := []string{"gateways", "gatewayclasses", "httproutes"}
+		for _, resource := range gatewayResources {
+			delete(resourceAPIGroupMap, resource)
+		}
+	}
+
 	snapshotCompleted.Add(1)
 	dd.mutex.Lock()
 	dd.timeStarted = time.Now()
@@ -97,9 +145,9 @@ func (sm *streamManager) StreamResources(ctx context.Context, cancel context.Can
 		sm.logger.Errorw("Failed to send cluster metadata", "error", err)
 		return err
 	}
-	for _, resourceType := range resourceTypes {
+	for resource, apiGroup := range resourceAPIGroupMap {
 		allResourcesSnapshotted.Add(1)
-		go resourceLister.DyanmicListAndWatchResources(ctx, cancel, resourceType, &allResourcesSnapshotted, &snapshotCompleted)
+		go resourceLister.DyanmicListAndWatchResources(ctx, cancel, resource, apiGroup, &allResourcesSnapshotted, &snapshotCompleted)
 	}
 	allResourcesSnapshotted.Wait()
 	err = resourceLister.sendResourceSnapshotComplete()
