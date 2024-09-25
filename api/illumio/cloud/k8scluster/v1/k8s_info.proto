@@ -124,7 +124,6 @@ message CiliumFlow {
   repeated Policy egress_denied_by = 15;
   // The CiliumNetworkPolicies denying the ingress of the flow.
   repeated Policy ingress_denied_by = 16;
-
   // is_reply indicates that this was a packet (L4) or message (L7) in the
   // reply direction. May be absent (in which case it is unknown whether it
   // is a reply or not).

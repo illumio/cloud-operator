@@ -61,6 +61,17 @@ func newCiliumCollector(ctx context.Context, logger *zap.SugaredLogger, ciliumNa
 	return &CiliumFlowCollector{logger: logger, client: hubbleClient}, nil
 }
 
+func convertCiliumIP(IP *flow.IP) *pb.IP {
+	if IP == nil {
+		return nil
+	}
+	return &pb.IP{
+		Source:      IP.GetSource(),
+		Destination: IP.GetDestination(),
+		IpVersion:   pb.IPVersion(IP.GetIpVersion()),
+	}
+}
+
 // convertCiliumLayer4 function converts a slice of flow.Layer4 objects to a slice of pb.Layer4 objects.
 func convertCiliumLayer4(l4 *flow.Layer4) *pb.Layer4 {
 	if l4 == nil {
@@ -149,6 +160,7 @@ func (fm *CiliumFlowCollector) exportFlows(ctx context.Context, sm streamManager
 		fm.logger.Errorw("Error getting network flows", "error", err)
 		return err
 	}
+	defer stream.CloseSend()
 	for {
 		select {
 		case <-ctx.Done():
@@ -173,36 +185,38 @@ func (fm *CiliumFlowCollector) exportFlows(ctx context.Context, sm streamManager
 func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 	flowObj := flow.GetFlow()
 	ciliumFlow := pb.CiliumFlow{
-		Time:             flowObj.GetTime(),
-		NodeName:         flowObj.GetNodeName(),
-		Verdict:          pb.Verdict(flowObj.GetVerdict()),
-		TrafficDirection: pb.TrafficDirection(flowObj.GetTrafficDirection()),
-		Layer3: &pb.IP{
-			Source:      flowObj.GetIP().GetSource(),
-			Destination: flowObj.GetIP().GetDestination(),
-			IpVersion:   pb.IPVersion(flowObj.GetIP().GetIpVersion()),
-		},
-		Layer4: convertCiliumLayer4(flowObj.GetL4()),
-		SourceEndpoint: &pb.Endpoint{
+		Time:               flowObj.GetTime(),
+		NodeName:           flowObj.GetNodeName(),
+		Verdict:            pb.Verdict(flowObj.GetVerdict()),
+		TrafficDirection:   pb.TrafficDirection(flowObj.GetTrafficDirection()),
+		Layer3:             convertCiliumIP(flowObj.GetIP()),
+		Layer4:             convertCiliumLayer4(flowObj.GetL4()),
+		DestinationService: &pb.Service{Name: flowObj.GetDestinationService().GetName(), Namespace: flowObj.GetDestinationService().GetNamespace()},
+		EgressAllowedBy:    convertCiliumPolicies(flowObj.GetEgressAllowedBy()),
+		IngressAllowedBy:   convertCiliumPolicies(flowObj.GetIngressAllowedBy()),
+		EgressDeniedBy:     convertCiliumPolicies(flowObj.GetEgressDeniedBy()),
+		IngressDeniedBy:    convertCiliumPolicies(flowObj.GetIngressDeniedBy()),
+		IsReply:            flowObj.GetIsReply(),
+	}
+	if flowObj.GetSource() != nil {
+		ciliumFlow.SourceEndpoint = &pb.Endpoint{
 			Uid:         flowObj.GetSource().GetID(),
 			ClusterName: flowObj.GetSource().GetClusterName(),
 			Namespace:   flowObj.GetSource().GetNamespace(),
 			Labels:      flowObj.GetSource().GetLabels(),
 			PodName:     flowObj.GetSource().GetPodName(),
 			Workloads:   convertCiliumWorkflows(flowObj.GetSource().GetWorkloads()),
-		},
-		DestinationEndpoint: &pb.Endpoint{
+		}
+	}
+	if flowObj.GetDestination() != nil {
+		ciliumFlow.DestinationEndpoint = &pb.Endpoint{
 			Uid:         flowObj.GetDestination().GetID(),
 			ClusterName: flowObj.GetDestination().GetClusterName(),
 			Namespace:   flowObj.GetDestination().GetNamespace(),
 			Labels:      flowObj.GetDestination().GetLabels(),
 			PodName:     flowObj.GetDestination().GetPodName(),
 			Workloads:   convertCiliumWorkflows(flowObj.GetDestination().GetWorkloads()),
-		},
-		EgressAllowedBy:  convertCiliumPolicies(flowObj.GetEgressAllowedBy()),
-		IngressAllowedBy: convertCiliumPolicies(flowObj.GetIngressAllowedBy()),
-		EgressDeniedBy:   convertCiliumPolicies(flowObj.GetEgressDeniedBy()),
-		IngressDeniedBy:  convertCiliumPolicies(flowObj.GetIngressDeniedBy()),
+		}
 	}
 	return &ciliumFlow
 }
