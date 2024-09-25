@@ -112,10 +112,9 @@ func (sm *streamManager) StreamResources(ctx context.Context, cancel context.Can
 		return err
 	}
 	snapshotCompleted.Done()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 // StreamLogs handles the log stream.

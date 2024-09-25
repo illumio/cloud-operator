@@ -37,7 +37,6 @@ type BufferedGrpcWriteSyncer struct {
 	encoder             zapcore.Encoder
 	lostLogEntriesCount int
 	lostLogEntriesErr   error
-	stopListening       chan struct{} // New stop channel
 }
 
 // NewBufferedGrpcWriteSyncer returns a new BufferedGrpcWriteSyncer
@@ -48,7 +47,6 @@ func NewBufferedGrpcWriteSyncer() *BufferedGrpcWriteSyncer {
 		buffer:              make([]*zapcore.Entry, 0, maxBufferSize),
 		done:                make(chan struct{}),
 		lostLogEntriesCount: 0,
-		stopListening:       make(chan struct{}), // Initialize stop channel
 	}
 	go bws.run()
 	return bws
@@ -141,8 +139,6 @@ func (b *BufferedGrpcWriteSyncer) sendLog(logEntry *zapcore.Entry, extraFields [
 // UpdateClient will update BufferedGrpcWriteSyncer with new client stream and GRPC connection
 func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_SendLogsClient, conn ClientConnInterface) {
 	b.mutex.Lock()
-	close(b.stopListening)                // Close the old stop channel
-	b.stopListening = make(chan struct{}) // Create a new stop channel
 	b.client = client
 	b.conn = conn
 	b.done = make(chan struct{})
@@ -155,10 +151,6 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
 	for {
 		select {
-		case <-b.stopListening:
-			// Stop listening if signaled
-			b.logger.Info("Stopping the log stream listener")
-			return nil
 		default:
 			res, err := b.client.Recv()
 			if err == io.EOF {
