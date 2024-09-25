@@ -77,7 +77,7 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 	}
 	// Prevent us from overwhelming K8 api
 	limiter := rate.NewLimiter(1, 5)
-	err := limiter.Wait(ctx)
+	err = limiter.Wait(ctx)
 	if err != nil {
 		r.logger.Errorw("Cannot wait using rate limiter", "error", err)
 		cancel()
