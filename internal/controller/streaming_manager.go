@@ -124,7 +124,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 		dynamicClient: dynamicClient,
 		streamManager: sm,
 	}
-	err = resourceLister.sendClusterMetadata(ctx)
+	err = sendClusterMetadata(ctx, sm)
 	if err != nil {
 		sm.logger.Errorw("Failed to send cluster metadata", "error", err)
 		return err
@@ -134,7 +134,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 		go resourceLister.DyanmicListAndWatchResources(ctx, cancel, resourceType, &allResourcesSnapshotted, &snapshotCompleted)
 	}
 	allResourcesSnapshotted.Wait()
-	err = resourceLister.sendResourceSnapshotComplete()
+	err = sendResourceSnapshotComplete(sm)
 	dd.timeStarted = time.Now()
 	dd.mutex.Lock()
 	dd.processingResources = false

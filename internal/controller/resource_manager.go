@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
-	"github.com/illumio/cloud-operator/internal/version"
 	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -24,40 +22,6 @@ type ResourceManager struct {
 	dynamicClient dynamic.Interface
 	// StreamManager abstracts logic related to starting, using, and managing streams.
 	streamManager *streamManager
-}
-
-// sendResourceSnapshotComplete sends a message to indicate that the initial inventory snapshot has been completely streamed into the given stream.
-func (rm *ResourceManager) sendResourceSnapshotComplete() error {
-	if err := rm.streamManager.instance.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
-		rm.logger.Errorw("Falied to send resource snapshot complete",
-			"error", err,
-		)
-		return err
-	}
-	return nil
-}
-
-// sendClusterMetadata sends a message to indicate current cluster metadata
-func (rm *ResourceManager) sendClusterMetadata(ctx context.Context) error {
-	clusterUid, err := GetClusterID(ctx, rm.logger)
-	if err != nil {
-		rm.logger.Errorw("Error getting cluster id", "error", err)
-	}
-	clientset, err := NewClientSet()
-	if err != nil {
-		rm.logger.Errorw("Error creating clientset", "error", err)
-	}
-	kubernetesVersion, err := clientset.Discovery().ServerVersion()
-	if err != nil {
-		rm.logger.Errorw("Error getting Kubernetes version", "error", err)
-	}
-	if err := rm.streamManager.instance.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: version.Version()}}}); err != nil {
-		rm.logger.Errorw("Failed to send cluster metadata",
-			"error", err,
-		)
-		return err
-	}
-	return nil
 }
 
 // DynamicListAndWatchResources lists and watches the specified resource dynamically, managing context cancellation and synchronization with wait groups.
@@ -159,7 +123,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, watc
 
 }
 
-// FetchResources retrieves unstructured resources from the Kubernetes API.
+// FetchResources retrieves unstructured resources from the K8s API.
 func (r *ResourceManager) FetchResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) (*unstructured.UnstructuredList, error) {
 	unstructuredResources, err := r.dynamicClient.Resource(resource).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
