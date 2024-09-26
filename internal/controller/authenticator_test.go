@@ -5,6 +5,7 @@ package controller
 import (
 	"context"
 	"os"
+	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
@@ -41,8 +42,8 @@ func (suite *ControllerTestSuite) TestGetOnboardingCredentials() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			sm := &SecretManager{Logger: logger}
-			creds, err := sm.GetOnboardingCredentials(ctx, tt.clientID, tt.clientSecret)
+			authn := &Authenticator{Logger: logger}
+			creds, err := authn.GetOnboardingCredentials(ctx, tt.clientID, tt.clientSecret)
 			if tt.expectedError {
 				assert.Error(suite.T(), err)
 				assert.Equal(suite.T(), Credentials{}, creds)
@@ -122,7 +123,7 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			sm := &SecretManager{Logger: logger}
+			authn := &Authenticator{Logger: logger}
 
 			if tt.secretData != nil {
 				secret := &v1.Secret{
@@ -137,7 +138,7 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 				}
 			}
 
-			clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, tt.secretName)
+			clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, tt.secretName)
 			if tt.expectedError {
 				assert.Error(suite.T(), err)
 				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
@@ -194,7 +195,8 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			sm := &SecretManager{Logger: logger}
+			authn := &Authenticator{Logger: logger}
+
 			// Since go test does not follow any order, always make sure namespace is deleted before each test
 			_ = suite.clientset.CoreV1().Namespaces().Delete(context.TODO(), "illumio-cloud", metav1.DeleteOptions{})
 			if tt.namespaceExists {
@@ -224,7 +226,7 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 				}
 			}
 
-			err := sm.WriteK8sSecret(ctx, tt.onboardResponse, tt.secretName)
+			err := authn.WriteK8sSecret(ctx, tt.onboardResponse, tt.secretName)
 			if tt.expectedError {
 				assert.Error(suite.T(), err)
 				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
@@ -233,4 +235,19 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 			}
 		})
 	}
+}
+
+func TestIsRunningInCluster(t *testing.T) {
+	t.Run("Running in cluster", func(t *testing.T) {
+		os.Setenv("KUBERNETES_SERVICE_HOST", "localhost")
+		defer os.Unsetenv("KUBERNETES_SERVICE_HOST")
+
+		assert.True(t, IsRunningInCluster())
+	})
+
+	t.Run("Not running in cluster", func(t *testing.T) {
+		os.Unsetenv("KUBERNETES_SERVICE_HOST")
+
+		assert.False(t, IsRunningInCluster())
+	})
 }

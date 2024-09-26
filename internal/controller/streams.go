@@ -17,11 +17,11 @@ import (
 )
 
 type streamClient struct {
-	conn           *grpc.ClientConn
-	client         pb.KubernetesInfoServiceClient
-	resourceStream pb.KubernetesInfoService_SendKubernetesResourcesClient
-	logStream      pb.KubernetesInfoService_SendLogsClient
-	ciliumNetworkFlowsStream     pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
+	conn                     *grpc.ClientConn
+	client                   pb.KubernetesInfoServiceClient
+	resourceStream           pb.KubernetesInfoService_SendKubernetesResourcesClient
+	logStream                pb.KubernetesInfoService_SendLogsClient
+	ciliumNetworkFlowsStream pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 }
 
 type deadlockDetector struct {
@@ -31,9 +31,9 @@ type deadlockDetector struct {
 }
 
 type streamManager struct {
-	instance           *streamClient
-	logger             *zap.SugaredLogger
 	bufferedGrpcSyncer *BufferedGrpcWriteSyncer
+	streamClient       *streamClient
+	logger             *zap.SugaredLogger
 }
 
 type EnvironmentConfig struct {
@@ -185,31 +185,31 @@ func (sm *streamManager) StreamLogs(ctx context.Context, cancel context.CancelFu
 			cancel()
 			return err
 		}
-	// TODO: Add logic for a discoveribility function to decide which CNI to use.
-// 	ciliumFlowManager, err := newCiliumCollector(ctx, sm.logger, ciliumNamespace)
-// 	if err != nil {
-// 		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
-// 	}
-// 	if ciliumFlowManager.client != nil {
-// 		go func() {
-// 			for {
-// 				err = ciliumFlowManager.exportCiliumFlows(ctx, *sm)
-// 				if err != nil {
-// 					sm.logger.Warnw("Failed to listen to flows", "error", err)
-// 					// Attempt to rediscover new hubble address and reconnect
-// 					for {
-// 						ciliumFlowManager, err = newCiliumCollector(ctx, sm.logger, ciliumNamespace)
-// 						if err != nil {
-// 							sm.logger.Warnw("Failed to recreate new Collector", "error", err)
-// 						} else {
-// 							break
-// 						}
-// 						// TODO: Add exponetial backoff so that this isnt spammed as hubble relay is restarted/deployed
-// 						// TODO: redo looping logic to be cleaner
-// 					}
-// 				}
-// 			}
-// 		}()
+		// TODO: Add logic for a discoveribility function to decide which CNI to use.
+		// 	ciliumFlowManager, err := newCiliumCollector(ctx, sm.logger, ciliumNamespace)
+		// 	if err != nil {
+		// 		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
+		// 	}
+		// 	if ciliumFlowManager.client != nil {
+		// 		go func() {
+		// 			for {
+		// 				err = ciliumFlowManager.exportCiliumFlows(ctx, *sm)
+		// 				if err != nil {
+		// 					sm.logger.Warnw("Failed to listen to flows", "error", err)
+		// 					// Attempt to rediscover new hubble address and reconnect
+		// 					for {
+		// 						ciliumFlowManager, err = newCiliumCollector(ctx, sm.logger, ciliumNamespace)
+		// 						if err != nil {
+		// 							sm.logger.Warnw("Failed to recreate new Collector", "error", err)
+		// 						} else {
+		// 							break
+		// 						}
+		// 						// TODO: Add exponetial backoff so that this isnt spammed as hubble relay is restarted/deployed
+		// 						// TODO: redo looping logic to be cleaner
+		// 					}
+		// 				}
+		// 			}
+		// 		}()
 	}
 	return nil
 }
@@ -220,13 +220,13 @@ func connectAndStreamResources(logger *zap.SugaredLogger, sm *streamManager) err
 	resourceCtx, resourceCancel := context.WithCancel(context.Background())
 	defer resourceCancel()
 
-	SendKubernetesResourcesStream, err := sm.instance.client.SendKubernetesResources(resourceCtx)
+	SendKubernetesResourcesStream, err := sm.streamClient.client.SendKubernetesResources(resourceCtx)
 	if err != nil {
 		logger.Errorw("Failed to connect to server", "error", err)
 		return err
 	}
 
-	sm.instance.resourceStream = SendKubernetesResourcesStream
+	sm.streamClient.resourceStream = SendKubernetesResourcesStream
 
 	err = sm.StreamResources(resourceCtx, resourceCancel)
 	if err != nil {
@@ -241,14 +241,14 @@ func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager) error {
 	logCtx, logCancel := context.WithCancel(context.Background())
 	defer logCancel()
 
-	SendLogsStream, err := sm.instance.client.SendLogs(logCtx)
+	SendLogsStream, err := sm.streamClient.client.SendLogs(logCtx)
 	if err != nil {
 		logger.Errorw("Failed to connect to server", "error", err)
 		return err
 	}
 
-	sm.instance.logStream = SendLogsStream
-	sm.bufferedGrpcSyncer.UpdateClient(sm.instance.logStream, sm.instance.conn)
+	sm.streamClient.logStream = SendLogsStream
+	sm.bufferedGrpcSyncer.UpdateClient(sm.streamClient.logStream, sm.streamClient.conn)
 
 	err = sm.StreamLogs(logCtx, logCancel)
 	if err != nil {
@@ -294,13 +294,13 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 			continue
 		}
 
-		instance := &streamClient{
+		streamClient := &streamClient{
 			conn:   authConn,
 			client: client,
 		}
 
 		sm := &streamManager{
-			instance:           instance,
+			streamClient:       streamClient,
 			logger:             logger,
 			bufferedGrpcSyncer: bufferedGrpcSyncer,
 		}
@@ -322,31 +322,30 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 }
 
 func streamAuth(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig) (*grpc.ClientConn, pb.KubernetesInfoServiceClient, error) {
-	sm := SecretManager{Logger: logger}
+	authn := Authenticator{Logger: logger}
 
-	clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+	clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 	if err != nil {
 		logger.Errorw("Could not read K8s credentials", "error", err)
 	}
 
 	if clientID == "" && clientSecret == "" {
-		OnboardingCredentials, err := sm.GetOnboardingCredentials(ctx, envMap.OnboardingClientId, envMap.OnboardingClientSecret)
-		ctx, cancel := context.WithCancel(ctx)
-// 		err = sm.BootUpStreamAndReconnect(ctx, cancel, envMap.CiliumNamespace)
+		OnboardingCredentials, err := authn.GetOnboardingCredentials(ctx, envMap.OnboardingClientId, envMap.OnboardingClientSecret)
+		ctx, _ := context.WithCancel(ctx)
+		// 		err = sm.BootUpStreamAndReconnect(ctx, cancel, envMap.CiliumNamespace)
 		if err != nil {
 			logger.Errorw("Failed to get onboarding credentials", "error", err)
 		}
-		am := CredentialsManager{Credentials: OnboardingCredentials, Logger: logger}
-		responseData, err := am.Onboard(ctx, envMap.TlsSkipVerify, envMap.OnboardingEndpoint)
+		responseData, err := Onboard(ctx, envMap.TlsSkipVerify, envMap.OnboardingEndpoint, OnboardingCredentials, logger)
 		if err != nil {
 			logger.Errorw("Failed to register cluster", "error", err)
 		}
-		err = sm.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
+		err = authn.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
 		time.Sleep(1 * time.Second)
 		if err != nil {
-			am.Logger.Errorw("Failed to write secret to Kubernetes", "error", err)
+			logger.Errorw("Failed to write secret to Kubernetes", "error", err)
 		}
-		clientID, clientSecret, err = sm.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+		clientID, clientSecret, err = authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 		if err != nil {
 			logger.Errorw("Could not read K8s credentials", "error", err)
 		}

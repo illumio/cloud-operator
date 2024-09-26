@@ -8,7 +8,10 @@ import (
 	"testing"
 	"time"
 
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	corev1 "k8s.io/api/core/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,7 +19,7 @@ import (
 )
 
 func TestCacheCurrentEvent(t *testing.T) {
-	c := CacheManager{cache: make(map[string][32]byte)}
+	cache := Cache{cache: make(map[string][32]byte)}
 	sampleData := make(map[string]string)
 	creationTimestamp := metav1.Time{Time: time.Now()}
 	objMeta := metav1.ObjectMeta{
@@ -31,9 +34,9 @@ func TestCacheCurrentEvent(t *testing.T) {
 	hashValue, _ := hashObjectMeta(objMeta)
 
 	// Call function under test.
-	cacheCurrentEvent(objMeta, hashValue, c)
+	cacheCurrentEvent(objMeta, hashValue, &cache)
 
-	_, ok := c.cache[string(objMeta.UID)]
+	_, ok := cache.cache[string(objMeta.UID)]
 
 	if !ok {
 		t.Error("cacheCurrentEvent() did not cache current item")
@@ -41,7 +44,7 @@ func TestCacheCurrentEvent(t *testing.T) {
 }
 
 func TestDeleteFromCacheCurrentEvent(t *testing.T) {
-	c := CacheManager{cache: make(map[string][32]byte)}
+	cache := Cache{cache: make(map[string][32]byte)}
 	sampleData := make(map[string]string)
 	creationTimestamp := metav1.Time{Time: time.Now()}
 	objMeta := metav1.ObjectMeta{
@@ -55,12 +58,12 @@ func TestDeleteFromCacheCurrentEvent(t *testing.T) {
 	}
 	hashValue, _ := hashObjectMeta(objMeta)
 
-	cacheCurrentEvent(objMeta, hashValue, c)
+	cacheCurrentEvent(objMeta, hashValue, &cache)
 
 	// Call function under test.
-	deleteFromCacheCurrentEvent(objMeta, c)
+	deleteFromCacheCurrentEvent(objMeta, &cache)
 
-	_, ok := c.cache[string(objMeta.UID)]
+	_, ok := cache.cache[string(objMeta.UID)]
 
 	if ok {
 		t.Error("deleteFromCacheCurrentEvent() did not delete current obj from cache")
@@ -169,4 +172,41 @@ func TestGetMetadataFromResource(t *testing.T) {
 	if metadata.Name != "test-pod" || metadata.Namespace != "test-namespace" || metadata.Labels["app"] != "test-app" {
 		t.Errorf("Incorrect metadata extracted: %+v", metadata)
 	}
+}
+
+func TestConvertMetaObjectToMetadata(t *testing.T) {
+	sampleData := make(map[string]string)
+	resource := "test-resource"
+	creationTimestamp := metav1.Time{Time: time.Now()}
+	objMeta := metav1.ObjectMeta{
+		Annotations:       sampleData,
+		CreationTimestamp: creationTimestamp,
+		Labels:            sampleData,
+		Name:              "test-name",
+		Namespace:         "test-namespace",
+		ResourceVersion:   "test-version",
+		UID:               "test-uid",
+	}
+
+	expected := &pb.KubernetesObjectMetadata{
+		Annotations:       sampleData,
+		CreationTimestamp: convertToProtoTimestamp(creationTimestamp),
+		Kind:              resource,
+		Labels:            sampleData,
+		Name:              "test-name",
+		Namespace:         "test-namespace",
+		ResourceVersion:   "test-version",
+		Uid:               "test-uid",
+	}
+
+	result := convertMetaObjectToMetadata(objMeta, resource)
+	assert.Equal(t, expected, result)
+}
+
+func TestConvertToProtoTimestamp(t *testing.T) {
+	k8sTime := metav1.Time{Time: time.Now()}
+	expected := timestamppb.New(k8sTime.Time)
+
+	result := convertToProtoTimestamp(k8sTime)
+	assert.Equal(t, expected, result)
 }

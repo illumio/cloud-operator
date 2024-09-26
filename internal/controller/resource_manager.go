@@ -27,7 +27,7 @@ type ResourceManager struct {
 
 // sendResourceSnapshotComplete sends a message to indicate that the initial inventory snapshot has been completely streamed into the given stream.
 func (r *ResourceManager) sendResourceSnapshotComplete() error {
-	if err := r.streamManager.instance.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
+	if err := r.streamManager.streamClient.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
 		r.logger.Errorw("Falied to send resource snapshot complete",
 			"error", err,
 		)
@@ -50,7 +50,7 @@ func (r *ResourceManager) sendClusterMetadata(ctx context.Context) error {
 	if err != nil {
 		r.logger.Errorw("Error getting Kubernetes version", "error", err)
 	}
-	if err := r.streamManager.instance.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: version.Version()}}}); err != nil {
+	if err := r.streamManager.streamClient.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: version.Version()}}}); err != nil {
 		r.logger.Errorw("Failed to send cluster metadata",
 			"error", err,
 		)
@@ -93,39 +93,39 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 }
 
 // DynamicListResources lists a specifed resource dynamically and sends down the current gRPC stream.
-func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string, apiGroup string) (string, CacheManager, error) {
-	cm := CacheManager{cache: make(map[string][32]byte)}
+func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string, apiGroup string) (string, Cache, error) {
+	cache := Cache{cache: make(map[string][32]byte)}
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	objs, resourceListVersion, err := r.listResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
-		return "", cm, err
+		return "", cache, err
 	}
 	for _, obj := range objs {
 		metadataObj := convertMetaObjectToMetadata(obj, resource)
 		err := sendObjectMetaData(r.streamManager, metadataObj)
 		if err != nil {
 			r.logger.Errorw("Cannot send object metadata", "error", err)
-			return "", cm, err
+			return "", cache, err
 		}
 		hashValue, err := hashObjectMeta(obj)
 		if err != nil {
 			r.logger.Errorw("Cannot hash current object", "error", err)
-			return "", cm, err
+			return "", cache, err
 		}
-		cacheCurrentEvent(obj, hashValue, cm)
+		cacheCurrentEvent(obj, hashValue, &cache)
 	}
 
 	select {
 	case <-ctx.Done():
-		return "", cm, err
+		return "", cache, err
 	default:
 	}
-	return resourceListVersion, cm, nil
+	return resourceListVersion, cache, nil
 }
 
 // watchEvents watches Kubernetes resources and updates cache based on events.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
-func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiGroup string, watchOptions metav1.ListOptions, c CacheManager) error {
+func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiGroup string, watchOptions metav1.ListOptions, cache Cache) error {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
@@ -148,7 +148,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 		}
 		metadataObj := convertMetaObjectToMetadata(*convertedData, resource)
 
-		wasUniqueEvent, err := uniqueEvent(*convertedData, c, event)
+		wasUniqueEvent, err := uniqueEvent(*convertedData, &cache, event)
 		if err != nil {
 			r.logger.Errorw("Failed to hash object metadata", "error", err)
 			return err
