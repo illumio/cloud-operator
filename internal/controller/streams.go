@@ -315,8 +315,9 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 		}
 
 		streamClient := &streamClient{
-			conn:   authConn,
-			client: client,
+			conn:            authConn,
+			client:          client,
+			ciliumNamespace: envMap.CiliumNamespace,
 		}
 
 		sm := &streamManager{
@@ -332,6 +333,8 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 
 		go manageStream(logger, connectAndStreamResources, sm, resourceDone)
 		go manageStream(logger, connectAndStreamLogs, sm, logDone)
+
+		// Need to block this until resources are done being committed.
 		go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
 
 		<-ciliumDone
