@@ -17,11 +17,11 @@ import (
 )
 
 type streamClient struct {
-	conn                     *grpc.ClientConn
-	client                   pb.KubernetesInfoServiceClient
-	resourceStream           pb.KubernetesInfoService_SendKubernetesResourcesClient
-	logStream                pb.KubernetesInfoService_SendLogsClient
-	ciliumNetworkFlowsStream pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
+	conn                      *grpc.ClientConn
+	client                    pb.KubernetesInfoServiceClient
+	streamKubernetesResources pb.KubernetesInfoService_SendKubernetesResourcesClient
+	ciliumNetworkFlowsStream  pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
+	logStream                 pb.KubernetesInfoService_SendLogsClient
 }
 
 type deadlockDetector struct {
@@ -226,7 +226,7 @@ func connectAndStreamResources(logger *zap.SugaredLogger, sm *streamManager) err
 		return err
 	}
 
-	sm.streamClient.resourceStream = SendKubernetesResourcesStream
+	sm.streamClient.streamKubernetesResources = SendKubernetesResourcesStream
 
 	err = sm.StreamResources(resourceCtx, resourceCancel)
 	if err != nil {
