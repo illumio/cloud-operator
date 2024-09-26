@@ -186,7 +186,7 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm streamM
 	}
 }
 
-// Make a function comment
+// ConvertCiliumFlow converts a GetFlowsResponse object to a CiliumFlow object
 func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 	flowObj := flow.GetFlow()
 	ciliumFlow := pb.CiliumFlow{
