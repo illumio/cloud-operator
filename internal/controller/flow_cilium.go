@@ -149,7 +149,7 @@ func convertCiliumPolicies(policies []*flow.Policy) []*pb.Policy {
 }
 
 // exportCiliumFlows makes one stream gRPC call to hubble-relay to collect, convert, and export flows into the given stream.
-func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm streamManager) error {
+func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, cancel context.CancelFunc, sm streamManager) error {
 	req := &observer.GetFlowsRequest{
 		Number: ciliumHubbleRelayMaxFlowCount,
 		Follow: true,
@@ -165,6 +165,7 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm streamM
 		if err != nil {
 			fm.logger.Errorw("Error closing observerClient stream", "error", err)
 		}
+		cancel()
 	}()
 	for {
 		select {

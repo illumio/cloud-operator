@@ -197,10 +197,11 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, cancel co
 	ciliumFlowManager, err := newCiliumCollector(ctx, sm.logger, ciliumNamespace)
 	if err != nil {
 		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
+		return err
 	}
-	if ciliumFlowManager.client != nil {
+	if ciliumFlowManager != nil {
 		for {
-			err = ciliumFlowManager.exportCiliumFlows(ctx, *sm)
+			err = ciliumFlowManager.exportCiliumFlows(ctx, cancel, *sm)
 			if err != nil {
 				sm.logger.Warnw("Failed to listen to flows", "error", err)
 				return err
@@ -224,7 +225,7 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.SugaredLogger, sm *streamMan
 
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, ciliumCancel, sm.streamClient.ciliumNamespace)
 	if err != nil {
-		logger.Errorw("Failed to bootup and stream resources", "error", err)
+		logger.Errorw("Failed to bootup and Cilium network flows", "error", err)
 		return err
 	}
 
@@ -279,10 +280,15 @@ func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager) error {
 func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *streamManager) error, sm *streamManager, done chan struct{}) {
 	var backoff = 1 * time.Second
 	max := big.NewInt(3)
-
+	rebootCounter := 0
+	// Need a way to prevent operators from all booting at the same time globally if CS has outtage
 	for {
 		err := connectAndStream(logger, sm)
 		if err != nil {
+			if rebootCounter >= 10 {
+				done <- struct{}{}
+				return
+			}
 			logger.Errorw("Failed to establish stream connection; will retry", "error", err)
 			randomInt, err := rand.Int(rand.Reader, max)
 			if err != nil {
@@ -293,9 +299,7 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 			sleep := 1*time.Second + backoff + time.Duration(result)*time.Millisecond // Add randomness
 			time.Sleep(sleep)
 			backoff = backoff * 2 // Exponential increase
-		} else {
-			done <- struct{}{}
-			return
+			rebootCounter++
 		}
 	}
 }
@@ -330,11 +334,9 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 		go manageStream(logger, connectAndStreamLogs, sm, logDone)
 		go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
 
-		select {
-		case <-resourceDone:
-		case <-logDone:
-		case <-ciliumDone:
-		}
+		<-ciliumDone
+		<-resourceDone
+		<-logDone
 
 		logger.Warn("All streams have been closed. Rebooting the entire connection.")
 	}
