@@ -160,7 +160,12 @@ func (fm *CiliumFlowCollector) exportFlows(ctx context.Context, sm streamManager
 		fm.logger.Errorw("Error getting network flows", "error", err)
 		return err
 	}
-	defer stream.CloseSend()
+	defer func() {
+		err = stream.CloseSend()
+		if err != nil {
+			fm.logger.Errorw("Error closing observerClient stream", "error", err)
+		}
+	}()
 	for {
 		select {
 		case <-ctx.Done():
