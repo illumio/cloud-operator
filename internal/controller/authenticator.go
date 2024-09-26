@@ -186,7 +186,8 @@ func SetUpOAuthConnection(ctx context.Context, logger *zap.SugaredLogger, tokenU
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(oauth.TokenSource{
 			TokenSource: tokenSource,
-		}))
+		}),
+		grpc.WithKeepaliveParams(kacp))
 	if err != nil {
 		return nil, err
 	}

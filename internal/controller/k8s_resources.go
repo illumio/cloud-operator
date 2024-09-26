@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"k8s.io/apimachinery/pkg/api/meta"

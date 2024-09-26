@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -19,7 +19,7 @@ import (
 )
 
 func TestCacheCurrentEvent(t *testing.T) {
-	c := Cache{cache: make(map[string][32]byte)}
+	cache := Cache{cache: make(map[string][32]byte)}
 	sampleData := make(map[string]string)
 	creationTimestamp := metav1.Time{Time: time.Now()}
 	objMeta := metav1.ObjectMeta{
@@ -34,9 +34,9 @@ func TestCacheCurrentEvent(t *testing.T) {
 	hashValue, _ := hashObjectMeta(objMeta)
 
 	// Call function under test.
-	cacheCurrentEvent(objMeta, hashValue, c)
+	cacheCurrentEvent(objMeta, hashValue, &cache)
 
-	_, ok := c.cache[string(objMeta.UID)]
+	_, ok := cache.cache[string(objMeta.UID)]
 
 	if !ok {
 		t.Error("cacheCurrentEvent() did not cache current item")
@@ -44,7 +44,7 @@ func TestCacheCurrentEvent(t *testing.T) {
 }
 
 func TestDeleteFromCacheCurrentEvent(t *testing.T) {
-	c := Cache{cache: make(map[string][32]byte)}
+	cache := Cache{cache: make(map[string][32]byte)}
 	sampleData := make(map[string]string)
 	creationTimestamp := metav1.Time{Time: time.Now()}
 	objMeta := metav1.ObjectMeta{
@@ -58,12 +58,12 @@ func TestDeleteFromCacheCurrentEvent(t *testing.T) {
 	}
 	hashValue, _ := hashObjectMeta(objMeta)
 
-	cacheCurrentEvent(objMeta, hashValue, c)
+	cacheCurrentEvent(objMeta, hashValue, &cache)
 
 	// Call function under test.
-	deleteFromCacheCurrentEvent(objMeta, c)
+	deleteFromCacheCurrentEvent(objMeta, &cache)
 
-	_, ok := c.cache[string(objMeta.UID)]
+	_, ok := cache.cache[string(objMeta.UID)]
 
 	if ok {
 		t.Error("deleteFromCacheCurrentEvent() did not delete current obj from cache")
