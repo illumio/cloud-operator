@@ -17,15 +17,11 @@ import (
 )
 
 type streamClient struct {
-	conn                     *grpc.ClientConn
-	client                   pb.KubernetesInfoServiceClient
-	resourceStream           pb.KubernetesInfoService_SendKubernetesResourcesClient
-	logStream                pb.KubernetesInfoService_SendLogsClient
-	ciliumNetworkFlowsStream pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
-}
-
-type streamingOptions struct {
-	ciliumNamespace string
+	conn                      *grpc.ClientConn
+	client                    pb.KubernetesInfoServiceClient
+	streamKubernetesResources pb.KubernetesInfoService_SendKubernetesResourcesClient
+	ciliumNetworkFlowsStream  pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
+	logStream                 pb.KubernetesInfoService_SendLogsClient
 }
 
 type deadlockDetector struct {
@@ -35,9 +31,9 @@ type deadlockDetector struct {
 }
 
 type streamManager struct {
-	instance           *streamClient
-	logger             *zap.SugaredLogger
 	bufferedGrpcSyncer *BufferedGrpcWriteSyncer
+	streamClient       *streamClient
+	logger             *zap.SugaredLogger
 }
 
 type EnvironmentConfig struct {
@@ -189,40 +185,48 @@ func (sm *streamManager) StreamLogs(ctx context.Context, cancel context.CancelFu
 			cancel()
 			return err
 		}
+		// TODO: Add logic for a discoveribility function to decide which CNI to use.
+		// 	ciliumFlowManager, err := newCiliumCollector(ctx, sm.logger, ciliumNamespace)
+		// 	if err != nil {
+		// 		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
+		// 	}
+		// 	if ciliumFlowManager.client != nil {
+		// 		go func() {
+		// 			for {
+		// 				err = ciliumFlowManager.exportCiliumFlows(ctx, *sm)
+		// 				if err != nil {
+		// 					sm.logger.Warnw("Failed to listen to flows", "error", err)
+		// 					// Attempt to rediscover new hubble address and reconnect
+		// 					for {
+		// 						ciliumFlowManager, err = newCiliumCollector(ctx, sm.logger, ciliumNamespace)
+		// 						if err != nil {
+		// 							sm.logger.Warnw("Failed to recreate new Collector", "error", err)
+		// 						} else {
+		// 							break
+		// 						}
+		// 						// TODO: Add exponetial backoff so that this isnt spammed as hubble relay is restarted/deployed
+		// 						// TODO: redo looping logic to be cleaner
+		// 					}
+		// 				}
+		// 			}
+		// 		}()
 	}
 	return nil
 }
 
-// StreamCiliumNetworkFlows handles the ciliumNetworkFlows stream.
-func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNamespace string) error {
-	ciliumFlowManager, err := newCiliumCollector(ctx, sm.logger, ciliumNamespace)
-	if err != nil {
-		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
-	}
-	if ciliumFlowManager.client != nil {
-		for {
-			err = ciliumFlowManager.exportCiliumFlows(ctx, *sm)
-			if err != nil {
-				sm.logger.Errorw("Failed to listen to flows", "error", err)
-				return err
-			}
-		}
-	}
-	return nil
-}
+// Connect and Stream Functions
 
-// connectAndStreamResources is a wrapper for streaming resources.
-func connectAndStreamResources(logger *zap.SugaredLogger, sm *streamManager, streamingOptions streamingOptions) error {
+func connectAndStreamResources(logger *zap.SugaredLogger, sm *streamManager) error {
 	resourceCtx, resourceCancel := context.WithCancel(context.Background())
 	defer resourceCancel()
 
-	SendKubernetesResourcesStream, err := sm.instance.client.SendKubernetesResources(resourceCtx)
+	SendKubernetesResourcesStream, err := sm.streamClient.client.SendKubernetesResources(resourceCtx)
 	if err != nil {
 		logger.Errorw("Failed to connect to server", "error", err)
 		return err
 	}
 
-	sm.instance.resourceStream = SendKubernetesResourcesStream
+	sm.streamClient.streamKubernetesResources = SendKubernetesResourcesStream
 
 	err = sm.StreamResources(resourceCtx, resourceCancel)
 	if err != nil {
@@ -233,41 +237,18 @@ func connectAndStreamResources(logger *zap.SugaredLogger, sm *streamManager, str
 	return nil
 }
 
-// connectAndStreamCiliumNetworkFlows is a wrapper for streaming Cilium network flows.
-func connectAndStreamCiliumNetworkFlows(logger *zap.SugaredLogger, sm *streamManager, streamingOptions streamingOptions) error {
-	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
-	defer ciliumCancel()
-
-	SendCiliumNetworkFlowsStream, err := sm.instance.client.SendKubernetesNetworkFlows(ciliumCtx)
-	if err != nil {
-		logger.Errorw("Failed to connect to server", "error", err)
-		return err
-	}
-
-	sm.instance.ciliumNetworkFlowsStream = SendCiliumNetworkFlowsStream
-
-	err = sm.StreamCiliumNetworkFlows(ciliumCtx, streamingOptions.ciliumNamespace)
-	if err != nil {
-		logger.Errorw("Failed to bootup and stream resources", "error", err)
-		return err
-	}
-
-	return nil
-}
-
-// connectAndStreamLogs is a wrapper for streaming logs.
-func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager, streamingOptions streamingOptions) error {
+func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager) error {
 	logCtx, logCancel := context.WithCancel(context.Background())
 	defer logCancel()
 
-	SendLogsStream, err := sm.instance.client.SendLogs(logCtx)
+	SendLogsStream, err := sm.streamClient.client.SendLogs(logCtx)
 	if err != nil {
 		logger.Errorw("Failed to connect to server", "error", err)
 		return err
 	}
 
-	sm.instance.logStream = SendLogsStream
-	sm.bufferedGrpcSyncer.UpdateClient(sm.instance.logStream, sm.instance.conn)
+	sm.streamClient.logStream = SendLogsStream
+	sm.bufferedGrpcSyncer.UpdateClient(sm.streamClient.logStream, sm.streamClient.conn)
 
 	err = sm.StreamLogs(logCtx, logCancel)
 	if err != nil {
@@ -279,12 +260,12 @@ func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager, streamin
 }
 
 // Generic function to manage any stream with backoff and reconnection logic.
-func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *streamManager, streamingOptions) error, sm *streamManager, streamingOptions streamingOptions, done chan struct{}) {
+func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *streamManager) error, sm *streamManager, done chan struct{}) {
 	var backoff = 1 * time.Second
 	max := big.NewInt(3)
 
 	for {
-		err := connectAndStream(logger, sm, streamingOptions)
+		err := connectAndStream(logger, sm)
 		if err != nil {
 			logger.Errorw("Failed to establish stream connection; will retry", "error", err)
 			randomInt, err := rand.Int(rand.Reader, max)
@@ -313,31 +294,27 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 			continue
 		}
 
-		instance := &streamClient{
+		streamClient := &streamClient{
 			conn:   authConn,
 			client: client,
 		}
 
 		sm := &streamManager{
-			instance:           instance,
+			streamClient:       streamClient,
 			logger:             logger,
 			bufferedGrpcSyncer: bufferedGrpcSyncer,
 		}
 
 		resourceDone := make(chan struct{})
 		logDone := make(chan struct{})
-		ciliumDone := make(chan struct{})
 		sm.bufferedGrpcSyncer.done = logDone
 
-		go manageStream(logger, connectAndStreamResources, sm, streamingOptions{}, resourceDone)
-		go manageStream(logger, connectAndStreamLogs, sm, streamingOptions{}, logDone)
-		// Make a blocking mutex so this doesnt start til resources are done
-		go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, streamingOptions{ciliumNamespace: envMap.CiliumNamespace}, ciliumDone)
+		go manageStream(logger, connectAndStreamResources, sm, resourceDone)
+		go manageStream(logger, connectAndStreamLogs, sm, logDone)
 
 		select {
 		case <-resourceDone:
 		case <-logDone:
-		case <-ciliumDone:
 		}
 
 		logger.Warn("All streams have been closed. Rebooting the entire connection.")
@@ -345,29 +322,30 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 }
 
 func streamAuth(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig) (*grpc.ClientConn, pb.KubernetesInfoServiceClient, error) {
-	sm := SecretManager{Logger: logger}
+	authn := Authenticator{Logger: logger}
 
-	clientID, clientSecret, err := sm.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+	clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 	if err != nil {
 		logger.Errorw("Could not read K8s credentials", "error", err)
 	}
 
 	if clientID == "" && clientSecret == "" {
-		OnboardingCredentials, err := sm.GetOnboardingCredentials(ctx, envMap.OnboardingClientId, envMap.OnboardingClientSecret)
+		OnboardingCredentials, err := authn.GetOnboardingCredentials(ctx, envMap.OnboardingClientId, envMap.OnboardingClientSecret)
+		ctx, _ := context.WithCancel(ctx)
+		// 		err = sm.BootUpStreamAndReconnect(ctx, cancel, envMap.CiliumNamespace)
 		if err != nil {
 			logger.Errorw("Failed to get onboarding credentials", "error", err)
 		}
-		am := CredentialsManager{Credentials: OnboardingCredentials, Logger: logger}
-		responseData, err := am.Onboard(ctx, envMap.TlsSkipVerify, envMap.OnboardingEndpoint)
+		responseData, err := Onboard(ctx, envMap.TlsSkipVerify, envMap.OnboardingEndpoint, OnboardingCredentials, logger)
 		if err != nil {
 			logger.Errorw("Failed to register cluster", "error", err)
 		}
-		err = sm.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
+		err = authn.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
 		time.Sleep(1 * time.Second)
 		if err != nil {
-			am.Logger.Errorw("Failed to write secret to Kubernetes", "error", err)
+			logger.Errorw("Failed to write secret to Kubernetes", "error", err)
 		}
-		clientID, clientSecret, err = sm.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+		clientID, clientSecret, err = authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 		if err != nil {
 			logger.Errorw("Could not read K8s credentials", "error", err)
 		}
