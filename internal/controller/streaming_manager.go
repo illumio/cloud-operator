@@ -209,7 +209,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 	if ciliumFlowManager.client != nil {
 		go func() {
 			for {
-				err = ciliumFlowManager.exportFlows(ctx, *sm)
+				err = ciliumFlowManager.exportCiliumFlows(ctx, *sm)
 				if err != nil {
 					sm.logger.Warnw("Failed to listen to flows", "error", err)
 					// Attempt to rediscover new hubble address and reconnect

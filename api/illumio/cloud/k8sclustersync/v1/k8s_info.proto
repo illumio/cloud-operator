@@ -7,7 +7,7 @@ package illumio.cloud.k8sclustersync.v1;
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
 
-option go_package = "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1";
+option go_package = "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1";
 
 // Metadata associated with a Kubernetes resource.
 // https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta
@@ -110,24 +110,24 @@ message CiliumFlow {
   IP layer3 = 5;
   // layer4 contains protocol used
   Layer4 layer4 = 6;
-  // endpoint of source ip with metadata
-  optional Endpoint source_endpoint = 9;
-  // endpoint of destination ip with metadata
-  optional Endpoint destination_endpoint = 10;
-  // destination_service contains the service name of the destination
-  Service destination_service = 11;
-  // The CiliumNetworkPolicies allowing the egress of the flow.
-  repeated Policy egress_allowed_by = 13;
-  // The CiliumNetworkPolicies allowing the ingress of the flow.
-  repeated Policy ingress_allowed_by = 14;
-  // The CiliumNetworkPolicies denying the egress of the flow.
-  repeated Policy egress_denied_by = 15;
-  // The CiliumNetworkPolicies denying the ingress of the flow.
-  repeated Policy ingress_denied_by = 16;
   // is_reply indicates that this was a packet (L4) or message (L7) in the
   // reply direction. May be absent (in which case it is unknown whether it
   // is a reply or not).
-  google.protobuf.BoolValue is_reply = 17;
+  google.protobuf.BoolValue is_reply = 7;
+  // endpoint of source ip with metadata
+  optional Endpoint source_endpoint = 8;
+  // endpoint of destination ip with metadata
+  optional Endpoint destination_endpoint = 9;
+  // destination_service contains the service name of the destination
+  Service destination_service = 10;
+  // The CiliumNetworkPolicies allowing the egress of the flow.
+  repeated Policy egress_allowed_by = 12;
+  // The CiliumNetworkPolicies allowing the ingress of the flow.
+  repeated Policy ingress_allowed_by = 13;
+  // The CiliumNetworkPolicies denying the egress of the flow.
+  repeated Policy egress_denied_by = 14;
+  // The CiliumNetworkPolicies denying the ingress of the flow.
+  repeated Policy ingress_denied_by = 15;
 }
 
 // Service contains Service header fields of a flow.
