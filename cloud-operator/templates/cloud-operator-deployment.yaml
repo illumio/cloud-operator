@@ -53,12 +53,6 @@ spec:
             - containerPort: 8080
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
-            - name: TLS_SKIP_VERIFY
-              value: "{{ .Values.env.tlsSkipVerify }}"
-            - name: ONBOARDING_ENDPOINT
-              value: "{{ .Values.env.onboardingEndpoint }}"
-            - name: TOKEN_ENDPOINT
-              value: "{{ .Values.env.tokenEndpoint }}"
             - name: CLUSTER_CREDS_SECRET
               value: "clustercreds"
             - name: ONBOARDING_CLIENT_ID
@@ -71,5 +65,11 @@ spec:
                 secretKeyRef:
                   name: onboardingcreds
                   key: "client_secret"
+            - name: ONBOARDING_ENDPOINT
+              value: "{{ .Values.env.onboardingEndpoint }}"
+            - name: TOKEN_ENDPOINT
+              value: "{{ .Values.env.tokenEndpoint }}"
+            - name: TLS_SKIP_VERIFY
+              value: "{{ .Values.env.tlsSkipVerify }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

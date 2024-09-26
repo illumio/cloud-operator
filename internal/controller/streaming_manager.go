@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/dynamic"
@@ -21,6 +21,7 @@ type streamClient struct {
 	client         pb.KubernetesInfoServiceClient
 	resourceStream pb.KubernetesInfoService_SendKubernetesResourcesClient
 	logStream      pb.KubernetesInfoService_SendLogsClient
+	ciliumNetworkFlowsStream     pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 }
 
 type deadlockDetector struct {
@@ -36,18 +37,20 @@ type streamManager struct {
 }
 
 type EnvironmentConfig struct {
-	// Whether to skip TLS certificate verification when starting a stream.
-	TlsSkipVerify bool
-	// URL of the onboarding endpoint.
-	OnboardingEndpoint string
-	// URL of the token endpoint.
-	TokenEndpoint string
+	// Namspace of Cilium.
+	CiliumNamespace string
+	// K8s cluster secret name.
+	ClusterCreds string
 	// Client ID for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
 	OnboardingClientId string
 	// Client secret for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
 	OnboardingClientSecret string
-	// K8s cluster secret name.
-	ClusterCreds string
+	// URL of the onboarding endpoint.
+	OnboardingEndpoint string
+	// URL of the token endpoint.
+	TokenEndpoint string
+	// Whether to skip TLS certificate verification when starting a stream.
+	TlsSkipVerify bool
 }
 
 var resourceAPIGroupMap = map[string]string{
@@ -182,6 +185,31 @@ func (sm *streamManager) StreamLogs(ctx context.Context, cancel context.CancelFu
 			cancel()
 			return err
 		}
+	// TODO: Add logic for a discoveribility function to decide which CNI to use.
+// 	ciliumFlowManager, err := newCiliumCollector(ctx, sm.logger, ciliumNamespace)
+// 	if err != nil {
+// 		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
+// 	}
+// 	if ciliumFlowManager.client != nil {
+// 		go func() {
+// 			for {
+// 				err = ciliumFlowManager.exportCiliumFlows(ctx, *sm)
+// 				if err != nil {
+// 					sm.logger.Warnw("Failed to listen to flows", "error", err)
+// 					// Attempt to rediscover new hubble address and reconnect
+// 					for {
+// 						ciliumFlowManager, err = newCiliumCollector(ctx, sm.logger, ciliumNamespace)
+// 						if err != nil {
+// 							sm.logger.Warnw("Failed to recreate new Collector", "error", err)
+// 						} else {
+// 							break
+// 						}
+// 						// TODO: Add exponetial backoff so that this isnt spammed as hubble relay is restarted/deployed
+// 						// TODO: redo looping logic to be cleaner
+// 					}
+// 				}
+// 			}
+// 		}()
 	}
 	return nil
 }
@@ -303,6 +331,8 @@ func streamAuth(ctx context.Context, logger *zap.SugaredLogger, envMap Environme
 
 	if clientID == "" && clientSecret == "" {
 		OnboardingCredentials, err := sm.GetOnboardingCredentials(ctx, envMap.OnboardingClientId, envMap.OnboardingClientSecret)
+		ctx, cancel := context.WithCancel(ctx)
+// 		err = sm.BootUpStreamAndReconnect(ctx, cancel, envMap.CiliumNamespace)
 		if err != nil {
 			logger.Errorw("Failed to get onboarding credentials", "error", err)
 		}

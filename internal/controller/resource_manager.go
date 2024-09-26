@@ -5,7 +5,7 @@ import (
 	"context"
 	"sync"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/version"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
@@ -21,14 +21,14 @@ type ResourceManager struct {
 	logger *zap.SugaredLogger
 	// DynamicClient offers generic Kubernetes API operations.
 	dynamicClient dynamic.Interface
-	// StreamManager abstracts logic related to starting, using, and managing streams.
+	// streamManager abstracts logic related to starting, using, and managing streams.
 	streamManager *streamManager
 }
 
 // sendResourceSnapshotComplete sends a message to indicate that the initial inventory snapshot has been completely streamed into the given stream.
-func (rm *ResourceManager) sendResourceSnapshotComplete() error {
-	if err := rm.streamManager.instance.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
-		rm.logger.Errorw("Falied to send resource snapshot complete",
+func (r *ResourceManager) sendResourceSnapshotComplete() error {
+	if err := r.streamManager.instance.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
+		r.logger.Errorw("Falied to send resource snapshot complete",
 			"error", err,
 		)
 		return err
@@ -36,22 +36,22 @@ func (rm *ResourceManager) sendResourceSnapshotComplete() error {
 	return nil
 }
 
-// sendClusterMetadata sends a message to indicate current cluster metadata
-func (rm *ResourceManager) sendClusterMetadata(ctx context.Context) error {
-	clusterUid, err := GetClusterID(ctx, rm.logger)
+// sendClusteretadata sends a message to indicate current cluster metadata
+func (r *ResourceManager) sendClusterMetadata(ctx context.Context) error {
+	clusterUid, err := GetClusterID(ctx, r.logger)
 	if err != nil {
-		rm.logger.Errorw("Error getting cluster id", "error", err)
+		r.logger.Errorw("Error getting cluster id", "error", err)
 	}
 	clientset, err := NewClientSet()
 	if err != nil {
-		rm.logger.Errorw("Error creating clientset", "error", err)
+		r.logger.Errorw("Error creating clientset", "error", err)
 	}
 	kubernetesVersion, err := clientset.Discovery().ServerVersion()
 	if err != nil {
-		rm.logger.Errorw("Error getting Kubernetes version", "error", err)
+		r.logger.Errorw("Error getting Kubernetes version", "error", err)
 	}
-	if err := rm.streamManager.instance.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: version.Version()}}}); err != nil {
-		rm.logger.Errorw("Failed to send cluster metadata",
+	if err := r.streamManager.instance.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: version.Version()}}}); err != nil {
+		r.logger.Errorw("Failed to send cluster metadata",
 			"error", err,
 		)
 		return err
