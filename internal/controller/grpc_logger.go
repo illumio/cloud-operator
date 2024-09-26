@@ -205,6 +205,11 @@ func NewGRPClogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 	// Create a production encoder config
 	encoderConfig := zap.NewProductionEncoderConfig()
 
+	// Modify the time format to be more human-readable
+	encoderConfig.EncodeTime = zapcore.TimeEncoder(func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+		enc.AppendString(t.Format(time.RFC3339))
+	})
+
 	// Create a JSON encoder
 	encoder := zapcore.NewJSONEncoder(encoderConfig)
 
