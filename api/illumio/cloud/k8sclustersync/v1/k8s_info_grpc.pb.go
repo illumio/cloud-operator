@@ -4,9 +4,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             (unknown)
-// source: illumio/cloud/k8scluster/v1/resource_config.proto
+// source: illumio/cloud/k8sclustersync/v1/k8s_info.proto
 
-package k8sclusterv1
+package k8sclustersyncv1
 
 import (
 	context "context"
@@ -21,8 +21,9 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	KubernetesInfoService_SendKubernetesResources_FullMethodName = "/illumio.cloud.k8scluster.v1.KubernetesInfoService/SendKubernetesResources"
-	KubernetesInfoService_SendLogs_FullMethodName                = "/illumio.cloud.k8scluster.v1.KubernetesInfoService/SendLogs"
+	KubernetesInfoService_SendKubernetesResources_FullMethodName    = "/illumio.cloud.k8sclustersync.v1.KubernetesInfoService/SendKubernetesResources"
+	KubernetesInfoService_SendKubernetesNetworkFlows_FullMethodName = "/illumio.cloud.k8sclustersync.v1.KubernetesInfoService/SendKubernetesNetworkFlows"
+	KubernetesInfoService_SendLogs_FullMethodName                   = "/illumio.cloud.k8sclustersync.v1.KubernetesInfoService/SendLogs"
 )
 
 // KubernetesInfoServiceClient is the client API for KubernetesInfoService service.
@@ -31,6 +32,8 @@ const (
 type KubernetesInfoServiceClient interface {
 	// Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
 	SendKubernetesResources(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendKubernetesResourcesClient, error)
+	// Continuously sends network flows exported by the CNI plugin in the cluster to CloudSecure.
+	SendKubernetesNetworkFlows(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendKubernetesNetworkFlowsClient, error)
 	// Continuously syncs logs from operator and cluster.
 	SendLogs(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendLogsClient, error)
 }
@@ -74,8 +77,39 @@ func (x *kubernetesInfoServiceSendKubernetesResourcesClient) Recv() (*SendKubern
 	return m, nil
 }
 
+func (c *kubernetesInfoServiceClient) SendKubernetesNetworkFlows(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendKubernetesNetworkFlowsClient, error) {
+	stream, err := c.cc.NewStream(ctx, &KubernetesInfoService_ServiceDesc.Streams[1], KubernetesInfoService_SendKubernetesNetworkFlows_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &kubernetesInfoServiceSendKubernetesNetworkFlowsClient{stream}
+	return x, nil
+}
+
+type KubernetesInfoService_SendKubernetesNetworkFlowsClient interface {
+	Send(*SendKubernetesNetworkFlowsRequest) error
+	Recv() (*SendKubernetesNetworkFlowsResponse, error)
+	grpc.ClientStream
+}
+
+type kubernetesInfoServiceSendKubernetesNetworkFlowsClient struct {
+	grpc.ClientStream
+}
+
+func (x *kubernetesInfoServiceSendKubernetesNetworkFlowsClient) Send(m *SendKubernetesNetworkFlowsRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *kubernetesInfoServiceSendKubernetesNetworkFlowsClient) Recv() (*SendKubernetesNetworkFlowsResponse, error) {
+	m := new(SendKubernetesNetworkFlowsResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *kubernetesInfoServiceClient) SendLogs(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendLogsClient, error) {
-	stream, err := c.cc.NewStream(ctx, &KubernetesInfoService_ServiceDesc.Streams[1], KubernetesInfoService_SendLogs_FullMethodName, opts...)
+	stream, err := c.cc.NewStream(ctx, &KubernetesInfoService_ServiceDesc.Streams[2], KubernetesInfoService_SendLogs_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -111,6 +145,8 @@ func (x *kubernetesInfoServiceSendLogsClient) Recv() (*SendLogsResponse, error) 
 type KubernetesInfoServiceServer interface {
 	// Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
 	SendKubernetesResources(KubernetesInfoService_SendKubernetesResourcesServer) error
+	// Continuously sends network flows exported by the CNI plugin in the cluster to CloudSecure.
+	SendKubernetesNetworkFlows(KubernetesInfoService_SendKubernetesNetworkFlowsServer) error
 	// Continuously syncs logs from operator and cluster.
 	SendLogs(KubernetesInfoService_SendLogsServer) error
 	mustEmbedUnimplementedKubernetesInfoServiceServer()
@@ -122,6 +158,9 @@ type UnimplementedKubernetesInfoServiceServer struct {
 
 func (UnimplementedKubernetesInfoServiceServer) SendKubernetesResources(KubernetesInfoService_SendKubernetesResourcesServer) error {
 	return status.Errorf(codes.Unimplemented, "method SendKubernetesResources not implemented")
+}
+func (UnimplementedKubernetesInfoServiceServer) SendKubernetesNetworkFlows(KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
+	return status.Errorf(codes.Unimplemented, "method SendKubernetesNetworkFlows not implemented")
 }
 func (UnimplementedKubernetesInfoServiceServer) SendLogs(KubernetesInfoService_SendLogsServer) error {
 	return status.Errorf(codes.Unimplemented, "method SendLogs not implemented")
@@ -165,6 +204,32 @@ func (x *kubernetesInfoServiceSendKubernetesResourcesServer) Recv() (*SendKubern
 	return m, nil
 }
 
+func _KubernetesInfoService_SendKubernetesNetworkFlows_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(KubernetesInfoServiceServer).SendKubernetesNetworkFlows(&kubernetesInfoServiceSendKubernetesNetworkFlowsServer{stream})
+}
+
+type KubernetesInfoService_SendKubernetesNetworkFlowsServer interface {
+	Send(*SendKubernetesNetworkFlowsResponse) error
+	Recv() (*SendKubernetesNetworkFlowsRequest, error)
+	grpc.ServerStream
+}
+
+type kubernetesInfoServiceSendKubernetesNetworkFlowsServer struct {
+	grpc.ServerStream
+}
+
+func (x *kubernetesInfoServiceSendKubernetesNetworkFlowsServer) Send(m *SendKubernetesNetworkFlowsResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *kubernetesInfoServiceSendKubernetesNetworkFlowsServer) Recv() (*SendKubernetesNetworkFlowsRequest, error) {
+	m := new(SendKubernetesNetworkFlowsRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func _KubernetesInfoService_SendLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(KubernetesInfoServiceServer).SendLogs(&kubernetesInfoServiceSendLogsServer{stream})
 }
@@ -195,7 +260,7 @@ func (x *kubernetesInfoServiceSendLogsServer) Recv() (*SendLogsRequest, error) {
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var KubernetesInfoService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "illumio.cloud.k8scluster.v1.KubernetesInfoService",
+	ServiceName: "illumio.cloud.k8sclustersync.v1.KubernetesInfoService",
 	HandlerType: (*KubernetesInfoServiceServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
@@ -206,11 +271,17 @@ var KubernetesInfoService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 		{
+			StreamName:    "SendKubernetesNetworkFlows",
+			Handler:       _KubernetesInfoService_SendKubernetesNetworkFlows_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
 			StreamName:    "SendLogs",
 			Handler:       _KubernetesInfoService_SendLogs_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
 	},
-	Metadata: "illumio/cloud/k8scluster/v1/resource_config.proto",
+	Metadata: "illumio/cloud/k8sclustersync/v1/k8s_info.proto",
 }

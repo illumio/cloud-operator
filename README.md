@@ -47,9 +47,9 @@ helm uninstall illumio --namespace illumio-cloud
 This will delete all the resources associated with the `illumio` release from the `illumio-cloud` namespace.
 
 ### Prerequisites
-- go version v1.22.0+
+- go version v1.22.2+
 - Kubernetes v1.30+ cluster.
-- helm version v3.15.3+
+- helm version v3.15.4+
 
 ## License
 
