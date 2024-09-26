@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -16,19 +18,19 @@ import (
 )
 
 // cacheCurrentEvent logs the event's metadata and caches its UID and a hash value into cache.
-func cacheCurrentEvent(meta metav1.ObjectMeta, hashedValue [32]byte, c CacheManager) {
-	c.cache[string(meta.UID)] = hashedValue
+func cacheCurrentEvent(meta metav1.ObjectMeta, hashedValue [32]byte, cache *Cache) {
+	cache.cache[string(meta.UID)] = hashedValue
 }
 
 // deleteFromCacheCurrentEvent removes an event's entry from cache using its UID as the key.
-func deleteFromCacheCurrentEvent(meta metav1.ObjectMeta, c CacheManager) {
-	delete(c.cache, string(meta.UID))
+func deleteFromCacheCurrentEvent(meta metav1.ObjectMeta, cache *Cache) {
+	delete(cache.cache, string(meta.UID))
 }
 
 // uniqueEvent checks if an event, identified by the UID in meta, is already present in cache.
 // It returns true if the event is unique (not present), false otherwise.
-func uniqueEvent(meta metav1.ObjectMeta, c CacheManager, event watch.Event) (bool, error) {
-	value := c.cache[string(meta.UID)]
+func uniqueEvent(meta metav1.ObjectMeta, cache *Cache, event watch.Event) (bool, error) {
+	value := cache.cache[string(meta.UID)]
 	hashedValue, err := hashObjectMeta(meta)
 	if err != nil {
 		return false, err
@@ -37,9 +39,9 @@ func uniqueEvent(meta metav1.ObjectMeta, c CacheManager, event watch.Event) (boo
 	if value != hashedValue {
 		switch event.Type {
 		case watch.Added, watch.Modified:
-			cacheCurrentEvent(meta, hashedValue, c)
+			cacheCurrentEvent(meta, hashedValue, cache)
 		case watch.Deleted:
-			deleteFromCacheCurrentEvent(meta, c)
+			deleteFromCacheCurrentEvent(meta, cache)
 		}
 	}
 	return value != hashedValue, nil
@@ -107,4 +109,24 @@ func getMetadatafromResource(logger *zap.SugaredLogger, resource unstructured.Un
 	} else {
 		return &metav1.ObjectMeta{}, errors.New("could not grab metadata from a resource")
 	}
+}
+
+// convertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
+func convertMetaObjectToMetadata(obj metav1.ObjectMeta, resource string) *pb.KubernetesObjectMetadata {
+	objMetadata := &pb.KubernetesObjectMetadata{
+		Annotations:       obj.GetAnnotations(),
+		CreationTimestamp: convertToProtoTimestamp(obj.CreationTimestamp),
+		Kind:              resource,
+		Labels:            obj.GetLabels(),
+		Name:              obj.GetName(),
+		Namespace:         obj.GetNamespace(),
+		ResourceVersion:   obj.GetResourceVersion(),
+		Uid:               string(obj.GetUID()),
+	}
+	return objMetadata
+}
+
+// convertToProtoTimestamp converts a Kubernetes metav1.Time into a Protobuf Timestamp.
+func convertToProtoTimestamp(k8sTime metav1.Time) *timestamppb.Timestamp {
+	return timestamppb.New(k8sTime.Time)
 }
