@@ -1,6 +1,6 @@
 # Vulnerability Disclosure
 
-The Illumio team and community take security bugs in all Illumio projects seriously. If you believe you have found a potential security vulnerability in the provider or in the Illumio Core product, please reach out directly to the [Illumio Security Team](mailto:security@illumio.com). **Do not file a public GitHub Issue.**
+The Illumio team and community take security bugs in all Illumio projects seriously. If you believe you have found a potential security vulnerability in the cloud-operator or in the Illumio Core product, please reach out directly to the [Illumio Security Team](mailto:security@illumio.com). **Do not file a public GitHub Issue.**
 
 Please include any configuration and/or code you used to find the problem and the shortest amount of configuration/code necessary to reproduce it.
 

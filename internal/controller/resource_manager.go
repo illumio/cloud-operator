@@ -5,9 +5,10 @@ import (
 	"context"
 	"sync"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/version"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
@@ -20,14 +21,14 @@ type ResourceManager struct {
 	logger *zap.SugaredLogger
 	// DynamicClient offers generic Kubernetes API operations.
 	dynamicClient dynamic.Interface
-	// streamClient abstracts logic related to starting, using, and managing streams.
-	streamClient *streamClient
+	// streamManager abstracts logic related to starting, using, and managing streams.
+	streamManager *streamManager
 }
 
 // sendResourceSnapshotComplete sends a message to indicate that the initial inventory snapshot has been completely streamed into the given stream.
-func (rm *ResourceManager) sendResourceSnapshotComplete() error {
-	if err := rm.streamClient.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
-		rm.logger.Errorw("Falied to send resource snapshot complete",
+func (r *ResourceManager) sendResourceSnapshotComplete() error {
+	if err := r.streamManager.instance.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
+		r.logger.Errorw("Falied to send resource snapshot complete",
 			"error", err,
 		)
 		return err
@@ -35,22 +36,22 @@ func (rm *ResourceManager) sendResourceSnapshotComplete() error {
 	return nil
 }
 
-// sendClusterMetadata sends a message to indicate current cluster metadata
-func (rm *ResourceManager) sendClusterMetadata(ctx context.Context) error {
-	clusterUid, err := GetClusterID(ctx, rm.logger)
+// sendClusteretadata sends a message to indicate current cluster metadata
+func (r *ResourceManager) sendClusterMetadata(ctx context.Context) error {
+	clusterUid, err := GetClusterID(ctx, r.logger)
 	if err != nil {
-		rm.logger.Errorw("Error getting cluster id", "error", err)
+		r.logger.Errorw("Error getting cluster id", "error", err)
 	}
 	clientset, err := NewClientSet()
 	if err != nil {
-		rm.logger.Errorw("Error creating clientset", "error", err)
+		r.logger.Errorw("Error creating clientset", "error", err)
 	}
 	kubernetesVersion, err := clientset.Discovery().ServerVersion()
 	if err != nil {
-		rm.logger.Errorw("Error getting Kubernetes version", "error", err)
+		r.logger.Errorw("Error getting Kubernetes version", "error", err)
 	}
-	if err := rm.streamClient.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: version.Version()}}}); err != nil {
-		rm.logger.Errorw("Failed to send cluster metadata",
+	if err := r.streamManager.instance.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: version.Version()}}}); err != nil {
+		r.logger.Errorw("Failed to send cluster metadata",
 			"error", err,
 		)
 		return err
@@ -59,8 +60,8 @@ func (rm *ResourceManager) sendClusterMetadata(ctx context.Context) error {
 }
 
 // DynamicListAndWatchResources lists and watches the specified resource dynamically, managing context cancellation and synchronization with wait groups.
-func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, cancel context.CancelFunc, resource string, allResourcesSnapshotted *sync.WaitGroup, snapshotCompleted *sync.WaitGroup) {
-	resourceListVersion, cache, err := r.DynamicListResources(ctx, resource)
+func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, allResourcesSnapshotted *sync.WaitGroup, snapshotCompleted *sync.WaitGroup) {
+	resourceListVersion, cm, err := r.DynamicListResources(ctx, resource, apiGroup)
 	if err != nil {
 		allResourcesSnapshotted.Done()
 		r.logger.Errorw("Unable to list resources", "error", err)
@@ -74,7 +75,16 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 		Watch:           true,
 		ResourceVersion: resourceListVersion,
 	}
-	err = r.watchEvents(ctx, resource, watchOptions, cache)
+	// Prevent us from overwhelming K8 api
+	limiter := rate.NewLimiter(1, 5)
+	err = limiter.Wait(ctx)
+	if err != nil {
+		r.logger.Errorw("Cannot wait using rate limiter", "error", err)
+		cancel()
+		return
+	}
+
+	err = r.watchEvents(ctx, resource, apiGroup, watchOptions, cm)
 	if err != nil {
 		r.logger.Errorw("Unable to watch events", "error", err)
 		cancel()
@@ -83,16 +93,16 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 }
 
 // DynamicListResources lists a specifed resource dynamically and sends down the current gRPC stream.
-func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string) (string, *Cache, error) {
-	cache := &Cache{cache: make(map[string][32]byte)}
-	objGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: resource}
+func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string, apiGroup string) (string, Cache, error) {
+	cache := Cache{cache: make(map[string][32]byte)}
+	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	objs, resourceListVersion, err := r.listResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
 		return "", cache, err
 	}
 	for _, obj := range objs {
 		metadataObj := convertMetaObjectToMetadata(obj, resource)
-		err := sendObjectMetaData(r.streamClient, metadataObj)
+		err := sendObjectMetaData(r.streamManager, metadataObj)
 		if err != nil {
 			r.logger.Errorw("Cannot send object metadata", "error", err)
 			return "", cache, err
@@ -102,7 +112,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 			r.logger.Errorw("Cannot hash current object", "error", err)
 			return "", cache, err
 		}
-		cacheCurrentEvent(obj, hashValue, cache)
+		cacheCurrentEvent(obj, hashValue, &cache)
 	}
 
 	select {
@@ -115,8 +125,8 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 
 // watchEvents watches Kubernetes resources and updates cache based on events.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
-func (r *ResourceManager) watchEvents(ctx context.Context, resource string, watchOptions metav1.ListOptions, cache *Cache) error {
-	objGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: resource}
+func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiGroup string, watchOptions metav1.ListOptions, cache Cache) error {
+	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
 		r.logger.Errorw("Error setting up watch on resource", "error", err)
@@ -138,7 +148,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, watc
 		}
 		metadataObj := convertMetaObjectToMetadata(*convertedData, resource)
 
-		wasUniqueEvent, err := uniqueEvent(*convertedData, cache, event)
+		wasUniqueEvent, err := uniqueEvent(*convertedData, &cache, event)
 		if err != nil {
 			r.logger.Errorw("Failed to hash object metadata", "error", err)
 			return err
@@ -147,7 +157,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, watc
 		if !wasUniqueEvent {
 			continue
 		}
-		err = streamMutationObjectMetaData(r.streamClient, metadataObj, event.Type)
+		err = streamMutationObjectMetaData(r.streamManager, metadataObj, event.Type)
 		if err != nil {
 			r.logger.Errorw("Cannot send resource mutation", "error", err)
 			return err

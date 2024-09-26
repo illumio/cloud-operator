@@ -9,13 +9,19 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
-	"github.com/illumio/cloud-operator/internal/config"
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 )
+
+type streamClient struct {
+	conn                      *grpc.ClientConn
+	streamKubernetesResources pb.KubernetesInfoService_SendKubernetesResourcesClient
+	streamKubernetesFlows     pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
+	logStream                 pb.KubernetesInfoService_SendLogsClient
+}
 
 type deadlockDetector struct {
 	processingResources bool
@@ -23,14 +29,50 @@ type deadlockDetector struct {
 	mutex               sync.RWMutex
 }
 
-type streamClient struct {
-	conn           *grpc.ClientConn
-	resourceStream pb.KubernetesInfoService_SendKubernetesResourcesClient
-	logStream      pb.KubernetesInfoService_SendLogsClient
-	logger         *zap.SugaredLogger
+type streamManager struct {
+	streamClient *streamClient
+	logger       *zap.SugaredLogger
 }
 
-var resourceTypes = [2]string{"pods", "nodes"}
+type EnvironmentConfig struct {
+	// Namspace of Cilium.
+	CiliumNamespace string
+	// K8s cluster secret name.
+	ClusterCreds string
+	// Client ID for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
+	OnboardingClientId string
+	// Client secret for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
+	OnboardingClientSecret string
+	// URL of the onboarding endpoint.
+	OnboardingEndpoint string
+	// URL of the token endpoint.
+	TokenEndpoint string
+	// Whether to skip TLS certificate verification when starting a stream.
+	TlsSkipVerify bool
+}
+
+var resourceAPIGroupMap = map[string]string{
+	"cronjobs":                  "batch",
+	"customresourcedefinitions": "apiextensions.k8s.io",
+	"daemonsets":                "apps",
+	"deployments":               "apps",
+	"endpoints":                 "",
+	"gateways":                  "gateway.networking.k8s.io",
+	"gatewayclasses":            "gateway.networking.k8s.io",
+	"httproutes":                "gateway.networking.k8s.io",
+	"ingresses":                 "networking.k8s.io",
+	"ingressclasses":            "networking.k8s.io",
+	"jobs":                      "batch",
+	"networkpolicies":           "networking.k8s.io",
+	"nodes":                     "",
+	"pods":                      "",
+	"replicasets":               "apps",
+	"replicationcontrollers":    "",
+	"serviceaccounts":           "",
+	"services":                  "",
+	"statefulsets":              "apps",
+}
+
 var dd = &deadlockDetector{}
 
 // ServerIsHealthy checks if a deadlock has occured within the threaded resource listing process.
@@ -61,12 +103,17 @@ func NewStreamClient(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.
 		logger.Errorw("Failed to connect to server", "error", err)
 		return &streamClient{}, err
 	}
+	streamKubernetesFlows, err := client.SendKubernetesNetworkFlows(ctx)
+	if err != nil {
+		logger.Errorw("Failed to create a kubernetes network flows client", err)
+		return &streamClient{}, err
+	}
 
 	streamClient := &streamClient{
-		conn:           conn,
-		resourceStream: SendKubernetesResourcesStream,
-		logStream:      SendLogsStream,
-		logger:         logger,
+		conn:                      conn,
+		streamKubernetesResources: SendKubernetesResourcesStream,
+		logStream:                 SendLogsStream,
+		streamKubernetesFlows:     streamKubernetesFlows,
 	}
 	return streamClient, nil
 }
@@ -75,13 +122,13 @@ func NewStreamClient(ctx context.Context, logger *zap.SugaredLogger, conn *grpc.
 // also creates all of the objects that help organize and pass info to the goroutines that are listing and watching
 // different resource types. This is also handling the asyc nature of listing resources and properly sending our commit
 // message on intial boot when we have the state of the cluster.
-func (client *streamClient) BootUpStreamAndReconnect(ctx context.Context, cancel context.CancelFunc) error {
+func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel context.CancelFunc, ciliumNamespace string) error {
 	defer func() {
 		dd.processingResources = false
 	}()
 	clusterConfig, err := rest.InClusterConfig()
 	if err != nil {
-		client.logger.Errorw("Error getting in-cluster config", "error", err)
+		sm.logger.Errorw("Error getting in-cluster config", "error", err)
 		return err
 	}
 	var allResourcesSnapshotted sync.WaitGroup
@@ -89,8 +136,35 @@ func (client *streamClient) BootUpStreamAndReconnect(ctx context.Context, cancel
 	// Create a dynamic client
 	dynamicClient, err := dynamic.NewForConfig(clusterConfig)
 	if err != nil {
-		client.logger.Errorw("Error creating dynamic client", "error", err)
+		sm.logger.Errorw("Error creating dynamic client", "error", err)
 		return err
+	}
+
+	clientset, err := NewClientSet()
+	if err != nil {
+		sm.logger.Errorw("Failed to create clientset", "error", err)
+		return err
+	}
+	apiGroups, err := clientset.Discovery().ServerGroups()
+	if err != nil {
+		sm.logger.Error("Failed to discover API groups", "error", err)
+	}
+	foundGatewayAPIGroup := false
+
+	// Check if the "gateway.networking.k8s.io" API group is not available, if it is not delete those resources and groups
+	for _, group := range apiGroups.Groups {
+		if group.Name == "gateway.networking.k8s.io" {
+			foundGatewayAPIGroup = true
+			break
+		}
+	}
+
+	// If the "gateway.networking.k8s.io" API group is not found, remove the resources
+	if !foundGatewayAPIGroup {
+		gatewayResources := []string{"gateways", "gatewayclasses", "httproutes"}
+		for _, resource := range gatewayResources {
+			delete(resourceAPIGroupMap, resource)
+		}
 	}
 
 	snapshotCompleted.Add(1)
@@ -99,18 +173,18 @@ func (client *streamClient) BootUpStreamAndReconnect(ctx context.Context, cancel
 	dd.processingResources = true
 	dd.mutex.Unlock()
 	resourceLister := &ResourceManager{
-		logger:        client.logger,
+		logger:        sm.logger,
 		dynamicClient: dynamicClient,
-		streamClient:  client,
+		streamManager: sm,
 	}
 	err = resourceLister.sendClusterMetadata(ctx)
 	if err != nil {
-		client.logger.Errorw("Failed to send cluster metadata", "error", err)
+		sm.logger.Errorw("Failed to send cluster metadata", "error", err)
 		return err
 	}
-	for _, resourceType := range resourceTypes {
+	for resource, apiGroup := range resourceAPIGroupMap {
 		allResourcesSnapshotted.Add(1)
-		go resourceLister.DyanmicListAndWatchResources(ctx, cancel, resourceType, &allResourcesSnapshotted, &snapshotCompleted)
+		go resourceLister.DyanmicListAndWatchResources(ctx, cancel, resource, apiGroup, &allResourcesSnapshotted, &snapshotCompleted)
 	}
 	allResourcesSnapshotted.Wait()
 	err = resourceLister.sendResourceSnapshotComplete()
@@ -119,15 +193,41 @@ func (client *streamClient) BootUpStreamAndReconnect(ctx context.Context, cancel
 	dd.processingResources = false
 	dd.mutex.Unlock()
 	if err != nil {
-		client.logger.Errorw("Failed to send resource snapshot complete", "error", err)
+		sm.logger.Errorw("Failed to send resource snapshot complete", "error", err)
 		return err
 	}
 	snapshotCompleted.Done()
+	// TODO: Add logic for a discoveribility function to decide which CNI to use.
+	ciliumFlowManager, err := newCiliumCollector(ctx, sm.logger, ciliumNamespace)
+	if err != nil {
+		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
+	}
+	if ciliumFlowManager.client != nil {
+		go func() {
+			for {
+				err = ciliumFlowManager.exportCiliumFlows(ctx, *sm)
+				if err != nil {
+					sm.logger.Warnw("Failed to listen to flows", "error", err)
+					// Attempt to rediscover new hubble address and reconnect
+					for {
+						ciliumFlowManager, err = newCiliumCollector(ctx, sm.logger, ciliumNamespace)
+						if err != nil {
+							sm.logger.Warnw("Failed to recreate new Collector", "error", err)
+						} else {
+							break
+						}
+						// TODO: Add exponetial backoff so that this isnt spammed as hubble relay is restarted/deployed
+						// TODO: redo looping logic to be cleaner
+					}
+				}
+			}
+		}()
+	}
 	return nil
 }
 
 // ExponentialStreamConnect will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
-func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, envMap config.EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
+func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
 	var backoff = 1 * time.Second
 	authn := Authenticator{Logger: logger}
 	max := big.NewInt(3)
@@ -180,12 +280,17 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 			continue
 		}
 
+		sm := &streamManager{
+			streamClient: client,
+			logger:       logger,
+		}
+
 		// Update the gRPC client and connection in BufferedGrpcWriteSyncer
 		bufferedGrpcSyncer.UpdateClient(client.logStream, client.conn)
 		go bufferedGrpcSyncer.ListenToLogStream()
 
 		ctx, cancel := context.WithCancel(ctx)
-		err = client.BootUpStreamAndReconnect(ctx, cancel)
+		err = sm.BootUpStreamAndReconnect(ctx, cancel, envMap.CiliumNamespace)
 		if err != nil {
 			cancel()
 			logger.Errorw("Failed to bootup and stream", "error", err)

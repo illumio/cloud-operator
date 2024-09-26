@@ -10,10 +10,19 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"time"
 
 	"go.uber.org/zap"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"google.golang.org/grpc/keepalive"
 )
+
+var kacp = keepalive.ClientParameters{
+	Time:                10 * time.Second, // send pings every 10 seconds if there is no activity
+	Timeout:             10 * time.Second, // wait 10s for ping ack before considering the connection dead
+	PermitWithoutStream: true,             // send pings even without active streams
+}
 
 // Credentials contains attributes that are needed for onboarding.
 type Credentials struct {

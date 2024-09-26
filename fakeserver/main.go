@@ -22,16 +22,28 @@ import (
 
 	"github.com/golang-jwt/jwt"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8scluster/v1"
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 )
+
+var kaep = keepalive.EnforcementPolicy{
+	MinTime:             10 * time.Second, // Instruct the client to start sending keepalives after 30s (default is 5m, which may be too long for some proxies)
+	PermitWithoutStream: true,             // Allow pings even when there are no active streams
+}
+
+var kasp = keepalive.ServerParameters{
+	MaxConnectionIdle: 30 * time.Second, // If a client is idle (i.e. doesn't send an RPC) for 30 seconds, send a GoAway to close the connection.
+	Time:              30 * time.Second, // Ping the client if it is idle for 30 seconds to ensure the connection is still active
+	Timeout:           10 * time.Second, // Wait 10 second for the ping ack before assuming the connection is dead
+}
 
 const (
 	AuthorizationHeader = "authorization"
@@ -154,6 +166,30 @@ func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error 
 			if err != nil {
 				logger.Error("Error recording logs from operator", zap.Error(err))
 			}
+		}
+	}
+}
+
+// SendKubernetesNetworkFlows handles all gPRC requests related to streaming network flows
+func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		panic("Failed to build zap logger: " + err.Error())
+	}
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			// The client has closed the stream
+			return nil
+		}
+		if err != nil {
+			// Return the error to terminate the stream
+			return err
+		}
+		// Logging for demo purposes
+		logger.Info("Received flow", zap.Stringer("flow", req))
+		if err := stream.Send(&pb.SendKubernetesNetworkFlowsResponse{}); err != nil {
+			return err
 		}
 	}
 }
@@ -298,7 +334,7 @@ func main() {
 	creds := credentials.NewTLS(&tls.Config{
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS12})
-	s := grpc.NewServer(grpc.Creds(creds), grpc.StreamInterceptor(tokenAuthStreamInterceptor(token)), grpc.UnaryInterceptor(unaryInterceptor))
+	s := grpc.NewServer(grpc.Creds(creds), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor(token)), grpc.UnaryInterceptor(unaryInterceptor))
 	pb.RegisterKubernetesInfoServiceServer(s, &server{})
 	logger.Info("Server listening", zap.String("network", listener.Addr().Network()), zap.String("address", listener.Addr().String()))
 
