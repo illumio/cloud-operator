@@ -18,19 +18,19 @@ import (
 )
 
 // cacheCurrentEvent logs the event's metadata and caches its UID and a hash value into cache.
-func cacheCurrentEvent(meta metav1.ObjectMeta, hashedValue [32]byte, c Cache) {
-	c.cache[string(meta.UID)] = hashedValue
+func cacheCurrentEvent(meta metav1.ObjectMeta, hashedValue [32]byte, cache *Cache) {
+	cache.cache[string(meta.UID)] = hashedValue
 }
 
 // deleteFromCacheCurrentEvent removes an event's entry from cache using its UID as the key.
-func deleteFromCacheCurrentEvent(meta metav1.ObjectMeta, c Cache) {
-	delete(c.cache, string(meta.UID))
+func deleteFromCacheCurrentEvent(meta metav1.ObjectMeta, cache *Cache) {
+	delete(cache.cache, string(meta.UID))
 }
 
 // uniqueEvent checks if an event, identified by the UID in meta, is already present in cache.
 // It returns true if the event is unique (not present), false otherwise.
-func uniqueEvent(meta metav1.ObjectMeta, c Cache, event watch.Event) (bool, error) {
-	value := c.cache[string(meta.UID)]
+func uniqueEvent(meta metav1.ObjectMeta, cache *Cache, event watch.Event) (bool, error) {
+	value := cache.cache[string(meta.UID)]
 	hashedValue, err := hashObjectMeta(meta)
 	if err != nil {
 		return false, err
@@ -39,9 +39,9 @@ func uniqueEvent(meta metav1.ObjectMeta, c Cache, event watch.Event) (bool, erro
 	if value != hashedValue {
 		switch event.Type {
 		case watch.Added, watch.Modified:
-			cacheCurrentEvent(meta, hashedValue, c)
+			cacheCurrentEvent(meta, hashedValue, cache)
 		case watch.Deleted:
-			deleteFromCacheCurrentEvent(meta, c)
+			deleteFromCacheCurrentEvent(meta, cache)
 		}
 	}
 	return value != hashedValue, nil

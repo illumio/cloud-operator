@@ -74,7 +74,7 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 		Watch:           true,
 		ResourceVersion: resourceListVersion,
 	}
-	err = r.watchEvents(ctx, resource, watchOptions, *cache)
+	err = r.watchEvents(ctx, resource, watchOptions, cache)
 	if err != nil {
 		r.logger.Errorw("Unable to watch events", "error", err)
 		cancel()
@@ -102,7 +102,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 			r.logger.Errorw("Cannot hash current object", "error", err)
 			return "", cache, err
 		}
-		cacheCurrentEvent(obj, hashValue, *cache)
+		cacheCurrentEvent(obj, hashValue, cache)
 	}
 
 	select {
@@ -115,7 +115,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 
 // watchEvents watches Kubernetes resources and updates cache based on events.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
-func (r *ResourceManager) watchEvents(ctx context.Context, resource string, watchOptions metav1.ListOptions, cache Cache) error {
+func (r *ResourceManager) watchEvents(ctx context.Context, resource string, watchOptions metav1.ListOptions, cache *Cache) error {
 	objGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: resource}
 	watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
