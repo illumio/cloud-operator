@@ -121,13 +121,13 @@ message CiliumFlow {
   // destination_service contains the service name of the destination
   Service destination_service = 10;
   // The CiliumNetworkPolicies allowing the egress of the flow.
-  repeated Policy egress_allowed_by = 12;
+  repeated Policy egress_allowed_by = 11;
   // The CiliumNetworkPolicies allowing the ingress of the flow.
-  repeated Policy ingress_allowed_by = 13;
+  repeated Policy ingress_allowed_by = 12;
   // The CiliumNetworkPolicies denying the egress of the flow.
-  repeated Policy egress_denied_by = 14;
+  repeated Policy egress_denied_by = 13;
   // The CiliumNetworkPolicies denying the ingress of the flow.
-  repeated Policy ingress_denied_by = 15;
+  repeated Policy ingress_denied_by = 14;
 }
 
 // Service contains Service header fields of a flow.
