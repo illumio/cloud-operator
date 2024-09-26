@@ -1,0 +1,327 @@
+// Copyright 2024 Illumio, Inc. All Rights Reserved.
+
+syntax = "proto3";
+
+package illumio.cloud.k8sclustersync.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+option go_package = "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1";
+
+// Metadata associated with a Kubernetes resource.
+// https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta
+message KubernetesObjectMetadata {
+  map<string, string> annotations = 1;
+  google.protobuf.Timestamp creation_timestamp = 2;
+  string kind = 3;
+  map<string, string> labels = 4;
+  string name = 5;
+  string namespace = 6;
+  repeated KubernetesOwnerReference owner_references = 7;
+  string resource_version = 8;
+  string uid = 9;
+}
+
+// Information identifying an object owning a Kubernetes resource.
+// https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#ownerreference-v1-meta
+message KubernetesOwnerReference {
+  string api_version = 1;
+  bool block_owner_deletion = 2;
+  bool controller = 3;
+  string kind = 4;
+  string name = 5;
+  string uid = 6;
+}
+
+// Metadata about the client operator and Kubernetes cluster.
+// Sent as the first message in each KubernetesResources RPC request stream.
+message KubernetesClusterMetadata {
+  // Unique ID of the client operator's Kubernetes cluster.
+  // This is the UID of the cluster's kube-system namespace, which is considered globally unique.
+  string uid = 1;
+  // Kubernetes version of the operator's cluster.
+  // https://pkg.go.dev/k8s.io/client-go/discovery#DiscoveryClient.ServerVersion
+  string kubernetes_version = 2;
+  // Version of the operator. This version is following the Semver 2.0.0 format, e.g. "1.2.0".
+  // https://semver.org/spec/v2.0.0.html
+  string operator_version = 3;
+}
+
+// Message sent by the operator in a KubernetesResources request stream.
+// Message subtypes are sent in this order in each stream:
+// 1. (1) cluster_metadata, to identify the client cluster and operator.
+// 2. (0+) resource_metadata, one message for each resource in the cluster.
+// 3. (1) resource_snapshot_complete, to indicate the initial snapshot of all resources in the cluster is complete.
+// 4. (0+) resource_mutation, one message for each resource creation/update/deletion in the cluster.
+message SendKubernetesResourcesRequest {
+  // Send any of these "request" messages that can contain any of the documented types.
+  oneof request {
+    // Metadata about the cluster and operator.
+    KubernetesClusterMetadata cluster_metadata = 1;
+    // Metadata about a Kubernetes resource in the cluster.
+    KubernetesObjectMetadata resource_metadata = 2;
+    // Indicates that all resource_metadata have been sent to report all the resources in the cluster in the initial snapshot.
+    KubernetesResourceSnapshotComplete resource_snapshot_complete = 3;
+    // A mutation to a Kubernetes resource in the cluster.
+    KubernetesResourceMutation kubernetes_resource_mutation = 4;
+  }
+}
+
+// Empty on purpose since this type is just expected when snapshot stream is done.
+message KubernetesResourceSnapshotComplete {}
+
+// Message sent to the operator in a KubernetesResources response stream.
+message SendKubernetesResourcesResponse {
+  // oneof response {
+  //   // Until we are writing policies we shouldnt worry about what is returned here
+  //   KubernetesAck ack = 1;
+  // }
+}
+
+// A mutation to a Kubernetes resource in the cluster.
+// Each mutation contains the full resource metadata after mutation (on create or update)
+// or before mutation (on delete).
+message KubernetesResourceMutation {
+  // Send any of these "mutation" messages that can contain any of
+  // The documented types
+  oneof mutation {
+    // Metadata of a newly created Kubernetes resource.
+    KubernetesObjectMetadata create_resource = 1;
+    // Metadata of an updated Kubernetes resource, after update.
+    KubernetesObjectMetadata update_resource = 2;
+    // Metadata of a deleted Kubernetes resource, before deletion.
+    KubernetesObjectMetadata delete_resource = 3;
+  }
+}
+
+// A flow received from Cilium Hubble Relay using the Observer service's GetFlows RPC.
+// https://github.com/cilium/cilium/blob/main/api/v1/observer/observer.proto
+message CiliumFlow {
+  // Time when flow occured.
+  google.protobuf.Timestamp time = 1;
+  // node_name is the name of the node from which this Flow was captured.
+  string node_name = 2;
+  // traffic_direction distinguishes direction of the connection, e.g. ingress or egress.
+  TrafficDirection traffic_direction = 3;
+  // verdict of the flow, indicating the outcome of the network packet processing.
+  Verdict verdict = 4;
+  // layer3 IP layer, source, destination and ip_version
+  IP layer3 = 5;
+  // layer4 contains protocol used
+  Layer4 layer4 = 6;
+  // is_reply indicates that this was a packet (L4) or message (L7) in the
+  // reply direction. May be absent (in which case it is unknown whether it
+  // is a reply or not).
+  google.protobuf.BoolValue is_reply = 7;
+  // endpoint of source ip with metadata
+  optional Endpoint source_endpoint = 8;
+  // endpoint of destination ip with metadata
+  optional Endpoint destination_endpoint = 9;
+  // destination_service contains the service name of the destination
+  Service destination_service = 10;
+  // The CiliumNetworkPolicies allowing the egress of the flow.
+  repeated Policy egress_allowed_by = 11;
+  // The CiliumNetworkPolicies allowing the ingress of the flow.
+  repeated Policy ingress_allowed_by = 12;
+  // The CiliumNetworkPolicies denying the egress of the flow.
+  repeated Policy egress_denied_by = 13;
+  // The CiliumNetworkPolicies denying the ingress of the flow.
+  repeated Policy ingress_denied_by = 14;
+}
+
+// Service contains Service header fields of a flow.
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#Service
+message Service {
+  string name = 1;
+  string namespace = 2;
+}
+
+// TrafficDirection contains TrafficDirectopm header flags of a flow.
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-trafficdirection
+enum TrafficDirection {
+  TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED = 0;
+  TRAFFIC_DIRECTION_INGRESS = 1;
+  TRAFFIC_DIRECTION_EGRESS = 2;
+}
+
+// Verdict contains Verdict header flags of a flow.
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-verdict
+enum Verdict {
+  VERDICT_UNKNOWN_UNSPECIFIED = 0;
+  VERDICT_FORWARDED = 1;
+  VERDICT_DROPPED = 2;
+  VERDICT_ERROR = 3;
+  VERDICT_AUDIT = 4;
+  VERDICT_REDIRECTED = 5;
+  VERDICT_TRACED = 6;
+  VERDICT_TRANSLATED = 7;
+}
+
+// IP contains the IP header fields of a flow.
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-ip
+message IP {
+  string source = 1;
+  string destination = 2;
+  IPVersion ip_version = 3;
+}
+
+// IPVersion contains the IPVersion header flags of a flow.
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-ipversion
+enum IPVersion {
+  IP_VERSION_IP_NOT_USED_UNSPECIFIED = 0;
+  IP_VERSION_IPV4 = 1;
+  IP_VERSION_IPV6 = 2;
+}
+
+// Layer4 contains the Layer-4 header fields of a flow.
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-layer4
+message Layer4 {
+  oneof protocol {
+    TCP tcp = 1;
+    UDP udp = 2;
+    // ICMP is technically not L4, but mutually exclusive with the above.
+    ICMPv4 icmpv4 = 3;
+    ICMPv6 icmpv6 = 4;
+    SCTP sctp = 5;
+  }
+}
+
+// TCP contains the TCP header fields of a flow.
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-tcp
+message TCP {
+  uint32 source_port = 1;
+  uint32 destination_port = 2;
+  TCPFlags flags = 3;
+}
+
+// TCPFlags is the mask of TCP header flags observed in TCP packets in a flow.
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-tcpflags
+message TCPFlags {
+  bool fin = 1;
+  bool syn = 2;
+  bool rst = 3;
+  bool psh = 4;
+  bool ack = 5;
+  bool urg = 6;
+  bool ece = 7;
+  bool cwr = 8;
+  bool ns = 9;
+}
+
+// UDP contains the UDP header fields of a flow.
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-udp
+message UDP {
+  uint32 source_port = 1;
+  uint32 destination_port = 2;
+}
+
+// SCTP contains the SCTP header fields of a flow.
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-sctp
+message SCTP {
+  uint32 source_port = 1;
+  uint32 destination_port = 2;
+}
+
+// ICMPv4 contains the ICMPv4 header fields of a flow.
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-icmpv4
+message ICMPv4 {
+  uint32 type = 1;
+  uint32 code = 2;
+}
+
+// ICMPv6 contains the ICMPv6 header fields of a flow.
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-icmpv6
+message ICMPv6 {
+  uint32 type = 1;
+  uint32 code = 2;
+}
+
+// Endpoint contains the Endpoint header fields of a flow
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-endpoint
+message Endpoint {
+  uint32 uid = 1;
+  string cluster_name = 7;
+  string namespace = 3;
+  repeated string labels = 4;
+  string pod_name = 5;
+  repeated Workload workloads = 6;
+}
+
+// Workload contains the Workload header fields of a flow
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-workload
+message Workload {
+  string name = 1;
+  string kind = 2;
+}
+
+// Policy contains the Policy header fields of a flow.
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-policy
+message Policy {
+  string name = 1;
+  string namespace = 2;
+  repeated string labels = 3;
+  uint64 revision = 4;
+}
+
+// Flow exported by the CNI plugin in the cluster.
+message SendKubernetesNetworkFlowsRequest {
+  oneof request {
+    CiliumFlow cilium_flow = 1;
+  }
+}
+
+// Message sent to the operator in a SendKubernetesNetworkFlows response stream.
+message SendKubernetesNetworkFlowsResponse {}
+
+// Enumeration to define the different levels of logging.
+enum LogLevel {
+  // Default unspecified log level.
+  LOG_LEVEL_UNSPECIFIED = 0;
+  // Debug log level, useful for development and troubleshooting.
+  LOG_LEVEL_DEBUG = 1;
+  // Informational log level for general application information.
+  LOG_LEVEL_INFO = 2;
+  // Warning log level for potentially problematic situations.
+  LOG_LEVEL_WARN = 3;
+  // Error log level indicating something went wrong.
+  LOG_LEVEL_ERROR = 4;
+}
+
+// Message representing a log entry.
+message LogEntry {
+  // The actual log message contents, as a JSON object.
+  string json_message = 3;
+}
+
+// Message to encapsulate a request to send logs.
+message SendLogsRequest {
+  oneof request {
+    // A single log entry to be sent.
+    LogEntry log_entry = 1;
+  }
+}
+
+// Message to encapsulate setting the log level.
+message SetLogLevel {
+  // The log level to be set in the operator.
+  LogLevel level = 1;
+}
+
+// Message to encapsulate the response for sending logs.
+message SendLogsResponse {
+  oneof response {
+    // set_log_level sets the operator's log level to the given level.
+    SetLogLevel set_log_level = 1;
+  }
+}
+
+// Syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
+service KubernetesInfoService {
+  // Continuously syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
+  rpc SendKubernetesResources(stream SendKubernetesResourcesRequest) returns (stream SendKubernetesResourcesResponse);
+  // Continuously sends network flows exported by the CNI plugin in the cluster to CloudSecure.
+  rpc SendKubernetesNetworkFlows(stream SendKubernetesNetworkFlowsRequest) returns (stream SendKubernetesNetworkFlowsResponse);
+  // Continuously syncs logs from operator and cluster.
+  rpc SendLogs(stream SendLogsRequest) returns (stream SendLogsResponse);
+}
