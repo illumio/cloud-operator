@@ -27,7 +27,7 @@ type ResourceManager struct {
 
 // sendResourceSnapshotComplete sends a message to indicate that the initial inventory snapshot has been completely streamed into the given stream.
 func (r *ResourceManager) sendResourceSnapshotComplete() error {
-	if err := r.streamManager.instance.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
+	if err := r.streamManager.streamClient.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
 		r.logger.Errorw("Falied to send resource snapshot complete",
 			"error", err,
 		)
@@ -50,7 +50,7 @@ func (r *ResourceManager) sendClusterMetadata(ctx context.Context) error {
 	if err != nil {
 		r.logger.Errorw("Error getting Kubernetes version", "error", err)
 	}
-	if err := r.streamManager.instance.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: version.Version()}}}); err != nil {
+	if err := r.streamManager.streamClient.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: version.Version()}}}); err != nil {
 		r.logger.Errorw("Failed to send cluster metadata",
 			"error", err,
 		)
