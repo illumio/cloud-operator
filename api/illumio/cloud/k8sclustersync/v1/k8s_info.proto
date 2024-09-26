@@ -130,12 +130,14 @@ message CiliumFlow {
   google.protobuf.BoolValue is_reply = 17;
 }
 
+// Service contains Service header fields of a flow.
+// https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#Service
 message Service {
   string name = 1;
   string namespace = 2;
 }
 
-// Information identifying the direction of traffic in Cilium.
+// TrafficDirection contains TrafficDirectopm header flags of a flow.
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-trafficdirection
 enum TrafficDirection {
   TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED = 0;
@@ -143,7 +145,7 @@ enum TrafficDirection {
   TRAFFIC_DIRECTION_EGRESS = 2;
 }
 
-// Information about Verdict for determining what happens to a flow
+// Verdict contains Verdict header flags of a flow.
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-verdict
 enum Verdict {
   VERDICT_UNKNOWN_UNSPECIFIED = 0;
@@ -164,7 +166,7 @@ message IP {
   IPVersion ip_version = 3;
 }
 
-// IPVersion contains the IPVersion header fields of a flow.
+// IPVersion contains the IPVersion header flags of a flow.
 // https://pkg.go.dev/github.com/cilium/cilium/api/v1/flow#readme-ipversion
 enum IPVersion {
   IP_VERSION_IP_NOT_USED_UNSPECIFIED = 0;
@@ -178,7 +180,7 @@ message Layer4 {
   oneof protocol {
     TCP tcp = 1;
     UDP udp = 2;
-    // ICMP is technically not L4, but mutually exclusive with the above
+    // ICMP is technically not L4, but mutually exclusive with the above.
     ICMPv4 icmpv4 = 3;
     ICMPv6 icmpv6 = 4;
     SCTP sctp = 5;
