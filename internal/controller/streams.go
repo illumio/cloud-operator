@@ -211,6 +211,7 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, cancel co
 	return nil
 }
 
+// connectAndStreamCiliumNetworkFlows creates ciliumNetworkFlows client and begins the streaming of network flows.
 func connectAndStreamCiliumNetworkFlows(logger *zap.SugaredLogger, sm *streamManager) error {
 	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
 	defer ciliumCancel()
@@ -232,7 +233,7 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.SugaredLogger, sm *streamMan
 	return nil
 }
 
-// Connect and Stream Functions
+// connectAndStreamResources creates resourceStream client and begins the streaming of resources.
 func connectAndStreamResources(logger *zap.SugaredLogger, sm *streamManager) error {
 	resourceCtx, resourceCancel := context.WithCancel(context.Background())
 	defer resourceCancel()
@@ -254,6 +255,7 @@ func connectAndStreamResources(logger *zap.SugaredLogger, sm *streamManager) err
 	return nil
 }
 
+// connectAndStreamLogs creates sendLogs client and begins the streaming of logs.
 func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager) error {
 	logCtx, logCancel := context.WithCancel(context.Background())
 	defer logCancel()
@@ -281,7 +283,7 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 	var backoff = 1 * time.Second
 	max := big.NewInt(3)
 	rebootCounter := 0
-	// Need a way to prevent operators from all booting at the same time globally if CS has outtage
+	// Need a way to prevent operators from all booting at the same time globally if CS has outtage. Maybe a random delay here that gives us some jitter?
 	for {
 		err := connectAndStream(logger, sm)
 		if err != nil {
@@ -334,7 +336,7 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 		go manageStream(logger, connectAndStreamResources, sm, resourceDone)
 		go manageStream(logger, connectAndStreamLogs, sm, logDone)
 
-		// Need to block this until resources are done being committed.
+		// Need to block this until resources are done being committed. Using waitgroups? Then we need to pass that in? Or pullout the snapschat complete watigroup to here?
 		go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
 
 		<-ciliumDone
@@ -345,6 +347,7 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 	}
 }
 
+// streamAuth handles getting a valid token and creating a connection
 func streamAuth(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig) (*grpc.ClientConn, pb.KubernetesInfoServiceClient, error) {
 	authn := Authenticator{Logger: logger}
 

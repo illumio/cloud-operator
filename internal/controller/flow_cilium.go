@@ -61,6 +61,7 @@ func newCiliumCollector(ctx context.Context, logger *zap.SugaredLogger, ciliumNa
 	return &CiliumFlowCollector{logger: logger, client: hubbleClient}, nil
 }
 
+// convertCiliumIP converts a flow.IP object to a pb.IP object
 func convertCiliumIP(IP *flow.IP) *pb.IP {
 	if IP == nil {
 		return nil
