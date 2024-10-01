@@ -277,7 +277,7 @@ func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager) error {
 }
 
 // Generic function to manage any stream with backoff and reconnection logic.
-func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *streamManager) error, sm *streamManager, done chan struct{}) error {
+func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *streamManager) error, sm *streamManager, done chan struct{}) {
 	const (
 		initialBackoff       = 1 * time.Second
 		maxBackoff           = 1 * time.Minute
@@ -317,7 +317,7 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 
 				if consecutiveFailures >= severeErrorThreshold {
 					close(done)
-					return errors.New("severe failure in manageStream: exceeded severe error threshold")
+					return
 				}
 
 				randomInt, err := rand.Int(rand.Reader, max)
