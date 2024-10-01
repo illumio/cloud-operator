@@ -254,6 +254,7 @@ func TestConvertHostIPsToStrings(t *testing.T) {
 }
 
 func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
+	// Create a development encoder config
 	encoderConfig := zap.NewDevelopmentEncoderConfig()
 	// Create a JSON encoder
 	encoder := zapcore.NewJSONEncoder(encoderConfig)
@@ -265,7 +266,6 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 	)
 	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
 	logger = logger.With(zap.String("name", "test"))
-
 	tests := map[string]struct {
 		podName        string
 		namespace      string
@@ -288,10 +288,7 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 					},
 				},
 			},
-			expectedIPs: []v1.HostIP{
-				{IP: "192.168.1.1"},
-				{IP: "192.168.1.2"},
-			},
+			expectedIPs:    []v1.HostIP{{IP: "192.168.1.1"}, {IP: "192.168.1.2"}},
 			expectedErrMsg: "",
 		},
 		"pod without host IPs": {
@@ -313,17 +310,16 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 			podName:        "nonexistent-pod",
 			namespace:      "default",
 			pod:            nil,
-			expectedIPs:    nil,
-			expectedErrMsg: "pods \"nonexistent-pod\" not found",
+			expectedIPs:    []v1.HostIP{},
+			expectedErrMsg: "Failed to find pod nonexistent-pod in namespace default",
 		},
 	}
-
+	clientset, err := NewClientSet()
+	if err != nil {
+		suite.T().Fatal("Failed to get client set " + err.Error())
+	}
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			clientset, err := NewClientSet()
-			if err != nil {
-				suite.T().Fatal("Failed to get client set " + err.Error())
-			}
 			if tt.pod != nil {
 				_, err := clientset.CoreV1().Pods(tt.namespace).Create(context.TODO(), tt.pod, metav1.CreateOptions{})
 				assert.NoError(suite.T(), err)
