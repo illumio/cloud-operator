@@ -3,17 +3,20 @@
 package controller
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"os"
 	"testing"
 	"time"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	corev1 "k8s.io/api/core/v1"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -129,7 +132,7 @@ func TestConvertObjectToMetadata(t *testing.T) {
 
 func TestGetObjectMetadataFromRuntimeObject(t *testing.T) {
 	// A successful case with a valid Kubernetes object.
-	pod := &corev1.Pod{
+	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-pod",
 			Namespace: "test-ns",
@@ -188,7 +191,7 @@ func TestConvertMetaObjectToMetadata(t *testing.T) {
 		UID:               "test-uid",
 	}
 
-	expected := &pb.KubernetesObjectMetadata{
+	expected := &pb.KubernetesObjectData{
 		Annotations:       sampleData,
 		CreationTimestamp: convertToProtoTimestamp(creationTimestamp),
 		Kind:              resource,
@@ -209,4 +212,130 @@ func TestConvertToProtoTimestamp(t *testing.T) {
 
 	result := convertToProtoTimestamp(k8sTime)
 	assert.Equal(t, expected, result)
+}
+
+func TestConvertHostIPsToStrings(t *testing.T) {
+	tests := map[string]struct {
+		hostIPs     []v1.HostIP
+		expectedIPs []string
+	}{
+		"empty slice": {
+			hostIPs:     []v1.HostIP{},
+			expectedIPs: []string{},
+		},
+		"single IP": {
+			hostIPs: []v1.HostIP{
+				{IP: "192.168.1.1"},
+			},
+			expectedIPs: []string{"192.168.1.1"},
+		},
+		"multiple IPs": {
+			hostIPs: []v1.HostIP{
+				{IP: "192.168.1.1"},
+				{IP: "192.168.1.2"},
+				{IP: "192.168.1.3"},
+			},
+			expectedIPs: []string{"192.168.1.1", "192.168.1.2", "192.168.1.3"},
+		},
+		"IPs with different formats": {
+			hostIPs: []v1.HostIP{
+				{IP: "192.168.1.1"},
+				{IP: "fe80::1ff:fe23:4567:890a"},
+				{IP: "10.0.0.1"},
+			},
+			expectedIPs: []string{"192.168.1.1", "fe80::1ff:fe23:4567:890a", "10.0.0.1"},
+		},
+	}
+
+	for name, tt := range tests {
+		result := convertHostIPsToStrings(tt.hostIPs)
+		assert.Equal(t, tt.expectedIPs, result, "test failed: %s", name)
+	}
+}
+
+func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
+	encoderConfig := zap.NewDevelopmentEncoderConfig()
+	// Create a JSON encoder
+	encoder := zapcore.NewJSONEncoder(encoderConfig)
+	// Create syncers for console output
+	consoleSyncer := zapcore.AddSync(os.Stdout)
+	// Create the core with the atomic level
+	core := zapcore.NewTee(
+		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
+	)
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	logger = logger.With(zap.String("name", "test"))
+
+	tests := map[string]struct {
+		podName        string
+		namespace      string
+		pod            *v1.Pod
+		expectedIPs    []v1.HostIP
+		expectedErrMsg string
+	}{
+		"pod with host IPs": {
+			podName:   "test-pod",
+			namespace: "default",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: "default",
+				},
+				Status: v1.PodStatus{
+					HostIPs: []v1.HostIP{
+						{IP: "192.168.1.1"},
+						{IP: "192.168.1.2"},
+					},
+				},
+			},
+			expectedIPs: []v1.HostIP{
+				{IP: "192.168.1.1"},
+				{IP: "192.168.1.2"},
+			},
+			expectedErrMsg: "",
+		},
+		"pod without host IPs": {
+			podName:   "test-pod",
+			namespace: "default",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: "default",
+				},
+				Status: v1.PodStatus{
+					HostIPs: nil,
+				},
+			},
+			expectedIPs:    []v1.HostIP{},
+			expectedErrMsg: "",
+		},
+		"pod not found": {
+			podName:        "nonexistent-pod",
+			namespace:      "default",
+			pod:            nil,
+			expectedIPs:    nil,
+			expectedErrMsg: "pods \"nonexistent-pod\" not found",
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			clientset, err := NewClientSet()
+			if err != nil {
+				suite.T().Fatal("Failed to get client set " + err.Error())
+			}
+			if tt.pod != nil {
+				_, err := clientset.CoreV1().Pods(tt.namespace).Create(context.TODO(), tt.pod, metav1.CreateOptions{})
+				assert.NoError(suite.T(), err)
+			}
+
+			ips, err := getPodIPAddresses(context.TODO(), logger, tt.podName, tt.namespace)
+			if tt.expectedErrMsg != "" {
+				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
+			} else {
+				assert.NoError(suite.T(), err)
+				assert.Equal(suite.T(), tt.expectedIPs, ips)
+			}
+		})
+	}
 }

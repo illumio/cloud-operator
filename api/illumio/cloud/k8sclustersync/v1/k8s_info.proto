@@ -9,9 +9,9 @@ import "google/protobuf/wrappers.proto";
 
 option go_package = "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1";
 
-// Metadata associated with a Kubernetes resource.
+// Data associated with a Kubernetes resource.
 // https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta
-message KubernetesObjectMetadata {
+message KubernetesObjectData {
   map<string, string> annotations = 1;
   google.protobuf.Timestamp creation_timestamp = 2;
   string kind = 3;
@@ -21,6 +21,15 @@ message KubernetesObjectMetadata {
   repeated KubernetesOwnerReference owner_references = 7;
   string resource_version = 8;
   string uid = 9;
+  oneof resource_specific_info {
+    PodIPs pod_ip_addresses = 10;
+  }
+}
+
+// PodIPs holds the IP addresses allocated to the pod. If this field is specified, the 0th entry must match the podIP field.
+// Pods may be allocated at most 1 value for each of IPv4 and IPv6. This list is empty if no IPs have been allocated yet.
+message PodIPs {
+  repeated string pod_ip_address = 1;
 }
 
 // Information identifying an object owning a Kubernetes resource.
@@ -57,10 +66,10 @@ message KubernetesClusterMetadata {
 message SendKubernetesResourcesRequest {
   // Send any of these "request" messages that can contain any of the documented types.
   oneof request {
-    // Metadata about the cluster and operator.
+    // Data about the cluster and operator.
     KubernetesClusterMetadata cluster_metadata = 1;
-    // Metadata about a Kubernetes resource in the cluster.
-    KubernetesObjectMetadata resource_metadata = 2;
+    // Data about a Kubernetes resource in the cluster.
+    KubernetesObjectData resource_data = 2;
     // Indicates that all resource_metadata have been sent to report all the resources in the cluster in the initial snapshot.
     KubernetesResourceSnapshotComplete resource_snapshot_complete = 3;
     // A mutation to a Kubernetes resource in the cluster.
@@ -87,11 +96,11 @@ message KubernetesResourceMutation {
   // The documented types
   oneof mutation {
     // Metadata of a newly created Kubernetes resource.
-    KubernetesObjectMetadata create_resource = 1;
+    KubernetesObjectData create_resource = 1;
     // Metadata of an updated Kubernetes resource, after update.
-    KubernetesObjectMetadata update_resource = 2;
+    KubernetesObjectData update_resource = 2;
     // Metadata of a deleted Kubernetes resource, before deletion.
-    KubernetesObjectMetadata delete_resource = 3;
+    KubernetesObjectData delete_resource = 3;
   }
 }
 

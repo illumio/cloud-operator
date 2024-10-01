@@ -102,7 +102,15 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 	}
 	for _, obj := range objs {
 		metadataObj := convertMetaObjectToMetadata(obj, resource)
-		err := sendObjectMetaData(r.streamManager, metadataObj)
+		if resource == "pods" {
+			hostIPs, err := getPodIPAddresses(ctx, r.logger, obj.GetName(), obj.GetNamespace())
+			if err != nil {
+				r.logger.Errorw("Cannot grab ip addresses for pod: %s in namespace: %s", obj.GetName(), obj.GetNamespace(), "error", err)
+				return "", cache, err
+			}
+			metadataObj.ResourceSpecificInfo = &pb.KubernetesObjectData_PodIpAddresses{PodIpAddresses: &pb.PodIPs{PodIpAddress: convertHostIPsToStrings(hostIPs)}}
+		}
+		err := sendObjectData(r.streamManager, metadataObj)
 		if err != nil {
 			r.logger.Errorw("Cannot send object metadata", "error", err)
 			return "", cache, err
@@ -146,8 +154,15 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			r.logger.Errorw("Cannot convert runtime.Object to metav1.ObjectMeta", "error", err)
 			return err
 		}
-		metadataObj := convertMetaObjectToMetadata(*convertedData, resource)
-
+		dataObj := convertMetaObjectToMetadata(*convertedData, resource)
+		if resource == "pods" {
+			hostIPs, err := getPodIPAddresses(ctx, r.logger, dataObj.GetName(), dataObj.GetNamespace())
+			if err != nil {
+				r.logger.Errorw("Cannot grab ip addresses for pod: %s in namespace: %s", dataObj.GetName(), dataObj.GetNamespace(), "error", err)
+				return err
+			}
+			dataObj.ResourceSpecificInfo = &pb.KubernetesObjectData_PodIpAddresses{PodIpAddresses: &pb.PodIPs{PodIpAddress: convertHostIPsToStrings(hostIPs)}}
+		}
 		wasUniqueEvent, err := uniqueEvent(*convertedData, &cache, event)
 		if err != nil {
 			r.logger.Errorw("Failed to hash object metadata", "error", err)
@@ -157,7 +172,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 		if !wasUniqueEvent {
 			continue
 		}
-		err = streamMutationObjectMetaData(r.streamManager, metadataObj, event.Type)
+		err = streamMutationObjectData(r.streamManager, dataObj, event.Type)
 		if err != nil {
 			r.logger.Errorw("Cannot send resource mutation", "error", err)
 			return err
