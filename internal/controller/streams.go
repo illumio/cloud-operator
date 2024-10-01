@@ -277,7 +277,7 @@ func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager) error {
 }
 
 // Generic function to manage any stream with backoff and reconnection logic.
-func manageStream(ctx context.Context, logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *streamManager) error, sm *streamManager, done chan struct{}) error {
+func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *streamManager) error, sm *streamManager, done chan struct{}) error {
 	const (
 		initialBackoff       = 1 * time.Second
 		maxBackoff           = 1 * time.Minute
@@ -289,24 +289,29 @@ func manageStream(ctx context.Context, logger *zap.SugaredLogger, connectAndStre
 	var (
 		backoff             = initialBackoff
 		consecutiveFailures = 0
+		disableCilium       = make(chan bool)
 	)
 	max := big.NewInt(3)
 
 	resetTimer := time.NewTimer(resetPeriod)
 	for {
 		select {
-		case <-ctx.Done():
-			close(done)
-			return nil
-
 		case <-resetTimer.C:
 			consecutiveFailures = 0
 			backoff = initialBackoff
 			resetTimer.Reset(resetPeriod)
-
+		case <-disableCilium:
+			disableCilium <- true
+			continue
 		default:
 			err := connectAndStream(logger, sm)
 			if err != nil {
+
+				// If Hubble is not enabled prevent cilium stream from trying to reconnect
+				if errors.Is(err, ErrHubbleNotFound) || errors.Is(err, ErrNoPortsAvailable) {
+					disableCilium <- true
+				}
+
 				logger.Errorw("Failed to establish stream connection; will retry", "error", err)
 				consecutiveFailures++
 
@@ -373,9 +378,9 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 		ciliumDone := make(chan struct{})
 		sm.bufferedGrpcSyncer.done = logDone
 
-		go manageStream(ctx, logger, connectAndStreamResources, sm, resourceDone)
-		go manageStream(ctx, logger, connectAndStreamLogs, sm, logDone)
-		go manageStream(ctx, logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
+		go manageStream(logger, connectAndStreamResources, sm, resourceDone)
+		go manageStream(logger, connectAndStreamLogs, sm, logDone)
+		go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
 
 		select {
 		case <-ciliumDone:

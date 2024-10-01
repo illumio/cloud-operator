@@ -28,15 +28,20 @@ const (
 	ciliumHubbleRelayServiceName  string = "hubble-relay"
 )
 
+var (
+	ErrHubbleNotFound   = errors.New("hubble Relay service not found; disabling Cilium flow collection")
+	ErrNoPortsAvailable = errors.New("hubble Relay service has no ports; disabling Cilium flow collection")
+)
+
 // discoverCiliumHubbleRelayAddress uses a kubernetes clientset in order to discover the address of the hubble-relay service within kube-system.
 func discoverCiliumHubbleRelayAddress(ctx context.Context, ciliumNamespace string, clientset kubernetes.Interface) (string, error) {
 	service, err := clientset.CoreV1().Services(ciliumNamespace).Get(ctx, ciliumHubbleRelayServiceName, metav1.GetOptions{})
 	if err != nil {
-		return "", errors.New("hubble Relay service not found; disabling Cilium flow collection")
+		return "", ErrHubbleNotFound
 	}
 
 	if len(service.Spec.Ports) == 0 {
-		return "", errors.New("hubble Relay service has no ports; disabling Cilium flow collection")
+		return "", ErrNoPortsAvailable
 	}
 
 	address := fmt.Sprintf("%s:%d", service.Spec.ClusterIP, service.Spec.Ports[0].Port)
