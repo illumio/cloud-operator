@@ -5,6 +5,7 @@ package controller
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"math/big"
 	"sync"
 	"time"
@@ -170,7 +171,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, cancel context.Can
 }
 
 // StreamLogs handles the log stream.
-func (sm *streamManager) StreamLogs(ctx context.Context, cancel context.CancelFunc) error {
+func (sm *streamManager) StreamLogs(ctx context.Context) error {
 	errCh := make(chan error, 1)
 
 	go func() {
@@ -179,11 +180,9 @@ func (sm *streamManager) StreamLogs(ctx context.Context, cancel context.CancelFu
 
 	select {
 	case <-ctx.Done():
-		cancel()
 		return ctx.Err()
 	case err := <-errCh:
 		if err != nil {
-			cancel()
 			return err
 		}
 	}
@@ -191,8 +190,7 @@ func (sm *streamManager) StreamLogs(ctx context.Context, cancel context.CancelFu
 }
 
 // StreamLogs handles the log stream.
-func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, cancel context.CancelFunc, ciliumNamespace string) error {
-	defer cancel()
+func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNamespace string) error {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	ciliumFlowManager, err := newCiliumCollector(ctx, sm.logger, ciliumNamespace)
 	if err != nil {
@@ -201,7 +199,7 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, cancel co
 	}
 	if ciliumFlowManager != nil {
 		for {
-			err = ciliumFlowManager.exportCiliumFlows(ctx, cancel, *sm)
+			err = ciliumFlowManager.exportCiliumFlows(ctx, *sm)
 			if err != nil {
 				sm.logger.Warnw("Failed to listen to flows", "error", err)
 				return err
@@ -224,9 +222,9 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.SugaredLogger, sm *streamMan
 
 	sm.streamClient.ciliumNetworkFlowsStream = sendCiliumNetworkFlowsStream
 
-	err = sm.StreamCiliumNetworkFlows(ciliumCtx, ciliumCancel, sm.streamClient.ciliumNamespace)
+	err = sm.StreamCiliumNetworkFlows(ciliumCtx, sm.streamClient.ciliumNamespace)
 	if err != nil {
-		logger.Errorw("Failed to bootup and Cilium network flows", "error", err)
+		logger.Errorw("Failed to bootup and stream Cilium network flows", "error", err)
 		return err
 	}
 
@@ -269,7 +267,7 @@ func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager) error {
 	sm.streamClient.logStream = SendLogsStream
 	sm.bufferedGrpcSyncer.UpdateClient(sm.streamClient.logStream, sm.streamClient.conn)
 
-	err = sm.StreamLogs(logCtx, logCancel)
+	err = sm.StreamLogs(logCtx)
 	if err != nil {
 		logger.Errorw("Failed to bootup and stream logs", "error", err)
 		return err
@@ -279,29 +277,71 @@ func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager) error {
 }
 
 // Generic function to manage any stream with backoff and reconnection logic.
-func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *streamManager) error, sm *streamManager, done chan struct{}) {
-	var backoff = 1 * time.Second
+func manageStream(ctx context.Context, logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *streamManager) error, sm *streamManager, done chan struct{}) error {
+	const (
+		initialBackoff       = 1 * time.Second
+		maxBackoff           = 1 * time.Minute
+		maxJitterPct         = 0.20
+		resetPeriod          = 10 * time.Minute
+		severeErrorThreshold = 10 // Define what constitutes a severe error.
+	)
+
+	var (
+		backoff             = initialBackoff
+		consecutiveFailures = 0
+	)
 	max := big.NewInt(3)
-	rebootCounter := 0
-	// Need a way to prevent operators from all booting at the same time globally if CS has outtage. Maybe a random delay here that gives us some jitter?
+
+	resetTimer := time.NewTimer(resetPeriod)
 	for {
-		err := connectAndStream(logger, sm)
-		if err != nil {
-			if rebootCounter >= 10 {
-				done <- struct{}{}
-				return
-			}
-			logger.Errorw("Failed to establish stream connection; will retry", "error", err)
-			randomInt, err := rand.Int(rand.Reader, max)
+		select {
+		case <-ctx.Done():
+			close(done)
+			return nil
+
+		case <-resetTimer.C:
+			consecutiveFailures = 0
+			backoff = initialBackoff
+			resetTimer.Reset(resetPeriod)
+
+		default:
+			err := connectAndStream(logger, sm)
 			if err != nil {
-				logger.Errorw("Could not generate a random int", "error", err)
-				continue
+				logger.Errorw("Failed to establish stream connection; will retry", "error", err)
+				consecutiveFailures++
+
+				if consecutiveFailures >= severeErrorThreshold {
+					close(done)
+					return errors.New("severe failure in manageStream: exceeded severe error threshold")
+				}
+
+				randomInt, err := rand.Int(rand.Reader, max)
+				if err != nil {
+					logger.Errorw("Could not generate a random int", "error", err)
+					continue
+				}
+
+				jitterPct, _ := randomInt.Float64()
+				jitterPct = jitterPct * maxJitterPct
+				sleep := time.Duration(float64(backoff) * (1. - jitterPct))
+
+				if sleep < initialBackoff {
+					sleep = initialBackoff
+				}
+				if sleep > maxBackoff {
+					sleep = maxBackoff
+				}
+
+				logger.Infow("Sleeping before retrying connection", "backoff", sleep)
+				time.Sleep(sleep)
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			} else {
+				consecutiveFailures = 0
+				backoff = initialBackoff
 			}
-			result := randomInt.Int64()
-			sleep := 1*time.Second + backoff + time.Duration(result)*time.Millisecond // Add randomness
-			time.Sleep(sleep)
-			backoff = backoff * 2 // Exponential increase
-			rebootCounter++
 		}
 	}
 }
@@ -309,7 +349,7 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 // ExponentialStreamConnect will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
 func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
 	for {
-		authConn, client, err := streamAuth(ctx, logger, envMap)
+		authConn, client, err := NewAuthenticatedCon(ctx, logger, envMap)
 		if err != nil {
 			logger.Errorw("Failed to establish initial connection; will retry", "error", err)
 			time.Sleep(5 * time.Second) // Retry after a delay
@@ -333,22 +373,22 @@ func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, en
 		ciliumDone := make(chan struct{})
 		sm.bufferedGrpcSyncer.done = logDone
 
-		go manageStream(logger, connectAndStreamResources, sm, resourceDone)
-		go manageStream(logger, connectAndStreamLogs, sm, logDone)
+		go manageStream(ctx, logger, connectAndStreamResources, sm, resourceDone)
+		go manageStream(ctx, logger, connectAndStreamLogs, sm, logDone)
+		go manageStream(ctx, logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
 
-		// Need to block this until resources are done being committed. Using waitgroups? Then we need to pass that in? Or pullout the snapschat complete watigroup to here?
-		go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
-
-		<-ciliumDone
-		<-resourceDone
-		<-logDone
+		select {
+		case <-ciliumDone:
+		case <-resourceDone:
+		case <-logDone:
+		}
 
 		logger.Warn("All streams have been closed. Rebooting the entire connection.")
 	}
 }
 
 // streamAuth handles getting a valid token and creating a connection
-func streamAuth(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig) (*grpc.ClientConn, pb.KubernetesInfoServiceClient, error) {
+func NewAuthenticatedCon(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig) (*grpc.ClientConn, pb.KubernetesInfoServiceClient, error) {
 	authn := Authenticator{Logger: logger}
 
 	clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)

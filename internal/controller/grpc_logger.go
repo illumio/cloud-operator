@@ -147,27 +147,23 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 }
 
 // ListenToLogStream will wait for responses from server and will update log level
-// depending response contents
+// depending on response contents
 func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
 	for {
-		//lint:ignore S1000 we need to use select because of future expansion to multiple cases
-		select {
-		default:
-			res, err := b.client.Recv()
-			if err == io.EOF {
-				// The client has closed the stream
-				b.logger.Info("Server has closed the SendLogs stream")
-				return nil
-			}
-			if err != nil {
-				b.logger.Errorw("Stream terminated", "error", err)
-				return err
-			}
-			switch res.Response.(type) {
-			case *pb.SendLogsResponse_SetLogLevel:
-				newLevel := res.GetSetLogLevel().Level
-				b.updateLogLevel(newLevel)
-			}
+		res, err := b.client.Recv()
+		if err == io.EOF {
+			// The client has closed the stream
+			b.logger.Info("Server has closed the SendLogs stream")
+			return nil
+		}
+		if err != nil {
+			b.logger.Errorw("Stream terminated", "error", err)
+			return err
+		}
+		switch res.Response.(type) {
+		case *pb.SendLogsResponse_SetLogLevel:
+			newLevel := res.GetSetLogLevel().Level
+			b.updateLogLevel(newLevel)
 		}
 	}
 }
@@ -241,11 +237,10 @@ func NewGRPClogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 				shouldBuffer = true
 			}
 		}
-		grpcSyncer.mutex.Unlock()
-
 		if shouldBuffer {
 			grpcSyncer.bufferLogEntry(&entry)
 		}
+		grpcSyncer.mutex.Unlock()
 		return nil
 	}))
 
