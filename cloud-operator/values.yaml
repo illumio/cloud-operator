@@ -24,7 +24,7 @@ resources:
 
 clusterCredsSecret:
   clientId: ""
-  clientSecret: ""å
+  clientSecret: ""
   disableSecretCreation: false
   forceSecretCreation: true
 
