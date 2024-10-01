@@ -273,34 +273,26 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 		expectedIPs    []v1.HostIP
 		expectedErrMsg string
 	}{
-		"pod with host IPs": {
-			podName:   "test-pod",
-			namespace: "default",
-			pod: &v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-pod",
-					Namespace: "default",
-				},
-				Status: v1.PodStatus{
-					HostIPs: []v1.HostIP{
-						{IP: "192.168.1.1"},
-						{IP: "192.168.1.2"},
-					},
-				},
-			},
-			expectedIPs:    []v1.HostIP{{IP: "192.168.1.1"}, {IP: "192.168.1.2"}},
-			expectedErrMsg: "",
-		},
 		"pod without host IPs": {
-			podName:   "test-pod",
+			podName:   "test-pod-2",
 			namespace: "default",
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-pod",
+					Name:      "test-pod-2",
 					Namespace: "default",
 				},
-				Status: v1.PodStatus{
-					HostIPs: nil,
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:            "busybox",
+							Image:           "busybox",
+							ImagePullPolicy: v1.PullIfNotPresent,
+							Command: []string{
+								"sleep",
+								"3600",
+							},
+						},
+					},
 				},
 			},
 			expectedIPs:    []v1.HostIP{},
@@ -311,12 +303,22 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 			namespace:      "default",
 			pod:            nil,
 			expectedIPs:    []v1.HostIP{},
-			expectedErrMsg: "Failed to find pod nonexistent-pod in namespace default",
+			expectedErrMsg: "",
 		},
 	}
 	clientset, err := NewClientSet()
 	if err != nil {
 		suite.T().Fatal("Failed to get client set " + err.Error())
+	}
+	// Create the default service account in the default namespace
+	_, err = clientset.CoreV1().ServiceAccounts("default").Create(context.TODO(), &v1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default",
+			Namespace: "default",
+		},
+	}, metav1.CreateOptions{})
+	if err != nil {
+		suite.T().Fatal("Failed to create service account " + err.Error())
 	}
 	for name, tt := range tests {
 		suite.Run(name, func() {

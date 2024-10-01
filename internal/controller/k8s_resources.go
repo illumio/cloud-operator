@@ -129,6 +129,7 @@ func convertMetaObjectToMetadata(obj metav1.ObjectMeta, resource string) *pb.Kub
 	return objMetadata
 }
 
+// getPodIPAddresses uses a pod name and namespace to grab the hostIP addresses within the podStatus
 func getPodIPAddresses(ctx context.Context, logger *zap.SugaredLogger, podName string, namespace string) ([]v1.HostIP, error) {
 	clientset, err := NewClientSet()
 	if err != nil {
@@ -137,7 +138,7 @@ func getPodIPAddresses(ctx context.Context, logger *zap.SugaredLogger, podName s
 	}
 	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
-		logger.Errorw("Failed to find pod %s in namespace %s", podName, namespace, "error", err)
+		logger.Errorw("Failed to find pod", podName, namespace, "error", err)
 		return []v1.HostIP{}, nil
 	}
 	if pod.Status.HostIPs != nil {
