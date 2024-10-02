@@ -154,14 +154,14 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			r.logger.Errorw("Cannot convert runtime.Object to metav1.ObjectMeta", "error", err)
 			return err
 		}
-		dataObj := convertMetaObjectToMetadata(*convertedData, resource)
+		metadataObj := convertMetaObjectToMetadata(*convertedData, resource)
 		if resource == "pods" {
-			hostIPs, err := getPodIPAddresses(ctx, r.logger, dataObj.GetName(), dataObj.GetNamespace())
+			hostIPs, err := getPodIPAddresses(ctx, r.logger, metadataObj.GetName(), metadataObj.GetNamespace())
 			if err != nil {
-				r.logger.Errorw("Cannot grab ip addresses for pod: %s in namespace: %s", dataObj.GetName(), dataObj.GetNamespace(), "error", err)
+				r.logger.Errorw("Cannot grab ip addresses for pod: %s in namespace: %s", metadataObj.GetName(), metadataObj.GetNamespace(), "error", err)
 				return err
 			}
-			dataObj.ResourceSpecificInfo = &pb.KubernetesObjectMetadata_PodIpAddresses{PodIpAddresses: &pb.PodIPs{PodIpAddress: convertHostIPsToStrings(hostIPs)}}
+			metadataObj.ResourceSpecificInfo = &pb.KubernetesObjectMetadata_PodIpAddresses{PodIpAddresses: &pb.PodIPs{PodIpAddress: convertHostIPsToStrings(hostIPs)}}
 		}
 		wasUniqueEvent, err := uniqueEvent(*convertedData, &cache, event)
 		if err != nil {
@@ -172,7 +172,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 		if !wasUniqueEvent {
 			continue
 		}
-		err = streamMutationObjectMetadata(r.streamManager, dataObj, event.Type)
+		err = streamMutationObjectMetadata(r.streamManager, metadataObj, event.Type)
 		if err != nil {
 			r.logger.Errorw("Cannot send resource mutation", "error", err)
 			return err
