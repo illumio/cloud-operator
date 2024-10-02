@@ -108,7 +108,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 				r.logger.Errorw("Cannot grab ip addresses for pod: %s in namespace: %s", obj.GetName(), obj.GetNamespace(), "error", err)
 				return "", cache, err
 			}
-			metadataObj.ResourceSpecificInfo = &pb.KubernetesObjectData_PodIpAddresses{PodIpAddresses: &pb.PodIPs{PodIpAddress: convertHostIPsToStrings(hostIPs)}}
+			metadataObj.ResourceSpecificInfo = &pb.KubernetesObjectMetadata_PodIpAddresses{PodIpAddresses: &pb.PodIPs{PodIpAddress: convertHostIPsToStrings(hostIPs)}}
 		}
 		err := sendObjectData(r.streamManager, metadataObj)
 		if err != nil {
@@ -161,7 +161,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 				r.logger.Errorw("Cannot grab ip addresses for pod: %s in namespace: %s", dataObj.GetName(), dataObj.GetNamespace(), "error", err)
 				return err
 			}
-			dataObj.ResourceSpecificInfo = &pb.KubernetesObjectData_PodIpAddresses{PodIpAddresses: &pb.PodIPs{PodIpAddress: convertHostIPsToStrings(hostIPs)}}
+			dataObj.ResourceSpecificInfo = &pb.KubernetesObjectMetadata_PodIpAddresses{PodIpAddresses: &pb.PodIPs{PodIpAddress: convertHostIPsToStrings(hostIPs)}}
 		}
 		wasUniqueEvent, err := uniqueEvent(*convertedData, &cache, event)
 		if err != nil {

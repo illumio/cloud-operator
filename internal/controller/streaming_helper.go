@@ -9,7 +9,7 @@ import (
 
 // sendObjectData sends a KubernetesObjectData to CloudSecure into the given stream.
 // Its used for the intial boot up of the operator so that is can stream everything currently in the cluster.
-func sendObjectData(sm *streamManager, data *pb.KubernetesObjectData) error {
+func sendObjectData(sm *streamManager, data *pb.KubernetesObjectMetadata) error {
 	if err := sm.streamClient.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceData{ResourceData: data}}); err != nil {
 		sm.logger.Errorw("Failed to send resource data",
 			"error", err,
@@ -30,7 +30,7 @@ func sendCiliumFlow(sm *streamManager, flow *pb.CiliumFlow) error {
 }
 
 // streamMutationObjectData sends a resource mutation message into the given stream.
-func streamMutationObjectData(sm *streamManager, data *pb.KubernetesObjectData, eventType watch.EventType) error {
+func streamMutationObjectData(sm *streamManager, data *pb.KubernetesObjectMetadata, eventType watch.EventType) error {
 	switch eventType {
 	case watch.Added:
 		if err := sm.streamClient.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_KubernetesResourceMutation{KubernetesResourceMutation: &pb.KubernetesResourceMutation{Mutation: &pb.KubernetesResourceMutation_CreateResource{CreateResource: data}}}}); err != nil {

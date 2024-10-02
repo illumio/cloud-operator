@@ -9,9 +9,9 @@ import "google/protobuf/wrappers.proto";
 
 option go_package = "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1";
 
-// Data associated with a Kubernetes resource.
+// Metadata associated with a Kubernetes resource.
 // https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta
-message KubernetesObjectData {
+message KubernetesObjectMetadata {
   map<string, string> annotations = 1;
   google.protobuf.Timestamp creation_timestamp = 2;
   string kind = 3;
@@ -66,10 +66,10 @@ message KubernetesClusterMetadata {
 message SendKubernetesResourcesRequest {
   // Send any of these "request" messages that can contain any of the documented types.
   oneof request {
-    // Data about the cluster and operator.
+    // Metadata about the cluster and operator.
     KubernetesClusterMetadata cluster_metadata = 1;
-    // Data about a Kubernetes resource in the cluster.
-    KubernetesObjectData resource_data = 2;
+    // Metadata about a Kubernetes resource in the cluster.
+    KubernetesObjectMetadata resource_data = 2;
     // Indicates that all resource_metadata have been sent to report all the resources in the cluster in the initial snapshot.
     KubernetesResourceSnapshotComplete resource_snapshot_complete = 3;
     // A mutation to a Kubernetes resource in the cluster.
@@ -96,11 +96,11 @@ message KubernetesResourceMutation {
   // The documented types
   oneof mutation {
     // Metadata of a newly created Kubernetes resource.
-    KubernetesObjectData create_resource = 1;
+    KubernetesObjectMetadata create_resource = 1;
     // Metadata of an updated Kubernetes resource, after update.
-    KubernetesObjectData update_resource = 2;
+    KubernetesObjectMetadata update_resource = 2;
     // Metadata of a deleted Kubernetes resource, before deletion.
-    KubernetesObjectData delete_resource = 3;
+    KubernetesObjectMetadata delete_resource = 3;
   }
 }
 

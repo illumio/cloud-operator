@@ -191,7 +191,7 @@ func TestConvertMetaObjectToMetadata(t *testing.T) {
 		UID:               "test-uid",
 	}
 
-	expected := &pb.KubernetesObjectData{
+	expected := &pb.KubernetesObjectMetadata{
 		Annotations:       sampleData,
 		CreationTimestamp: convertToProtoTimestamp(creationTimestamp),
 		Kind:              resource,

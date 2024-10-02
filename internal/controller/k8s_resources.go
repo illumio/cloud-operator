@@ -115,8 +115,8 @@ func getMetadatafromResource(logger *zap.SugaredLogger, resource unstructured.Un
 }
 
 // convertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
-func convertMetaObjectToMetadata(obj metav1.ObjectMeta, resource string) *pb.KubernetesObjectData {
-	objMetadata := &pb.KubernetesObjectData{
+func convertMetaObjectToMetadata(obj metav1.ObjectMeta, resource string) *pb.KubernetesObjectMetadata {
+	objMetadata := &pb.KubernetesObjectMetadata{
 		Annotations:       obj.GetAnnotations(),
 		CreationTimestamp: convertToProtoTimestamp(obj.CreationTimestamp),
 		Kind:              resource,
