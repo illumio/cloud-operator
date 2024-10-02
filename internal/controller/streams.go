@@ -202,7 +202,7 @@ func (sm *streamManager) BootUpStreamAndReconnect(ctx context.Context, cancel co
 	if err != nil {
 		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
 	}
-	if ciliumFlowManager.client != nil {
+	if ciliumFlowManager != nil {
 		go func() {
 			for {
 				err = ciliumFlowManager.exportCiliumFlows(ctx, *sm)
