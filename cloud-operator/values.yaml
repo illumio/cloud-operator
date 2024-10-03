@@ -4,12 +4,9 @@ defaultNamespace: "illumio-cloud"
 replicaCount: 1
 priorityClassName: ""
 image:
-  repository: "aaronnguyenillumio/operator"
-  tag: "latest"
-  pullPolicy: Always
-
-imagePullSecrets:
-  - name: regcred
+  repository: "ghcr.io/illumio/cloud-operator"
+  tag: "0.0.1"
+  pullPolicy: IfNotPresent
 
 serviceAccount:
   create: true
