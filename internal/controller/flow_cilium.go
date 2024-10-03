@@ -49,7 +49,7 @@ func discoverCiliumHubbleRelayAddress(ctx context.Context, ciliumNamespace strin
 }
 
 // newCiliumCollector connects to Ciilium Hubble Relay, sets up an Observer client, and returns a new Collector using it.
-func newCiliumCollector(ctx context.Context, logger *zap.SugaredLogger, ciliumNamespace string) (*CiliumFlowCollector, error) {
+func newCiliumFlowCollector(ctx context.Context, logger *zap.SugaredLogger, ciliumNamespace string) (*CiliumFlowCollector, error) {
 	config, err := NewClientSet()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new client set: %w", err)
@@ -192,7 +192,7 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm streamM
 	}
 }
 
-// ConvertCiliumFlow converts a GetFlowsResponse object to a CiliumFlow object
+// convertCiliumFlow converts a GetFlowsResponse object to a CiliumFlow object
 func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 	flowObj := flow.GetFlow()
 	ciliumFlow := pb.CiliumFlow{

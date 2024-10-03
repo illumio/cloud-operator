@@ -228,6 +228,7 @@ func NewGRPClogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 		var shouldBuffer bool
 
 		grpcSyncer.mutex.Lock()
+		defer grpcSyncer.mutex.Unlock()
 		if grpcSyncer.conn == nil || grpcSyncer.conn.GetState() != connectivity.Ready {
 			shouldBuffer = true
 		} else {
@@ -240,7 +241,6 @@ func NewGRPClogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 		if shouldBuffer {
 			grpcSyncer.bufferLogEntry(&entry)
 		}
-		grpcSyncer.mutex.Unlock()
 		return nil
 	}))
 

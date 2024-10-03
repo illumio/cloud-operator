@@ -18,12 +18,13 @@ import (
 )
 
 type streamClient struct {
-	ciliumNamespace          string
-	ciliumNetworkFlowsStream pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
-	conn                     *grpc.ClientConn
-	client                   pb.KubernetesInfoServiceClient
-	logStream                pb.KubernetesInfoService_SendLogsClient
-	resourceStream           pb.KubernetesInfoService_SendKubernetesResourcesClient
+	ciliumNamespace     string
+	conn                *grpc.ClientConn
+	client              pb.KubernetesInfoServiceClient
+	disableNetworkFlows bool
+	logStream           pb.KubernetesInfoService_SendLogsClient
+	networkFlowsStream  pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
+	resourceStream      pb.KubernetesInfoService_SendKubernetesResourcesClient
 }
 
 type deadlockDetector struct {
@@ -78,6 +79,7 @@ var resourceAPIGroupMap = map[string]string{
 }
 
 var dd = &deadlockDetector{}
+var ErrStopRetries = errors.New("stop retries")
 
 // ServerIsHealthy checks if a deadlock has occured within the threaded resource listing process.
 func ServerIsHealthy() bool {
@@ -192,16 +194,17 @@ func (sm *streamManager) StreamLogs(ctx context.Context) error {
 // StreamLogs handles the log stream.
 func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNamespace string) error {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
-	ciliumFlowManager, err := newCiliumCollector(ctx, sm.logger, ciliumNamespace)
+	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, sm.logger, ciliumNamespace)
 	if err != nil {
 		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
 		return err
 	}
-	if ciliumFlowManager != nil {
+	if ciliumFlowCollector != nil {
 		for {
-			err = ciliumFlowManager.exportCiliumFlows(ctx, *sm)
+			err = ciliumFlowCollector.exportCiliumFlows(ctx, *sm)
 			if err != nil {
-				sm.logger.Warnw("Failed to listen to flows", "error", err)
+				sm.logger.Warnw("Failed to collect and export flows from Cilium Hubble Relay", "error", err)
+				sm.streamClient.disableNetworkFlows = true
 				return err
 			}
 		}
@@ -220,11 +223,14 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.SugaredLogger, sm *streamMan
 		return err
 	}
 
-	sm.streamClient.ciliumNetworkFlowsStream = sendCiliumNetworkFlowsStream
+	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
 
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, sm.streamClient.ciliumNamespace)
 	if err != nil {
-		logger.Errorw("Failed to bootup and stream Cilium network flows", "error", err)
+		if errors.Is(err, ErrHubbleNotFound) || errors.Is(err, ErrNoPortsAvailable) {
+			logger.Warnw("Disabling Cilium flow collection", "error", err)
+			return ErrStopRetries
+		}
 		return err
 	}
 
@@ -289,29 +295,26 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 	var (
 		backoff             = initialBackoff
 		consecutiveFailures = 0
-		disableCilium       = make(chan bool)
 	)
 	max := big.NewInt(3)
 
 	resetTimer := time.NewTimer(resetPeriod)
+	sleepTimer := time.NewTimer(initialBackoff) // Start with an initial backoff interval
+	defer sleepTimer.Stop()
 	for {
 		select {
 		case <-resetTimer.C:
 			consecutiveFailures = 0
 			backoff = initialBackoff
 			resetTimer.Reset(resetPeriod)
-		case <-disableCilium:
-			disableCilium <- true
-			continue
-		default:
+		case <-sleepTimer.C:
 			err := connectAndStream(logger, sm)
 			if err != nil {
-
-				// If Hubble is not enabled prevent cilium stream from trying to reconnect
-				if errors.Is(err, ErrHubbleNotFound) || errors.Is(err, ErrNoPortsAvailable) {
-					disableCilium <- true
+				if errors.Is(err, ErrStopRetries) {
+					logger.Info("Stopping retries for this stream as instructed.")
+					close(done)
+					return
 				}
-
 				logger.Errorw("Failed to establish stream connection; will retry", "error", err)
 				consecutiveFailures++
 
@@ -323,6 +326,7 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 				randomInt, err := rand.Int(rand.Reader, max)
 				if err != nil {
 					logger.Errorw("Could not generate a random int", "error", err)
+					sleepTimer.Reset(backoff) // Reset sleep timer before continuing loop
 					continue
 				}
 
@@ -338,7 +342,8 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 				}
 
 				logger.Infow("Sleeping before retrying connection", "backoff", sleep)
-				time.Sleep(sleep)
+				sleepTimer.Reset(sleep) // Reset sleep timer with calculated backoff delay
+
 				backoff *= 2
 				if backoff > maxBackoff {
 					backoff = maxBackoff
@@ -346,49 +351,66 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 			} else {
 				consecutiveFailures = 0
 				backoff = initialBackoff
+				// Reset sleep timer back to initial backoff interval
+				sleepTimer.Reset(initialBackoff)
 			}
 		}
 	}
 }
 
-// ExponentialStreamConnect will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
-func ExponentialStreamConnect(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
+// ConnectStreams will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
+func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
+	// Timer channel for 5 seconds
+	timer := time.After(5 * time.Second)
 	for {
-		authConn, client, err := NewAuthenticatedCon(ctx, logger, envMap)
-		if err != nil {
-			logger.Errorw("Failed to establish initial connection; will retry", "error", err)
-			time.Sleep(5 * time.Second) // Retry after a delay
-			continue
-		}
-
-		streamClient := &streamClient{
-			conn:            authConn,
-			client:          client,
-			ciliumNamespace: envMap.CiliumNamespace,
-		}
-
-		sm := &streamManager{
-			streamClient:       streamClient,
-			logger:             logger,
-			bufferedGrpcSyncer: bufferedGrpcSyncer,
-		}
-
-		resourceDone := make(chan struct{})
-		logDone := make(chan struct{})
-		ciliumDone := make(chan struct{})
-		sm.bufferedGrpcSyncer.done = logDone
-
-		go manageStream(logger, connectAndStreamResources, sm, resourceDone)
-		go manageStream(logger, connectAndStreamLogs, sm, logDone)
-		go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
-
 		select {
-		case <-ciliumDone:
-		case <-resourceDone:
-		case <-logDone:
-		}
+		case <-ctx.Done():
+			return
+		case <-timer:
+			authConn, client, err := NewAuthenticatedCon(ctx, logger, envMap)
+			if err != nil {
+				logger.Errorw("Failed to establish initial connection; will retry", "error", err)
+				continue
+			}
 
-		logger.Warn("All streams have been closed. Rebooting the entire connection.")
+			streamClient := &streamClient{
+				conn:            authConn,
+				client:          client,
+				ciliumNamespace: envMap.CiliumNamespace,
+			}
+
+			sm := &streamManager{
+				streamClient:       streamClient,
+				logger:             logger,
+				bufferedGrpcSyncer: bufferedGrpcSyncer,
+			}
+
+			resourceDone := make(chan struct{})
+			logDone := make(chan struct{})
+			ciliumDone := make(chan struct{})
+			sm.bufferedGrpcSyncer.done = logDone
+
+			go manageStream(logger, connectAndStreamResources, sm, resourceDone)
+			go manageStream(logger, connectAndStreamLogs, sm, logDone)
+			// Only start network flows stream if not disabled
+			if !sm.streamClient.disableNetworkFlows {
+				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
+			} else {
+				ciliumDone = nil
+			}
+
+			select {
+			case <-ciliumDone:
+				if sm.streamClient.disableNetworkFlows {
+					ciliumDone = nil // Prevent further processing if disabled
+				}
+			case <-resourceDone:
+			case <-logDone:
+			}
+
+			logger.Warn("One or more streams have been closed. Closing and reopening the connection to CloudSecure.")
+			sm.streamClient.conn.Close()
+		}
 	}
 }
 
