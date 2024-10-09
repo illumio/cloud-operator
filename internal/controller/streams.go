@@ -4,9 +4,8 @@ package controller
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
-	"math/big"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -284,6 +283,7 @@ func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager) error {
 
 // Generic function to manage any stream with backoff and reconnection logic.
 func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *streamManager) error, sm *streamManager, done chan struct{}) {
+	defer close(done)
 	const (
 		initialBackoff       = 1 * time.Second
 		maxBackoff           = 1 * time.Minute
@@ -296,7 +296,6 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 		backoff             = initialBackoff
 		consecutiveFailures = 0
 	)
-	max := big.NewInt(3)
 
 	resetTimer := time.NewTimer(resetPeriod)
 	sleepTimer := time.NewTimer(initialBackoff) // Start with an initial backoff interval
@@ -312,26 +311,19 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 			if err != nil {
 				if errors.Is(err, ErrStopRetries) {
 					logger.Info("Stopping retries for this stream as instructed.")
-					close(done)
 					return
 				}
 				logger.Errorw("Failed to establish stream connection; will retry", "error", err)
-				consecutiveFailures++
-
-				if consecutiveFailures >= severeErrorThreshold {
-					close(done)
+				switch {
+				case consecutiveFailures == 0:
+					resetTimer.Reset(resetPeriod)
+				case consecutiveFailures >= severeErrorThreshold:
 					return
 				}
 
-				randomInt, err := rand.Int(rand.Reader, max)
-				if err != nil {
-					logger.Errorw("Could not generate a random int", "error", err)
-					sleepTimer.Reset(backoff) // Reset sleep timer before continuing loop
-					continue
-				}
+				consecutiveFailures++
 
-				jitterPct, _ := randomInt.Float64()
-				jitterPct = jitterPct * maxJitterPct
+				jitterPct := rand.Float64() * maxJitterPct // [0, maxJitterPct)
 				sleep := time.Duration(float64(backoff) * (1. - jitterPct))
 
 				if sleep < initialBackoff {
@@ -353,6 +345,7 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 				backoff = initialBackoff
 				// Reset sleep timer back to initial backoff interval
 				sleepTimer.Reset(initialBackoff)
+				resetTimer.Reset(resetPeriod)
 			}
 		}
 	}
@@ -387,13 +380,14 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
-			ciliumDone := make(chan struct{})
+			var ciliumDone chan struct{}
 			sm.bufferedGrpcSyncer.done = logDone
 
 			go manageStream(logger, connectAndStreamResources, sm, resourceDone)
 			go manageStream(logger, connectAndStreamLogs, sm, logDone)
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlows {
+				ciliumDone = make(chan struct{})
 				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
 			} else {
 				ciliumDone = nil
@@ -401,21 +395,18 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 
 			select {
 			case <-ciliumDone:
-				if sm.streamClient.disableNetworkFlows {
-					ciliumDone = nil // Prevent further processing if disabled
-				}
 			case <-resourceDone:
 			case <-logDone:
 			}
 
-			logger.Warn("One or more streams have been closed. Closing and reopening the connection to CloudSecure.")
+			logger.Warn("One or more streams have been closed; closing and reopening the connection to CloudSecure")
 			sm.streamClient.conn.Close()
 		}
 	}
 }
 
-// streamAuth handles getting a valid token and creating a connection
-func NewAuthenticatedCon(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig) (*grpc.ClientConn, pb.KubernetesInfoServiceClient, error) {
+// NewAuthenticatedConnection gets a valid token and creats a connection to CloudSecure.
+func NewAuthenticatedConnection(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig) (*grpc.ClientConn, pb.KubernetesInfoServiceClient, error) {
 	authn := Authenticator{Logger: logger}
 
 	clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
