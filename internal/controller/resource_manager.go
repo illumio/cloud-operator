@@ -101,8 +101,12 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 		return "", cache, err
 	}
 	for _, obj := range objs {
-		metadataObj := convertMetaObjectToMetadata(obj, resource)
-		err := sendObjectMetaData(r.streamManager, metadataObj)
+		metadataObj, err := convertMetaObjectToMetadata(ctx, r.logger, obj, resource)
+		if err != nil {
+			r.logger.Errorw("Cannot convert object metadata", "error", err)
+			return "", cache, err
+		}
+		err = sendObjectData(r.streamManager, metadataObj)
 		if err != nil {
 			r.logger.Errorw("Cannot send object metadata", "error", err)
 			return "", cache, err
@@ -146,8 +150,11 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			r.logger.Errorw("Cannot convert runtime.Object to metav1.ObjectMeta", "error", err)
 			return err
 		}
-		metadataObj := convertMetaObjectToMetadata(*convertedData, resource)
-
+		metadataObj, err := convertMetaObjectToMetadata(ctx, r.logger, *convertedData, resource)
+		if err != nil {
+			r.logger.Errorw("Cannot convert object metadata", "error", err)
+			return err
+		}
 		wasUniqueEvent, err := uniqueEvent(*convertedData, &cache, event)
 		if err != nil {
 			r.logger.Errorw("Failed to hash object metadata", "error", err)
@@ -157,7 +164,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 		if !wasUniqueEvent {
 			continue
 		}
-		err = streamMutationObjectMetaData(r.streamManager, metadataObj, event.Type)
+		err = streamMutationObjectData(r.streamManager, metadataObj, event.Type)
 		if err != nil {
 			r.logger.Errorw("Cannot send resource mutation", "error", err)
 			return err

@@ -115,7 +115,7 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 		switch req.Request.(type) {
 		case *pb.SendKubernetesResourcesRequest_ClusterMetadata:
 			logger.Info("Cluster metadata received")
-		case *pb.SendKubernetesResourcesRequest_ResourceMetadata:
+		case *pb.SendKubernetesResourcesRequest_ResourceData:
 			logger.Info("Intial inventory data")
 		case *pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete:
 			logger.Info("Initial inventory complete")
