@@ -110,7 +110,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 			}
 			metadataObj.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: convertHostIPsToStrings(hostIPs)}}
 		}
-		err := sendObjectMetadata(r.streamManager, metadataObj)
+		err := sendObjectData(r.streamManager, metadataObj)
 		if err != nil {
 			r.logger.Errorw("Cannot send object metadata", "error", err)
 			return "", cache, err
@@ -172,7 +172,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 		if !wasUniqueEvent {
 			continue
 		}
-		err = streamMutationObjectMetadata(r.streamManager, metadataObj, event.Type)
+		err = streamMutationObjectData(r.streamManager, metadataObj, event.Type)
 		if err != nil {
 			r.logger.Errorw("Cannot send resource mutation", "error", err)
 			return err

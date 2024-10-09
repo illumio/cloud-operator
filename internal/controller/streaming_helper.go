@@ -7,9 +7,9 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 )
 
-// sendObjectMetadata sends a KubernetesObjectData to CloudSecure into the given stream.
+// sendObjectData sends a KubernetesObjectData to CloudSecure into the given stream.
 // Its used for the intial boot up of the operator so that is can stream everything currently in the cluster.
-func sendObjectMetadata(sm *streamManager, metadata *pb.KubernetesObjectData) error {
+func sendObjectData(sm *streamManager, metadata *pb.KubernetesObjectData) error {
 	if err := sm.streamClient.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceData{ResourceData: metadata}}); err != nil {
 		sm.logger.Errorw("Failed to send resource metadata",
 			"error", err,
@@ -29,8 +29,8 @@ func sendCiliumFlow(sm *streamManager, flow *pb.CiliumFlow) error {
 	return nil
 }
 
-// streamMutationObjectMetadata sends a resource mutation message into the given stream.
-func streamMutationObjectMetadata(sm *streamManager, metadata *pb.KubernetesObjectData, eventType watch.EventType) error {
+// streamMutationObjectData sends a resource mutation message into the given stream.
+func streamMutationObjectData(sm *streamManager, metadata *pb.KubernetesObjectData, eventType watch.EventType) error {
 	switch eventType {
 	case watch.Added:
 		if err := sm.streamClient.streamKubernetesResources.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_KubernetesResourceMutation{KubernetesResourceMutation: &pb.KubernetesResourceMutation{Mutation: &pb.KubernetesResourceMutation_CreateResource{CreateResource: metadata}}}}); err != nil {

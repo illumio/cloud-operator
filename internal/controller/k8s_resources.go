@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
@@ -83,7 +82,6 @@ func convertObjectToMetadata(obj metav1.Object) metav1.ObjectMeta {
 // getObjectMetadataFromRuntimeObject safely extracts metadata from any Kubernetes runtime.Object.
 // It returns a pointer to a metav1.ObjectMeta structure if successful, along with any error encountered.
 func getObjectMetadataFromRuntimeObject(obj runtime.Object) (*metav1.ObjectMeta, error) {
-	fmt.Println(obj)
 	objectMeta, err := meta.Accessor(obj)
 	if err != nil {
 		return nil, err
