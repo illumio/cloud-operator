@@ -101,16 +101,12 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 		return "", cache, err
 	}
 	for _, obj := range objs {
-		metadataObj := convertMetaObjectToMetadata(obj, resource)
-		if resource == "pods" {
-			hostIPs, err := getPodIPAddresses(ctx, r.logger, obj.GetName(), obj.GetNamespace())
-			if err != nil {
-				r.logger.Errorw("Cannot grab ip addresses for pod: %s in namespace: %s", obj.GetName(), obj.GetNamespace(), "error", err)
-				return "", cache, err
-			}
-			metadataObj.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: convertHostIPsToStrings(hostIPs)}}
+		metadataObj, err := convertMetaObjectToMetadata(ctx, r.logger, obj, resource)
+		if err != nil {
+			r.logger.Errorw("Cannot convert object metadata", "error", err)
+			return "", cache, err
 		}
-		err := sendObjectData(r.streamManager, metadataObj)
+		err = sendObjectData(r.streamManager, metadataObj)
 		if err != nil {
 			r.logger.Errorw("Cannot send object metadata", "error", err)
 			return "", cache, err
@@ -154,14 +150,10 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			r.logger.Errorw("Cannot convert runtime.Object to metav1.ObjectMeta", "error", err)
 			return err
 		}
-		metadataObj := convertMetaObjectToMetadata(*convertedData, resource)
-		if resource == "pods" {
-			hostIPs, err := getPodIPAddresses(ctx, r.logger, metadataObj.GetName(), metadataObj.GetNamespace())
-			if err != nil {
-				r.logger.Errorw("Cannot grab ip addresses for pod: %s in namespace: %s", metadataObj.GetName(), metadataObj.GetNamespace(), "error", err)
-				return err
-			}
-			metadataObj.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: convertHostIPsToStrings(hostIPs)}}
+		metadataObj, err := convertMetaObjectToMetadata(ctx, r.logger, *convertedData, resource)
+		if err != nil {
+			r.logger.Errorw("Cannot convert object metadata", "error", err)
+			return err
 		}
 		wasUniqueEvent, err := uniqueEvent(*convertedData, &cache, event)
 		if err != nil {

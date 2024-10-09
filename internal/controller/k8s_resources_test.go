@@ -112,9 +112,10 @@ func TestConvertObjectToMetadata(t *testing.T) {
 		UID:             "test-uid",
 		ResourceVersion: "test-version",
 	}
+	logger := zap.NewNop().Sugar()
 
 	// Execute the function under test.
-	got := convertMetaObjectToMetadata(configMap, "configMap")
+	got, _ := convertMetaObjectToMetadata(context.Background(), logger, configMap, "configMap")
 
 	// Define what you expect to get.
 	want := metav1.ObjectMeta{
@@ -178,6 +179,7 @@ func TestGetMetadataFromResource(t *testing.T) {
 }
 
 func TestConvertMetaObjectToMetadata(t *testing.T) {
+	logger := zap.NewNop().Sugar()
 	sampleData := make(map[string]string)
 	resource := "test-resource"
 	creationTimestamp := metav1.Time{Time: time.Now()}
@@ -202,7 +204,7 @@ func TestConvertMetaObjectToMetadata(t *testing.T) {
 		Uid:               "test-uid",
 	}
 
-	result := convertMetaObjectToMetadata(objMeta, resource)
+	result, _ := convertMetaObjectToMetadata(context.Background(), logger, objMeta, resource)
 	assert.Equal(t, expected, result)
 }
 

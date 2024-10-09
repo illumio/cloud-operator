@@ -115,7 +115,7 @@ func getMetadatafromResource(logger *zap.SugaredLogger, resource unstructured.Un
 }
 
 // convertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
-func convertMetaObjectToMetadata(obj metav1.ObjectMeta, resource string) *pb.KubernetesObjectData {
+func convertMetaObjectToMetadata(ctx context.Context, logger *zap.SugaredLogger, obj metav1.ObjectMeta, resource string) (*pb.KubernetesObjectData, error) {
 	objMetadata := &pb.KubernetesObjectData{
 		Annotations:       obj.GetAnnotations(),
 		CreationTimestamp: convertToProtoTimestamp(obj.CreationTimestamp),
@@ -126,7 +126,15 @@ func convertMetaObjectToMetadata(obj metav1.ObjectMeta, resource string) *pb.Kub
 		ResourceVersion:   obj.GetResourceVersion(),
 		Uid:               string(obj.GetUID()),
 	}
-	return objMetadata
+	if resource == "pods" {
+		hostIPs, err := getPodIPAddresses(ctx, logger, obj.GetName(), obj.GetNamespace())
+		if err != nil {
+			logger.Errorw("Cannot grab ip addresses for pod: %s in namespace: %s", obj.GetName(), obj.GetNamespace(), "error", err)
+			return &pb.KubernetesObjectData{}, err
+		}
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: convertHostIPsToStrings(hostIPs)}}
+	}
+	return objMetadata, nil
 }
 
 // getPodIPAddresses uses a pod name and namespace to grab the hostIP addresses within the podStatus
