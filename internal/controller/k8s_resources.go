@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
@@ -82,6 +83,7 @@ func convertObjectToMetadata(obj metav1.Object) metav1.ObjectMeta {
 // getObjectMetadataFromRuntimeObject safely extracts metadata from any Kubernetes runtime.Object.
 // It returns a pointer to a metav1.ObjectMeta structure if successful, along with any error encountered.
 func getObjectMetadataFromRuntimeObject(obj runtime.Object) (*metav1.ObjectMeta, error) {
+	fmt.Println(obj)
 	objectMeta, err := meta.Accessor(obj)
 	if err != nil {
 		return nil, err
@@ -115,8 +117,8 @@ func getMetadatafromResource(logger *zap.SugaredLogger, resource unstructured.Un
 }
 
 // convertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
-func convertMetaObjectToMetadata(obj metav1.ObjectMeta, resource string) *pb.KubernetesObjectMetadata {
-	objMetadata := &pb.KubernetesObjectMetadata{
+func convertMetaObjectToMetadata(obj metav1.ObjectMeta, resource string) *pb.KubernetesObjectData {
+	objMetadata := &pb.KubernetesObjectData{
 		Annotations:       obj.GetAnnotations(),
 		CreationTimestamp: convertToProtoTimestamp(obj.CreationTimestamp),
 		Kind:              resource,
