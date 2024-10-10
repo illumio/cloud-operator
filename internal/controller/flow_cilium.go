@@ -28,15 +28,20 @@ const (
 	ciliumHubbleRelayServiceName  string = "hubble-relay"
 )
 
+var (
+	ErrHubbleNotFound   = errors.New("hubble Relay service not found; disabling Cilium flow collection")
+	ErrNoPortsAvailable = errors.New("hubble Relay service has no ports; disabling Cilium flow collection")
+)
+
 // discoverCiliumHubbleRelayAddress uses a kubernetes clientset in order to discover the address of the hubble-relay service within kube-system.
 func discoverCiliumHubbleRelayAddress(ctx context.Context, ciliumNamespace string, clientset kubernetes.Interface) (string, error) {
 	service, err := clientset.CoreV1().Services(ciliumNamespace).Get(ctx, ciliumHubbleRelayServiceName, metav1.GetOptions{})
 	if err != nil {
-		return "", errors.New("hubble Relay service not found; disabling Cilium flow collection")
+		return "", ErrHubbleNotFound
 	}
 
 	if len(service.Spec.Ports) == 0 {
-		return "", errors.New("hubble Relay service has no ports; disabling Cilium flow collection")
+		return "", ErrNoPortsAvailable
 	}
 
 	address := fmt.Sprintf("%s:%d", service.Spec.ClusterIP, service.Spec.Ports[0].Port)
@@ -44,7 +49,7 @@ func discoverCiliumHubbleRelayAddress(ctx context.Context, ciliumNamespace strin
 }
 
 // newCiliumCollector connects to Ciilium Hubble Relay, sets up an Observer client, and returns a new Collector using it.
-func newCiliumCollector(ctx context.Context, logger *zap.SugaredLogger, ciliumNamespace string) (*CiliumFlowCollector, error) {
+func newCiliumFlowCollector(ctx context.Context, logger *zap.SugaredLogger, ciliumNamespace string) (*CiliumFlowCollector, error) {
 	config, err := NewClientSet()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new client set: %w", err)
@@ -61,6 +66,7 @@ func newCiliumCollector(ctx context.Context, logger *zap.SugaredLogger, ciliumNa
 	return &CiliumFlowCollector{logger: logger, client: hubbleClient}, nil
 }
 
+// convertCiliumIP converts a flow.IP object to a pb.IP object
 func convertCiliumIP(IP *flow.IP) *pb.IP {
 	if IP == nil {
 		return nil
@@ -186,7 +192,7 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm streamM
 	}
 }
 
-// Make a function comment
+// convertCiliumFlow converts a GetFlowsResponse object to a CiliumFlow object
 func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 	flowObj := flow.GetFlow()
 	ciliumFlow := pb.CiliumFlow{

@@ -147,20 +147,18 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 }
 
 // ListenToLogStream will wait for responses from server and will update log level
-// depending respone contents
-func (b *BufferedGrpcWriteSyncer) ListenToLogStream() {
+// depending on response contents
+func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
 	for {
 		res, err := b.client.Recv()
 		if err == io.EOF {
 			// The client has closed the stream
 			b.logger.Info("Server has closed the SendLogs stream")
-			return
+			return nil
 		}
 		if err != nil {
-			b.logger.Errorw("Stream terminated",
-				"error", err,
-			)
-			return
+			b.logger.Errorw("Stream terminated", "error", err)
+			return err
 		}
 		switch res.Response.(type) {
 		case *pb.SendLogsResponse_SetLogLevel:
@@ -226,20 +224,22 @@ func NewGRPClogger(grpcSyncer *BufferedGrpcWriteSyncer) *zap.SugaredLogger {
 
 	// Add a custom hook to handle logs for grpcSyncer
 	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+		// Do not use logging inside the hook to avoid deadlock
+		var shouldBuffer bool
+
 		grpcSyncer.mutex.Lock()
 		defer grpcSyncer.mutex.Unlock()
 		if grpcSyncer.conn == nil || grpcSyncer.conn.GetState() != connectivity.Ready {
-			grpcSyncer.bufferLogEntry(&entry)
-			return nil
+			shouldBuffer = true
+		} else {
+			// Flush pending logs
+			grpcSyncer.flush()
+			if err := grpcSyncer.sendLog(&entry, nil); err != nil {
+				shouldBuffer = true
+			}
 		}
-
-		// Flush buffer so logs are sent in order to the server
-		grpcSyncer.flush()
-
-		if err := grpcSyncer.sendLog(&entry, nil); err != nil {
-			logger.Error("Error when sending logs to server", zap.Error(err))
+		if shouldBuffer {
 			grpcSyncer.bufferLogEntry(&entry)
-			return err
 		}
 		return nil
 	}))
