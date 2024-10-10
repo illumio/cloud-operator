@@ -112,5 +112,5 @@ func main() {
 	}()
 
 	ctx := context.Background()
-	controller.ExponentialStreamConnect(ctx, logger, envConfig, bufferedGrpcSyncer)
+	controller.ConnectStreams(ctx, logger, envConfig, bufferedGrpcSyncer)
 }
