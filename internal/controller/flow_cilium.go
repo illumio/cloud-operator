@@ -186,7 +186,7 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm streamM
 		ciliumFlow := convertCiliumFlow(flow)
 		err = sendCiliumFlow(&sm, ciliumFlow)
 		if err != nil {
-			fm.logger.Errorw("Cannot send object metadata", "error", err)
+			fm.logger.Errorw("Cannot send cilium flow", "error", err)
 			return err
 		}
 	}

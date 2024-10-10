@@ -3,6 +3,7 @@
 package controller
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -10,7 +11,9 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -112,8 +115,8 @@ func getMetadatafromResource(logger *zap.SugaredLogger, resource unstructured.Un
 }
 
 // convertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
-func convertMetaObjectToMetadata(obj metav1.ObjectMeta, resource string) *pb.KubernetesObjectMetadata {
-	objMetadata := &pb.KubernetesObjectMetadata{
+func convertMetaObjectToMetadata(ctx context.Context, logger *zap.SugaredLogger, obj metav1.ObjectMeta, resource string) (*pb.KubernetesObjectData, error) {
+	objMetadata := &pb.KubernetesObjectData{
 		Annotations:       obj.GetAnnotations(),
 		CreationTimestamp: convertToProtoTimestamp(obj.CreationTimestamp),
 		Kind:              resource,
@@ -123,7 +126,42 @@ func convertMetaObjectToMetadata(obj metav1.ObjectMeta, resource string) *pb.Kub
 		ResourceVersion:   obj.GetResourceVersion(),
 		Uid:               string(obj.GetUID()),
 	}
-	return objMetadata
+	if resource == "pods" {
+		hostIPs, err := getPodIPAddresses(ctx, logger, obj.GetName(), obj.GetNamespace())
+		if err != nil {
+			logger.Errorw("Cannot grab ip addresses for pod: %s in namespace: %s", obj.GetName(), obj.GetNamespace(), "error", err)
+			return &pb.KubernetesObjectData{}, err
+		}
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: convertHostIPsToStrings(hostIPs)}}
+	}
+	return objMetadata, nil
+}
+
+// getPodIPAddresses uses a pod name and namespace to grab the hostIP addresses within the podStatus
+func getPodIPAddresses(ctx context.Context, logger *zap.SugaredLogger, podName string, namespace string) ([]v1.HostIP, error) {
+	clientset, err := NewClientSet()
+	if err != nil {
+		logger.Errorw("Failed to create clientset", "error", err)
+		return []v1.HostIP{}, err
+	}
+	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+	if err != nil {
+		logger.Errorw("Failed to find pod", podName, namespace, "error", err)
+		return []v1.HostIP{}, nil
+	}
+	if pod.Status.HostIPs != nil {
+		return pod.Status.HostIPs, nil
+	}
+	return []v1.HostIP{}, nil
+}
+
+// convertHostIPsToStrings converts a slice of v1.HostIP to a slice of strings
+func convertHostIPsToStrings(hostIPs []v1.HostIP) []string {
+	stringIPs := make([]string, len(hostIPs))
+	for i, hostIP := range hostIPs {
+		stringIPs[i] = hostIP.IP
+	}
+	return stringIPs
 }
 
 // convertToProtoTimestamp converts a Kubernetes metav1.Time into a Protobuf Timestamp.
