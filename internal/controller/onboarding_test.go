@@ -105,19 +105,6 @@ func (suite *ControllerTestSuite) TestOnboard() {
 }
 
 func (suite *ControllerTestSuite) TestGetFirstAudience() {
-	// Create a development encoder config
-	encoderConfig := zap.NewDevelopmentEncoderConfig()
-	// Create a JSON encoder
-	encoder := zapcore.NewJSONEncoder(encoderConfig)
-	// Create syncers for console output
-	consoleSyncer := zapcore.AddSync(os.Stdout)
-	// Create the core with the atomic level
-	core := zapcore.NewTee(
-		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
-	)
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
-	logger = logger.With(zap.String("name", "test"))
-
 	tests := map[string]struct {
 		claims         map[string]interface{}
 		expected       string
@@ -165,7 +152,7 @@ func (suite *ControllerTestSuite) TestGetFirstAudience() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			got, err := getFirstAudience(logger, tt.claims)
+			got, err := getFirstAudience(suite.logger, tt.claims)
 			if tt.expectedError {
 				assert.Error(suite.T(), err)
 				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
@@ -189,7 +176,6 @@ func GetClusterIDWithClient(ctx context.Context, logger *zap.SugaredLogger, clie
 
 func (suite *ControllerTestSuite) TestGetClusterID() {
 	ctx := context.Background()
-	logger := newCustomLogger(suite.T())
 
 	tests := map[string]struct {
 		setup     func() *fake.Clientset
@@ -222,7 +208,7 @@ func (suite *ControllerTestSuite) TestGetClusterID() {
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			client := tt.setup()
-			got, err := GetClusterIDWithClient(ctx, logger, client)
+			got, err := GetClusterIDWithClient(ctx, suite.logger, client)
 			if (err != nil) != tt.expectErr {
 				suite.T().Errorf("GetClusterIDWithClient() error = %v, expectErr %v", err, tt.expectErr)
 				return
