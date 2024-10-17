@@ -3,13 +3,13 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/version"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
@@ -23,40 +23,6 @@ type ResourceManager struct {
 	dynamicClient dynamic.Interface
 	// streamManager abstracts logic related to starting, using, and managing streams.
 	streamManager *streamManager
-}
-
-// sendResourceSnapshotComplete sends a message to indicate that the initial inventory snapshot has been completely streamed into the given stream.
-func (r *ResourceManager) sendResourceSnapshotComplete() error {
-	if err := r.streamManager.streamClient.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{}}); err != nil {
-		r.logger.Errorw("Falied to send resource snapshot complete",
-			"error", err,
-		)
-		return err
-	}
-	return nil
-}
-
-// sendClusteretadata sends a message to indicate current cluster metadata
-func (r *ResourceManager) sendClusterMetadata(ctx context.Context) error {
-	clusterUid, err := GetClusterID(ctx, r.logger)
-	if err != nil {
-		r.logger.Errorw("Error getting cluster id", "error", err)
-	}
-	clientset, err := NewClientSet()
-	if err != nil {
-		r.logger.Errorw("Error creating clientset", "error", err)
-	}
-	kubernetesVersion, err := clientset.Discovery().ServerVersion()
-	if err != nil {
-		r.logger.Errorw("Error getting Kubernetes version", "error", err)
-	}
-	if err := r.streamManager.streamClient.resourceStream.Send(&pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{ClusterMetadata: &pb.KubernetesClusterMetadata{Uid: clusterUid, KubernetesVersion: kubernetesVersion.String(), OperatorVersion: version.Version()}}}); err != nil {
-		r.logger.Errorw("Failed to send cluster metadata",
-			"error", err,
-		)
-		return err
-	}
-	return nil
 }
 
 // DynamicListAndWatchResources lists and watches the specified resource dynamically, managing context cancellation and synchronization with wait groups.
@@ -96,7 +62,7 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string, apiGroup string) (string, Cache, error) {
 	cache := Cache{cache: make(map[string][32]byte)}
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
-	objs, resourceListVersion, err := r.listResources(ctx, objGVR, metav1.NamespaceAll)
+	objs, resourceListVersion, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
 		return "", cache, err
 	}
@@ -174,22 +140,43 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 	return nil
 }
 
-// listResources fetches resources of a specified type and namespace, returning their ObjectMeta,
-// the last resource version observed, and any error encountered.
-func (r *ResourceManager) listResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) ([]metav1.ObjectMeta, string, error) {
+// FetchResources retrieves unstructured resources from the K8s API.
+func (r *ResourceManager) FetchResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) (*unstructured.UnstructuredList, error) {
 	unstructuredResources, err := r.dynamicClient.Resource(resource).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		r.logger.Errorw("Cannot list resource", "error", err, "kind", resource)
-		return nil, "", err
+		return nil, err
 	}
-	objectMetas := make([]metav1.ObjectMeta, 0, len(unstructuredResources.Items))
-	for _, item := range unstructuredResources.Items {
+	return unstructuredResources, nil
+}
+
+// ExtractObjectMetas extracts ObjectMeta from a list of unstructured resources.
+func (r *ResourceManager) ExtractObjectMetas(resources *unstructured.UnstructuredList) ([]metav1.ObjectMeta, error) {
+	objectMetas := make([]metav1.ObjectMeta, 0, len(resources.Items))
+	for _, item := range resources.Items {
 		objMeta, err := getMetadatafromResource(r.logger, item)
+		fmt.Println(objMeta, err)
 		if err != nil {
 			r.logger.Errorw("Cannot get Metadata from resource", "error", err)
-			return nil, "", err
+			return nil, err
 		}
 		objectMetas = append(objectMetas, *objMeta)
 	}
+	return objectMetas, nil
+}
+
+// ListResources fetches resources of a specified type and namespace, returning their ObjectMeta,
+// the last resource version observed, and any error encountered.
+func (r *ResourceManager) ListResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) ([]metav1.ObjectMeta, string, error) {
+	unstructuredResources, err := r.FetchResources(ctx, resource, namespace)
+	if err != nil {
+		return nil, "", err
+	}
+
+	objectMetas, err := r.ExtractObjectMetas(unstructuredResources)
+	if err != nil {
+		return nil, "", err
+	}
+
 	return objectMetas, unstructuredResources.GetResourceVersion(), nil
 }

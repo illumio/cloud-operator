@@ -3,29 +3,36 @@
 package controller
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/oauth"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 
-	"context"
-
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/oauth"
+	"google.golang.org/grpc/keepalive"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+var kacp = keepalive.ClientParameters{
+	Time:                10 * time.Second, // send pings every 10 seconds if there is no activity
+	Timeout:             10 * time.Second, // wait 10s for ping ack before considering the connection dead
+	PermitWithoutStream: true,             // send pings even without active streams
+}
 
 // Authenticator keeps a logger for its own methods.
 type Authenticator struct {
@@ -137,59 +144,75 @@ func IsRunningInCluster() bool {
 }
 
 // SetUpOAuthConnection establishes a gRPC connection using OAuth credentials and logging the process.
-func SetUpOAuthConnection(ctx context.Context, logger *zap.SugaredLogger, tokenURL string, TlsSkipVerify bool, clientID string, clientSecret string) (*grpc.ClientConn, error) {
-	// Configure TLS settings
-	// nosemgrep: bypass-tls-verification
-	tlsConfig := &tls.Config{
-		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: TlsSkipVerify,
-	}
+func SetUpOAuthConnection(
+	ctx context.Context,
+	logger *zap.SugaredLogger,
+	tokenURL string,
+	tlsSkipVerify bool,
+	clientID string,
+	clientSecret string,
+) (*grpc.ClientConn, error) {
+	tlsConfig := GetTLSConfig(tlsSkipVerify)
 
-	// Set up the OAuth2 config using the client credentials flow.
 	oauthConfig := clientcredentials.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		TokenURL:     tokenURL,
 		AuthStyle:    oauth2.AuthStyleInParams,
 	}
-	tokenSource := oauthConfig.TokenSource(context.WithValue(ctx, oauth2.HTTPClient, &http.Client{
-		// nosemgrep: bypass-tls-verification
-		Transport: &http.Transport{
-			TLSClientConfig: tlsConfig,
-		},
-	}))
+	tokenSource := GetTokenSource(ctx, oauthConfig, tlsConfig)
 
-	// Retrieve the token, we need the AUD value for the enpoint.
 	token, err := tokenSource.Token()
 	if err != nil {
 		logger.Errorw("Error retrieving a valid token", "error", err)
-		return &grpc.ClientConn{}, err
+		return nil, err
 	}
-	claims := jwt.MapClaims{}
-	// Parse the token.
-	// nosemgrep: jwt-go-parse-unverified
-	_, _, err = jwt.NewParser().ParseUnverified(token.AccessToken, claims)
+
+	claims, err := ParseToken(token.AccessToken)
 	if err != nil {
 		logger.Errorw("Error parsing token", "error", err)
-		return &grpc.ClientConn{}, err
+		return nil, err
 	}
+
 	aud, err := getFirstAudience(logger, claims)
 	if err != nil {
-		logger.Errorw("Error pulling audience out of token",
-			"error", err,
-		)
+		logger.Errorw("Error pulling audience out of token", "error", err)
+		return nil, err
 	}
-	// Establish gRPC connection with TLS config.
+
 	creds := credentials.NewTLS(tlsConfig)
 	conn, err := grpc.NewClient(
 		aud,
 		grpc.WithTransportCredentials(creds),
-		grpc.WithPerRPCCredentials(oauth.TokenSource{
-			TokenSource: tokenSource,
-		}),
-		grpc.WithKeepaliveParams(kacp))
+		grpc.WithPerRPCCredentials(oauth.TokenSource{TokenSource: tokenSource}),
+		grpc.WithKeepaliveParams(kacp),
+	)
 	if err != nil {
 		return nil, err
 	}
 	return conn, nil
+}
+
+// GetTLSConfig returns a TLS configuration.
+func GetTLSConfig(skipVerify bool) *tls.Config {
+	return &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: skipVerify,
+	}
+}
+
+// GetTokenSource returns an OAuth2 token source.
+func GetTokenSource(ctx context.Context, config clientcredentials.Config, tlsConfig *tls.Config) oauth2.TokenSource {
+	return config.TokenSource(context.WithValue(ctx, oauth2.HTTPClient, &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: tlsConfig,
+		},
+	}))
+}
+
+// ParseToken parses the JWT token and returns the claims.
+func ParseToken(tokenString string) (jwt.MapClaims, error) {
+	claims := jwt.MapClaims{}
+	_, _, err := jwt.NewParser().ParseUnverified(tokenString, claims)
+	return claims, err
 }

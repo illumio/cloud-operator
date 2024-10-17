@@ -307,3 +307,34 @@ func (suite *ControllerTestSuite) TestConvertCiliumPolicies() {
 		})
 	}
 }
+
+func (suite *ControllerTestSuite) TestConvertCiliumIP() {
+	tests := map[string]struct {
+		input    *flow.IP
+		expected *pb.IP
+	}{
+		"nil input": {
+			input:    nil,
+			expected: nil,
+		},
+		"valid input": {
+			input: &flow.IP{
+				Source:      "192.168.1.1",
+				Destination: "192.168.1.2",
+				IpVersion:   flow.IPVersion_IPv4,
+			},
+			expected: &pb.IP{
+				Source:      "192.168.1.1",
+				Destination: "192.168.1.2",
+				IpVersion:   pb.IPVersion(flow.IPVersion_IPv4),
+			},
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			result := convertCiliumIP(tt.input)
+			assert.Equal(suite.T(), tt.expected, result)
+		})
+	}
+}
