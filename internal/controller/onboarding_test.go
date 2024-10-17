@@ -12,9 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func (suite *ControllerTestSuite) TestOnboard() {
@@ -164,58 +162,27 @@ func (suite *ControllerTestSuite) TestGetFirstAudience() {
 	}
 }
 
-// Mocked function to replace the real GetClusterID function for testing
-func GetClusterIDWithClient(ctx context.Context, logger *zap.SugaredLogger, clientset *fake.Clientset) (string, error) {
-	namespace, err := clientset.CoreV1().Namespaces().Get(ctx, "kube-system", metav1.GetOptions{})
-	if err != nil {
-		logger.Errorw("Failed to get kube-system namespace", "error", err)
-		return "", err
-	}
-	return string(namespace.UID), nil
-}
-
+// TestGetClusterID tests the GetClusterID function.
 func (suite *ControllerTestSuite) TestGetClusterID() {
+	logger := suite.logger
 	ctx := context.Background()
 
-	tests := map[string]struct {
-		setup     func() *fake.Clientset
-		want      string
-		expectErr bool
-	}{
-		"success": {
-			setup: func() *fake.Clientset {
-				client := fake.NewSimpleClientset(&corev1.Namespace{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "kube-system",
-						UID:  "test-uid",
-					},
-				})
-				return client
-			},
-			want:      "test-uid",
-			expectErr: false,
-		},
-		"namespace-not-found": {
-			setup: func() *fake.Clientset {
-				client := fake.NewSimpleClientset()
-				return client
-			},
-			want:      "",
-			expectErr: true,
-		},
-	}
+	// Manually retrieve the expected UID of the kube-system namespace
+	clientset, err := NewClientSet()
+	assert.NoError(suite.T(), err)
 
-	for name, tt := range tests {
-		suite.Run(name, func() {
-			client := tt.setup()
-			got, err := GetClusterIDWithClient(ctx, suite.logger, client)
-			if (err != nil) != tt.expectErr {
-				suite.T().Errorf("GetClusterIDWithClient() error = %v, expectErr %v", err, tt.expectErr)
-				return
-			}
-			if got != tt.want {
-				suite.T().Errorf("GetClusterIDWithClient() got = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	namespace, err := clientset.CoreV1().Namespaces().Get(ctx, "kube-system", v1.GetOptions{})
+	assert.NoError(suite.T(), err)
+	expectedUID := string(namespace.UID)
+
+	// Call the GetClusterID function
+	clusterID, err := GetClusterID(ctx, logger)
+	assert.NoError(suite.T(), err)
+	assert.NotEmpty(suite.T(), clusterID)
+
+	// Check if the returned UID matches the expected UID
+	assert.Equal(suite.T(), expectedUID, clusterID)
+
+	// Log the cluster ID for verification
+	logger.Infow("Cluster ID", "uid", clusterID)
 }
