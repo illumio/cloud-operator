@@ -22,7 +22,7 @@ message KubernetesObjectData {
   string resource_version = 8;
   string uid = 9;
   oneof kind_specific {
-    KubernetesPodData pod = 10;
+    KubernetesPodData pod = 100;
   }
 }
 
