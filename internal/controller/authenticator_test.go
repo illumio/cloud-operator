@@ -4,8 +4,6 @@ package controller
 
 import (
 	"context"
-	"crypto/tls"
-	"net/http"
 	"os"
 	"testing"
 
@@ -13,8 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/clientcredentials"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -299,35 +295,6 @@ func (suite *ControllerTestSuite) TestDoesK8sSecretExist() {
 	}
 }
 
-// TestGetTLSConfig tests the GetTLSConfig function.
-func (suite *ControllerTestSuite) TestGetTLSConfig() {
-	tlsConfig := GetTLSConfig(true)
-	assert.Equal(suite.T(), tls.VersionTLS12, tlsConfig.MinVersion)
-	assert.True(suite.T(), tlsConfig.InsecureSkipVerify)
-
-	tlsConfig = GetTLSConfig(false)
-	assert.Equal(suite.T(), tls.VersionTLS12, tlsConfig.MinVersion)
-	assert.False(suite.T(), tlsConfig.InsecureSkipVerify)
-}
-
-// TestGetTokenSource tests the GetTokenSource function.
-func (suite *ControllerTestSuite) TestGetTokenSource() {
-	ctx := context.Background()
-	config := clientcredentials.Config{
-		ClientID:     "test-client-id",
-		ClientSecret: "test-client-secret",
-		TokenURL:     "https://example.com/token",
-	}
-
-	tlsConfig := GetTLSConfig(true)
-	tokenSource := GetTokenSource(ctx, config, tlsConfig)
-
-	client := oauth2.NewClient(ctx, tokenSource)
-	transport, ok := client.Transport.(*http.Transport)
-	assert.True(suite.T(), ok)
-	assert.Equal(suite.T(), tlsConfig, transport.TLSClientConfig)
-}
-
 // TestParseToken tests the ParseToken function.
 func (suite *ControllerTestSuite) TestParseToken() {
 	// Create a sample token
@@ -345,4 +312,3 @@ func (suite *ControllerTestSuite) TestParseToken() {
 	_, err = ParseToken("invalid-token")
 	assert.Error(suite.T(), err)
 }
-

@@ -318,16 +318,6 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 	if err != nil {
 		suite.T().Fatal("Failed to get client set " + err.Error())
 	}
-	// Create the default service account in the default namespace
-	_, err = clientset.CoreV1().ServiceAccounts("default").Create(context.TODO(), &v1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "default",
-			Namespace: "default",
-		},
-	}, metav1.CreateOptions{})
-	if err != nil {
-		suite.T().Fatal("Failed to create service account " + err.Error())
-	}
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			if tt.pod != nil {
