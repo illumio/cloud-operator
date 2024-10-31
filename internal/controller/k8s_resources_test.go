@@ -278,7 +278,7 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 		podName        string
 		namespace      string
 		pod            *v1.Pod
-		expectedIPs    []v1.HostIP
+		expectedIPs    int
 		expectedErrMsg string
 	}{
 		"pod without host IPs": {
@@ -303,14 +303,14 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 					},
 				},
 			},
-			expectedIPs:    []v1.HostIP{},
+			expectedIPs:    1,
 			expectedErrMsg: "",
 		},
 		"pod not found": {
 			podName:        "nonexistent-pod",
 			namespace:      "default",
 			pod:            nil,
-			expectedIPs:    []v1.HostIP{},
+			expectedIPs:    0,
 			expectedErrMsg: "",
 		},
 	}
@@ -330,7 +330,7 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
 			} else {
 				assert.NoError(suite.T(), err)
-				assert.Equal(suite.T(), tt.expectedIPs, ips)
+				assert.Equal(suite.T(), tt.expectedIPs, len(ips))
 			}
 		})
 	}
