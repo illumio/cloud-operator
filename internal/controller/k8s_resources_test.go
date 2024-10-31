@@ -281,7 +281,7 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 		expectedIPs    int
 		expectedErrMsg string
 	}{
-		"pod without host IPs": {
+		"pod with host IPs": {
 			podName:   "test-pod-2",
 			namespace: "default",
 			pod: &v1.Pod{
