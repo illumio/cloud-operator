@@ -400,7 +400,6 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			}
 
 			logger.Warn("One or more streams have been closed; closing and reopening the connection to CloudSecure")
-			sm.streamClient.conn.Close()
 		}
 	}
 }
