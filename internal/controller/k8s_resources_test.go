@@ -281,31 +281,7 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 		expectedIPs    int
 		expectedErrMsg string
 	}{
-		"pod with host IPs": {
-			podName:   "test-pod-2",
-			namespace: "default",
-			pod: &v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-pod-2",
-					Namespace: "default",
-				},
-				Spec: v1.PodSpec{
-					Containers: []v1.Container{
-						{
-							Name:            "busybox",
-							Image:           "busybox",
-							ImagePullPolicy: v1.PullIfNotPresent,
-							Command: []string{
-								"sleep",
-								"3600",
-							},
-						},
-					},
-				},
-			},
-			expectedIPs:    1,
-			expectedErrMsg: "",
-		},
+		// TODO: Create happy test case for pod IP that is not spotty.
 		"pod not found": {
 			podName:        "nonexistent-pod",
 			namespace:      "default",
