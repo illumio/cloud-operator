@@ -66,6 +66,7 @@ func main() {
 	// Bind specific environment variables to keys
 	bindEnv(*logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
 	bindEnv(*logger, "cilium_namespace", "CILIUM_NAMESPACE")
+	bindEnv(*logger, "falco_namespace", "FALCO_NAMESPACE")
 	bindEnv(*logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
 	bindEnv(*logger, "onboarding_client_secret", "ONBOARDING_CLIENT_SECRET")
 	bindEnv(*logger, "onboarding_endpoint", "ONBOARDING_ENDPOINT")
@@ -75,6 +76,7 @@ func main() {
 	// Set default values
 	viper.SetDefault("cluster_creds", "clustercreds")
 	viper.SetDefault("cilium_namespace", "kube-system")
+	viper.SetDefault("falco_namespace", "falco")
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("tls_skip_verify", false)
@@ -82,6 +84,7 @@ func main() {
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),
 		CiliumNamespace:        viper.GetString("cilium_namespace"),
+		FalcoNamespace:         viper.GetString("falco_namespace"),
 		OnboardingClientId:     viper.GetString("onboarding_client_id"),
 		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
 		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
@@ -92,6 +95,7 @@ func main() {
 	logger.Infow("Starting application",
 		"cluster_creds_secret", envConfig.ClusterCreds,
 		"cilium_namespace", envConfig.CiliumNamespace,
+		"falco_namespace", envConfig.FalcoNamespace,
 		"onboarding_client_id", envConfig.OnboardingClientId,
 		"onboarding_endpoint", envConfig.OnboardingEndpoint,
 		"token_endpoint", envConfig.TokenEndpoint,

@@ -19,6 +19,7 @@ require (
 
 require (
 	github.com/emicklei/go-restful/v3 v3.12.0 // indirect
+	github.com/falcosecurity/client-go v0.6.1 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect

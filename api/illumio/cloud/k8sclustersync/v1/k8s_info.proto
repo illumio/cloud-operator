@@ -105,6 +105,12 @@ message KubernetesResourceMutation {
   }
 }
 
+message FalcoFlow {
+  Endpoint endpoint = 1;
+  IP ip = 2;
+  Layer4 layer4 = 3;
+}
+
 // A flow received from Cilium Hubble Relay using the Observer service's GetFlows RPC.
 // https://github.com/cilium/cilium/blob/main/api/v1/observer/observer.proto
 message CiliumFlow {
@@ -278,6 +284,7 @@ message Policy {
 message SendKubernetesNetworkFlowsRequest {
   oneof request {
     CiliumFlow cilium_flow = 1;
+    FalcoFlow falco_flow = 2;
   }
 }
 
