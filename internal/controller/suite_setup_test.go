@@ -18,6 +18,7 @@ type ControllerTestSuite struct {
 	suite.Suite
 	ctx       context.Context
 	clientset *kubernetes.Clientset
+	logger    *zap.SugaredLogger
 }
 
 func TestGenerateTestSuite(t *testing.T) {
@@ -25,6 +26,7 @@ func TestGenerateTestSuite(t *testing.T) {
 }
 
 func (suite *ControllerTestSuite) SetupSuite() {
+	suite.logger = newCustomLogger(suite.T())
 	suite.ctx = context.Background()
 	var err error
 	err = testhelper.SetupTestCluster()

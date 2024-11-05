@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -155,18 +156,6 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 
 func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 	ctx := context.Background()
-	// Create a development encoder config
-	encoderConfig := zap.NewDevelopmentEncoderConfig()
-	// Create a JSON encoder
-	encoder := zapcore.NewJSONEncoder(encoderConfig)
-	// Create syncers for console output
-	consoleSyncer := zapcore.AddSync(os.Stdout)
-	// Create the core with the atomic level
-	core := zapcore.NewTee(
-		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
-	)
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
-	logger = logger.With(zap.String("name", "test"))
 
 	tests := map[string]struct {
 		namespaceExists bool
@@ -195,7 +184,7 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			authn := &Authenticator{Logger: logger}
+			authn := &Authenticator{Logger: suite.logger}
 
 			// Since go test does not follow any order, always make sure namespace is deleted before each test
 			_ = suite.clientset.CoreV1().Namespaces().Delete(context.TODO(), "illumio-cloud", metav1.DeleteOptions{})
@@ -250,4 +239,76 @@ func TestIsRunningInCluster(t *testing.T) {
 
 		assert.False(t, IsRunningInCluster())
 	})
+}
+
+func (suite *ControllerTestSuite) TestDoesK8sSecretExist() {
+	ctx := context.Background()
+	namespaceObj := &v1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "illumio-cloud",
+		},
+	}
+	_, err := suite.clientset.CoreV1().Namespaces().Create(context.TODO(), namespaceObj, metav1.CreateOptions{})
+	if err != nil {
+		suite.T().Fatal("Cannot create the illumio-cloud namespace for test " + err.Error())
+	}
+	tests := map[string]struct {
+		secretExists  bool
+		secretName    string
+		expectedExist bool
+	}{
+		"secret exists": {
+			secretExists:  true,
+			secretName:    "existing-secret",
+			expectedExist: true,
+		},
+		"secret does not exist": {
+			secretExists:  false,
+			secretName:    "nonexistent-secret",
+			expectedExist: false,
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			if tt.secretExists {
+				secret := &v1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      tt.secretName,
+						Namespace: "illumio-cloud",
+					},
+					Type: v1.SecretTypeOpaque,
+				}
+				_, err := suite.clientset.CoreV1().Secrets("illumio-cloud").Create(ctx, secret, metav1.CreateOptions{})
+				if err != nil {
+					suite.T().Fatal("Failed to create secret for test " + err.Error())
+				}
+			}
+
+			sm := &Authenticator{
+				Logger: suite.logger,
+			}
+
+			exists := sm.DoesK8sSecretExist(ctx, tt.secretName)
+			assert.Equal(suite.T(), tt.expectedExist, exists)
+		})
+	}
+}
+
+// TestParseToken tests the ParseToken function.
+func (suite *ControllerTestSuite) TestParseToken() {
+	// Create a sample token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"foo": "bar",
+	})
+	tokenString, _ := token.SignedString([]byte("secret"))
+
+	// Test valid token
+	claims, err := ParseToken(tokenString)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "bar", claims["foo"])
+
+	// Test invalid token
+	_, err = ParseToken("invalid-token")
+	assert.Error(suite.T(), err)
 }
