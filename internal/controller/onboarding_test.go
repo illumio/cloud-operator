@@ -12,9 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func (suite *ControllerTestSuite) TestOnboard() {
@@ -105,19 +103,6 @@ func (suite *ControllerTestSuite) TestOnboard() {
 }
 
 func (suite *ControllerTestSuite) TestGetFirstAudience() {
-	// Create a development encoder config
-	encoderConfig := zap.NewDevelopmentEncoderConfig()
-	// Create a JSON encoder
-	encoder := zapcore.NewJSONEncoder(encoderConfig)
-	// Create syncers for console output
-	consoleSyncer := zapcore.AddSync(os.Stdout)
-	// Create the core with the atomic level
-	core := zapcore.NewTee(
-		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
-	)
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
-	logger = logger.With(zap.String("name", "test"))
-
 	tests := map[string]struct {
 		claims         map[string]interface{}
 		expected       string
@@ -165,7 +150,7 @@ func (suite *ControllerTestSuite) TestGetFirstAudience() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			got, err := getFirstAudience(logger, tt.claims)
+			got, err := getFirstAudience(suite.logger, tt.claims)
 			if tt.expectedError {
 				assert.Error(suite.T(), err)
 				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
@@ -177,59 +162,27 @@ func (suite *ControllerTestSuite) TestGetFirstAudience() {
 	}
 }
 
-// Mocked function to replace the real GetClusterID function for testing
-func GetClusterIDWithClient(ctx context.Context, logger *zap.SugaredLogger, clientset *fake.Clientset) (string, error) {
-	namespace, err := clientset.CoreV1().Namespaces().Get(ctx, "kube-system", metav1.GetOptions{})
-	if err != nil {
-		logger.Errorw("Failed to get kube-system namespace", "error", err)
-		return "", err
-	}
-	return string(namespace.UID), nil
-}
-
+// TestGetClusterID tests the GetClusterID function.
 func (suite *ControllerTestSuite) TestGetClusterID() {
+	logger := suite.logger
 	ctx := context.Background()
-	logger := newCustomLogger(suite.T())
 
-	tests := map[string]struct {
-		setup     func() *fake.Clientset
-		want      string
-		expectErr bool
-	}{
-		"success": {
-			setup: func() *fake.Clientset {
-				client := fake.NewSimpleClientset(&corev1.Namespace{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "kube-system",
-						UID:  "test-uid",
-					},
-				})
-				return client
-			},
-			want:      "test-uid",
-			expectErr: false,
-		},
-		"namespace-not-found": {
-			setup: func() *fake.Clientset {
-				client := fake.NewSimpleClientset()
-				return client
-			},
-			want:      "",
-			expectErr: true,
-		},
-	}
+	// Manually retrieve the expected UID of the kube-system namespace
+	clientset, err := NewClientSet()
+	assert.NoError(suite.T(), err)
 
-	for name, tt := range tests {
-		suite.Run(name, func() {
-			client := tt.setup()
-			got, err := GetClusterIDWithClient(ctx, logger, client)
-			if (err != nil) != tt.expectErr {
-				suite.T().Errorf("GetClusterIDWithClient() error = %v, expectErr %v", err, tt.expectErr)
-				return
-			}
-			if got != tt.want {
-				suite.T().Errorf("GetClusterIDWithClient() got = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	namespace, err := clientset.CoreV1().Namespaces().Get(ctx, "kube-system", v1.GetOptions{})
+	assert.NoError(suite.T(), err)
+	expectedUID := string(namespace.UID)
+
+	// Call the GetClusterID function
+	clusterID, err := GetClusterID(ctx, logger)
+	assert.NoError(suite.T(), err)
+	assert.NotEmpty(suite.T(), clusterID)
+
+	// Check if the returned UID matches the expected UID
+	assert.Equal(suite.T(), expectedUID, clusterID)
+
+	// Log the cluster ID for verification
+	logger.Infow("Cluster ID", "uid", clusterID)
 }
