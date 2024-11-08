@@ -47,6 +47,9 @@ type EnvironmentConfig struct {
 	ClusterCreds string
 	// Namespace of Falco
 	FalcoNamespace string
+	FalcoCert      string
+	FalcoKey       string
+	FalcoCARoot    string
 	// Client ID for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
 	OnboardingClientId string
 	// Client secret for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
@@ -215,8 +218,8 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNam
 	return nil
 }
 
-func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, falcoNamespace string) error {
-	falcoFlowCollector, err := newFalcoFlowCollector(ctx, sm.logger, falcoNamespace)
+func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, falcoNamespace string, falcoCerts FalcoCerts) error {
+	falcoFlowCollector, err := newFalcoFlowCollector(ctx, sm.logger, falcoNamespace, falcoCerts)
 	if err != nil {
 		sm.logger.Infow("Failed to initialize Falco flow collector; disabling flow collector", "error", err)
 		return err
@@ -235,7 +238,7 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, falcoNames
 }
 
 // connectAndStreamCiliumNetworkFlows creates ciliumNetworkFlows client and begins the streaming of network flows.
-func connectAndStreamCiliumNetworkFlows(logger *zap.SugaredLogger, sm *streamManager) error {
+func connectAndStreamCiliumNetworkFlows(logger *zap.SugaredLogger, envMap *EnvironmentConfig, sm *streamManager) error {
 	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
 	defer ciliumCancel()
 
@@ -259,7 +262,7 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.SugaredLogger, sm *streamMan
 	return nil
 }
 
-func connectAndStreamFalcoNetworkFlows(logger *zap.SugaredLogger, sm *streamManager) error {
+func connectAndStreamFalcoNetworkFlows(logger *zap.SugaredLogger, envMap *EnvironmentConfig, sm *streamManager) error {
 	falcoCtx, falcoCancel := context.WithCancel(context.Background())
 	defer falcoCancel()
 	sendFalcoNetworkFlows, err := sm.streamClient.client.SendKubernetesNetworkFlows(falcoCtx)
@@ -268,8 +271,9 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.SugaredLogger, sm *streamMana
 		return err
 	}
 	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
+	falcoCerts := FalcoCerts{cert: envMap.FalcoCert, key: envMap.FalcoKey, caRoot: envMap.FalcoCARoot}
 
-	err = sm.StreamFalcoNetworkFlows(falcoCtx, sm.streamClient.falcoNamespace)
+	err = sm.StreamFalcoNetworkFlows(falcoCtx, sm.streamClient.falcoNamespace, falcoCerts)
 	if err != nil {
 		// if errors.Is(err, ErrHubbleNotFound) || errors.Is(err, ErrNoPortsAvailable) {
 		// 	logger.Warnw("Disabling falco flow collection", "error", err)
@@ -282,7 +286,7 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.SugaredLogger, sm *streamMana
 }
 
 // connectAndStreamResources creates resourceStream client and begins the streaming of resources.
-func connectAndStreamResources(logger *zap.SugaredLogger, sm *streamManager) error {
+func connectAndStreamResources(logger *zap.SugaredLogger, envMap *EnvironmentConfig, sm *streamManager) error {
 	resourceCtx, resourceCancel := context.WithCancel(context.Background())
 	defer resourceCancel()
 
@@ -304,7 +308,7 @@ func connectAndStreamResources(logger *zap.SugaredLogger, sm *streamManager) err
 }
 
 // connectAndStreamLogs creates sendLogs client and begins the streaming of logs.
-func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager) error {
+func connectAndStreamLogs(logger *zap.SugaredLogger, envMap *EnvironmentConfig, sm *streamManager) error {
 	logCtx, logCancel := context.WithCancel(context.Background())
 	defer logCancel()
 
@@ -327,7 +331,7 @@ func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager) error {
 }
 
 // Generic function to manage any stream with backoff and reconnection logic.
-func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *streamManager) error, sm *streamManager, done chan struct{}) {
+func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *EnvironmentConfig, *streamManager) error, envMap *EnvironmentConfig, sm *streamManager, done chan struct{}) {
 	defer close(done)
 	const (
 		initialBackoff       = 1 * time.Second
@@ -352,7 +356,7 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 			backoff = initialBackoff
 			resetTimer.Reset(resetPeriod)
 		case <-sleepTimer.C:
-			err := connectAndStream(logger, sm)
+			err := connectAndStream(logger, envMap, sm)
 			if err != nil {
 				if errors.Is(err, ErrStopRetries) {
 					logger.Info("Stopping retries for this stream as instructed.")
@@ -428,14 +432,14 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			var ciliumDone chan struct{}
 			sm.bufferedGrpcSyncer.done = logDone
 
-			go manageStream(logger, connectAndStreamResources, sm, resourceDone)
-			go manageStream(logger, connectAndStreamLogs, sm, logDone)
+			go manageStream(logger, connectAndStreamResources, &envMap, sm, resourceDone)
+			go manageStream(logger, connectAndStreamLogs, &envMap, sm, logDone)
 			falcoDone := make(chan struct{})
-			go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone)
+			go manageStream(logger, connectAndStreamFalcoNetworkFlows, &envMap, sm, falcoDone)
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
-				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
+				go manageStream(logger, connectAndStreamCiliumNetworkFlows, &envMap, sm, ciliumDone)
 
 			} else {
 				ciliumDone = nil

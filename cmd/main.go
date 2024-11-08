@@ -67,6 +67,9 @@ func main() {
 	bindEnv(*logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
 	bindEnv(*logger, "cilium_namespace", "CILIUM_NAMESPACE")
 	bindEnv(*logger, "falco_namespace", "FALCO_NAMESPACE")
+	bindEnv(*logger, "falco_cert_path", "FALCO_CERT_PATH")
+	bindEnv(*logger, "falco_key_path", "FALCO_KEY_PATH")
+	bindEnv(*logger, "falco_ca_root_path", "FALCO_CA_ROOT_PATH")
 	bindEnv(*logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
 	bindEnv(*logger, "onboarding_client_secret", "ONBOARDING_CLIENT_SECRET")
 	bindEnv(*logger, "onboarding_endpoint", "ONBOARDING_ENDPOINT")
@@ -77,6 +80,9 @@ func main() {
 	viper.SetDefault("cluster_creds", "clustercreds")
 	viper.SetDefault("cilium_namespace", "kube-system")
 	viper.SetDefault("falco_namespace", "falco")
+	viper.SetDefault("falco_cert_path", "/etc/falco/certs/client.crt")
+	viper.SetDefault("falco_key_path", "/etc/falco/certs/client.key")
+	viper.SetDefault("falco_ca_root_path", "/etc/falco/certs/ca.crt")
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("tls_skip_verify", false)
@@ -85,6 +91,9 @@ func main() {
 		ClusterCreds:           viper.GetString("cluster_creds"),
 		CiliumNamespace:        viper.GetString("cilium_namespace"),
 		FalcoNamespace:         viper.GetString("falco_namespace"),
+		FalcoCert:              viper.GetString("falco_cert_path"),
+		FalcoKey:               viper.GetString("falco_key_path"),
+		FalcoCARoot:            viper.GetString("falco_ca_root_path"),
 		OnboardingClientId:     viper.GetString("onboarding_client_id"),
 		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
 		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
@@ -96,6 +105,9 @@ func main() {
 		"cluster_creds_secret", envConfig.ClusterCreds,
 		"cilium_namespace", envConfig.CiliumNamespace,
 		"falco_namespace", envConfig.FalcoNamespace,
+		"falco_cert_path", envConfig.FalcoCert,
+		"falco_key_path", envConfig.FalcoKey,
+		"falco_ca_root_path", envConfig.FalcoCARoot,
 		"onboarding_client_id", envConfig.OnboardingClientId,
 		"onboarding_endpoint", envConfig.OnboardingEndpoint,
 		"token_endpoint", envConfig.TokenEndpoint,

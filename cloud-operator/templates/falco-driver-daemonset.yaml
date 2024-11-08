@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: falco-driver-loader
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: falco
+spec:
+  selector:
+    matchLabels:
+      app: falco
+  template:
+    metadata:
+      labels:
+        app: falco
+    spec:
+      containers:
+        - name: falco-driver-loader
+          image: falcosecurity/falco-driver-loader:latest
+          securityContext:
+            privileged: true
+          env:
+            - name: FALCO_VERSION
+              value: "latest"
+            - name: FALCO_DRIVER_LOADER
+              value: "true"
+            - name: FALCO_BPF_PROBE
+              value: "/etc/falco/falco-probe.o"
+          volumeMounts:
+            - mountPath: /host/var/run/docker.sock
+              name: docker-socket
+            - mountPath: /host/lib/modules
+              name: host-lib-modules
+            - mountPath: /host/boot
+              name: host-boot
+            - mountPath: /host/usr
+              name: host-usr
+            - mountPath: /host/etc
+              name: host-etc
+            - mountPath: /etc/falco
+              name: falco-config
+      volumes:
+        - name: docker-socket
+          hostPath:
+            path: /var/run/docker.sock
+        - name: host-lib-modules
+          hostPath:
+            path: /lib/modules
+        - name: host-boot
+          hostPath:
+            path: /boot
+        - name: host-usr
+          hostPath:
+            path: /usr
+        - name: host-etc
+          hostPath:
+            path: /etc
+        - name: falco-config
+          emptyDir: {}
