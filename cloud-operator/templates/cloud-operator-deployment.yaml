@@ -73,6 +73,13 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
         - name: falco
           image: falcosecurity/falco:latest
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop:
+                - ALL
           volumeMounts:
             - mountPath: /etc/falco/falco.yaml
               subPath: falco.yaml
@@ -80,9 +87,24 @@ spec:
             - mountPath: /etc/falco/config.d
               name: falco-config-d
               subPath: config.d
+            - mountPath: /lib/modules
+              name: modules
+            - mountPath: /usr/src
+              name: usr-src
+            - mountPath: /etc/falco/bpf
+              name: bpf
       volumes:
         - name: falco-config
           configMap:
             name: falco-config
         - name: falco-config-d
           emptyDir: {}
+        - name: modules
+          hostPath:
+            path: /lib/modules
+        - name: usr-src
+          hostPath:
+            path: /usr/src
+        - name: bpf
+          hostPath:
+            path: /etc/falco/bpf
