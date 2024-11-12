@@ -13,27 +13,51 @@ spec:
         app: falco-driver-loader
     spec:
       containers:
-      - name: falco-driver-loader
-        image: falcosecurity/falco-driver-loader:latest
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: modules
-          mountPath: /host/lib/modules
-        - name: usr-src
-          mountPath: /host/usr/src
-        - name: bpf
-          mountPath: /host/ebpf
-        env:
-        - name: FALCO_BPF_PROBE
-          value: /host/ebpf/falco-probe.o
+        - name: falco-driver-loader
+          image: docker.io/falcosecurity/falco-driver-loader:0.39.1
+          imagePullPolicy: IfNotPresent
+          args:
+            - auto
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - mountPath: /root/.falco
+              name: root-falco-fs
+            - mountPath: /host/proc
+              name: proc-fs
+              readOnly: true
+            - mountPath: /host/boot
+              name: boot-fs
+              readOnly: true
+            - mountPath: /host/lib/modules
+              name: lib-modules
+            - mountPath: /host/usr
+              name: usr-fs
+              readOnly: true
+            - mountPath: /host/etc
+              name: etc-fs
+              readOnly: true
+            - mountPath: /etc/falco/config.d
+              name: specialized-falco-configs
+
       volumes:
-      - name: modules
+      - name: specialized-falco-configs
+        emptyDir: {}
+      - name: root-falco-fs
+        emptyDir: {}  
+      - name: boot-fs
+        hostPath:
+          path: /boot
+      - name: lib-modules
         hostPath:
           path: /lib/modules
-      - name: usr-src
+      - name: proc-fs
         hostPath:
-          path: /usr/src
-      - name: bpf
+          path: /proc
+      - name: usr-fs
         hostPath:
-          path: /etc/falco/bpf
+          path: /usr
+      - name: etc-fs
+        hostPath:
+          path: /etc
+      

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco_rules
+data:
+  falco_rules.yaml: |
+   
