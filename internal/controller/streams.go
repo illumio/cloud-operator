@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"net/http"
 	"sync"
 	"time"
 
@@ -21,8 +22,6 @@ type streamClient struct {
 	conn                      *grpc.ClientConn
 	client                    pb.KubernetesInfoServiceClient
 	disableNetworkFlowsCilium bool
-	disableNetworkFlowsFalco  bool
-	falcoNamespace            string
 	logStream                 pb.KubernetesInfoService_SendLogsClient
 	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient
@@ -218,21 +217,9 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNam
 	return nil
 }
 
-func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, falcoNamespace string, falcoCerts FalcoCerts) error {
-	falcoFlowCollector, err := newFalcoFlowCollector(ctx, sm.logger, falcoNamespace, falcoCerts)
-	if err != nil {
-		sm.logger.Infow("Failed to initialize Falco flow collector; disabling flow collector", "error", err)
-		return err
-	}
-	if falcoFlowCollector != nil {
-		for {
-			err = falcoFlowCollector.readFalcoEvents(ctx, *sm)
-			if err != nil {
-				sm.logger.Warnw("Failed to collect and export flows from Falco", "error", err)
-				sm.streamClient.disableNetworkFlowsFalco = true
-				return err
-			}
-		}
+func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
+	for {
+
 	}
 	return nil
 }
@@ -271,14 +258,9 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.SugaredLogger, envMap *Enviro
 		return err
 	}
 	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
-	falcoCerts := FalcoCerts{cert: envMap.FalcoCert, key: envMap.FalcoKey, caRoot: envMap.FalcoCARoot}
 
-	err = sm.StreamFalcoNetworkFlows(falcoCtx, sm.streamClient.falcoNamespace, falcoCerts)
+	err = sm.StreamFalcoNetworkFlows(falcoCtx)
 	if err != nil {
-		// if errors.Is(err, ErrHubbleNotFound) || errors.Is(err, ErrNoPortsAvailable) {
-		// 	logger.Warnw("Disabling falco flow collection", "error", err)
-		// 	return ErrStopRetries
-		// }
 		return err
 	}
 
@@ -402,6 +384,15 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 
 // ConnectStreams will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
 func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
+	errChan := make(chan error, 1)
+	http.HandleFunc("/", NewFalcoEventHandler)
+	falcoEvent := &http.Server{Addr: ":5000"}
+	go func() {
+		errChan <- falcoEvent.ListenAndServe()
+		err := <-errChan
+		logger.Fatal("falco server failed", zap.Error(err))
+	}()
+
 	// Timer channel for 5 seconds
 	timer := time.After(5 * time.Second)
 	for {
