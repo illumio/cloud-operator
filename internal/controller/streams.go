@@ -219,11 +219,13 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 		falcoFlow = <-sm.streamClient.falcoChan
 		convertedFalcoFlow, err := convertFalcoEventToFlow(falcoFlow)
 		if err != nil {
-
+			sm.logger.Errorw("Failed to convert FalcoEvent to flows", "error", err)
+			return err
 		}
 		err = sendFalcoFlow(sm, convertedFalcoFlow)
 		if err != nil {
-
+			sm.logger.Errorw("Failed to send Falco flow", "errors", err)
+			return err
 		}
 
 	}
@@ -266,6 +268,7 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.SugaredLogger, envMap *Enviro
 
 	err = sm.StreamFalcoNetworkFlows(falcoCtx)
 	if err != nil {
+		logger.Errorw("Failed to stream Falco network flows", "error", err)
 		return err
 	}
 
@@ -427,12 +430,12 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
+			falcoDone := make(chan struct{})
 			var ciliumDone chan struct{}
 			sm.bufferedGrpcSyncer.done = logDone
 
 			go manageStream(logger, connectAndStreamResources, &envMap, sm, resourceDone)
 			go manageStream(logger, connectAndStreamLogs, &envMap, sm, logDone)
-			falcoDone := make(chan struct{})
 			go manageStream(logger, connectAndStreamFalcoNetworkFlows, &envMap, sm, falcoDone)
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {

@@ -5,15 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-
-	"github.com/falcosecurity/client-go/pkg/client"
-	"go.uber.org/zap"
+	"strings"
 )
-
-type falcoFlowCollector struct {
-	logger *zap.SugaredLogger
-	client *client.Client
-}
 
 type FalcoEvent struct {
 	SrcIP   string `json:"srcip"`
@@ -52,10 +45,6 @@ func parsePodNetworkInfo(input string) (FalcoEvent, error) {
 
 func NewFalcoEventHandler(eventChan chan<- FalcoEvent) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// In this function we need to filter and decide whether or not this is an event we want to keep.
-		// If this is an event we want to keep than we must push this event to the falcoEvent Chan, when pushed to the cha
-		// We will have antoher worker start pushing these events over a grpc stream.
-
 		var body struct {
 			Output string `json:"output"`
 		}
@@ -64,25 +53,30 @@ func NewFalcoEventHandler(eventChan chan<- FalcoEvent) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if filterIllumioTraffic(body.Output) {
+			// Extract the relevant part of the output string
+			re := regexp.MustCompile(`\((.*?)\)`)
+			match := re.FindStringSubmatch(body.Output)
+			if len(match) < 2 {
+				http.Error(w, "Invalid input format", http.StatusBadRequest)
+				return
+			}
 
-		// Extract the relevant part of the output string
-		re := regexp.MustCompile(`\((.*?)\)`)
-		match := re.FindStringSubmatch(body.Output)
-		if len(match) < 2 {
-			http.Error(w, "Invalid input format", http.StatusBadRequest)
-			return
+			podInfo, err := parsePodNetworkInfo(match[1])
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			eventChan <- podInfo
+
+			// Process the pod network info data
+			fmt.Printf("Received pod network info: %+v\n", podInfo)
+
 		}
-
-		podInfo, err := parsePodNetworkInfo(match[1])
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		eventChan <- podInfo
-
-		// Process the pod network info data
-		fmt.Printf("Received pod network info: %+v\n", podInfo)
-
 		w.WriteHeader(http.StatusOK)
 	}
+}
+
+func filterIllumioTraffic(body string) bool {
+	return !strings.Contains(body, "illumio_network_traffic")
 }
