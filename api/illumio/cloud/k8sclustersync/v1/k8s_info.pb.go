@@ -893,16 +893,22 @@ func (*KubernetesResourceMutation_UpdateResource) isKubernetesResourceMutation_M
 
 func (*KubernetesResourceMutation_DeleteResource) isKubernetesResourceMutation_Mutation() {}
 
+// FalcoFlow is a 5 tuple of a given network request
 type FalcoFlow struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Source      string `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	// Source is a string of source IP
+	Source string `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	// Destination is a string of destination IP
 	Destination string `protobuf:"bytes,2,opt,name=destination,proto3" json:"destination,omitempty"`
-	SrcPort     uint32 `protobuf:"varint,3,opt,name=src_port,json=srcPort,proto3" json:"src_port,omitempty"`
-	DstPort     uint32 `protobuf:"varint,4,opt,name=dst_port,json=dstPort,proto3" json:"dst_port,omitempty"`
-	Proto       string `protobuf:"bytes,5,opt,name=proto,proto3" json:"proto,omitempty"`
+	// Src_port is a uint32 of source port
+	SrcPort uint32 `protobuf:"varint,3,opt,name=src_port,json=srcPort,proto3" json:"src_port,omitempty"`
+	// Dst_port is a uint32 of destination port
+	DstPort uint32 `protobuf:"varint,4,opt,name=dst_port,json=dstPort,proto3" json:"dst_port,omitempty"`
+	// Proto is a string of the protocol, ie tcp, udp etc
+	Proto string `protobuf:"bytes,5,opt,name=proto,proto3" json:"proto,omitempty"`
 }
 
 func (x *FalcoFlow) Reset() {

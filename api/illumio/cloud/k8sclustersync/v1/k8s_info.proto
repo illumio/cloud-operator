@@ -105,11 +105,17 @@ message KubernetesResourceMutation {
   }
 }
 
+// FalcoFlow is a 5 tuple of a given network request
 message FalcoFlow {
+  // Source is a string of source IP
   string source = 1;
+  // Destination is a string of destination IP
   string destination = 2;
+  // Src_port is a uint32 of source port
   uint32 src_port = 3;
+  // Dst_port is a uint32 of destination port
   uint32 dst_port = 4;
+  // Proto is a string of the protocol, ie tcp, udp etc
   string proto = 5;
 }
 

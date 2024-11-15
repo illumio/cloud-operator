@@ -192,7 +192,7 @@ func (sm *streamManager) StreamLogs(ctx context.Context) error {
 	return nil
 }
 
-// StreamLogs handles the log stream.
+// StreamCiliumNetworkFlows handles the cilium network flow stream.
 func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNamespace string) error {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, sm.logger, ciliumNamespace)
@@ -213,6 +213,7 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNam
 	return nil
 }
 
+// StreamFalcoNetworkFlows handles the falco network flow stream.
 func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 	var falcoFlow FalcoEvent
 	for {
@@ -227,12 +228,11 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 			sm.logger.Errorw("Failed to send Falco flow", "errors", err)
 			return err
 		}
-
 	}
 }
 
-// connectAndStreamCiliumNetworkFlows creates ciliumNetworkFlows client and begins the streaming of network flows.
-func connectAndStreamCiliumNetworkFlows(logger *zap.SugaredLogger, envMap *EnvironmentConfig, sm *streamManager) error {
+// connectAndStreamCiliumNetworkFlows creates networkFlowsStream client and begins the streaming of network flows.
+func connectAndStreamCiliumNetworkFlows(logger *zap.SugaredLogger, sm *streamManager) error {
 	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
 	defer ciliumCancel()
 
@@ -256,7 +256,8 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.SugaredLogger, envMap *Envir
 	return nil
 }
 
-func connectAndStreamFalcoNetworkFlows(logger *zap.SugaredLogger, envMap *EnvironmentConfig, sm *streamManager) error {
+// connectAndStreamFalcoNetworkFlows creates networkFlowsStream client and begins the streaming of network flows.
+func connectAndStreamFalcoNetworkFlows(logger *zap.SugaredLogger, sm *streamManager) error {
 	falcoCtx, falcoCancel := context.WithCancel(context.Background())
 	defer falcoCancel()
 	sendFalcoNetworkFlows, err := sm.streamClient.client.SendKubernetesNetworkFlows(falcoCtx)
@@ -276,7 +277,7 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.SugaredLogger, envMap *Enviro
 }
 
 // connectAndStreamResources creates resourceStream client and begins the streaming of resources.
-func connectAndStreamResources(logger *zap.SugaredLogger, envMap *EnvironmentConfig, sm *streamManager) error {
+func connectAndStreamResources(logger *zap.SugaredLogger, sm *streamManager) error {
 	resourceCtx, resourceCancel := context.WithCancel(context.Background())
 	defer resourceCancel()
 
@@ -298,7 +299,7 @@ func connectAndStreamResources(logger *zap.SugaredLogger, envMap *EnvironmentCon
 }
 
 // connectAndStreamLogs creates sendLogs client and begins the streaming of logs.
-func connectAndStreamLogs(logger *zap.SugaredLogger, envMap *EnvironmentConfig, sm *streamManager) error {
+func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager) error {
 	logCtx, logCancel := context.WithCancel(context.Background())
 	defer logCancel()
 
@@ -321,7 +322,7 @@ func connectAndStreamLogs(logger *zap.SugaredLogger, envMap *EnvironmentConfig, 
 }
 
 // Generic function to manage any stream with backoff and reconnection logic.
-func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *EnvironmentConfig, *streamManager) error, envMap *EnvironmentConfig, sm *streamManager, done chan struct{}) {
+func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *streamManager) error, sm *streamManager, done chan struct{}) {
 	defer close(done)
 	const (
 		initialBackoff       = 1 * time.Second
@@ -346,7 +347,7 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 			backoff = initialBackoff
 			resetTimer.Reset(resetPeriod)
 		case <-sleepTimer.C:
-			err := connectAndStream(logger, envMap, sm)
+			err := connectAndStream(logger, sm)
 			if err != nil {
 				if errors.Is(err, ErrStopRetries) {
 					logger.Info("Stopping retries for this stream as instructed.")
@@ -392,14 +393,25 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 
 // ConnectStreams will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
 func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
-	errChan := make(chan error, 1)
+	// Falco channels communicate news events between http server and our network flows strea,
 	falcoEventChan := make(chan FalcoEvent)
 	http.HandleFunc("/", NewFalcoEventHandler(falcoEventChan))
 	falcoEvent := &http.Server{Addr: ":5000"}
+	// Start our falco server and have it passively listen, if it fails, try to just restart it.
 	go func() {
-		errChan <- falcoEvent.ListenAndServe()
-		err := <-errChan
-		logger.Fatal("falco server failed", zap.Error(err))
+		for {
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						logger.Infow("Recovered from panic. Restarting server...", "error", r)
+					}
+				}()
+				if err := falcoEvent.ListenAndServe(); err != nil {
+					logger.Fatal("Falco server failed", zap.Error(err))
+				}
+				time.Sleep(5 * time.Second)
+			}()
+		}
 	}()
 
 	// Timer channel for 5 seconds
@@ -434,13 +446,13 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			var ciliumDone chan struct{}
 			sm.bufferedGrpcSyncer.done = logDone
 
-			go manageStream(logger, connectAndStreamResources, &envMap, sm, resourceDone)
-			go manageStream(logger, connectAndStreamLogs, &envMap, sm, logDone)
-			go manageStream(logger, connectAndStreamFalcoNetworkFlows, &envMap, sm, falcoDone)
+			go manageStream(logger, connectAndStreamResources, sm, resourceDone)
+			go manageStream(logger, connectAndStreamLogs, sm, logDone)
+			go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone)
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
-				go manageStream(logger, connectAndStreamCiliumNetworkFlows, &envMap, sm, ciliumDone)
+				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
 
 			} else {
 				ciliumDone = nil

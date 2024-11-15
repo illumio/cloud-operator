@@ -7,6 +7,8 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strconv"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
@@ -167,4 +169,26 @@ func convertHostIPsToStrings(hostIPs []v1.HostIP) []string {
 // convertToProtoTimestamp converts a Kubernetes metav1.Time into a Protobuf Timestamp.
 func convertToProtoTimestamp(k8sTime metav1.Time) *timestamppb.Timestamp {
 	return timestamppb.New(k8sTime.Time)
+}
+
+func convertFalcoEventToFlow(event FalcoEvent) (*pb.FalcoFlow, error) {
+	srcPort, err := strconv.ParseUint(event.SrcPort, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid source port: %v", err)
+	}
+
+	dstPort, err := strconv.ParseUint(event.DstPort, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid destination port: %v", err)
+	}
+
+	flow := &pb.FalcoFlow{
+		Source:      event.SrcIP,
+		Destination: event.DstIP,
+		SrcPort:     uint32(srcPort),
+		DstPort:     uint32(dstPort),
+		Proto:       event.Proto,
+	}
+
+	return flow, nil
 }

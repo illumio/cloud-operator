@@ -2,20 +2,26 @@ package controller
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
 )
 
+// FalcoEvent represents the network information extracted from a Falco event.
 type FalcoEvent struct {
-	SrcIP   string `json:"srcip"`
-	DstIP   string `json:"dstip"`
+	// SrcIP is the source IP address involved in the network event.
+	SrcIP string `json:"srcip"`
+	// DstIP is the destination IP address involved in the network event.
+	DstIP string `json:"dstip"`
+	// SrcPort is the source port number involved in the network event.
 	SrcPort string `json:"srcport"`
+	// DstPort is the destination port number involved in the network event.
 	DstPort string `json:"dstport"`
-	Proto   string `json:"proto"`
+	// Proto is the protocol used in the network event (e.g., TCP, UDP).
+	Proto string `json:"proto"`
 }
 
+// parsePodNetworkInfo parses the input string to extract network information into a FalcoEvent struct.
 func parsePodNetworkInfo(input string) (FalcoEvent, error) {
 	var info FalcoEvent
 
@@ -43,6 +49,7 @@ func parsePodNetworkInfo(input string) (FalcoEvent, error) {
 	return info, nil
 }
 
+// NewFalcoEventHandler creates a new HTTP handler function for processing Falco events.
 func NewFalcoEventHandler(eventChan chan<- FalcoEvent) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -68,15 +75,12 @@ func NewFalcoEventHandler(eventChan chan<- FalcoEvent) http.HandlerFunc {
 				return
 			}
 			eventChan <- podInfo
-
-			// Process the pod network info data
-			fmt.Printf("Received pod network info: %+v\n", podInfo)
-
 		}
 		w.WriteHeader(http.StatusOK)
 	}
 }
 
+// filterIllumioTraffic filters out events related to Illumio network traffic.
 func filterIllumioTraffic(body string) bool {
 	return !strings.Contains(body, "illumio_network_traffic")
 }
