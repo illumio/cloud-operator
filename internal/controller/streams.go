@@ -22,6 +22,7 @@ type streamClient struct {
 	conn                      *grpc.ClientConn
 	client                    pb.KubernetesInfoServiceClient
 	disableNetworkFlowsCilium bool
+	falcoChan                 chan FalcoEvent
 	logStream                 pb.KubernetesInfoService_SendLogsClient
 	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient
@@ -44,11 +45,6 @@ type EnvironmentConfig struct {
 	CiliumNamespace string
 	// K8s cluster secret name.
 	ClusterCreds string
-	// Namespace of Falco
-	FalcoNamespace string
-	FalcoCert      string
-	FalcoKey       string
-	FalcoCARoot    string
 	// Client ID for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
 	OnboardingClientId string
 	// Client secret for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
@@ -218,10 +214,19 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNam
 }
 
 func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
+	var falcoFlow FalcoEvent
 	for {
+		falcoFlow = <-sm.streamClient.falcoChan
+		convertedFalcoFlow, err := convertFalcoEventToFlow(falcoFlow)
+		if err != nil {
+
+		}
+		err = sendFalcoFlow(sm, convertedFalcoFlow)
+		if err != nil {
+
+		}
 
 	}
-	return nil
 }
 
 // connectAndStreamCiliumNetworkFlows creates ciliumNetworkFlows client and begins the streaming of network flows.
@@ -385,7 +390,8 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 // ConnectStreams will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
 func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
 	errChan := make(chan error, 1)
-	http.HandleFunc("/", NewFalcoEventHandler)
+	falcoEventChan := make(chan FalcoEvent)
+	http.HandleFunc("/", NewFalcoEventHandler(falcoEventChan))
 	falcoEvent := &http.Server{Addr: ":5000"}
 	go func() {
 		errChan <- falcoEvent.ListenAndServe()
@@ -410,6 +416,7 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 				conn:            authConn,
 				client:          client,
 				ciliumNamespace: envMap.CiliumNamespace,
+				falcoChan:       falcoEventChan,
 			}
 
 			sm := &streamManager{

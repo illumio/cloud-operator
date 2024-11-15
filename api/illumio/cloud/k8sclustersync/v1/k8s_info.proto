@@ -106,9 +106,11 @@ message KubernetesResourceMutation {
 }
 
 message FalcoFlow {
-  Endpoint endpoint = 1;
-  IP ip = 2;
-  Layer4 layer4 = 3;
+  string source = 1;
+  string destination = 2;
+  uint32 src_port = 3;
+  uint32 dst_port = 4;
+  string proto = 5;
 }
 
 // A flow received from Cilium Hubble Relay using the Observer service's GetFlows RPC.

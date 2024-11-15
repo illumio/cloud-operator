@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/version"
@@ -27,6 +29,19 @@ func sendObjectData(sm *streamManager, metadata *pb.KubernetesObjectData) error 
 		},
 	}
 	return sendToResourceStream(sm.logger, sm.streamClient.resourceStream, request)
+}
+
+func sendFalcoFlow(sm *streamManager, flow *pb.FalcoFlow) error {
+	request := &pb.SendKubernetesNetworkFlowsRequest{
+		Request: &pb.SendKubernetesNetworkFlowsRequest_FalcoFlow{
+			FalcoFlow: flow,
+		},
+	}
+	if err := sm.streamClient.networkFlowsStream.Send(request); err != nil {
+		sm.logger.Errorw("Failed to send network flow", "error", err)
+		return err
+	}
+	return nil
 }
 
 func sendCiliumFlow(sm *streamManager, flow *pb.CiliumFlow) error {
@@ -108,4 +123,26 @@ func sendResourceSnapshotComplete(sm *streamManager) error {
 		Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{},
 	}
 	return sendToResourceStream(sm.logger, sm.streamClient.resourceStream, request)
+}
+
+func convertFalcoEventToFlow(event FalcoEvent) (*pb.FalcoFlow, error) {
+	srcPort, err := strconv.ParseUint(event.SrcPort, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid source port: %v", err)
+	}
+
+	dstPort, err := strconv.ParseUint(event.DstPort, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid destination port: %v", err)
+	}
+
+	flow := &pb.FalcoFlow{
+		Source:      event.SrcIP,
+		Destination: event.DstIP,
+		SrcPort:     uint32(srcPort),
+		DstPort:     uint32(dstPort),
+		Proto:       event.Proto,
+	}
+
+	return flow, nil
 }

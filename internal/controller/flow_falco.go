@@ -3,8 +3,8 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"regexp"
 
 	"github.com/falcosecurity/client-go/pkg/client"
 	"go.uber.org/zap"
@@ -16,43 +16,73 @@ type falcoFlowCollector struct {
 }
 
 type FalcoEvent struct {
-	message string
+	SrcIP   string `json:"srcip"`
+	DstIP   string `json:"dstip"`
+	SrcPort string `json:"srcport"`
+	DstPort string `json:"dstport"`
+	Proto   string `json:"proto"`
 }
 
-func NewFalcoEventHandler(w http.ResponseWriter, r *http.Request, ch chan FalcoEvent) {
+func parsePodNetworkInfo(input string) (FalcoEvent, error) {
+	var info FalcoEvent
 
+	// Regular expression to extract the key-value pairs from the input string
+	re := regexp.MustCompile(`\b(\w+)=([^\s)]+)`)
+	matches := re.FindAllStringSubmatch(input, -1)
 
-	// In this function we need to filter and decide whether or not this is an event we want to keep.
-	// If this is an event we want to keep than we must push this event to the falcoEvent Chan, when pushed to the cha
-	// We will have antoher worker start pushing these events over a grpc stream.
-
-
-
-
-
-	// Print the request method, URL, and headers
-	fmt.Printf("Method: %s\n", r.Method)
-	fmt.Printf("URL: %s\n", r.URL.String())
-	fmt.Printf("Headers: %v\n", r.Header)
-
-	// Optionally, print the request body if it's not nil
-	if r.Body != nil {
-		defer r.Body.Close()
-		body, err := io.ReadAll(r.Body)
-		if err == nil {
-			fmt.Printf("Body: %s\n", string(body))
+	for _, match := range matches {
+		if len(match) == 3 {
+			key, value := match[1], match[2]
+			switch key {
+			case "srcip":
+				info.SrcIP = value
+			case "dstip":
+				info.DstIP = value
+			case "srcport":
+				info.SrcPort = value
+			case "dstport":
+				info.DstPort = value
+			case "proto":
+				info.Proto = value
+			}
 		}
 	}
-
-	// Respond to the client
-	fmt.Fprintf(w, "Request received")
+	return info, nil
 }
 
-// FilterEvent filters a single event based on the message field
-func FilterEvent(eventStr string) (bool, error) {
-	var event FalcoEvent
-	if err := json.Unmarshal([]byte(eventStr), &event); err != nil {
-		return false, err
+func NewFalcoEventHandler(eventChan chan<- FalcoEvent) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// In this function we need to filter and decide whether or not this is an event we want to keep.
+		// If this is an event we want to keep than we must push this event to the falcoEvent Chan, when pushed to the cha
+		// We will have antoher worker start pushing these events over a grpc stream.
+
+		var body struct {
+			Output string `json:"output"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Extract the relevant part of the output string
+		re := regexp.MustCompile(`\((.*?)\)`)
+		match := re.FindStringSubmatch(body.Output)
+		if len(match) < 2 {
+			http.Error(w, "Invalid input format", http.StatusBadRequest)
+			return
+		}
+
+		podInfo, err := parsePodNetworkInfo(match[1])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		eventChan <- podInfo
+
+		// Process the pod network info data
+		fmt.Printf("Received pod network info: %+v\n", podInfo)
+
+		w.WriteHeader(http.StatusOK)
 	}
-	return event.message == "Illumio traffic watch", nil
 }

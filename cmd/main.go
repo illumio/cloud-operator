@@ -82,10 +82,6 @@ func main() {
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),
 		CiliumNamespace:        viper.GetString("cilium_namespace"),
-		FalcoNamespace:         viper.GetString("falco_namespace"),
-		FalcoCert:              viper.GetString("falco_cert_path"),
-		FalcoKey:               viper.GetString("falco_key_path"),
-		FalcoCARoot:            viper.GetString("falco_ca_root_path"),
 		OnboardingClientId:     viper.GetString("onboarding_client_id"),
 		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
 		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
