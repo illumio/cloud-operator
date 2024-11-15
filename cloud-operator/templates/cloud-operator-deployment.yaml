@@ -1,3 +1,5 @@
+# Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -25,9 +27,9 @@ spec:
       priorityClassName: {{ .Values.priorityClassName }}
       serviceAccountName: {{ .Values.serviceAccount.name }}
       imagePullSecrets:
-        {{- range .Values.imagePullSecrets }}
-        - name: {{ .name }}
-        {{- end }}
+          {{- range .Values.imagePullSecrets }}
+          - name: {{ .name }}
+          {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           securityContext:
