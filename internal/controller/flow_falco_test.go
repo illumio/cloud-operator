@@ -1,6 +1,10 @@
 package controller
 
 import (
+	"bytes"
+	"net/http"
+	"net/http/httptest"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -93,6 +97,44 @@ func (suite *ControllerTestSuite) TestFilterIllumioTraffic() {
 		suite.Run(name, func() {
 			result := filterIllumioTraffic(tt.input)
 			assert.Equal(suite.T(), tt.expected, result)
+		})
+	}
+}
+
+func (suite *ControllerTestSuite) TestNewFalcoEventHandler() {
+	handler := NewFalcoEventHandler(suite.eventChan)
+
+	tests := map[string]struct {
+		input          string
+		expectedStatus int
+		expectedEvent  *FalcoEvent
+		expectedErrMsg string
+	}{
+		"valid Falco event": {
+			input:          `{"output": "some text (srcip=192.168.0.1 dstip=192.168.0.2 srcport=80 dstport=8080 proto=TCP) some other text"}`,
+			expectedStatus: http.StatusOK,
+		},
+		"event filtered out": {
+			input:          `{"output": "some text with nothing inside"}`,
+			expectedStatus: http.StatusOK,
+		},
+		"invalid JSON": {
+			input:          `{"output": "some text`,
+			expectedStatus: http.StatusBadRequest,
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(tt.input))
+			req.Header.Set("Content-Type", "application/json")
+			rr := httptest.NewRecorder()
+
+			handler.ServeHTTP(rr, req)
+
+			// Check the status code is what we expect.
+			assert.Equal(suite.T(), tt.expectedStatus, rr.Code)
+
 		})
 	}
 }
