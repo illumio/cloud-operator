@@ -83,5 +83,5 @@ func NewFalcoEventHandler(eventChan chan<- FalcoEvent) http.HandlerFunc {
 
 // filterIllumioTraffic filters out events related to Illumio network traffic.
 func filterIllumioTraffic(body string) bool {
-	return !strings.Contains(body, "illumio_network_traffic")
+	return strings.Contains(body, "illumio_network_traffic")
 }
