@@ -460,6 +460,7 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 
 			select {
 			case <-ciliumDone:
+			case <-falcoDone:
 			case <-resourceDone:
 			case <-logDone:
 			}
