@@ -5,7 +5,7 @@ go 1.22.0
 toolchain go1.22.4
 
 require (
-	github.com/cilium/cilium v1.16.3
+	github.com/cilium/cilium v1.16.4
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	go.uber.org/zap v1.27.0
 	golang.org/x/oauth2 v0.23.0
