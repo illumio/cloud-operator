@@ -18,7 +18,6 @@ type ControllerTestSuite struct {
 	suite.Suite
 	ctx       context.Context
 	clientset *kubernetes.Clientset
-	eventChan chan FalcoEvent
 	logger    *zap.SugaredLogger
 }
 
@@ -29,7 +28,6 @@ func TestGenerateTestSuite(t *testing.T) {
 func (suite *ControllerTestSuite) SetupSuite() {
 	suite.logger = newCustomLogger(suite.T())
 	suite.ctx = context.Background()
-	suite.eventChan = make(chan FalcoEvent, 1)
 	var err error
 	err = testhelper.SetupTestCluster()
 	if err != nil {
