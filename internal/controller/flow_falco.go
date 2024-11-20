@@ -51,7 +51,7 @@ func parsePodNetworkInfo(input string) (FalcoEvent, error) {
 }
 
 // NewFalcoEventHandler creates a new HTTP handler function for processing Falco events.
-func NewFalcoEventHandler(eventChan chan<- FalcoEvent) http.HandlerFunc {
+func NewFalcoEventHandler(eventChan chan<- string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Output string `json:"output"`
@@ -61,22 +61,7 @@ func NewFalcoEventHandler(eventChan chan<- FalcoEvent) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if filterIllumioTraffic(body.Output) {
-			// Extract the relevant part of the output string
-			re := regexp.MustCompile(`\((.*?)\)`)
-			match := re.FindStringSubmatch(body.Output)
-			if len(match) < 2 {
-				http.Error(w, "Invalid input format", http.StatusBadRequest)
-				return
-			}
-
-			podInfo, err := parsePodNetworkInfo(match[1])
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			eventChan <- podInfo
-		}
+		eventChan <- body.Output
 		w.WriteHeader(http.StatusOK)
 	}
 }

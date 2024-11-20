@@ -7,6 +7,7 @@ import (
 	"errors"
 	"math/rand"
 	"net/http"
+	"regexp"
 	"sync"
 	"time"
 
@@ -22,7 +23,7 @@ type streamClient struct {
 	conn                      *grpc.ClientConn
 	client                    pb.KubernetesInfoServiceClient
 	disableNetworkFlowsCilium bool
-	falcoChan                 chan FalcoEvent
+	falcoChan                 chan string
 	logStream                 pb.KubernetesInfoService_SendLogsClient
 	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient
@@ -215,18 +216,33 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNam
 
 // StreamFalcoNetworkFlows handles the falco network flow stream.
 func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
-	var falcoFlow FalcoEvent
+	var falcoFlow string
 	for {
 		falcoFlow = <-sm.streamClient.falcoChan
-		convertedFalcoFlow, err := convertFalcoEventToFlow(falcoFlow)
-		if err != nil {
-			sm.logger.Errorw("Failed to convert FalcoEvent to flows", "error", err)
-			return err
-		}
-		err = sendFalcoFlow(sm, convertedFalcoFlow)
-		if err != nil {
-			sm.logger.Errorw("Failed to send Falco flow", "errors", err)
-			return err
+		if filterIllumioTraffic(falcoFlow) {
+			// Extract the relevant part of the output string
+			re := regexp.MustCompile(`\((.*?)\)`)
+			match := re.FindStringSubmatch(falcoFlow)
+			if len(match) < 2 {
+				return nil
+			}
+
+			podInfo, err := parsePodNetworkInfo(match[1])
+			if err != nil {
+				return nil
+			}
+			convertedFalcoFlow, err := convertFalcoEventToFlow(podInfo)
+			if err != nil {
+				sm.logger.Errorw("Failed to convert FalcoEvent to flows", "error", err)
+				return err
+			}
+			err = sendFalcoFlow(sm, convertedFalcoFlow)
+			if err != nil {
+				sm.logger.Errorw("Failed to send Falco flow", "errors", err)
+				return err
+			}
+		} else {
+			continue
 		}
 	}
 }
@@ -394,7 +410,7 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 // ConnectStreams will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
 func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
 	// Falco channels communicate news events between http server and our network flows strea,
-	falcoEventChan := make(chan FalcoEvent)
+	falcoEventChan := make(chan string)
 	http.HandleFunc("/", NewFalcoEventHandler(falcoEventChan))
 	falcoEvent := &http.Server{Addr: ":5000"}
 	// Start our falco server and have it passively listen, if it fails, try to just restart it.
