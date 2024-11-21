@@ -20,6 +20,8 @@ type FalcoEvent struct {
 	DstPort string `json:"dstport"`
 	// Proto is the protocol used in the network event (e.g., TCP, UDP).
 	Proto string `json:"proto"`
+	// IpVersion is the version used in the network event (e.g. ipv4, ipv6).
+	IpVersion string `json:"prototype"`
 }
 
 // parsePodNetworkInfo parses the input string to extract network information into a FalcoEvent struct.
@@ -44,6 +46,8 @@ func parsePodNetworkInfo(input string) (FalcoEvent, error) {
 				info.DstPort = value
 			case "proto":
 				info.Proto = value
+			case "ipversion":
+				info.IpVersion = value
 			}
 		}
 	}

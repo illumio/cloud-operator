@@ -172,6 +172,11 @@ func convertToProtoTimestamp(k8sTime metav1.Time) *timestamppb.Timestamp {
 }
 
 func convertFalcoEventToFlow(event FalcoEvent) (*pb.FalcoFlow, error) {
+	layer3Message, err := createLayer3Message(event.SrcIP, event.SrcIP)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create Layer3 message falco flows: %v", err)
+	}
+
 	srcPort, err := strconv.ParseUint(event.SrcPort, 10, 32)
 	if err != nil {
 		return nil, fmt.Errorf("invalid source port: %v", err)
@@ -182,13 +187,61 @@ func convertFalcoEventToFlow(event FalcoEvent) (*pb.FalcoFlow, error) {
 		return nil, fmt.Errorf("invalid destination port: %v", err)
 	}
 
+	layer4Message, err := CreateLayer4Message(event.Proto, uint32(srcPort), uint32(dstPort), event.IpVersion)
+	if err != nil {
+		return nil, fmt.Errorf("could not create Layer4 Message for Falco flow %v", err)
+	}
+
 	flow := &pb.FalcoFlow{
-		Source:      event.SrcIP,
-		Destination: event.DstIP,
-		SrcPort:     uint32(srcPort),
-		DstPort:     uint32(dstPort),
-		Proto:       event.Proto,
+		Layer3: layer3Message,
+		Layer4: layer4Message,
 	}
 
 	return flow, nil
+}
+
+func createLayer3Message(source string, destination string) (*pb.IP, error) {
+	return &pb.IP{Source: source, Destination: destination}, nil
+}
+
+// CreateLayer4Message converts event protocol and ports to a Layer4 proto message
+func CreateLayer4Message(proto string, srcPort, dstPort uint32, ipVersion string) (*pb.Layer4, error) {
+	switch proto {
+	case "tcp":
+		return &pb.Layer4{
+			Protocol: &pb.Layer4_Tcp{
+				Tcp: &pb.TCP{
+					SourcePort:      srcPort,
+					DestinationPort: dstPort,
+					Flags:           &pb.TCPFlags{},
+				},
+			},
+		}, nil
+	case "udp":
+		return &pb.Layer4{
+			Protocol: &pb.Layer4_Udp{
+				Udp: &pb.UDP{
+					SourcePort:      srcPort,
+					DestinationPort: dstPort,
+				},
+			},
+		}, nil
+	case "icmp":
+		if ipVersion == "ipv4" {
+			return &pb.Layer4{
+				Protocol: &pb.Layer4_Icmpv4{
+					Icmpv4: &pb.ICMPv4{},
+				},
+			}, nil
+		} else if ipVersion == "ipv6" {
+			return &pb.Layer4{
+				Protocol: &pb.Layer4_Icmpv6{
+					Icmpv6: &pb.ICMPv6{},
+				},
+			}, nil
+		}
+	default:
+		return nil, fmt.Errorf("unknown protocol: %s", proto)
+	}
+	return &pb.Layer4{}, nil
 }

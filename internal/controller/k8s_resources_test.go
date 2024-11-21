@@ -476,3 +476,91 @@ func (suite *ControllerTestSuite) TestExtractObjectMetas() {
 		})
 	}
 }
+
+func (suite *ControllerTestSuite) TestCreateLayer4Message() {
+	tests := map[string]struct {
+		proto          string
+		srcPort        uint32
+		dstPort        uint32
+		ipVersion      string
+		expected       *pb.Layer4
+		expectedErrMsg string
+	}{
+		"TCP protocol": {
+			proto:     "tcp",
+			srcPort:   80,
+			dstPort:   8080,
+			ipVersion: "",
+			expected: &pb.Layer4{
+				Protocol: &pb.Layer4_Tcp{
+					Tcp: &pb.TCP{
+						SourcePort:      80,
+						DestinationPort: 8080,
+						Flags:           &pb.TCPFlags{},
+					},
+				},
+			},
+			expectedErrMsg: "",
+		},
+		"UDP protocol": {
+			proto:     "udp",
+			srcPort:   123,
+			dstPort:   456,
+			ipVersion: "",
+			expected: &pb.Layer4{
+				Protocol: &pb.Layer4_Udp{
+					Udp: &pb.UDP{
+						SourcePort:      123,
+						DestinationPort: 456,
+					},
+				},
+			},
+			expectedErrMsg: "",
+		},
+		"ICMP protocol with IPv4": {
+			proto:     "icmp",
+			srcPort:   0,
+			dstPort:   0,
+			ipVersion: "ipv4",
+			expected: &pb.Layer4{
+				Protocol: &pb.Layer4_Icmpv4{
+					Icmpv4: &pb.ICMPv4{},
+				},
+			},
+			expectedErrMsg: "",
+		},
+		"ICMP protocol with IPv6": {
+			proto:     "icmp",
+			srcPort:   0,
+			dstPort:   0,
+			ipVersion: "ipv6",
+			expected: &pb.Layer4{
+				Protocol: &pb.Layer4_Icmpv6{
+					Icmpv6: &pb.ICMPv6{},
+				},
+			},
+			expectedErrMsg: "",
+		},
+		"Unknown protocol": {
+			proto:          "unknown",
+			srcPort:        0,
+			dstPort:        0,
+			ipVersion:      "",
+			expected:       nil,
+			expectedErrMsg: "unknown protocol: unknown",
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			result, err := CreateLayer4Message(tt.proto, tt.srcPort, tt.dstPort, tt.ipVersion)
+			if tt.expectedErrMsg != "" {
+				assert.Error(suite.T(), err)
+				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
+			} else {
+				assert.NoError(suite.T(), err)
+				assert.Equal(suite.T(), tt.expected, result)
+			}
+		})
+	}
+}
