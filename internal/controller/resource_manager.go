@@ -3,7 +3,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"go.uber.org/zap"
@@ -155,7 +154,6 @@ func (r *ResourceManager) ExtractObjectMetas(resources *unstructured.Unstructure
 	objectMetas := make([]metav1.ObjectMeta, 0, len(resources.Items))
 	for _, item := range resources.Items {
 		objMeta, err := getMetadatafromResource(r.logger, item)
-		fmt.Println(objMeta, err)
 		if err != nil {
 			r.logger.Errorw("Cannot get Metadata from resource", "error", err)
 			return nil, err

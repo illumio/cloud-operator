@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cloud-operator.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ include "cloud-operator.name" . }}
+    release: {{ .Release.Name }}
+spec:
+  selector:
+    app: {{ include "cloud-operator.name" . }}
+    release: {{ .Release.Name }}
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000

@@ -103,10 +103,12 @@ func main() {
 		logger.Errorw("Failed to start gops agent", "error", err)
 	}
 	http.HandleFunc("/healthz", newHealthHandler(controller.ServerIsHealthy))
+	healthChecker := &http.Server{Addr: ":8080"}
+
 	errChan := make(chan error, 1)
 
 	go func() {
-		errChan <- http.ListenAndServe(":8080", nil)
+		errChan <- healthChecker.ListenAndServe()
 		err := <-errChan
 		logger.Fatal("healthz check server failed", zap.Error(err))
 	}()
