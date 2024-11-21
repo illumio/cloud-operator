@@ -236,7 +236,7 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 				sm.logger.Errorw("Failed to convert FalcoEvent to flows", "error", err)
 				return err
 			}
-			err = sendFalcoFlow(sm, convertedFalcoFlow)
+			err = sendNetworkFlowRequest(sm, convertedFalcoFlow)
 			if err != nil {
 				sm.logger.Errorw("Failed to send Falco flow", "errors", err)
 				return err

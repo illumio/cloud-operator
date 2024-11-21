@@ -184,7 +184,7 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm streamM
 			return err
 		}
 		ciliumFlow := convertCiliumFlow(flow)
-		err = sendCiliumFlow(&sm, ciliumFlow)
+		err = sendNetworkFlowRequest(&sm, ciliumFlow)
 		if err != nil {
 			fm.logger.Errorw("Cannot send cilium flow", "error", err)
 			return err

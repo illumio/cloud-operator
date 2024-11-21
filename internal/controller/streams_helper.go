@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/version"
@@ -29,26 +30,25 @@ func sendObjectData(sm *streamManager, metadata *pb.KubernetesObjectData) error 
 	return sendToResourceStream(sm.logger, sm.streamClient.resourceStream, request)
 }
 
-// sendFalcoFlow sends a FalcoFlow to the networkFlowsStream
-func sendFalcoFlow(sm *streamManager, flow *pb.FalcoFlow) error {
-	request := &pb.SendKubernetesNetworkFlowsRequest{
-		Request: &pb.SendKubernetesNetworkFlowsRequest_FalcoFlow{
-			FalcoFlow: flow,
-		},
-	}
-	if err := sm.streamClient.networkFlowsStream.Send(request); err != nil {
-		sm.logger.Errorw("Failed to send network flow", "error", err)
-		return err
-	}
-	return nil
-}
+// sendNetworkFlowRequest sends a network flow to the networkFlowsStream
+func sendNetworkFlowRequest(sm *streamManager, flow interface{}) error {
+	var request *pb.SendKubernetesNetworkFlowsRequest
 
-// sendCiliumFlow sends a CiliumFlow to the networkFlowsStream
-func sendCiliumFlow(sm *streamManager, flow *pb.CiliumFlow) error {
-	request := &pb.SendKubernetesNetworkFlowsRequest{
-		Request: &pb.SendKubernetesNetworkFlowsRequest_CiliumFlow{
-			CiliumFlow: flow,
-		},
+	switch f := flow.(type) {
+	case *pb.FalcoFlow:
+		request = &pb.SendKubernetesNetworkFlowsRequest{
+			Request: &pb.SendKubernetesNetworkFlowsRequest_FalcoFlow{
+				FalcoFlow: f,
+			},
+		}
+	case *pb.CiliumFlow:
+		request = &pb.SendKubernetesNetworkFlowsRequest{
+			Request: &pb.SendKubernetesNetworkFlowsRequest_CiliumFlow{
+				CiliumFlow: f,
+			},
+		}
+	default:
+		return fmt.Errorf("unsupported flow type: %T", flow)
 	}
 	if err := sm.streamClient.networkFlowsStream.Send(request); err != nil {
 		sm.logger.Errorw("Failed to send network flow", "error", err)
