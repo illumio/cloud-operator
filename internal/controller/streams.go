@@ -23,7 +23,7 @@ type streamClient struct {
 	conn                      *grpc.ClientConn
 	client                    pb.KubernetesInfoServiceClient
 	disableNetworkFlowsCilium bool
-	falcoChan                 chan string
+	falcoEventChan            chan string
 	logStream                 pb.KubernetesInfoService_SendLogsClient
 	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient
@@ -218,7 +218,7 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNam
 func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 	var falcoFlow string
 	for {
-		falcoFlow = <-sm.streamClient.falcoChan
+		falcoFlow = <-sm.streamClient.falcoEventChan
 		if filterIllumioTraffic(falcoFlow) {
 			// Extract the relevant part of the output string
 			re := regexp.MustCompile(`\((.*?)\)`)
@@ -447,7 +447,7 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 				conn:            authConn,
 				client:          client,
 				ciliumNamespace: envMap.CiliumNamespace,
-				falcoChan:       falcoEventChan,
+				falcoEventChan:  falcoEventChan,
 			}
 
 			sm := &streamManager{
