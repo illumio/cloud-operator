@@ -893,7 +893,7 @@ func (*KubernetesResourceMutation_UpdateResource) isKubernetesResourceMutation_M
 
 func (*KubernetesResourceMutation_DeleteResource) isKubernetesResourceMutation_Mutation() {}
 
-// FalcoFlow is a 5 tuple of a given network request
+// A flow received from Falco using custom rules
 type FalcoFlow struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

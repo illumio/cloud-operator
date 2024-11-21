@@ -105,7 +105,7 @@ message KubernetesResourceMutation {
   }
 }
 
-// FalcoFlow is a 5 tuple of a given network request
+// A flow received from Falco using custom rules
 message FalcoFlow {
   // layer3 IP layer, source, destination and ip_version
   IP layer3 = 1;
