@@ -114,5 +114,7 @@ func main() {
 	}()
 
 	ctx := context.Background()
+	controller.InitRegex()
+	controller.InitRegexFalco()
 	controller.ConnectStreams(ctx, logger, envConfig, bufferedGrpcSyncer)
 }

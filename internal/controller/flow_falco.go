@@ -29,13 +29,18 @@ type FalcoEvent struct {
 	IpVersion string `json:"prototype"`
 }
 
+var reParsePodNetworkInfo *regexp.Regexp
+
+func InitRegexFalco() {
+	reParsePodNetworkInfo = regexp.MustCompile(`\b(\w+)=([^\s)]+)`)
+}
+
 // parsePodNetworkInfo parses the input string to extract network information into a FalcoEvent struct.
-func parsePodNetworkInfo(input string) (FalcoEvent, error) {
+func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 	var info FalcoEvent
 
 	// Regular expression to extract the key-value pairs from the input string
-	re := regexp.MustCompile(`\b(\w+)=([^\s)]+)`)
-	matches := re.FindAllStringSubmatch(input, -1)
+	matches := reParsePodNetworkInfo.FindAllStringSubmatch(input, -1)
 
 	for _, match := range matches {
 		if len(match) == 3 {
@@ -56,7 +61,39 @@ func parsePodNetworkInfo(input string) (FalcoEvent, error) {
 			}
 		}
 	}
-	return info, nil
+	fmt.Println(info)
+
+	if (FalcoEvent{}) == info {
+		return &pb.FalcoFlow{}, fmt.Errorf("ignoring falco event, not a network flow")
+	}
+
+	layer3Message, err := createLayer3Message(info.SrcIP, info.SrcIP, info.IpVersion)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create Layer3 message falco flows: %v", err)
+	}
+
+	srcPort, err := strconv.ParseUint(info.SrcPort, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid source port: %v", err)
+	}
+
+	dstPort, err := strconv.ParseUint(info.DstPort, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid destination port: %v", err)
+	}
+
+	layer4Message, err := CreateLayer4Message(info.Proto, uint32(srcPort), uint32(dstPort), info.IpVersion)
+	if err != nil {
+		return nil, fmt.Errorf("could not create Layer4 Message for Falco flow %v", err)
+	}
+
+	flow := &pb.FalcoFlow{
+		Layer3: layer3Message,
+		Layer4: layer4Message,
+	}
+
+	return flow, nil
+
 }
 
 // NewFalcoEventHandler creates a new HTTP handler function for processing Falco events.
@@ -86,35 +123,6 @@ func NewFalcoEventHandler(eventChan chan<- string) http.HandlerFunc {
 // filterIllumioTraffic filters out events related to Illumio network traffic.
 func filterIllumioTraffic(body string) bool {
 	return strings.Contains(body, "illumio_network_traffic")
-}
-
-func convertFalcoEventToFlow(event FalcoEvent) (*pb.FalcoFlow, error) {
-	layer3Message, err := createLayer3Message(event.SrcIP, event.SrcIP, event.IpVersion)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create Layer3 message falco flows: %v", err)
-	}
-
-	srcPort, err := strconv.ParseUint(event.SrcPort, 10, 32)
-	if err != nil {
-		return nil, fmt.Errorf("invalid source port: %v", err)
-	}
-
-	dstPort, err := strconv.ParseUint(event.DstPort, 10, 32)
-	if err != nil {
-		return nil, fmt.Errorf("invalid destination port: %v", err)
-	}
-
-	layer4Message, err := CreateLayer4Message(event.Proto, uint32(srcPort), uint32(dstPort), event.IpVersion)
-	if err != nil {
-		return nil, fmt.Errorf("could not create Layer4 Message for Falco flow %v", err)
-	}
-
-	flow := &pb.FalcoFlow{
-		Layer3: layer3Message,
-		Layer4: layer4Message,
-	}
-
-	return flow, nil
 }
 
 func createLayer3Message(source string, destination string, ipVersion string) (*pb.IP, error) {

@@ -7,46 +7,70 @@ import (
 )
 
 func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
+	InitRegexFalco()
 	tests := map[string]struct {
 		input       string
-		expected    FalcoEvent
+		expected    *pb.FalcoFlow
 		expectedErr string
 	}{
 		"valid input with TCP": {
-			input: "srcip=192.168.0.1 dstip=192.168.0.2 srcport=80 dstport=8080 proto=TCP",
-			expected: FalcoEvent{
-				SrcIP:   "192.168.0.1",
-				DstIP:   "192.168.0.2",
-				SrcPort: "80",
-				DstPort: "8080",
-				Proto:   "TCP",
+			input: "srcip=192.168.0.1 dstip=192.168.0.2 srcport=80 dstport=8080 proto=TCP ipversion=IPV4",
+			expected: &pb.FalcoFlow{
+				Layer3: &pb.IP{
+					Source:      "192.168.0.1",
+					Destination: "192.168.0.2",
+					IpVersion:   pb.IPVersion_IP_VERSION_IPV4,
+				},
+				Layer4: &pb.Layer4{
+					Protocol: &pb.Layer4_Tcp{
+						Tcp: &pb.TCP{
+							SourcePort:      80,
+							DestinationPort: 8080,
+						},
+					},
+				},
 			},
 			expectedErr: "",
 		},
 		"valid input with UDP": {
-			input: "srcip=10.0.0.1 dstip=10.0.0.2 srcport=443 dstport=8443 proto=UDP",
-			expected: FalcoEvent{
-				SrcIP:   "10.0.0.1",
-				DstIP:   "10.0.0.2",
-				SrcPort: "443",
-				DstPort: "8443",
-				Proto:   "UDP",
+			input: "srcip=10.0.0.1 dstip=10.0.0.2 srcport=443 dstport=8443 proto=UDP ipversion=IPV4",
+			expected: &pb.FalcoFlow{
+				Layer3: &pb.IP{
+					Source:      "10.0.0.1",
+					Destination: "10.0.0.2",
+					IpVersion:   pb.IPVersion_IP_VERSION_IPV4,
+				},
+				Layer4: &pb.Layer4{
+					Protocol: &pb.Layer4_Udp{
+						Udp: &pb.UDP{
+							SourcePort:      443,
+							DestinationPort: 8443,
+						},
+					},
+				},
 			},
 			expectedErr: "",
 		},
 		"missing values for some keys": {
-			input: "srcip=192.168.1.1 dstip=192.168.1.2 proto=TCP",
-			expected: FalcoEvent{
-				SrcIP: "192.168.1.1",
-				DstIP: "192.168.1.2",
-				Proto: "TCP",
+			input: "srcip=192.168.1.1 dstip=192.168.1.2 proto=TCP ipversion=IPV4",
+			expected: &pb.FalcoFlow{
+				Layer3: &pb.IP{
+					Source:      "192.168.1.1",
+					Destination: "192.168.1.2",
+					IpVersion:   pb.IPVersion_IP_VERSION_IPV4,
+				},
+				Layer4: &pb.Layer4{
+					Protocol: &pb.Layer4_Tcp{
+						Tcp: &pb.TCP{},
+					},
+				},
 			},
 			expectedErr: "",
 		},
 		"invalid input format": {
 			input:       "blah=invalid evan",
-			expected:    FalcoEvent{},
-			expectedErr: "",
+			expected:    &pb.FalcoFlow{},
+			expectedErr: "ignoring falco event, not a network flow",
 		},
 	}
 
@@ -168,8 +192,8 @@ func (suite *ControllerTestSuite) TestCreateLayer4Message() {
 			srcPort:        0,
 			dstPort:        0,
 			ipVersion:      "",
-			expected:       nil,
-			expectedErrMsg: "unknown protocol: unknown",
+			expected:       &pb.Layer4{},
+			expectedErrMsg: "",
 		},
 	}
 

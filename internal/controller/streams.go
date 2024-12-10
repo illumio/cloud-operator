@@ -83,6 +83,12 @@ var resourceAPIGroupMap = map[string]string{
 var dd = &deadlockDetector{}
 var ErrStopRetries = errors.New("stop retries")
 var falcoPort = "5000"
+var reIllumioTraffic *regexp.Regexp
+
+func InitRegex() {
+	// Extract the relevant part of the output string
+	reIllumioTraffic = regexp.MustCompile(`\((.*?)\)`)
+}
 
 // ServerIsHealthy checks if a deadlock has occured within the threaded resource listing process.
 func ServerIsHealthy() bool {
@@ -221,19 +227,16 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 		falcoFlow := <-sm.streamClient.falcoEventChan
 		if filterIllumioTraffic(falcoFlow) {
 			// Extract the relevant part of the output string
-			re := regexp.MustCompile(`\((.*?)\)`)
-			match := re.FindStringSubmatch(falcoFlow)
+			match := reIllumioTraffic.FindStringSubmatch(falcoFlow)
 			if len(match) < 2 {
 				return nil
 			}
 
-			podInfo, err := parsePodNetworkInfo(match[1])
-			if err != nil {
+			convertedFalcoFlow, err := parsePodNetworkInfo(match[1])
+			if err.Error() == "ignoring falco event, not a network flow" {
 				// If the event can't be parsed, consider that it's not a flow event and just ignore it.
 				return nil
-			}
-			convertedFalcoFlow, err := convertFalcoEventToFlow(podInfo)
-			if err != nil {
+			} else if err != nil {
 				sm.logger.Errorw("Failed to parse Falco event into flow", "error", err)
 				return err
 			}
@@ -418,17 +421,11 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 	// Start our falco server and have it passively listen, if it fails, try to just restart it.
 	go func() {
 		for {
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						logger.Infow("Recovered from panic. Restarting server...", "error", r)
-					}
-				}()
-				if err := falcoEvent.ListenAndServe(); err != nil {
-					logger.Fatal("Falco server failed", zap.Error(err))
-				}
+			err := falcoEvent.ListenAndServe()
+			if err != nil {
+				logger.Errorw("Falco server failed, restarting...", "error", err)
 				time.Sleep(5 * time.Second)
-			}()
+			}
 		}
 	}()
 
@@ -466,14 +463,15 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 
 			go manageStream(logger, connectAndStreamResources, sm, resourceDone)
 			go manageStream(logger, connectAndStreamLogs, sm, logDone)
-			go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone)
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
 				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
-
+				falcoDone = nil
 			} else {
 				ciliumDone = nil
+				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone)
+
 			}
 
 			select {
