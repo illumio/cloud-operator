@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
@@ -69,8 +70,16 @@ func NewFalcoEventHandler(eventChan chan<- string) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		eventChan <- body.Output
-		w.WriteHeader(http.StatusOK)
+		t := time.NewTimer(2 * time.Second)
+		select {
+		case eventChan <- body.Output:
+			w.WriteHeader(http.StatusOK)
+		case <-r.Context().Done():
+			w.WriteHeader(http.StatusServiceUnavailable)
+		case <-t.C:
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+		t.Stop()
 	}
 }
 
@@ -154,7 +163,6 @@ func CreateLayer4Message(proto string, srcPort, dstPort uint32, ipVersion string
 			}, nil
 		}
 	default:
-		return nil, fmt.Errorf("unknown protocol: %s", proto)
 	}
 	return &pb.Layer4{}, nil
 }

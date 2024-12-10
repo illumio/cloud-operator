@@ -82,6 +82,7 @@ var resourceAPIGroupMap = map[string]string{
 
 var dd = &deadlockDetector{}
 var ErrStopRetries = errors.New("stop retries")
+var falcoPort = "5000"
 
 // ServerIsHealthy checks if a deadlock has occured within the threaded resource listing process.
 func ServerIsHealthy() bool {
@@ -216,9 +217,8 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNam
 
 // StreamFalcoNetworkFlows handles the falco network flow stream.
 func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
-	var falcoFlow string
 	for {
-		falcoFlow = <-sm.streamClient.falcoEventChan
+		falcoFlow := <-sm.streamClient.falcoEventChan
 		if filterIllumioTraffic(falcoFlow) {
 			// Extract the relevant part of the output string
 			re := regexp.MustCompile(`\((.*?)\)`)
@@ -229,11 +229,12 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 
 			podInfo, err := parsePodNetworkInfo(match[1])
 			if err != nil {
+				// If the event can't be parsed, consider that it's not a flow event and just ignore it.
 				return nil
 			}
 			convertedFalcoFlow, err := convertFalcoEventToFlow(podInfo)
 			if err != nil {
-				sm.logger.Errorw("Failed to convert FalcoEvent to flows", "error", err)
+				sm.logger.Errorw("Failed to parse Falco event into flow", "error", err)
 				return err
 			}
 			err = sendNetworkFlowRequest(sm, convertedFalcoFlow)
@@ -281,6 +282,7 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.SugaredLogger, sm *streamMana
 		logger.Errorw("Failed to connect to server", "error", err)
 		return err
 	}
+
 	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
 
 	err = sm.StreamFalcoNetworkFlows(falcoCtx)
@@ -412,7 +414,7 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 	// Falco channels communicate news events between http server and our network flows strea,
 	falcoEventChan := make(chan string)
 	http.HandleFunc("/", NewFalcoEventHandler(falcoEventChan))
-	falcoEvent := &http.Server{Addr: ":5000"}
+	falcoEvent := &http.Server{Addr: falcoPort}
 	// Start our falco server and have it passively listen, if it fails, try to just restart it.
 	go func() {
 		for {
