@@ -3,8 +3,6 @@
 package controller
 
 import (
-	"fmt"
-
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/assert"
 )
@@ -60,7 +58,7 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 				Layer3: nil,
 				Layer4: nil,
 			},
-			err: fmt.Errorf("ignoring falco event, not a network flow"),
+			err: ErrFalcoEventIsNotFlow,
 		},
 	}
 

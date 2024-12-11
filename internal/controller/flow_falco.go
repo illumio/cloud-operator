@@ -54,7 +54,7 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 		}
 	}
 	if (FalcoEvent{}) == info {
-		return &pb.FalcoFlow{}, fmt.Errorf("ignoring falco event, not a network flow")
+		return &pb.FalcoFlow{}, ErrFalcoEventIsNotFlow
 	}
 
 	layer3Message, err := createLayer3Message(info.SrcIP, info.DstIP, info.IpVersion)
