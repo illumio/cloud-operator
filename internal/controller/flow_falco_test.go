@@ -10,7 +10,6 @@ import (
 )
 
 func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
-	InitRegexFalco()
 	tests := map[string]struct {
 		input    string
 		expected *pb.FalcoFlow

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -27,12 +26,6 @@ type FalcoEvent struct {
 	Proto string `json:"proto"`
 	// IpVersion is the version used in the network event (e.g. ipv4, ipv6).
 	IpVersion string `json:"prototype"`
-}
-
-var reParsePodNetworkInfo *regexp.Regexp
-
-func InitRegexFalco() {
-	reParsePodNetworkInfo = regexp.MustCompile(`\b(\w+)=([^\s)]+)`)
 }
 
 // parsePodNetworkInfo parses the input string to extract network information into a FalcoEvent struct.

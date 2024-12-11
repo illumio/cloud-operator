@@ -84,10 +84,13 @@ var dd = &deadlockDetector{}
 var ErrStopRetries = errors.New("stop retries")
 var falcoPort = "5000"
 var reIllumioTraffic *regexp.Regexp
+var reParsePodNetworkInfo *regexp.Regexp
 
-func InitRegex() {
+func init() {
 	// Extract the relevant part of the output string
 	reIllumioTraffic = regexp.MustCompile(`\((.*?)\)`)
+	reParsePodNetworkInfo = regexp.MustCompile(`\b(\w+)=([^\s)]+)`)
+
 }
 
 // ServerIsHealthy checks if a deadlock has occured within the threaded resource listing process.
