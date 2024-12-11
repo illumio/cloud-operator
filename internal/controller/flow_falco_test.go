@@ -190,7 +190,7 @@ func (suite *ControllerTestSuite) TestCreateLayer4Message() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			result, err := CreateLayer4Message(tt.proto, tt.srcPort, tt.dstPort, tt.ipVersion)
+			result, err := createLayer4Message(tt.proto, tt.srcPort, tt.dstPort, tt.ipVersion)
 			if tt.expectedErrMsg != "" {
 				assert.Error(suite.T(), err)
 				assert.EqualError(suite.T(), err, tt.expectedErrMsg)

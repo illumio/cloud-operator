@@ -82,6 +82,7 @@ var resourceAPIGroupMap = map[string]string{
 
 var dd = &deadlockDetector{}
 var ErrStopRetries = errors.New("stop retries")
+var ErrFalcoEventIsNotFlow = errors.New("ignoring falco event, not a network flow")
 var falcoPort = "5000"
 var reIllumioTraffic *regexp.Regexp
 var reParsePodNetworkInfo *regexp.Regexp
@@ -236,7 +237,7 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 			}
 
 			convertedFalcoFlow, err := parsePodNetworkInfo(match[1])
-			if err.Error() == "ignoring falco event, not a network flow" {
+			if errors.Is(err, ErrFalcoEventIsNotFlow) {
 				// If the event can't be parsed, consider that it's not a flow event and just ignore it.
 				return nil
 			} else if err != nil {
@@ -474,7 +475,6 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			} else {
 				ciliumDone = nil
 				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone)
-
 			}
 
 			select {

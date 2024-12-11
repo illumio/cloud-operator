@@ -28,7 +28,7 @@ type FalcoEvent struct {
 	IpVersion string `json:"prototype"`
 }
 
-// parsePodNetworkInfo parses the input string to extract network information into a FalcoEvent struct.
+// parsePodNetworkInfo parses the input string to extract network information into a FalcoFlow message.
 func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 	var info FalcoEvent
 	// Regular expression to extract the key-value pairs from the input string
@@ -71,7 +71,7 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 		return nil, fmt.Errorf("invalid destination port: %v", err)
 	}
 
-	layer4Message, err := CreateLayer4Message(info.Proto, uint32(srcPort), uint32(dstPort), info.IpVersion)
+	layer4Message, err := createLayer4Message(info.Proto, uint32(srcPort), uint32(dstPort), info.IpVersion)
 	if err != nil {
 		return nil, fmt.Errorf("could not create Layer4 Message for Falco flow %v", err)
 	}
@@ -123,8 +123,8 @@ func createLayer3Message(source string, destination string, ipVersion string) (*
 	return &pb.IP{Source: source, Destination: destination, IpVersion: pb.IPVersion_IP_VERSION_IP_NOT_USED_UNSPECIFIED}, nil
 }
 
-// CreateLayer4Message converts event protocol and ports to a Layer4 proto message
-func CreateLayer4Message(proto string, srcPort, dstPort uint32, ipVersion string) (*pb.Layer4, error) {
+// createLayer4Message converts event protocol and ports to a Layer4 proto message
+func createLayer4Message(proto string, srcPort, dstPort uint32, ipVersion string) (*pb.Layer4, error) {
 	switch proto {
 	case "tcp":
 		return &pb.Layer4{
