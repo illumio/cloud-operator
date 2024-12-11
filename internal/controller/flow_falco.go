@@ -38,7 +38,6 @@ func InitRegexFalco() {
 // parsePodNetworkInfo parses the input string to extract network information into a FalcoEvent struct.
 func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 	var info FalcoEvent
-
 	// Regular expression to extract the key-value pairs from the input string
 	matches := reParsePodNetworkInfo.FindAllStringSubmatch(input, -1)
 
@@ -61,13 +60,11 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 			}
 		}
 	}
-	fmt.Println(info)
-
 	if (FalcoEvent{}) == info {
 		return &pb.FalcoFlow{}, fmt.Errorf("ignoring falco event, not a network flow")
 	}
 
-	layer3Message, err := createLayer3Message(info.SrcIP, info.SrcIP, info.IpVersion)
+	layer3Message, err := createLayer3Message(info.SrcIP, info.DstIP, info.IpVersion)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create Layer3 message falco flows: %v", err)
 	}
@@ -76,7 +73,6 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid source port: %v", err)
 	}
-
 	dstPort, err := strconv.ParseUint(info.DstPort, 10, 32)
 	if err != nil {
 		return nil, fmt.Errorf("invalid destination port: %v", err)

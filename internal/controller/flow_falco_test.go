@@ -1,7 +1,10 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 package controller
 
 import (
+	"fmt"
+
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/assert"
 )
@@ -9,50 +12,12 @@ import (
 func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 	InitRegexFalco()
 	tests := map[string]struct {
-		input       string
-		expected    *pb.FalcoFlow
-		expectedErr string
+		input    string
+		expected *pb.FalcoFlow
+		err      error
 	}{
-		"valid input with TCP": {
-			input: "srcip=192.168.0.1 dstip=192.168.0.2 srcport=80 dstport=8080 proto=TCP ipversion=IPV4",
-			expected: &pb.FalcoFlow{
-				Layer3: &pb.IP{
-					Source:      "192.168.0.1",
-					Destination: "192.168.0.2",
-					IpVersion:   pb.IPVersion_IP_VERSION_IPV4,
-				},
-				Layer4: &pb.Layer4{
-					Protocol: &pb.Layer4_Tcp{
-						Tcp: &pb.TCP{
-							SourcePort:      80,
-							DestinationPort: 8080,
-						},
-					},
-				},
-			},
-			expectedErr: "",
-		},
-		"valid input with UDP": {
-			input: "srcip=10.0.0.1 dstip=10.0.0.2 srcport=443 dstport=8443 proto=UDP ipversion=IPV4",
-			expected: &pb.FalcoFlow{
-				Layer3: &pb.IP{
-					Source:      "10.0.0.1",
-					Destination: "10.0.0.2",
-					IpVersion:   pb.IPVersion_IP_VERSION_IPV4,
-				},
-				Layer4: &pb.Layer4{
-					Protocol: &pb.Layer4_Udp{
-						Udp: &pb.UDP{
-							SourcePort:      443,
-							DestinationPort: 8443,
-						},
-					},
-				},
-			},
-			expectedErr: "",
-		},
-		"missing values for some keys": {
-			input: "srcip=192.168.1.1 dstip=192.168.1.2 proto=TCP ipversion=IPV4",
+		"valid TCP flow": {
+			input: "srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=tcp ipversion=ipv4",
 			expected: &pb.FalcoFlow{
 				Layer3: &pb.IP{
 					Source:      "192.168.1.1",
@@ -61,28 +26,55 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 				},
 				Layer4: &pb.Layer4{
 					Protocol: &pb.Layer4_Tcp{
-						Tcp: &pb.TCP{},
+						Tcp: &pb.TCP{
+							SourcePort:      1234,
+							DestinationPort: 5678,
+							Flags:           &pb.TCPFlags{},
+						},
 					},
 				},
 			},
-			expectedErr: "",
+			err: nil,
 		},
-		"invalid input format": {
-			input:       "blah=invalid evan",
-			expected:    &pb.FalcoFlow{},
-			expectedErr: "ignoring falco event, not a network flow",
+		"valid UDP flow": {
+			input: "srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=udp ipversion=ipv4",
+			expected: &pb.FalcoFlow{
+				Layer3: &pb.IP{
+					Source:      "192.168.1.1",
+					Destination: "192.168.1.2",
+					IpVersion:   pb.IPVersion_IP_VERSION_IPV4,
+				},
+				Layer4: &pb.Layer4{
+					Protocol: &pb.Layer4_Udp{
+						Udp: &pb.UDP{
+							SourcePort:      1234,
+							DestinationPort: 5678,
+						},
+					},
+				},
+			},
+			err: nil,
+		},
+		"invalid input": {
+			input: "invalid=input",
+			expected: &pb.FalcoFlow{
+				Layer3: nil,
+				Layer4: nil,
+			},
+			err: fmt.Errorf("ignoring falco event, not a network flow"),
 		},
 	}
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			result, err := parsePodNetworkInfo(tt.input)
-			if tt.expectedErr != "" {
-				assert.EqualError(suite.T(), err, tt.expectedErr)
+			if tt.err != nil {
+				assert.NotNil(suite.T(), err)
+				assert.Equal(suite.T(), tt.err.Error(), err.Error())
 			} else {
-				assert.NoError(suite.T(), err)
-				assert.Equal(suite.T(), tt.expected, result)
+				assert.Nil(suite.T(), err)
 			}
+			assert.Equal(suite.T(), tt.expected, result)
 		})
 	}
 }
