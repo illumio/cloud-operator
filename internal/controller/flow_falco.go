@@ -91,7 +91,6 @@ func NewFalcoEventHandler(eventChan chan<- string) http.HandlerFunc {
 		var body struct {
 			Output string `json:"output"`
 		}
-
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

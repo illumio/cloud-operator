@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"net"
 	"net/http"
 	"regexp"
 	"sync"
@@ -83,7 +84,7 @@ var resourceAPIGroupMap = map[string]string{
 var dd = &deadlockDetector{}
 var ErrStopRetries = errors.New("stop retries")
 var ErrFalcoEventIsNotFlow = errors.New("ignoring falco event, not a network flow")
-var falcoPort = "5000"
+var falcoPort = ":5000"
 var reIllumioTraffic *regexp.Regexp
 var reParsePodNetworkInfo *regexp.Regexp
 
@@ -421,18 +422,26 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 	// Falco channels communicate news events between http server and our network flows strea,
 	falcoEventChan := make(chan string)
 	http.HandleFunc("/", NewFalcoEventHandler(falcoEventChan))
-	falcoEvent := &http.Server{Addr: falcoPort}
 	// Start our falco server and have it passively listen, if it fails, try to just restart it.
 	go func() {
 		for {
-			err := falcoEvent.ListenAndServe()
+			// Create a custom listener, this listener has SO_REUSEADDR option set by default
+			listener, err := net.Listen("tcp", falcoPort)
 			if err != nil {
-				logger.Errorw("Falco server failed, restarting...", "error", err)
+				logger.Fatalf("Failed to listen on %s: %v", falcoPort, err)
+			}
+
+			// Create the HTTP server
+			falcoEvent := &http.Server{Addr: falcoPort}
+
+			logger.Infof("Falco server listening on %s", falcoPort)
+			err = falcoEvent.Serve(listener)
+			if err != nil && err != http.ErrServerClosed {
+				logger.Errorf("Falco server failed, restarting in 5 seconds... Error: %v", err)
 				time.Sleep(5 * time.Second)
 			}
 		}
 	}()
-
 	// Timer channel for 5 seconds
 	timer := time.After(5 * time.Second)
 	for {
@@ -471,12 +480,14 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
 				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
-				falcoDone = nil
-			} else {
+				if !sm.streamClient.disableNetworkFlowsCilium {
+					falcoDone = nil
+				}
+			}
+			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = nil
 				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone)
 			}
-
 			select {
 			case <-ciliumDone:
 			case <-falcoDone:
