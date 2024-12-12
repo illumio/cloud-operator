@@ -4,7 +4,6 @@ package controller
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 
@@ -17,54 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/watch"
 )
-
-// cacheCurrentEvent logs the event's metadata and caches its UID and a hash value into cache.
-func cacheCurrentEvent(meta metav1.ObjectMeta, hashedValue [32]byte, cache *Cache) {
-	cache.cache[string(meta.UID)] = hashedValue
-}
-
-// deleteFromCacheCurrentEvent removes an event's entry from cache using its UID as the key.
-func deleteFromCacheCurrentEvent(meta metav1.ObjectMeta, cache *Cache) {
-	delete(cache.cache, string(meta.UID))
-}
-
-// uniqueEvent checks if an event, identified by the UID in meta, is already present in cache.
-// It returns true if the event is unique (not present), false otherwise.
-func uniqueEvent(meta metav1.ObjectMeta, cache *Cache, event watch.Event) (bool, error) {
-	value := cache.cache[string(meta.UID)]
-	hashedValue, err := hashObjectMeta(meta)
-	if err != nil {
-		return false, err
-	}
-
-	if value != hashedValue {
-		switch event.Type {
-		case watch.Added, watch.Modified:
-			cacheCurrentEvent(meta, hashedValue, cache)
-		case watch.Deleted:
-			deleteFromCacheCurrentEvent(meta, cache)
-		}
-	}
-	return value != hashedValue, nil
-}
-
-// hashObjectMeta generates a SHA256 hash of metav1.ObjectMeta's essential fields.
-// It returns the hash as a [32]byte and any error encountered during hashing.
-func hashObjectMeta(meta metav1.ObjectMeta) ([32]byte, error) {
-	// Delete the resourceVersion, causes too many new events that dont impact us.
-	meta.ResourceVersion = ""
-	// Serialize the ObjectMeta to JSON.
-	jsonBytes, err := json.Marshal(meta)
-	if err != nil {
-		return [32]byte{}, err
-	}
-
-	// Compute SHA256 hash of the JSON bytes.
-	hash := sha256.Sum256(jsonBytes)
-	return hash, nil
-}
 
 // convertObjectToMetadata extracts the ObjectMeta from a metav1.Object interface.
 func convertObjectToMetadata(obj metav1.Object) metav1.ObjectMeta {
@@ -129,8 +81,7 @@ func convertMetaObjectToMetadata(ctx context.Context, logger *zap.SugaredLogger,
 	if resource == "pods" {
 		hostIPs, err := getPodIPAddresses(ctx, logger, obj.GetName(), obj.GetNamespace())
 		if err != nil {
-			logger.Errorw("Cannot grab ip addresses for pod: %s in namespace: %s", obj.GetName(), obj.GetNamespace(), "error", err)
-			return &pb.KubernetesObjectData{}, err
+			return objMetadata, nil
 		}
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: convertHostIPsToStrings(hostIPs)}}
 	}
@@ -146,7 +97,7 @@ func getPodIPAddresses(ctx context.Context, logger *zap.SugaredLogger, podName s
 	}
 	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
-		logger.Errorw("Failed to find pod", podName, namespace, "error", err)
+		// Could be that the pod no longer exists
 		return []v1.HostIP{}, nil
 	}
 	if pod.Status.HostIPs != nil {
