@@ -4,8 +4,6 @@ package controller
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/json"
 	"flag"
 	"os"
 	"path/filepath"
@@ -26,89 +24,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 )
-
-func TestCacheCurrentEvent(t *testing.T) {
-	cache := Cache{cache: make(map[string][32]byte)}
-	sampleData := make(map[string]string)
-	creationTimestamp := metav1.Time{Time: time.Now()}
-	objMeta := metav1.ObjectMeta{
-		Annotations:       sampleData,
-		CreationTimestamp: creationTimestamp,
-		Labels:            sampleData,
-		Name:              "test-name",
-		Namespace:         "test-namespace",
-		ResourceVersion:   "test-version",
-		UID:               "test-uid",
-	}
-	hashValue, _ := hashObjectMeta(objMeta)
-
-	// Call function under test.
-	cacheCurrentEvent(objMeta, hashValue, &cache)
-
-	_, ok := cache.cache[string(objMeta.UID)]
-
-	if !ok {
-		t.Error("cacheCurrentEvent() did not cache current item")
-	}
-}
-
-func TestDeleteFromCacheCurrentEvent(t *testing.T) {
-	cache := Cache{cache: make(map[string][32]byte)}
-	sampleData := make(map[string]string)
-	creationTimestamp := metav1.Time{Time: time.Now()}
-	objMeta := metav1.ObjectMeta{
-		Annotations:       sampleData,
-		CreationTimestamp: creationTimestamp,
-		Labels:            sampleData,
-		Name:              "test-name",
-		Namespace:         "test-namespace",
-		ResourceVersion:   "test-version",
-		UID:               "test-uid",
-	}
-	hashValue, _ := hashObjectMeta(objMeta)
-
-	cacheCurrentEvent(objMeta, hashValue, &cache)
-
-	// Call function under test.
-	deleteFromCacheCurrentEvent(objMeta, &cache)
-
-	_, ok := cache.cache[string(objMeta.UID)]
-
-	if ok {
-		t.Error("deleteFromCacheCurrentEvent() did not delete current obj from cache")
-	}
-}
-func TestHashObjectMeta(t *testing.T) {
-	unMarshalJSON, _ := json.Marshal(metav1.ObjectMeta{Name: "test-name", UID: "test-uid"})
-	hash := sha256.Sum256(unMarshalJSON)
-	// Define test cases
-	tests := []struct {
-		name     string
-		meta     metav1.ObjectMeta
-		expected [32]byte
-	}{
-		{
-			name: "standard object meta",
-			meta: metav1.ObjectMeta{Name: "test-name", UID: "test-uid"},
-			// Provide the exact expected hash for the concatenated Name and UID.
-			expected: hash,
-		},
-		// Add more test cases as necessary, including those with empty fields.
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			hash, err := hashObjectMeta(tc.meta)
-			if err != nil {
-				t.Errorf("Unexpected error: %v", err)
-			}
-
-			if hash != tc.expected {
-				t.Errorf("Hash did not match expected value for %s. got: %x, want: %x", tc.name, hash, tc.expected)
-			}
-		})
-	}
-}
 
 func TestConvertObjectToMetadata(t *testing.T) {
 	// Setup a mock object, e.g., a ConfigMap with predefined metadata

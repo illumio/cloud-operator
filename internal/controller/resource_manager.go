@@ -26,7 +26,7 @@ type ResourceManager struct {
 
 // DynamicListAndWatchResources lists and watches the specified resource dynamically, managing context cancellation and synchronization with wait groups.
 func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, allResourcesSnapshotted *sync.WaitGroup, snapshotCompleted *sync.WaitGroup) {
-	resourceListVersion, cm, err := r.DynamicListResources(ctx, resource, apiGroup)
+	resourceListVersion, err := r.DynamicListResources(ctx, resource, apiGroup)
 	if err != nil {
 		allResourcesSnapshotted.Done()
 		r.logger.Errorw("Unable to list resources", "error", err)
@@ -49,7 +49,7 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 		return
 	}
 
-	err = r.watchEvents(ctx, resource, apiGroup, watchOptions, cm)
+	err = r.watchEvents(ctx, resource, apiGroup, watchOptions)
 	if err != nil {
 		r.logger.Errorw("Unable to watch events", "error", err)
 		cancel()
@@ -58,43 +58,36 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 }
 
 // DynamicListResources lists a specifed resource dynamically and sends down the current gRPC stream.
-func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string, apiGroup string) (string, Cache, error) {
-	cache := Cache{cache: make(map[string][32]byte)}
+func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string, apiGroup string) (string, error) {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	objs, resourceListVersion, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
-		return "", cache, err
+		return "", err
 	}
 	for _, obj := range objs {
 		metadataObj, err := convertMetaObjectToMetadata(ctx, r.logger, obj, resource)
 		if err != nil {
 			r.logger.Errorw("Cannot convert object metadata", "error", err)
-			return "", cache, err
+			return "", err
 		}
 		err = sendObjectData(r.streamManager, metadataObj)
 		if err != nil {
 			r.logger.Errorw("Cannot send object metadata", "error", err)
-			return "", cache, err
+			return "", err
 		}
-		hashValue, err := hashObjectMeta(obj)
-		if err != nil {
-			r.logger.Errorw("Cannot hash current object", "error", err)
-			return "", cache, err
-		}
-		cacheCurrentEvent(obj, hashValue, &cache)
 	}
 
 	select {
 	case <-ctx.Done():
-		return "", cache, err
+		return "", err
 	default:
 	}
-	return resourceListVersion, cache, nil
+	return resourceListVersion, nil
 }
 
 // watchEvents watches Kubernetes resources and updates cache based on events.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
-func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiGroup string, watchOptions metav1.ListOptions, cache Cache) error {
+func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiGroup string, watchOptions metav1.ListOptions) error {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
@@ -110,6 +103,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			continue
 		default:
 		}
+		// event type debugging for some reason we are missing delete events
 		convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
 		if err != nil {
 			r.logger.Errorw("Cannot convert runtime.Object to metav1.ObjectMeta", "error", err)
@@ -120,15 +114,19 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			r.logger.Errorw("Cannot convert object metadata", "error", err)
 			return err
 		}
-		wasUniqueEvent, err := uniqueEvent(*convertedData, &cache, event)
-		if err != nil {
-			r.logger.Errorw("Failed to hash object metadata", "error", err)
-			return err
-		}
+		// wasUniqueEvent, err := uniqueEvent(*convertedData, &cache, event)
+		// if err != nil {
+		// 	r.logger.Errorw("Failed to hash object metadata", "error", err)
+		// 	return err
+		// }
+		// if watch.Deleted == event.Type {
+		// 	fmt.Println(wasUniqueEvent)
+		// 	fmt.Println(metadataObj)
+		// }
 		// This event has been seen before, do not stream the event to CloudSecure.
-		if !wasUniqueEvent {
-			continue
-		}
+		// if !wasUniqueEvent {
+		// 	continue
+		// }
 		err = streamMutationObjectData(r.streamManager, metadataObj, event.Type)
 		if err != nil {
 			r.logger.Errorw("Cannot send resource mutation", "error", err)

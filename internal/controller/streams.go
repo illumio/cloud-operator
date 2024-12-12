@@ -481,12 +481,14 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
 				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
-				falcoDone = nil
-			} else {
+				if !sm.streamClient.disableNetworkFlowsCilium {
+					falcoDone = nil
+				}
+			}
+			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = nil
 				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone)
 			}
-
 			select {
 			case <-ciliumDone:
 			case <-falcoDone:
