@@ -98,7 +98,6 @@ func getPodIPAddresses(ctx context.Context, logger *zap.SugaredLogger, podName s
 	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
 		// Could be that the pod no longer exists
-		logger.Warnw("Failed to find pod", podName, namespace, "error", err)
 		return []v1.HostIP{}, nil
 	}
 	if pod.Status.HostIPs != nil {
