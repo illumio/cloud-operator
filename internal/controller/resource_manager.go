@@ -114,19 +114,6 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			r.logger.Errorw("Cannot convert object metadata", "error", err)
 			return err
 		}
-		// wasUniqueEvent, err := uniqueEvent(*convertedData, &cache, event)
-		// if err != nil {
-		// 	r.logger.Errorw("Failed to hash object metadata", "error", err)
-		// 	return err
-		// }
-		// if watch.Deleted == event.Type {
-		// 	fmt.Println(wasUniqueEvent)
-		// 	fmt.Println(metadataObj)
-		// }
-		// This event has been seen before, do not stream the event to CloudSecure.
-		// if !wasUniqueEvent {
-		// 	continue
-		// }
 		err = streamMutationObjectData(r.streamManager, metadataObj, event.Type)
 		if err != nil {
 			r.logger.Errorw("Cannot send resource mutation", "error", err)

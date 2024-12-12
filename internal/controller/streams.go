@@ -5,7 +5,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"log"
 	"math/rand"
 	"net"
 	"net/http"
@@ -429,16 +428,16 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			// Create a custom listener, this listener has SO_REUSEADDR option set by default
 			listener, err := net.Listen("tcp", falcoPort)
 			if err != nil {
-				log.Fatalf("Failed to listen on %s: %v", falcoPort, err)
+				logger.Fatalf("Failed to listen on %s: %v", falcoPort, err)
 			}
 
 			// Create the HTTP server
 			falcoEvent := &http.Server{Addr: falcoPort}
 
-			log.Printf("Falco server listening on %s", falcoPort)
+			logger.Infof("Falco server listening on %s", falcoPort)
 			err = falcoEvent.Serve(listener)
 			if err != nil && err != http.ErrServerClosed {
-				log.Printf("Falco server failed, restarting in 5 seconds... Error: %v", err)
+				logger.Errorf("Falco server failed, restarting in 5 seconds... Error: %v", err)
 				time.Sleep(5 * time.Second)
 			}
 		}
