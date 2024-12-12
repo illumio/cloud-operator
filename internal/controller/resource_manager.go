@@ -103,7 +103,6 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			continue
 		default:
 		}
-		// event type debugging for some reason we are missing delete events
 		convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
 		if err != nil {
 			r.logger.Errorw("Cannot convert runtime.Object to metav1.ObjectMeta", "error", err)
