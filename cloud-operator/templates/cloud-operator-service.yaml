@@ -11,6 +11,7 @@ spec:
     app: {{ include "cloud-operator.name" . }}
     release: {{ .Release.Name }}
   ports:
-    - protocol: TCP
+    - name: http-falco
+      protocol: TCP
       port: 5000
       targetPort: 5000
