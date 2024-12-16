@@ -51,7 +51,7 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           ports:
             - containerPort: 8080
-            - containerPort: 50000
+            - containerPort: 5000
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: CLUSTER_CREDS_SECRET
