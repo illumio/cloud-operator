@@ -40,10 +40,10 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.ref_name }}
 
-      - name: Set up Kind
-        uses: engineerd/setup-kind@v0.6.0
+      - name: Set up Kind cluster
+        uses: helm/kind-action@v1.2.0
         with:
-            version: "v0.24.0"
+            version: v0.11.1  # Specify the version you need
 
       - name: Load Docker image into Kind cluster
         run: |
