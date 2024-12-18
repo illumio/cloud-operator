@@ -1,0 +1,10 @@
+{{- if .Values.falco.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco-custom-config
+  namespace: {{ include "falco.namespace" . }}
+data:
+  falco.yaml: |-
+    {{ .Values.falco.customConfig | nindent 4 }}
+{{- end -}}
