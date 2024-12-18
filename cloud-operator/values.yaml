@@ -35,6 +35,16 @@ onboardingSecret:
 falco:
   enabled: true
   namespace: falco
+  falco:
+    http_output:
+      enabled: true
+      keep_alive: true
+      url: "http://illumio-cloud-operator.illumio-cloud.svc.cluster.local:5000/"
+      insecure: true
+    json_output: true
+    json_include_tags_property: false
+    json_include_output_property: true
+    buffered_outputs: true
   customRules:
     rules-networking.yaml: |-
       - macro: outbound_corp
