@@ -3,7 +3,7 @@ name: Build, Deploy and Onboard Cloud Operator
 on:
     push:
       branches:
-        - main
+        - integration-end-to-end-onboarding-operator
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -46,12 +46,20 @@ jobs:
 
       - name: Package Helm chart
         run: |
-            helm package ./cloud-operator -d .
+            helm package ./cloud-operator -d .\
+      
+      - name: Run Fakeserver Test Driver
+        run: |
+          go run _______
 
       - name: Install Helm chart and Deploy Operator
         env:
-            ONBOARDING_CLIENT_ID: ${{ secrets.ONBOARDING_CLIENT_ID }}
-            ONBOARDING_CLIENT_SECRET: ${{ secrets.ONBOARDING_CLIENT_SECRET }}
+            ONBOARDING_CLIENT_ID: "client_id_1"
+            ONBOARDING_CLIENT_SECRET: "client_id_2"
+            TLS_SKIP_VERIFY: true
+            ONBOARDING_ENDPOINT: "https://192.168.65.254:50053/api/v1/k8s_cluster/onboard"
+            TOKEN_ENDPOINT: "https://192.168.65.254:50053/api/v1/k8s_cluster/authenticate"
+            
         run: |
             helm upgrade --install illumio cloud-operator-*.tgz \
             --namespace illumio-cloud \
@@ -60,20 +68,9 @@ jobs:
             --set image.tag=${{ github.ref_name }} \
             --set image.pullPolicy=Always
             --set onboardingSecret.clientId=$ONBOARDING_CLIENT_ID \
-            --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET
-
-      - name: Sleep for 30 seconds
-        run: sleep 30s
-        shell: bash
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-            go-version: '^1.22'
-
-      - name: Install dependencies
-        run: go mod tidy
-
-      - name: Run tests
-        run:  go test -v ./integration-testing/...
+            --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET \
+            --set env.onboardingEndpoint=$ONBOARDING_ENDPOINT \
+            --set env.tokenEndpoint=$TOKEN_ENDPOINT \
+            --set env.tlsSkipVerify=$TLS_SKIP_VERIFY
         
+

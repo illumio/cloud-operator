@@ -15,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"net"
 	"os"
@@ -64,12 +65,30 @@ var (
 	aud string
 )
 
+type FakeServerDriver struct {
+	conn   *grpc.ClientConn
+	client pb.KubernetesInfoServiceClient
+}
+
 type server struct {
 	pb.UnimplementedKubernetesInfoServiceServer
 }
 
 // LogEntry represents the structure of a zapcore.Entry encoded using Zap's JSON encoder with the production encoder config.
 type LogEntry map[string]any
+
+func NewFakeServerDriver() *FakeServerDriver {
+	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
+	if err != nil {
+		log.Fatalf("did not connect: %v", err)
+	}
+	client := pb.NewKubernetesInfoServiceClient(conn)
+
+	return &FakeServerDriver{
+		conn:   conn,
+		client: client,
+	}
+}
 
 // Level returns the log level of the LogEntry.
 func (l LogEntry) Level() (zapcore.Level, error) {
