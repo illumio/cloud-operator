@@ -15,7 +15,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"math/big"
 	"net"
 	"os"
@@ -65,9 +64,9 @@ var (
 	aud string
 )
 
-type FakeServerDriver struct {
-	conn   *grpc.ClientConn
-	client pb.KubernetesInfoServiceClient
+type FakeServerTestDriver struct {
+	Logger zap.Logger
+	S      server
 }
 
 type server struct {
@@ -76,19 +75,6 @@ type server struct {
 
 // LogEntry represents the structure of a zapcore.Entry encoded using Zap's JSON encoder with the production encoder config.
 type LogEntry map[string]any
-
-func NewFakeServerDriver() *FakeServerDriver {
-	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
-	if err != nil {
-		log.Fatalf("did not connect: %v", err)
-	}
-	client := pb.NewKubernetesInfoServiceClient(conn)
-
-	return &FakeServerDriver{
-		conn:   conn,
-		client: client,
-	}
-}
 
 // Level returns the log level of the LogEntry.
 func (l LogEntry) Level() (zapcore.Level, error) {
@@ -317,7 +303,7 @@ func unaryInterceptor(
 	return handler(ctx, req)
 }
 
-func main() {
+func (f *FakeServerTestDriver) runFakeServer() {
 	flag.Parse()
 
 	logger, err := zap.NewDevelopment()
@@ -371,4 +357,9 @@ func main() {
 	if err = s.Serve(listener); err != nil {
 		logger.Fatal("Server failed", zap.Error(err))
 	}
+	return FakeServerTestDriver{Logger: logger, S: s}
+}
+
+func main() {
+
 }
