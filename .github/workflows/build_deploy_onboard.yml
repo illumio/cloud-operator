@@ -45,15 +45,41 @@ jobs:
         with:
             version: v0.11.1  # Specify the version you need
 
-      - name: Load Docker image into Kind cluster
-        run: |
-            docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }} && kind load docker-image cloud-operator
-
       - name: Set up Helm
         uses: azure/setup-helm@v3.5
         with:
             version: "v3.5" # Specify the version you need
 
+      - name: Package Helm chart
+        run: |
+            helm package ./cloud-operator -d .
 
-    
-    
+      - name: Install Helm chart and Deploy Operator
+        env:
+            ONBOARDING_CLIENT_ID: ${{ secrets.ONBOARDING_CLIENT_ID }}
+            ONBOARDING_CLIENT_SECRET: ${{ secrets.ONBOARDING_CLIENT_SECRET }}
+        run: |
+            helm upgrade --install illumio cloud-operator-*.tgz \
+            --namespace illumio-cloud \
+            --create-namespace \
+            --set image.repository=ghcr.io/${{ github.repository }} \
+            --set image.tag=${{ github.ref_name }} \
+            --set image.pullPolicy=Always
+            --set onboardingSecret.clientId=$ONBOARDING_CLIENT_ID \
+            --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET
+
+      - name: Sleep for 30 seconds
+        run: sleep 30s
+        shell: bash
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+            go-version: '^1.22'
+
+      - name: Install dependencies
+        run: go mod tidy
+
+      - name: Run tests
+        run:  go test -v ./integration-testing/...
+        
