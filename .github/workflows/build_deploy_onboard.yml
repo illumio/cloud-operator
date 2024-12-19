@@ -4,12 +4,6 @@ on:
     push:
       branches:
         - integration-end-to-end-onboarding-operator
-
-permissions:
-  # Required to generate OIDC tokens for `sigstore/cosign-installer` authentication
-  id-token: write
-  packages: write
-
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
