@@ -14,8 +14,9 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 		err      error
 	}{
 		"valid TCP flow": {
-			input: "srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=tcp ipversion=ipv4",
+			input: "timestamp=1987-02-22 18:00:00.000 srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=tcp ipversion=ipv4",
 			expected: &pb.FalcoFlow{
+				Time: "1987-02-22 18:00:00.000",
 				Layer3: &pb.IP{
 					Source:      "192.168.1.1",
 					Destination: "192.168.1.2",
@@ -34,8 +35,9 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 			err: nil,
 		},
 		"valid UDP flow": {
-			input: "srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=udp ipversion=ipv4",
+			input: "timestamp=1987-02-22 18:00:00.000 srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=udp ipversion=ipv4",
 			expected: &pb.FalcoFlow{
+				Time: "1987-02-22 18:00:00.000",
 				Layer3: &pb.IP{
 					Source:      "192.168.1.1",
 					Destination: "192.168.1.2",
@@ -55,6 +57,7 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 		"invalid input": {
 			input: "invalid=input",
 			expected: &pb.FalcoFlow{
+				Time:   "",
 				Layer3: nil,
 				Layer4: nil,
 			},
