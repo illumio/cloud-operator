@@ -30,6 +30,11 @@ type FalcoEvent struct {
 	IpVersion string `json:"prototype"`
 }
 
+// RemoveTrailingTab removes the trailing tab character from the input string if it exists
+func RemoveTrailingTab(timestamp string) string {
+	return strings.TrimSuffix(timestamp, "\t")
+}
+
 // parsePodNetworkInfo parses the input string to extract network information into a FalcoFlow message.
 func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 	var info FalcoEvent
@@ -81,7 +86,7 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 	}
 
 	flow := &pb.FalcoFlow{
-		Time:   info.Timestamp,
+		Time:   RemoveTrailingTab(info.Timestamp),
 		Layer3: layer3Message,
 		Layer4: layer4Message,
 	}
