@@ -14,6 +14,8 @@ import (
 
 // FalcoEvent represents the network information extracted from a Falco event.
 type FalcoEvent struct {
+	// Timestamp is the time the network event occured.
+	Timestamp string `json:"timestamp"`
 	// SrcIP is the source IP address involved in the network event.
 	SrcIP string `json:"srcip"`
 	// DstIP is the destination IP address involved in the network event.
@@ -28,6 +30,11 @@ type FalcoEvent struct {
 	IpVersion string `json:"prototype"`
 }
 
+// RemoveTrailingTab removes the trailing tab character from the input string if it exists
+func RemoveTrailingTab(timestamp string) string {
+	return strings.TrimSuffix(timestamp, "\t")
+}
+
 // parsePodNetworkInfo parses the input string to extract network information into a FalcoFlow message.
 func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 	var info FalcoEvent
@@ -38,6 +45,8 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 		if len(match) == 3 {
 			key, value := match[1], match[2]
 			switch key {
+			case "timestamp":
+				info.Timestamp = value
 			case "srcip":
 				info.SrcIP = value
 			case "dstip":
@@ -77,6 +86,7 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 	}
 
 	flow := &pb.FalcoFlow{
+		Time:   RemoveTrailingTab(info.Timestamp),
 		Layer3: layer3Message,
 		Layer4: layer4Message,
 	}

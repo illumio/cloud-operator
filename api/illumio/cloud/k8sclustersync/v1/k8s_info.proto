@@ -111,6 +111,8 @@ message FalcoFlow {
   IP layer3 = 1;
   // Proto contains protocol used
   Layer4 layer4 = 2;
+  // Time when flow occured.
+  string time = 3;
 }
 
 // A flow received from Cilium Hubble Relay using the Observer service's GetFlows RPC.
