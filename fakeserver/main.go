@@ -64,11 +64,6 @@ var (
 	aud string
 )
 
-type FakeServerTestDriver struct {
-	Logger zap.Logger
-	S      server
-}
-
 type server struct {
 	pb.UnimplementedKubernetesInfoServiceServer
 }
@@ -303,7 +298,7 @@ func unaryInterceptor(
 	return handler(ctx, req)
 }
 
-func (f *FakeServerTestDriver) runFakeServer() {
+func main() {
 	flag.Parse()
 
 	logger, err := zap.NewDevelopment()
@@ -357,9 +352,4 @@ func (f *FakeServerTestDriver) runFakeServer() {
 	if err = s.Serve(listener); err != nil {
 		logger.Fatal("Server failed", zap.Error(err))
 	}
-	return FakeServerTestDriver{Logger: logger, S: s}
-}
-
-func main() {
-
 }
