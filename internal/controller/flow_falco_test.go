@@ -250,3 +250,38 @@ func (suite *ControllerTestSuite) TestCreateLayer3Message() {
 		})
 	}
 }
+
+func (suite *ControllerTestSuite) TestRemoveTrailingTab() {
+	tests := map[string]struct {
+		input    string
+		expected string
+	}{
+		"No trailing tab": {
+			input:    "1987-02-22T00:39:07.267635635+0000",
+			expected: "1987-02-22T00:39:07.267635635+0000",
+		},
+		"One trailing tab": {
+			input:    "1987-02-22T00:39:07.267635635+0000\t",
+			expected: "1987-02-22T00:39:07.267635635+0000",
+		},
+		"Multiple trailing tabs": {
+			input:    "1987-02-22T00:39:07.267635635+0000\t\t",
+			expected: "1987-02-22T00:39:07.267635635+0000",
+		},
+		"Tabs in different parts": {
+			input:    "\t\t1987-02-22T00:39:07.267635635+0000\t\t",
+			expected: "\t\t1987-02-22T00:39:07.267635635+0000",
+		},
+		"Leading and trailing tab": {
+			input:    "\t1987-02-22T00:39:07.267635635+0000\t",
+			expected: "\t1987-02-22T00:39:07.267635635+0000",
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			result := removeTrailingTab(tt.input)
+			assert.Equal(suite.T(), tt.expected, result)
+		})
+	}
+}
