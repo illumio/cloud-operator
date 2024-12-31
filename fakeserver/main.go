@@ -66,6 +66,7 @@ var (
 
 type server struct {
 	pb.UnimplementedKubernetesInfoServiceServer
+	state map[string]int
 }
 
 // LogEntry represents the structure of a zapcore.Entry encoded using Zap's JSON encoder with the production encoder config.
@@ -95,6 +96,22 @@ func (l LogEntry) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 		}
 	}
 	return nil
+}
+
+// Initialize the state map in the constructor (or init function)
+func (s *server) initState() {
+	s.state = make(map[string]int)
+}
+
+// Retrieve the current state of a specific key
+func (s *server) getState() string {
+
+	// Convert the state map to a string representation
+	stateStr := "Server state:\n"
+	for key, count := range s.state {
+		stateStr += fmt.Sprintf("%s: %d\n", key, count)
+	}
+	return stateStr
 }
 
 // SendKubernetesResources handles all gPRC requests related to streaming resources
@@ -306,6 +323,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to configure logger: %s", err)
 		os.Exit(1)
 	}
+
 	token = "token1"
 	// Example of generating a JWT with an "aud" claim
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -335,7 +353,7 @@ func main() {
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS12})
 	s := grpc.NewServer(grpc.Creds(creds), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor(token)), grpc.UnaryInterceptor(unaryInterceptor))
-	pb.RegisterKubernetesInfoServiceServer(s, &server{})
+	pb.RegisterKubernetesInfoServiceServer(s, &fs)
 	logger.Info("Server listening", zap.String("network", listener.Addr().Network()), zap.String("address", listener.Addr().String()))
 
 	reflection.Register(s)
