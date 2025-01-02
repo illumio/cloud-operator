@@ -18,7 +18,6 @@ func TestFakeServerStateChange(t *testing.T) {
 		logger:      zap.NewNop(), // Use a no-op logger for testing
 		state:       &ServerState{ConnectionSuccessful: false},
 	}
-	t.Log("Ello")
 
 	// Start the server
 	err := fakeServer.start()
