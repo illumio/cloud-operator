@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"reflect"
 	"time"
@@ -63,17 +62,8 @@ func jsonResponse(w http.ResponseWriter, status int, data any) {
 	}
 }
 
-// startHTTPServer initializes and starts an HTTP server with TLS and logging, using the provided credentials and token.
-func startHTTPServer(address string, loggerToUse *zap.Logger, clientID string, clientSecret string, tokenString string, cert tls.Certificate) {
-	authService := &AuthService{
-		logger:       loggerToUse,
-		clientID:     clientID,
-		clientSecret: clientSecret,
-		token:        tokenString,
-	}
-	http.HandleFunc("/api/v1/k8s_cluster/authenticate", authService.authenticateHandler)
-	http.HandleFunc("/api/v1/k8s_cluster/onboard", authService.onboardCluster)
-
+// startOAuth2HTTPServer initializes and starts an HTTP server with TLS and logging, using the provided credentials and token.
+func startOAuth2HTTPServer(address string, cert tls.Certificate, authService *AuthService) error {
 	server := &http.Server{
 		Addr:         address,
 		ReadTimeout:  5 * time.Second,
@@ -83,7 +73,11 @@ func startHTTPServer(address string, loggerToUse *zap.Logger, clientID string, c
 			MinVersion:   tls.VersionTLS12,
 		},
 	}
-	log.Fatal(server.ListenAndServeTLS("", ""))
+
+	http.HandleFunc("/api/v1/k8s_cluster/authenticate", authService.authenticateHandler)
+	http.HandleFunc("/api/v1/k8s_cluster/onboard", authService.onboardCluster)
+
+	return server.ListenAndServeTLS("", "")
 }
 
 // authenticateHandler handles authentication requests and writes the response.
