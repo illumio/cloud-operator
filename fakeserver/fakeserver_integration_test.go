@@ -30,6 +30,7 @@ func TestFakeServerStateChange(t *testing.T) {
 	// Allow the server a bit of time to start
 	time.Sleep(2 * time.Second)
 
+	// NOTE TO SELF: TEST IS FAILING HERE NOT SURE WHY!
 	// Wait for the state to change, Wanting to see client succesfully connect to fakeserver
 	timeout := time.After(15 * time.Second)
 	ticker := time.NewTicker(500 * time.Millisecond)
