@@ -14,8 +14,9 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 		err      error
 	}{
 		"valid TCP flow": {
-			input: "srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=tcp ipversion=ipv4",
+			input: "time=1987-02-22T00:39:07.267635635+0000\t srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=tcp ipversion=ipv4",
 			expected: &pb.FalcoFlow{
+				Time: "1987-02-22T00:39:07.267635635+0000",
 				Layer3: &pb.IP{
 					Source:      "192.168.1.1",
 					Destination: "192.168.1.2",
@@ -34,8 +35,9 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 			err: nil,
 		},
 		"valid UDP flow": {
-			input: "srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=udp ipversion=ipv4",
+			input: "time=1987-02-22T00:39:07.267635635+0000\t srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=udp ipversion=ipv4",
 			expected: &pb.FalcoFlow{
+				Time: "1987-02-22T00:39:07.267635635+0000",
 				Layer3: &pb.IP{
 					Source:      "192.168.1.1",
 					Destination: "192.168.1.2",
@@ -55,6 +57,7 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 		"invalid input": {
 			input: "invalid=input",
 			expected: &pb.FalcoFlow{
+				Time:   "",
 				Layer3: nil,
 				Layer4: nil,
 			},
@@ -243,6 +246,41 @@ func (suite *ControllerTestSuite) TestCreateLayer3Message() {
 		suite.Run(name, func() {
 			result, err := createLayer3Message(tt.source, tt.destination, tt.ipVersion)
 			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), tt.expected, result)
+		})
+	}
+}
+
+func (suite *ControllerTestSuite) TestRemoveTrailingTab() {
+	tests := map[string]struct {
+		input    string
+		expected string
+	}{
+		"No trailing tab": {
+			input:    "1987-02-22T00:39:07.267635635+0000",
+			expected: "1987-02-22T00:39:07.267635635+0000",
+		},
+		"One trailing tab": {
+			input:    "1987-02-22T00:39:07.267635635+0000\t",
+			expected: "1987-02-22T00:39:07.267635635+0000",
+		},
+		"Multiple trailing tabs": {
+			input:    "1987-02-22T00:39:07.267635635+0000\t\t",
+			expected: "1987-02-22T00:39:07.267635635+0000",
+		},
+		"Tabs in different parts": {
+			input:    "\t\t1987-02-22T00:39:07.267635635+0000\t\t",
+			expected: "\t\t1987-02-22T00:39:07.267635635+0000",
+		},
+		"Leading and trailing tab": {
+			input:    "\t1987-02-22T00:39:07.267635635+0000\t",
+			expected: "\t1987-02-22T00:39:07.267635635+0000",
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			result := removeTrailingTab(tt.input)
 			assert.Equal(suite.T(), tt.expected, result)
 		})
 	}
