@@ -3,16 +3,38 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/golang-jwt/jwt"
 	"go.uber.org/zap"
 )
 
 func main() {
+	logger, _ := zap.NewDevelopment()
+
+	aud := "192.168.65.254:50051"
+	token := "token1"
+	// Example of generating a JWT with an "aud" claim
+	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": token,
+		"aud": []string{aud},
+		"exp": time.Now().Add(time.Hour * 72).Unix(),
+	})
+	// Just using "secret" for test signing
+	mySigningKey := []byte("secret")
+
+	// Sign and get the complete encoded token as a string
+	// nosemgrep: jwt.hardcoded-jwt-key
+	signedToken, err := jwtToken.SignedString(mySigningKey)
+	if err != nil {
+		logger.Error("Token could not be signed with fake secret key")
+	}
 	fs := FakeServer{
-		address:  "127.0.0.1:50051",
-		stopChan: make(chan struct{}),
-		token:    "fake_test_token",
-		logger:   &zap.Logger{},
+		address:     "127.0.0.1:50051",
+		httpAddress: "127.0.0.1:50053",
+		stopChan:    make(chan struct{}),
+		token:       signedToken,
+		logger:      logger,
 	}
 
 	// Start the server

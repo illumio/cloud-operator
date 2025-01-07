@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -59,9 +60,9 @@ type FakeServer struct {
 }
 
 type ServerState struct {
-	ConnectionSuccessful  bool
-	injectToken           string
-	FailOnFirstConnection bool
+	ConnectionSuccessful bool
+	// injectToken           string
+	// FailOnFirstConnection bool
 }
 
 type LogEntry map[string]any
@@ -194,12 +195,6 @@ func (fs *FakeServer) start() error {
 		}
 	}()
 
-	// Start HTTP server (for OAuth2 token management)
-	fs.httpListener, err = net.Listen("tcp", fs.httpAddress)
-	if err != nil {
-		return err
-	}
-
 	// Create and initialize the AuthService (OAuth2)
 	fs.authService = &AuthService{
 		logger:       fs.logger,
@@ -209,20 +204,27 @@ func (fs *FakeServer) start() error {
 	}
 
 	// Start the OAuth2 HTTP server
-	go func() {
-		if err := startOAuth2HTTPServer(fs.httpAddress, creds, fs.authService); err != nil {
-			fs.logger.Fatal("Failed to start OAuth2 HTTP server", zap.Error(err))
-		}
-	}()
+	fs.httpServer, err = startOAuth2HTTPServer(fs.httpAddress, creds, fs.authService)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
 func (fs *FakeServer) stop() {
-	// Graceful shutdown for both gRPC and HTTP servers
+	// Graceful shutdown for gRPC server
 	fs.server.GracefulStop()
 	fs.listener.Close()
-	fs.httpServer.Close()
+
+	// Graceful shutdown for HTTP server
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := fs.httpServer.Shutdown(ctx); err != nil {
+		fs.logger.Fatal("Failed to gracefully shut down HTTP server", zap.Error(err))
+	}
+	fs.httpListener.Close()
+
 	close(fs.stopChan)
 }
 

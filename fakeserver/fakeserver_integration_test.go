@@ -12,8 +12,8 @@ import (
 func TestFakeServerStateChange(t *testing.T) {
 	// Setup: Start the FakeServer
 	fakeServer := &FakeServer{
-		address:     "localhost:50051",
-		httpAddress: "localhost:8080",
+		address:     "localhost:8080",
+		httpAddress: "localhost:50053",
 		token:       "test-token",
 		logger:      zap.NewNop(), // Use a no-op logger for testing
 		state:       &ServerState{ConnectionSuccessful: false},

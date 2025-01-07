@@ -62,8 +62,8 @@ func jsonResponse(w http.ResponseWriter, status int, data any) {
 	}
 }
 
-// startOAuth2HTTPServer initializes and starts an HTTP server with TLS and logging, using the provided credentials and token.
-func startOAuth2HTTPServer(address string, cert tls.Certificate, authService *AuthService) error {
+func startOAuth2HTTPServer(address string, cert tls.Certificate, authService *AuthService) (*http.Server, error) {
+	// Set up the server with desired TLS configuration
 	server := &http.Server{
 		Addr:         address,
 		ReadTimeout:  5 * time.Second,
@@ -74,10 +74,18 @@ func startOAuth2HTTPServer(address string, cert tls.Certificate, authService *Au
 		},
 	}
 
+	// Register routes with the default HTTP multiplexer
 	http.HandleFunc("/api/v1/k8s_cluster/authenticate", authService.authenticateHandler)
 	http.HandleFunc("/api/v1/k8s_cluster/onboard", authService.onboardCluster)
 
-	return server.ListenAndServeTLS("", "")
+	// Start the server in a goroutine
+	go func() {
+		if err := server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+			authService.logger.Fatal("Failed to start OAuth2 HTTP server", zap.Error(err))
+		}
+	}()
+
+	return server, nil
 }
 
 // authenticateHandler handles authentication requests and writes the response.
