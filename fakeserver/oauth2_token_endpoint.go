@@ -73,7 +73,7 @@ func startOAuth2HTTPServer(address string, cert tls.Certificate, authService *Au
 			MinVersion:   tls.VersionTLS12,
 		},
 	}
-
+	http.DefaultServeMux = http.NewServeMux()
 	// Register routes with the default HTTP multiplexer
 	http.HandleFunc("/api/v1/k8s_cluster/authenticate", authService.authenticateHandler)
 	http.HandleFunc("/api/v1/k8s_cluster/onboard", authService.onboardCluster)

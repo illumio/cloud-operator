@@ -62,7 +62,6 @@ type FakeServer struct {
 type ServerState struct {
 	ConnectionSuccessful bool
 	IncorrectCredentials bool
-	killStreams          bool
 	// injectToken           string
 	// FailOnFirstConnection bool
 }
@@ -218,23 +217,26 @@ func (fs *FakeServer) start() error {
 
 	return nil
 }
-func (fs *FakeServer) stopAllStreams() {
-
-}
 
 func (fs *FakeServer) stop() {
-	// Graceful shutdown for gRPC server
-	fs.server.GracefulStop()
+	defer func() {
+		if r := recover(); r != nil {
+		}
+	}()
+
+	// Shutdown gRPC server
+	fs.server.Stop()
 	fs.listener.Close()
 
-	// Graceful shutdown for HTTP server
+	// Shutdown HTTP server (if any)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := fs.httpServer.Shutdown(ctx); err != nil {
 		fs.logger.Fatal("Failed to gracefully shut down HTTP server", zap.Error(err))
 	}
 	fs.httpListener.Close()
-
+	// Reset HTTP handlers before restarting the server
+	http.DefaultServeMux = http.NewServeMux()
 	close(fs.stopChan)
 }
 

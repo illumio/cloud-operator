@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -34,7 +33,7 @@ func createSignedToken() string {
 
 // Simulating a client interacting with the gRPC server
 func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
-	logger, _ := zap.NewDevelopment()
+	logger := zap.NewNop()
 	token := createSignedToken()
 	// Setup: Start the FakeServer
 	fakeServer := &FakeServer{
@@ -67,7 +66,6 @@ mainloop:
 			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
-			t.Log(fakeServer.state.ConnectionSuccessful)
 			// Check if the log entry has been recorded
 			stateChanged := fakeServer.state.ConnectionSuccessful
 
@@ -79,9 +77,7 @@ mainloop:
 			}
 		}
 	}
-	fmt.Println("hello")
 	fakeServer.stop()
-	fmt.Println("hello")
 
 	time.Sleep(5 * time.Second)
 	fakeServer.state.ConnectionSuccessful = false
@@ -101,7 +97,6 @@ mainloop:
 			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
-			t.Log(fakeServer.state.ConnectionSuccessful)
 			// Check if the log entry has been recorded
 			stateChanged := fakeServer.state.ConnectionSuccessful
 
