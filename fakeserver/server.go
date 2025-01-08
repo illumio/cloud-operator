@@ -223,7 +223,7 @@ func (fs *FakeServer) start() error {
 
 func (fs *FakeServer) stop() {
 	defer func() {
-		recover()
+		_ = recover() // Ignore the returned value of recover()
 	}()
 
 	// Shutdown gRPC server
