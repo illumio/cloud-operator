@@ -140,7 +140,10 @@ func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error 
 		switch req.Request.(type) {
 		case *pb.SendLogsRequest_LogEntry:
 			logEntry := req.GetLogEntry()
-			logReceivedLogEntry(logEntry, logger)
+			err = logReceivedLogEntry(logEntry, logger)
+			if err != nil {
+				logger.Error("Error recording logs from operator", zap.Error(err))
+			}
 		}
 	}
 }
@@ -220,8 +223,7 @@ func (fs *FakeServer) start() error {
 
 func (fs *FakeServer) stop() {
 	defer func() {
-		if r := recover(); r != nil {
-		}
+		recover()
 	}()
 
 	// Shutdown gRPC server
