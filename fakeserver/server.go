@@ -61,9 +61,16 @@ type FakeServer struct {
 
 type ServerState struct {
 	ConnectionSuccessful bool
+	IncorrectCredentials bool
+	killStreams          bool
 	// injectToken           string
 	// FailOnFirstConnection bool
 }
+
+var (
+	serverState *ServerState
+	logger      *zap.Logger
+)
 
 type LogEntry map[string]any
 
@@ -95,7 +102,6 @@ type server struct {
 }
 
 func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKubernetesResourcesServer) error {
-	logger, _ := zap.NewDevelopment()
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
@@ -111,6 +117,7 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 			logger.Info("Initial inventory data")
 		case *pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete:
 			logger.Info("Initial inventory complete")
+			serverState.ConnectionSuccessful = true
 		case *pb.SendKubernetesResourcesRequest_KubernetesResourceMutation:
 			logger.Info("Mutation Detected")
 			logger.Info(req.String())
@@ -122,7 +129,6 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 }
 
 func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error {
-	logger, _ := zap.NewDevelopment()
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
@@ -173,6 +179,7 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 }
 
 func (fs *FakeServer) start() error {
+	logger = fs.logger
 	var err error
 	// Start gRPC server
 	fs.listener, err = net.Listen("tcp", fs.address)
@@ -185,7 +192,7 @@ func (fs *FakeServer) start() error {
 		return err
 	}
 	credsTLS := credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{creds}, MinVersion: tls.VersionTLS12})
-
+	serverState = fs.state
 	fs.server = grpc.NewServer(grpc.Creds(credsTLS), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor(fs.token)))
 	pb.RegisterKubernetesInfoServiceServer(fs.server, &server{})
 
@@ -210,6 +217,9 @@ func (fs *FakeServer) start() error {
 	}
 
 	return nil
+}
+func (fs *FakeServer) stopAllStreams() {
+
 }
 
 func (fs *FakeServer) stop() {
