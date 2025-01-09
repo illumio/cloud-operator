@@ -62,12 +62,13 @@ jobs:
             --create-namespace \
             --set image.repository=ghcr.io/${{ github.repository }} \
             --set image.tag=${{ github.ref_name }} \
-            --set image.pullPolicy=Always
+            --set image.pullPolicy=Always \
             --set onboardingSecret.data.clientId=$ONBOARDING_CLIENT_ID \
             --set onboardingSecret.data.clientSecret=$ONBOARDING_CLIENT_SECRET \
             --set env.onboardingEndpoint=$ONBOARDING_ENDPOINT \
             --set env.tokenEndpoint=$TOKEN_ENDPOINT \
-            --set env.tlsSkipVerify=$TLS_SKIP_VERIFY
+            --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
+            --set falco.enabled=false
 
       - name: Run Fakeserver Test Driver
         run: |
