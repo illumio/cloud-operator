@@ -48,18 +48,6 @@ jobs:
         run: |
             helm package ./cloud-operator -d .
 
-      - name: List directories and files
-        run: |
-          echo "Listing top-level directories and files:"
-          ls -la
-          cd cloud-operator
-          ls -la
-          
-      - name: Show current working directory
-        run: |
-          echo "Current working directory:"
-          pwd
-
       - name: Install Helm chart and Deploy Operator
         env:
             ONBOARDING_CLIENT_ID: ${{ secrets.ONBOARDING_CLIENT_ID }}
