@@ -53,6 +53,7 @@ jobs:
             ONBOARDING_CLIENT_ID: ${{ secrets.ONBOARDING_CLIENT_ID }}
             ONBOARDING_CLIENT_SECRET: ${{ secrets.ONBOARDING_CLIENT_SECRET }}
         run: |
+            helm template
             helm upgrade --install illumio cloud-operator-*.tgz \
             --namespace illumio-cloud \
             --create-namespace \
