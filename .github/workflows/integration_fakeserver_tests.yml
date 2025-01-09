@@ -51,20 +51,20 @@ jobs:
       - name: Install Helm chart and Deploy Operator
         env:
             ONBOARDING_CLIENT_ID: "client_id_1"
-            ONBOARDING_CLIENT_SECRET: "client_id_2"
+            ONBOARDING_CLIENT_SECRET: "client_secret_1"
             TLS_SKIP_VERIFY: true
             ONBOARDING_ENDPOINT: "https://192.168.65.254:50053/api/v1/k8s_cluster/onboard"
             TOKEN_ENDPOINT: "https://192.168.65.254:50053/api/v1/k8s_cluster/authenticate"
             
         run: |
-            helm upgrade --install illumio cloud-operator-*.tgz \
+            helm upgrade --install illumio cloud-operator/cloud-operator-*.tgz \
             --namespace illumio-cloud \
             --create-namespace \
             --set image.repository=ghcr.io/${{ github.repository }} \
             --set image.tag=${{ github.ref_name }} \
             --set image.pullPolicy=Always \
-            --set onboardingSecret.data.clientId=$ONBOARDING_CLIENT_ID \
-            --set onboardingSecret.data.clientSecret=$ONBOARDING_CLIENT_SECRET \
+            --set onboardingSecret.clientId=$ONBOARDING_CLIENT_ID \
+            --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET \
             --set env.onboardingEndpoint=$ONBOARDING_ENDPOINT \
             --set env.tokenEndpoint=$TOKEN_ENDPOINT \
             --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
