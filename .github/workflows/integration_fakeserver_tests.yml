@@ -57,7 +57,7 @@ jobs:
             TOKEN_ENDPOINT: "https://192.168.65.254:50053/api/v1/k8s_cluster/authenticate"
             
         run: |
-            helm template illumio cloud-operator-*.tgz \
+            helm upgrade --install illumio cloud-operator-*.tgz \
             --namespace illumio-cloud \
             --create-namespace \
             --set image.repository=ghcr.io/${{ github.repository }} \
