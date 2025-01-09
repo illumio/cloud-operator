@@ -48,18 +48,6 @@ jobs:
         run: |
             helm package ./cloud-operator -d .\
 
-      - name: List directories and files
-        run: |
-          echo "Listing top-level directories and files:"
-          ls -la
-          cd cloud-operator
-          ls -la
-          
-      - name: Show current working directory
-        run: |
-          echo "Current working directory:"
-          pwd
-
       - name: Install Helm chart and Deploy Operator
         env:
             ONBOARDING_CLIENT_ID: "client_id_1"
@@ -69,7 +57,7 @@ jobs:
             TOKEN_ENDPOINT: "https://192.168.65.254:50053/api/v1/k8s_cluster/authenticate"
             
         run: |
-            helm upgrade --install illumio cloud-operator/cloud-operator-*.tgz \
+            helm upgrade --install illumio cloud-operator-*.tgz \
             --namespace illumio-cloud \
             --create-namespace \
             --set image.repository=ghcr.io/${{ github.repository }} \
