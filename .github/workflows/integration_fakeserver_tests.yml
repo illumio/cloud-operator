@@ -53,8 +53,8 @@ jobs:
             ONBOARDING_CLIENT_ID: "client_id_1"
             ONBOARDING_CLIENT_SECRET: "client_secret_1"
             TLS_SKIP_VERIFY: true
-            ONBOARDING_ENDPOINT: "https://192.168.65.254:50053/api/v1/k8s_cluster/onboard"
-            TOKEN_ENDPOINT: "https://192.168.65.254:50053/api/v1/k8s_cluster/authenticate"
+            ONBOARDING_ENDPOINT: "https://127.0.0.1:50053/api/v1/k8s_cluster/onboard"
+            TOKEN_ENDPOINT: "https://127.0.0.1:50053/api/v1/k8s_cluster/authenticate"
             
         run: |
             helm upgrade --install illumio cloud-operator-*.tgz \
