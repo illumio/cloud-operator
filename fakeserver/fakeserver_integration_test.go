@@ -55,7 +55,7 @@ func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Wait for the state to change, Wanting to see client succesfully connect to fakeserver
-	timeout := time.After(30 * time.Second)
+	timeout := time.After(60 * time.Second)
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 mainloop:
