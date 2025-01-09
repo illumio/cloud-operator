@@ -48,7 +48,7 @@ jobs:
         run: |
             helm package ./cloud-operator -d .\
 
-      - name: Install Helm chart and Deploy Operator
+      - name: Install Helm chart and Deploy Operator and Run Tests
         env:
             ONBOARDING_CLIENT_ID: "client_id_1"
             ONBOARDING_CLIENT_SECRET: "client_secret_1"
@@ -69,9 +69,6 @@ jobs:
             --set env.tokenEndpoint=$TOKEN_ENDPOINT \
             --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
             --set falco.enabled=false
-
-      - name: Run Fakeserver Test Driver
-        run: |
-          go test -v ./fakeserver/...
+            go test -v ./fakeserver/...
         
 
