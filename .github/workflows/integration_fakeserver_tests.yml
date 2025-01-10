@@ -71,7 +71,7 @@ jobs:
        
       - name: Wait for Kubernetes Pod to be Ready
         run: |
-          kubectl wait --for=condition=ready pod -l app=myapp --timeout=600s
+          kubectl wait --for=condition=ready pod -l app=cloud-operator --timeout=600s
           kubectl logs -l app=cloud-operator -n illumio-cloud -f
     # go test -v ./fakeserver/...
         
