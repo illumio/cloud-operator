@@ -68,7 +68,11 @@ jobs:
             --set env.tokenEndpoint=$TOKEN_ENDPOINT \
             --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
             --set falco.enabled=false
-            kubectl logs -l app=cloud-operator -n illumio-cloud -f
+       
+      - name: Wait for Kubernetes Pod to be Ready
+        run: |
+          kubectl wait --for=condition=ready pod -l app=myapp --timeout=600s
+          kubectl logs -l app=cloud-operator -n illumio-cloud -f
     # go test -v ./fakeserver/...
         
 
