@@ -38,6 +38,13 @@ jobs:
         id: minikube
         uses: medyagh/setup-minikube@latest
 
+      - name: Get Minikube IP
+        id: get_minikube_ip
+        run: |
+          MINIKUBE_IP=$(minikube ip)
+          minikube ip
+          echo "MINIKUBE_IP=${MINIKUBE_IP}" >> $GITHUB_ENV
+
       - name: Set up Helm
         uses: azure/setup-helm@v4.2.0
         with:
@@ -52,10 +59,11 @@ jobs:
             ONBOARDING_CLIENT_ID: "client_id_1"
             ONBOARDING_CLIENT_SECRET: "client_secret_1"
             TLS_SKIP_VERIFY: true
-            ONBOARDING_ENDPOINT: "https://192.168.65.254:50053/api/v1/k8s_cluster/onboard"
-            TOKEN_ENDPOINT: "https://192.168.65.254:50053/api/v1/k8s_cluster/authenticate"
+            ONBOARDING_ENDPOINT: "https:/${{ env.MINIKUBE_IP }}:50053/api/v1/k8s_cluster/onboard"
+            TOKEN_ENDPOINT: "https://${{ env.MINIKUBE_IP }}:50053/api/v1/k8s_cluster/authenticate"
             
         run: |
+
             helm upgrade --install illumio cloud-operator-*.tgz \
             --namespace illumio-cloud \
             --create-namespace \
