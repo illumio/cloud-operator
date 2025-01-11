@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
@@ -85,7 +86,34 @@ func convertMetaObjectToMetadata(ctx context.Context, logger *zap.SugaredLogger,
 		}
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: convertHostIPsToStrings(hostIPs)}}
 	}
+	if resource == "node" {
+		providerId, err := getProviderIdNodeSpec(ctx, logger, obj.GetName())
+
+		if err != nil {
+			return objMetadata, nil
+		}
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_Node{Node: &pb.KubernetesNodeData{ProviderId: providerId}}
+	}
 	return objMetadata, nil
+}
+
+func getProviderIdNodeSpec(ctx context.Context, logger *zap.SugaredLogger, nodeName string) (string, error) {
+	clientset, err := NewClientSet()
+	if err != nil {
+		logger.Errorw("Failed to create clientset", "error", err)
+		return "", err
+	}
+	fmt.Println("I HAVE FOUND A NODE!!")
+	fmt.Println(nodeName)
+	node, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return "", nil
+	}
+	if node.Spec.ProviderID != "" {
+		fmt.Println(node.Spec.ProviderID)
+		return node.Spec.ProviderID, nil
+	}
+	return "", nil
 }
 
 // getPodIPAddresses uses a pod name and namespace to grab the hostIP addresses within the podStatus
