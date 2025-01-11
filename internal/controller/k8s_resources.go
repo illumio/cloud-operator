@@ -103,8 +103,6 @@ func getProviderIdNodeSpec(ctx context.Context, logger *zap.SugaredLogger, nodeN
 		logger.Errorw("Failed to create clientset", "error", err)
 		return "", err
 	}
-	fmt.Println("I HAVE FOUND A NODE!!")
-	fmt.Println(nodeName)
 	node, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
 		return "", nil
