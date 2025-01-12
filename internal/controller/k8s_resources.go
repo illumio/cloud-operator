@@ -85,7 +85,7 @@ func convertMetaObjectToMetadata(ctx context.Context, logger *zap.SugaredLogger,
 		}
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: convertHostIPsToStrings(hostIPs)}}
 	}
-	if resource == "node" {
+	if resource == "nodes" {
 		providerId, err := getProviderIdNodeSpec(ctx, logger, obj.GetName())
 
 		if err != nil {
@@ -96,6 +96,7 @@ func convertMetaObjectToMetadata(ctx context.Context, logger *zap.SugaredLogger,
 	return objMetadata, nil
 }
 
+// getProviderIdNodeSpec uses a node name to grab the providerId within the nodeSpec
 func getProviderIdNodeSpec(ctx context.Context, logger *zap.SugaredLogger, nodeName string) (string, error) {
 	clientset, err := NewClientSet()
 	if err != nil {
@@ -107,7 +108,6 @@ func getProviderIdNodeSpec(ctx context.Context, logger *zap.SugaredLogger, nodeN
 		return "", nil
 	}
 	if node.Spec.ProviderID != "" {
-		fmt.Println(node.Spec.ProviderID)
 		return node.Spec.ProviderID, nil
 	}
 	return "", nil
