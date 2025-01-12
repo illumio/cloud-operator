@@ -176,6 +176,79 @@ func TestConvertHostIPsToStrings(t *testing.T) {
 	}
 }
 
+func (suite *ControllerTestSuite) TestGetProviderIdNodeSpec() {
+	// Create a development encoder config
+	encoderConfig := zap.NewDevelopmentEncoderConfig()
+	// Create a JSON encoder
+	encoder := zapcore.NewJSONEncoder(encoderConfig)
+	// Create syncers for console output
+	consoleSyncer := zapcore.AddSync(os.Stdout)
+	// Create the core with the atomic level
+	core := zapcore.NewTee(
+		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
+	)
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	logger = logger.With(zap.String("name", "test"))
+
+	tests := map[string]struct {
+		nodeName       string
+		node           *v1.Node
+		expectedID     string
+		expectedErrMsg string
+	}{
+		"node not found": {
+			nodeName:       "nonexistent-node",
+			node:           nil,
+			expectedID:     "",
+			expectedErrMsg: "",
+		},
+		"node with providerID": {
+			nodeName: "test-node",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-node",
+				},
+				Spec: v1.NodeSpec{
+					ProviderID: "provider-id-123",
+				},
+			},
+			expectedID:     "provider-id-123",
+			expectedErrMsg: "",
+		},
+		"node without providerID": {
+			nodeName: "test-node-no-id",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-node-no-id",
+				},
+				Spec: v1.NodeSpec{
+					ProviderID: "",
+				},
+			},
+			expectedID:     "",
+			expectedErrMsg: "",
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			clientset, _ := NewClientSet()
+			if tt.node != nil {
+				_, err := clientset.CoreV1().Nodes().Create(context.TODO(), tt.node, metav1.CreateOptions{})
+				assert.NoError(suite.T(), err)
+			}
+
+			id, err := getProviderIdNodeSpec(context.TODO(), logger, tt.nodeName)
+			if tt.expectedErrMsg != "" {
+				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
+			} else {
+				assert.NoError(suite.T(), err)
+				assert.Equal(suite.T(), tt.expectedID, id)
+			}
+		})
+	}
+}
+
 func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 	// Create a development encoder config
 	encoderConfig := zap.NewDevelopmentEncoderConfig()
