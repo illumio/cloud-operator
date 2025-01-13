@@ -85,7 +85,7 @@ jobs:
 
       - name: Exec into Pod and Test Connections
         run: |
-          POD_NAME=$(kubectl get pods -n <namespace> -o jsonpath='{.items[0].metadata.name}')
+          POD_NAME=$(kubectl get pods -n illumio-cloud -o jsonpath='{.items[0].metadata.name}')
           echo "Pod name: $POD_NAME"
 
           # Define the port where your fakeserver is running
@@ -103,7 +103,7 @@ jobs:
             echo "Testing connection to $IP:$FAKESERVER_PORT from pod..."
 
             # Exec into the pod and run curl command to test the connection
-            kubectl exec -it $POD_NAME -n <namespace> -- curl -v http://$IP:$FAKESERVER_PORT || echo "Failed to connect to $IP:$FAKESERVER_PORT"
+            kubectl exec -it $POD_NAME -n illumio-cloud -- curl -v http://$IP:$FAKESERVER_PORT || echo "Failed to connect to $IP:$FAKESERVER_PORT"
           done
 
                 
