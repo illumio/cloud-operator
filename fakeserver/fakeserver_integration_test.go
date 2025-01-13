@@ -66,6 +66,7 @@ mainloop:
 			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
+			time.Sleep(15 * time.Second)
 			// Check if the log entry has been recorded
 			stateChanged := true
 
@@ -97,6 +98,7 @@ mainloop:
 			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
+			time.Sleep(10 * time.Second)
 			// Check if the log entry has been recorded
 			stateChanged := true
 
