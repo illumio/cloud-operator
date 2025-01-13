@@ -93,7 +93,7 @@ jobs:
 
           # List of IPs to test
           IP_ADDRESSES=(
-            "127.0.0.1"               # Localhost (bound to 127.0.0.1 on the host)
+            "host.docker.internal"               # Localhost (bound to 127.0.0.1 on the host)
             "0.0.0.0"                 # Bind to all interfaces (should allow connection from pod)
             "${{ env.MINIKUBE_IP }}"  # Minikube IP (e.g., 192.168.49.2)
           )
