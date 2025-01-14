@@ -35,6 +35,11 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.ref_name }}
 
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "v1.24.0"
+      
       - name: Set up KIND Cluster with Host Networking
         run: |
           cat <<EOF > kind-config.yaml
@@ -53,11 +58,6 @@ jobs:
           EOF
           kind create cluster --name github-actions --config kind-config.yaml
           kubectl cluster-info --context kind-github-actions
-
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: "v1.24.0"
 
       - name: Set up Helm
         uses: azure/setup-helm@v4.2.0
