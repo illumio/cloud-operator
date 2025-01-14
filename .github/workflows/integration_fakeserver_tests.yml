@@ -55,6 +55,8 @@ jobs:
                 - containerPort: 50051
                   hostPort: 50051
                   protocol: TCP
+              hostNetwork: true  # Use host networking to share the network namespace
+
           EOF
           kind create cluster --name github-actions --config kind-config.yaml
 
