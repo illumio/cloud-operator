@@ -52,6 +52,7 @@ jobs:
                   protocol: TCP
           EOF
           kind create cluster --name github-actions --config kind-config.yaml
+          kubectl cluster-info --context kind-github-actions
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
