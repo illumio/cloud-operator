@@ -66,9 +66,10 @@ mainloop:
 			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
-			time.Sleep(25 * time.Second)
+			// time.Sleep(25 * time.Second)
 			// Check if the log entry has been recorded
-			stateChanged := true
+			stateChanged := fakeServer.state.ConnectionSuccessful
+			t.Log(stateChanged)
 
 			// Check if the log entry we sent is in the received logs
 			if stateChanged {
@@ -98,9 +99,9 @@ mainloop:
 			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
-			time.Sleep(15 * time.Second)
+			// time.Sleep(10 * time.Second)
 			// Check if the log entry has been recorded
-			stateChanged := true
+			stateChanged := fakeServer.state.ConnectionSuccessful
 
 			// Check if the log entry we sent is in the received logs
 			if stateChanged {
