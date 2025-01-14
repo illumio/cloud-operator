@@ -113,7 +113,7 @@ func main() {
 		err := <-errChan
 		logger.Fatal("healthz check server failed", zap.Error(err))
 	}()
-	time.Sleep(45 * time.Second)
+	time.Sleep(30 * time.Second)
 	ctx := context.Background()
 	controller.ConnectStreams(ctx, logger, envConfig, bufferedGrpcSyncer)
 }
