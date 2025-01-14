@@ -21,7 +21,7 @@ func main() {
 		"exp": time.Now().Add(time.Hour * 72).Unix(),
 	})
 	// Just using "secret" for test signing
-	mySigningKey := []byte("secret")
+	mySigningKey := []byte("token1")
 
 	// Sign and get the complete encoded token as a string
 	// nosemgrep: jwt.hardcoded-jwt-key
@@ -30,8 +30,8 @@ func main() {
 		logger.Error("Token could not be signed with fake secret key")
 	}
 	fs := FakeServer{
-		address:     "0.0.0.0:50051",
-		httpAddress: "0.0.0.0:50053",
+		address:     "127.0.0.1:50051",
+		httpAddress: "127.0.0.1:50053",
 		stopChan:    make(chan struct{}),
 		token:       signedToken,
 		logger:      logger,

@@ -37,8 +37,8 @@ func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
 	token := createSignedToken()
 	// Setup: Start the FakeServer
 	fakeServer := &FakeServer{
-		address:     "localhost:50051",
-		httpAddress: "localhost:50053",
+		address:     "127.0.0.1:50051",
+		httpAddress: "127.0.0.1:50053",
 		token:       token,
 		logger:      logger, // Use a no-op logger for testing
 		state:       &ServerState{ConnectionSuccessful: false},
@@ -66,9 +66,8 @@ mainloop:
 			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
-			time.Sleep(15 * time.Second)
 			// Check if the log entry has been recorded
-			stateChanged := true
+			stateChanged := fakeServer.state.ConnectionSuccessful
 
 			// Check if the log entry we sent is in the received logs
 			if stateChanged {
@@ -98,9 +97,8 @@ mainloop:
 			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
-			time.Sleep(10 * time.Second)
 			// Check if the log entry has been recorded
-			stateChanged := true
+			stateChanged := fakeServer.state.ConnectionSuccessful
 
 			// Check if the log entry we sent is in the received logs
 			if stateChanged {

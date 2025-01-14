@@ -59,8 +59,8 @@ jobs:
             ONBOARDING_CLIENT_ID: "client_id_1"
             ONBOARDING_CLIENT_SECRET: "client_secret_1"
             TLS_SKIP_VERIFY: true
-            ONBOARDING_ENDPOINT: "https://${{ env.MINIKUBE_IP }}:50053/api/v1/k8s_cluster/onboard"
-            TOKEN_ENDPOINT: "https://${{ env.MINIKUBE_IP }}:50053/api/v1/k8s_cluster/authenticate"
+            ONBOARDING_ENDPOINT: "https://192.168.65.254:50053/api/v1/k8s_cluster/onboard"
+            TOKEN_ENDPOINT: "https://192.168.65.254:50053/api/v1/k8s_cluster/authenticate"
             
         run: |
 
@@ -83,30 +83,6 @@ jobs:
           go test -v ./fakeserver/...
             # Fetch pod logs after it becomes ready
 
-      - name: Exec into Pod and Test Connections
-        run: |
-          POD_NAME=$(kubectl get pods -n illumio-cloud -o jsonpath='{.items[0].metadata.name}')
-          echo "Pod name: $POD_NAME"
-
-          # Define the port where your fakeserver is running
-          FAKESERVER_PORT=50053
-
-          # List of IPs to test
-          IP_ADDRESSES=(
-            "host.docker.internal"               # Localhost (bound to 127.0.0.1 on the host)
-            "0.0.0.0"                 # Bind to all interfaces (should allow connection from pod)
-            "${{ env.MINIKUBE_IP }}"  # Minikube IP (e.g., 192.168.49.2)
-          )
-
-          # Loop through IPs and test connection using curl
-          for IP in "${IP_ADDRESSES[@]}"; do
-            echo "Testing connection to $IP:$FAKESERVER_PORT from pod..."
-
-            # Exec into the pod and run curl command to test the connection
-            kubectl exec -it $POD_NAME -n illumio-cloud -- curl -v http://$IP:$FAKESERVER_PORT || echo "Failed to connect to $IP:$FAKESERVER_PORT"
-          done
-
-                
       - name: Fetch Kubernetes Pod logs
         run: |
           POD_NAME=$(kubectl get pods -l app=cloud-operator -n illumio-cloud -o jsonpath="{.items[0].metadata.name}")
