@@ -1,9 +1,10 @@
-name: Build, Deploy and Onboard Cloud Operator 
+name: Build, Deploy and Onboard Cloud Operator
 
 on:
-    push:
-      branches:
-        - integration-end-to-end-onboarding-operator
+  push:
+    branches:
+      - integration-end-to-end-onboarding-operator
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -21,7 +22,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-  
+
       - name: Build and push Docker image
         id: build-and-push
         uses: docker/build-push-action@v6
@@ -34,36 +35,46 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.ref_name }}
 
-      - name: start minikube
-        id: minikube
-        uses: medyagh/setup-minikube@latest
-
-      - name: Get Minikube IP
-        id: get_minikube_ip
+      - name: Set up KIND Cluster with Host Networking
         run: |
-          MINIKUBE_IP=$(minikube ip)
-          minikube ip
-          echo "MINIKUBE_IP=${MINIKUBE_IP}" >> $GITHUB_ENV
+          cat <<EOF > kind-config.yaml
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          name: github-actions
+          nodes:
+            - role: control-plane
+              extraPortMappings:
+                - containerPort: 50053
+                  hostPort: 50053
+                  protocol: TCP
+                - containerPort: 50051
+                  hostPort: 50051
+                  protocol: TCP
+          EOF
+          kind create cluster --name github-actions --config kind-config.yaml
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "v1.24.0"
 
       - name: Set up Helm
         uses: azure/setup-helm@v4.2.0
         with:
-            version: "v3.16.4" # Specify the version you need
+            version: "v3.16.4"
 
       - name: Package Helm chart
         run: |
-            helm package ./cloud-operator -d .\
+            helm package ./cloud-operator -d .
 
-      - name: Install Helm chart and Deploy Operator and Run Tests
+      - name: Install Helm chart and Deploy Operator
         env:
             ONBOARDING_CLIENT_ID: "client_id_1"
             ONBOARDING_CLIENT_SECRET: "client_secret_1"
             TLS_SKIP_VERIFY: true
-            ONBOARDING_ENDPOINT: "https://192.168.65.254:50053/api/v1/k8s_cluster/onboard"
-            TOKEN_ENDPOINT: "https://192.168.65.254:50053/api/v1/k8s_cluster/authenticate"
-            
+            ONBOARDING_ENDPOINT: "http://host.docker.internal:50053/api/v1/k8s_cluster/onboard"
+            TOKEN_ENDPOINT: "http://host.docker.internal:50053/api/v1/k8s_cluster/authenticate"
         run: |
-
             helm upgrade --install illumio cloud-operator-*.tgz \
             --namespace illumio-cloud \
             --create-namespace \
@@ -76,40 +87,31 @@ jobs:
             --set env.tokenEndpoint=$TOKEN_ENDPOINT \
             --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
             --set falco.enabled=false
-       
+
       - name: Wait for Kubernetes Pod to be Ready
         run: |
           kubectl wait --for=condition=ready pod -l app=cloud-operator --timeout=600s -n illumio-cloud
-    # go test -v ./fakeserver/...
-            # Fetch pod logs after it becomes ready
+          go test -v ./fakeserver/...
 
       - name: Exec into Pod and Test Connections
         run: |
           POD_NAME=$(kubectl get pods -n illumio-cloud -o jsonpath='{.items[0].metadata.name}')
           echo "Pod name: $POD_NAME"
 
-          # Define the port where your fakeserver is running
-          FAKESERVER_PORT=50053
+          # Define the external server IPs and ports for both HTTP and gRPC servers
+          EXTERNAL_IP="host.docker.internal"
+          HTTP_PORT=50053
+          GRPC_PORT=50051
 
-          # List of IPs to test
-          IP_ADDRESSES=(
-            "192.168.65.254"               # Localhost (bound to 127.0.0.1 on the host)
-            "0.0.0.0"                 # Bind to all interfaces (should allow connection from pod)
-            "${{ env.MINIKUBE_IP }}"  # Minikube IP (e.g., 192.168.49.2)
-          )
+          # Test connection to the HTTP fake server
+          echo "Testing HTTP connection to $EXTERNAL_IP:$HTTP_PORT from pod..."
+          kubectl exec -it $POD_NAME -n illumio-cloud -- curl -v http://$EXTERNAL_IP:$HTTP_PORT || echo "Failed to connect to HTTP server at $EXTERNAL_IP:$HTTP_PORT"
 
-          # Loop through IPs and test connection using curl
-          for IP in "${IP_ADDRESSES[@]}"; do
-            echo "Testing connection to $IP:$FAKESERVER_PORT from pod..."
+          # Test connection to the gRPC server
+          echo "Testing gRPC connection to $EXTERNAL_IP:$GRPC_PORT from pod..."
+          kubectl exec -it $POD_NAME -n illumio-cloud -- grpcurl -plaintext $EXTERNAL_IP:$GRPC_PORT list || echo "Failed to connect to gRPC server at $EXTERNAL_IP:$GRPC_PORT"
 
-            # Exec into the pod and run curl command to test the connection
-            kubectl exec -it $POD_NAME -n illumio-cloud -- curl -v http://$IP:$FAKESERVER_PORT || echo "Failed to connect to $IP:$FAKESERVER_PORT"
-          done
-
-                
       - name: Fetch Kubernetes Pod logs
         run: |
           POD_NAME=$(kubectl get pods -l app=cloud-operator -n illumio-cloud -o jsonpath="{.items[0].metadata.name}")
           kubectl logs $POD_NAME -n illumio-cloud
-        
-
