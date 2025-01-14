@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 )
 
 // ResourceManager encapsulates components for listing and managing Kubernetes resources.
@@ -25,8 +26,8 @@ type ResourceManager struct {
 }
 
 // DynamicListAndWatchResources lists and watches the specified resource dynamically, managing context cancellation and synchronization with wait groups.
-func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, allResourcesSnapshotted *sync.WaitGroup, snapshotCompleted *sync.WaitGroup) {
-	resourceListVersion, err := r.DynamicListResources(ctx, resource, apiGroup)
+func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, clientset *kubernetes.Clientset, allResourcesSnapshotted *sync.WaitGroup, snapshotCompleted *sync.WaitGroup) {
+	resourceListVersion, err := r.DynamicListResources(ctx, resource, clientset, apiGroup)
 	if err != nil {
 		allResourcesSnapshotted.Done()
 		r.logger.Errorw("Unable to list resources", "error", err)
@@ -49,7 +50,7 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 		return
 	}
 
-	err = r.watchEvents(ctx, resource, apiGroup, watchOptions)
+	err = r.watchEvents(ctx, resource, apiGroup, clientset, watchOptions)
 	if err != nil {
 		r.logger.Errorw("Unable to watch events", "error", err)
 		cancel()
@@ -58,14 +59,14 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 }
 
 // DynamicListResources lists a specifed resource dynamically and sends down the current gRPC stream.
-func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string, apiGroup string) (string, error) {
+func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string, clientset *kubernetes.Clientset, apiGroup string) (string, error) {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	objs, resourceListVersion, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
 		return "", err
 	}
 	for _, obj := range objs {
-		metadataObj, err := convertMetaObjectToMetadata(ctx, r.logger, obj, resource)
+		metadataObj, err := convertMetaObjectToMetadata(ctx, obj, clientset, resource)
 		if err != nil {
 			r.logger.Errorw("Cannot convert object metadata", "error", err)
 			return "", err
@@ -87,7 +88,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 
 // watchEvents watches Kubernetes resources and updates cache based on events.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
-func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiGroup string, watchOptions metav1.ListOptions) error {
+func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiGroup string, clientset *kubernetes.Clientset, watchOptions metav1.ListOptions) error {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
@@ -108,7 +109,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			r.logger.Errorw("Cannot convert runtime.Object to metav1.ObjectMeta", "error", err)
 			return err
 		}
-		metadataObj, err := convertMetaObjectToMetadata(ctx, r.logger, *convertedData, resource)
+		metadataObj, err := convertMetaObjectToMetadata(ctx, *convertedData, clientset, resource)
 		if err != nil {
 			r.logger.Errorw("Cannot convert object metadata", "error", err)
 			return err

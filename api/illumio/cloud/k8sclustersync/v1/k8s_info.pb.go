@@ -410,10 +410,10 @@ func (*KubernetesObjectData_Pod) isKubernetesObjectData_KindSpecific() {}
 func (*KubernetesObjectData_Node) isKubernetesObjectData_KindSpecific() {}
 
 // KubernetesNodeData contains information specific to a Node Object.
-// We need to grab the providerId from each given Node.
 type KubernetesNodeData struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProviderId    string                 `protobuf:"bytes,1,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Node.spec.providerID
+	ProviderId    string `protobuf:"bytes,1,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

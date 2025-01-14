@@ -28,8 +28,8 @@ message KubernetesObjectData {
 }
 
 // KubernetesNodeData contains information specific to a Node Object.
-// We need to grab the providerId from each given Node.
 message KubernetesNodeData {
+  // Node.spec.providerID
   string provider_id = 1;
 }
 
