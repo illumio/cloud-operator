@@ -5,7 +5,6 @@ package controller
 import (
 	"context"
 	"flag"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -13,7 +12,6 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	v1 "k8s.io/api/core/v1"
@@ -25,7 +23,7 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
-func TestConvertObjectToMetadata(t *testing.T) {
+func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 	// Setup a mock object, e.g., a ConfigMap with predefined metadata
 	configMap := metav1.ObjectMeta{
 		Name:            "test-pod",
@@ -34,9 +32,13 @@ func TestConvertObjectToMetadata(t *testing.T) {
 		ResourceVersion: "test-version",
 	}
 	logger := zap.NewNop().Sugar()
-
+	clientset, err := NewClientSet()
+	if err != nil {
+		logger.Errorw("Failed to create clientset", "error", err)
+		suite.T().Error("could not create clientset")
+	}
 	// Execute the function under test.
-	got, _ := convertMetaObjectToMetadata(context.Background(), logger, configMap, "configMap")
+	got, _ := convertMetaObjectToMetadata(context.Background(), configMap, clientset, "configMap")
 
 	// Define what you expect to get.
 	want := metav1.ObjectMeta{
@@ -48,7 +50,7 @@ func TestConvertObjectToMetadata(t *testing.T) {
 
 	// Compare the result with the expected outcome.
 	if got.Name != want.Name || got.Namespace != want.Namespace || string(got.GetUid()) != string(want.UID) || got.ResourceVersion != want.ResourceVersion {
-		t.Errorf("convertObjectToMetadata() = %#v, want %#v", got, want)
+		suite.T().Errorf("convertObjectToMetadata() = %#v, want %#v", got, want)
 	}
 }
 
@@ -99,8 +101,15 @@ func TestGetMetadataFromResource(t *testing.T) {
 	}
 }
 
-func TestConvertMetaObjectToMetadata(t *testing.T) {
+func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 	logger := zap.NewNop().Sugar()
+
+	clientset, err := NewClientSet()
+	if err != nil {
+		logger.Errorw("Failed to create clientset", "error", err)
+		suite.T().Fatalf("could not create clientset: %v", err)
+	}
+
 	sampleData := make(map[string]string)
 	resource := "test-resource"
 	creationTimestamp := metav1.Time{Time: time.Now()}
@@ -125,8 +134,13 @@ func TestConvertMetaObjectToMetadata(t *testing.T) {
 		Uid:               "test-uid",
 	}
 
-	result, _ := convertMetaObjectToMetadata(context.Background(), logger, objMeta, resource)
-	assert.Equal(t, expected, result)
+	// Ensure proper error handling
+	result, err := convertMetaObjectToMetadata(context.Background(), objMeta, clientset, resource)
+	if err != nil {
+		suite.T().Fatalf("Error converting MetaObject to Metadata: %v", err)
+	}
+
+	assert.Equal(suite.T(), expected, result)
 }
 
 func TestConvertToProtoTimestamp(t *testing.T) {
@@ -176,19 +190,68 @@ func TestConvertHostIPsToStrings(t *testing.T) {
 	}
 }
 
+func (suite *ControllerTestSuite) TestGetProviderIdNodeSpec() {
+
+	tests := map[string]struct {
+		nodeName       string
+		node           *v1.Node
+		expectedID     string
+		expectedErrMsg string
+	}{
+		"node not found": {
+			nodeName:       "nonexistent-node",
+			node:           nil,
+			expectedID:     "",
+			expectedErrMsg: "",
+		},
+		"node with providerID": {
+			nodeName: "test-node",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-node",
+				},
+				Spec: v1.NodeSpec{
+					ProviderID: "provider-id-123",
+				},
+			},
+			expectedID:     "provider-id-123",
+			expectedErrMsg: "",
+		},
+		"node without providerID": {
+			nodeName: "test-node-no-id",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-node-no-id",
+				},
+				Spec: v1.NodeSpec{
+					ProviderID: "",
+				},
+			},
+			expectedID:     "",
+			expectedErrMsg: "no providerID set",
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			clientset, _ := NewClientSet()
+			if tt.node != nil {
+				_, err := clientset.CoreV1().Nodes().Create(context.TODO(), tt.node, metav1.CreateOptions{})
+				assert.NoError(suite.T(), err)
+			}
+
+			id, err := getProviderIdNodeSpec(context.TODO(), clientset, tt.nodeName)
+			if tt.expectedErrMsg != "" {
+				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
+			} else {
+				assert.NoError(suite.T(), err)
+				assert.Equal(suite.T(), tt.expectedID, id)
+			}
+		})
+	}
+}
+
 func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
-	// Create a development encoder config
-	encoderConfig := zap.NewDevelopmentEncoderConfig()
-	// Create a JSON encoder
-	encoder := zapcore.NewJSONEncoder(encoderConfig)
-	// Create syncers for console output
-	consoleSyncer := zapcore.AddSync(os.Stdout)
-	// Create the core with the atomic level
-	core := zapcore.NewTee(
-		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
-	)
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
-	logger = logger.With(zap.String("name", "test"))
 	tests := map[string]struct {
 		podName        string
 		namespace      string
@@ -216,7 +279,7 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 				assert.NoError(suite.T(), err)
 			}
 
-			ips, err := getPodIPAddresses(context.TODO(), logger, tt.podName, tt.namespace)
+			ips, err := getPodIPAddresses(context.TODO(), tt.podName, clientset, tt.namespace)
 			if tt.expectedErrMsg != "" {
 				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
 			} else {

@@ -157,6 +157,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, cancel context.Can
 	dd.processingResources = true
 	dd.mutex.Unlock()
 	resourceLister := &ResourceManager{
+		clientset:     clientset,
 		logger:        sm.logger,
 		dynamicClient: dynamicClient,
 		streamManager: sm,

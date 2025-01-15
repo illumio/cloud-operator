@@ -23,7 +23,14 @@ message KubernetesObjectData {
   string uid = 9;
   oneof kind_specific {
     KubernetesPodData pod = 100;
+    KubernetesNodeData node = 101;
   }
+}
+
+// KubernetesNodeData contains information specific to a Node Object.
+message KubernetesNodeData {
+  // Node.spec.providerID
+  string provider_id = 1;
 }
 
 // KubernetesPodData contains information specific to a Pod object.
