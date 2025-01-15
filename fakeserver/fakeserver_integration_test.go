@@ -10,7 +10,7 @@ import (
 )
 
 func createSignedToken() string {
-	aud := "0.0.0.0:50051"
+	aud := "192.168.49.1:50051"
 	token := "token1"
 	// Example of generating a JWT with an "aud" claim
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{

@@ -30,8 +30,8 @@ func main() {
 		logger.Error("Token could not be signed with fake secret key")
 	}
 	fs := FakeServer{
-		address:     "127.0.0.1:50051",
-		httpAddress: "127.0.0.1:50053",
+		address:     "0.0.0.0:50051",
+		httpAddress: "0.0.0.0:50053",
 		stopChan:    make(chan struct{}),
 		token:       signedToken,
 		logger:      logger,
