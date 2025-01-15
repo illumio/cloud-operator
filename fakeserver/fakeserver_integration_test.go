@@ -10,7 +10,7 @@ import (
 )
 
 func createSignedToken() string {
-	aud := "127.0.0.1:50051"
+	aud := "0.0.0.0:50051"
 	token := "token1"
 	// Example of generating a JWT with an "aud" claim
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -37,8 +37,8 @@ func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
 	token := createSignedToken()
 	// Setup: Start the FakeServer
 	fakeServer := &FakeServer{
-		address:     "127.0.0.1:50051",
-		httpAddress: "127.0.0.1:50053",
+		address:     "0.0.0.0:50051",
+		httpAddress: "0.0.0.0:50053",
 		token:       token,
 		logger:      logger, // Use a no-op logger for testing
 		state:       &ServerState{ConnectionSuccessful: false},

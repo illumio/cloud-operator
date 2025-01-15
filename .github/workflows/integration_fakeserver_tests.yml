@@ -52,12 +52,6 @@ jobs:
       - name: Wait for Minikube to be ready
         run: |
           minikube kubectl -- get nodes
-      - name: Get Docker Gateway IP
-        id: get_docker_gateway_ip
-        run: |
-          # Extract Docker gateway IP address (the IP of docker0 interface)
-          GATEWAY_IP=$(ip route | grep docker0 | awk '{print $3}')
-          echo "GATEWAY_IP=$GATEWAY_IP" >> $GITHUB_ENV
 
       - name: Set up Helm
         uses: azure/setup-helm@v4.2.0
@@ -73,8 +67,8 @@ jobs:
             ONBOARDING_CLIENT_ID: "client_id_1"
             ONBOARDING_CLIENT_SECRET: "client_secret_1"
             TLS_SKIP_VERIFY: true
-            ONBOARDING_ENDPOINT: "http://${{env.GATEWAY_IP}}:50053/api/v1/k8s_cluster/onboard"
-            TOKEN_ENDPOINT: "http://${{env.GATEWAY_IP}}:50053/api/v1/k8s_cluster/authenticate"
+            ONBOARDING_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/onboard"
+            TOKEN_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/authenticate"
         run: |
             helm upgrade --install illumio cloud-operator-*.tgz \
             --namespace illumio-cloud \
