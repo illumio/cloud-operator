@@ -157,6 +157,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, cancel context.Can
 	dd.processingResources = true
 	dd.mutex.Unlock()
 	resourceLister := &ResourceManager{
+		clientset:     clientset,
 		logger:        sm.logger,
 		dynamicClient: dynamicClient,
 		streamManager: sm,
@@ -168,7 +169,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, cancel context.Can
 	}
 	for resource, apiGroup := range resourceAPIGroupMap {
 		allResourcesSnapshotted.Add(1)
-		go resourceLister.DyanmicListAndWatchResources(ctx, cancel, resource, apiGroup, clientset, &allResourcesSnapshotted, &snapshotCompleted)
+		go resourceLister.DyanmicListAndWatchResources(ctx, cancel, resource, apiGroup, &allResourcesSnapshotted, &snapshotCompleted)
 	}
 	allResourcesSnapshotted.Wait()
 	err = sendResourceSnapshotComplete(sm)
