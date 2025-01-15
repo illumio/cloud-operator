@@ -46,6 +46,9 @@ jobs:
           kind: Cluster
           apiVersion: kind.x-k8s.io/v1alpha4
           name: github-actions
+          networking:
+            apiServerAddress: "0.0.0.0"
+            apiServerPort: 6443
           nodes:
             - role: control-plane
               extraPortMappings:
@@ -55,7 +58,6 @@ jobs:
                 - containerPort: 50051
                   hostPort: 50051
                   protocol: TCP
-              hostNetwork: true  # Use host networking to share the network namespace
 
           EOF
           kind create cluster --name github-actions --config kind-config.yaml
