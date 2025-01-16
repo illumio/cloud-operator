@@ -73,6 +73,6 @@ spec:
             - name: TLS_SKIP_VERIFY
               value: "{{ .Values.env.tlsSkipVerify }}"
             - name: RUNNING_GHA
-              value: "{{ .Values.env.runningGHA} }"
+              value: "{{ .Values.env.runningGHA }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
