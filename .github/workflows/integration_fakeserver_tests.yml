@@ -85,7 +85,7 @@ jobs:
             --set env.runningGHA=$RUNNING_GHA \
             --set falco.enabled=false
 
-      - name: Wait for Kubernetes Pod to be Ready
+      - name: Wait for Kubernetes Pod to be Ready and Run Integration Tests
         run: |
           # Wait for a few seconds to ensure the cluster and resources are fully up
           echo "Waiting for the cluster and resources to initialize..."
