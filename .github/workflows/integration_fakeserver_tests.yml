@@ -82,7 +82,7 @@ jobs:
             --set env.onboardingEndpoint=$ONBOARDING_ENDPOINT \
             --set env.tokenEndpoint=$TOKEN_ENDPOINT \
             --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
-            --set env.runningGHA=$RUNNING_GHA
+            --set env.runningGHA=$RUNNING_GHA \
             --set falco.enabled=false
 
       - name: Wait for Kubernetes Pod to be Ready
