@@ -12,10 +12,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 )
 
 // ResourceManager encapsulates components for listing and managing Kubernetes resources.
 type ResourceManager struct {
+	// Clientset providing accees to k8s api.
+	clientset *kubernetes.Clientset
 	// Logger provides strucuted logging interface.
 	logger *zap.SugaredLogger
 	// DynamicClient offers generic Kubernetes API operations.
@@ -23,6 +26,8 @@ type ResourceManager struct {
 	// streamManager abstracts logic related to starting, using, and managing streams.
 	streamManager *streamManager
 }
+
+// TODO: Make a struct with the ClientSet as a field, and convertMetaObjectToMetadata, getPodIPAddresses, getProviderIdNodeSpec should be methods of that struct.
 
 // DynamicListAndWatchResources lists and watches the specified resource dynamically, managing context cancellation and synchronization with wait groups.
 func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, allResourcesSnapshotted *sync.WaitGroup, snapshotCompleted *sync.WaitGroup) {
@@ -65,7 +70,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 		return "", err
 	}
 	for _, obj := range objs {
-		metadataObj, err := convertMetaObjectToMetadata(ctx, r.logger, obj, resource)
+		metadataObj, err := convertMetaObjectToMetadata(ctx, obj, r.clientset, resource)
 		if err != nil {
 			r.logger.Errorw("Cannot convert object metadata", "error", err)
 			return "", err
@@ -108,7 +113,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			r.logger.Errorw("Cannot convert runtime.Object to metav1.ObjectMeta", "error", err)
 			return err
 		}
-		metadataObj, err := convertMetaObjectToMetadata(ctx, r.logger, *convertedData, resource)
+		metadataObj, err := convertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resource)
 		if err != nil {
 			r.logger.Errorw("Cannot convert object metadata", "error", err)
 			return err
