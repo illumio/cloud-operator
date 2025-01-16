@@ -33,7 +33,7 @@ onboardingSecret:
   clientSecret: ""
 
 falco:
-  enabled: true
+  enabled: false
   namespace: falco
   falco:
     http_output:
@@ -65,3 +65,4 @@ env:
   tlsSkipVerify: false
   onboardingEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
   tokenEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
+  runningGHA: false

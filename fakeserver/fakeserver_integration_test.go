@@ -33,7 +33,7 @@ func createSignedToken() string {
 
 // Simulating a client interacting with the gRPC server
 func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
-	logger := zap.NewNop()
+	logger, _ := zap.NewDevelopment()
 	token := createSignedToken()
 	// Setup: Start the FakeServer
 	fakeServer := &FakeServer{
@@ -69,7 +69,6 @@ mainloop:
 			// time.Sleep(25 * time.Second)
 			// Check if the log entry has been recorded
 			stateChanged := fakeServer.state.ConnectionSuccessful
-			t.Log(stateChanged)
 
 			// Check if the log entry we sent is in the received logs
 			if stateChanged {

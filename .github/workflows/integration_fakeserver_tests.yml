@@ -67,6 +67,7 @@ jobs:
             ONBOARDING_CLIENT_ID: "client_id_1"
             ONBOARDING_CLIENT_SECRET: "client_secret_1"
             TLS_SKIP_VERIFY: true
+            RUNNING_GHA: true
             ONBOARDING_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/onboard"
             TOKEN_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/authenticate"
         run: |
@@ -81,6 +82,7 @@ jobs:
             --set env.onboardingEndpoint=$ONBOARDING_ENDPOINT \
             --set env.tokenEndpoint=$TOKEN_ENDPOINT \
             --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
+            --set env.runningGHA=$RUNNING_GHA
             --set falco.enabled=false
 
       - name: Wait for Kubernetes Pod to be Ready
@@ -98,24 +100,6 @@ jobs:
           # Run your test against the fake server
           go test -v ./fakeserver/...
           
-
-      # - name: Exec into Pod and Test Connections
-      #   run: |
-      #     POD_NAME=$(kubectl get pods -n illumio-cloud -o jsonpath='{.items[0].metadata.name}')
-      #     echo "Pod name: $POD_NAME"
-
-      #     # Define the external server IPs and ports for both HTTP and gRPC servers
-      #     EXTERNAL_IP="host.docker.internal"
-      #     HTTP_PORT=50053
-      #     GRPC_PORT=50051
-
-      #     # Test connection to the HTTP fake server
-      #     echo "Testing HTTP connection to $EXTERNAL_IP:$HTTP_PORT from pod..."
-      #     kubectl exec -it $POD_NAME -n illumio-cloud -- curl -v http://$EXTERNAL_IP:$HTTP_PORT || echo "Failed to connect to HTTP server at $EXTERNAL_IP:$HTTP_PORT"
-
-      #     # Test connection to the gRPC server
-      #     echo "Testing gRPC connection to $EXTERNAL_IP:$GRPC_PORT from pod..."
-      #     kubectl exec -it $POD_NAME -n illumio-cloud -- grpcurl -plaintext $EXTERNAL_IP:$GRPC_PORT list || echo "Failed to connect to gRPC server at $EXTERNAL_IP:$GRPC_PORT"
 
       - name: Fetch Kubernetes Pod logs
         run: |
