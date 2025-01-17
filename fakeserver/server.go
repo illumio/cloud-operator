@@ -62,8 +62,7 @@ type FakeServer struct {
 type ServerState struct {
 	ConnectionSuccessful bool
 	IncorrectCredentials bool
-	// injectToken           string
-	// FailOnFirstConnection bool
+	BadIntialCommit      bool
 }
 
 var (
@@ -116,6 +115,10 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 			logger.Info("Initial inventory data")
 		case *pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete:
 			logger.Info("Initial inventory complete")
+			if serverState.BadIntialCommit {
+				serverState.BadIntialCommit = false
+				return io.EOF
+			}
 			serverState.ConnectionSuccessful = true
 		case *pb.SendKubernetesResourcesRequest_KubernetesResourceMutation:
 			logger.Info("Mutation Detected")

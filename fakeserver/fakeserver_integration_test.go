@@ -111,3 +111,51 @@ mainloop:
 		}
 	}
 }
+
+func TestFailureDuringIntialCommit(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+	token := createSignedToken()
+	// Setup: Start the FakeServer
+	fakeServer := &FakeServer{
+		address:     "0.0.0.0:50051",
+		httpAddress: "0.0.0.0:50053",
+		token:       token,
+		logger:      logger, // Use a no-op logger for testing
+		state:       &ServerState{ConnectionSuccessful: false, BadIntialCommit: true},
+	}
+
+	// Start the server
+	err := fakeServer.start()
+	assert.NoError(t, err, "Failed to start the FakeServer")
+
+	// Cleanup: Stop the server after the test
+	defer fakeServer.stop()
+
+	// Allow the server a bit of time to start
+	time.Sleep(2 * time.Second)
+	// Wait for the state to change, Wanting to see client succesfully connect to fakeserver
+	timeout := time.After(60 * time.Second)
+	ticker := time.NewTicker(500 * time.Millisecond)
+
+mainloop:
+	for {
+		select {
+		case <-timeout:
+			// Test failure if the state hasn't changed in time
+			t.Fatal("Operator never connected in alloted time.")
+			return
+		case <-ticker.C:
+			// time.Sleep(25 * time.Second)
+			// Check if the log entry has been recorded
+			stateChanged := fakeServer.state.ConnectionSuccessful
+
+			// Check if the log entry we sent is in the received logs
+			if stateChanged {
+				t.Log("Connection Succes is true. Test passed.")
+				assert.Equal(t, stateChanged, true)
+				break mainloop
+			}
+		}
+	}
+	fakeServer.stop()
+}
