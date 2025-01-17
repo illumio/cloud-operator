@@ -9,6 +9,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var token = createSignedToken()
+
 func createSignedToken() string {
 	aud := "192.168.49.1:50051"
 	token := "token1"
@@ -33,8 +35,7 @@ func createSignedToken() string {
 
 // Simulating a client interacting with the gRPC server
 func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
-	logger, _ := zap.NewDevelopment()
-	token := createSignedToken()
+	logger := zap.NewNop()
 	// Setup: Start the FakeServer
 	fakeServer := &FakeServer{
 		address:     "0.0.0.0:50051",
@@ -113,8 +114,7 @@ mainloop:
 }
 
 func TestFailureDuringIntialCommit(t *testing.T) {
-	logger, _ := zap.NewDevelopment()
-	token := createSignedToken()
+	logger := zap.NewNop()
 	// Setup: Start the FakeServer
 	fakeServer := &FakeServer{
 		address:     "0.0.0.0:50051",
@@ -145,7 +145,6 @@ mainloop:
 			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
-			// time.Sleep(25 * time.Second)
 			// Check if the log entry has been recorded
 			stateChanged := fakeServer.state.ConnectionSuccessful
 

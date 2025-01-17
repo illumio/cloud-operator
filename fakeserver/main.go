@@ -35,6 +35,7 @@ func main() {
 		stopChan:    make(chan struct{}),
 		token:       signedToken,
 		logger:      logger,
+		state:       &ServerState{},
 	}
 
 	// Start the server
