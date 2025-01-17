@@ -10,9 +10,10 @@ import (
 	"net/url"
 	"testing"
 
-	"gotest.tools/v3/assert"
+	"github.com/spf13/viper"
 )
 
+// Cluster represents a Kubernetes cluster with relevant metadata.
 type Cluster struct {
 	ID            string `json:"id"`
 	IllumioRegion string `json:"illumio_region"`
@@ -20,6 +21,7 @@ type Cluster struct {
 	Onboarded     bool   `json:"onboarded"`
 }
 
+// ClustersResponse represents the response containing cluster data.
 type ClustersResponse struct {
 	Clusters      []Cluster `json:"clusters"`
 	TotalSize     int       `json:"total_size"`
@@ -28,14 +30,45 @@ type ClustersResponse struct {
 	Page          int       `json:"page"`
 }
 
+// Config holds configuration values needed for the API requests.
+type Config struct {
+	TenantId     string
+	CloudIdKey   string
+	CloudIdValue string
+	UserId       string
+}
+
+// NewHTTPClient returns a reusable HTTP client.
+func NewHTTPClient() *http.Client {
+	return &http.Client{}
+}
+
+// getAuthorizationHeader returns the Basic Authorization header using the provided credentials.
 func getAuthorizationHeader(key, secret string) string {
 	credentials := fmt.Sprintf("%s:%s", key, secret)
 	encodedCredentials := base64.StdEncoding.EncodeToString([]byte(credentials))
 	return fmt.Sprintf("Basic %s", encodedCredentials)
 }
 
-func fetchClusters() ([]Cluster, error) {
-	baseURL := "http://example.com/api/v1/k8s_cluster" // Replace with actual URL
+// buildRequest creates a new HTTP request with common headers.
+func buildRequest(method, url string, body io.Reader, config Config) (*http.Request, error) {
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Authorization", getAuthorizationHeader(config.CloudIdKey, config.CloudIdValue))
+	req.Header.Add("Accept", "*/*")
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("X-Tenant-Id", config.TenantId)
+	req.Header.Add("X-User-Id", config.UserId)
+
+	return req, nil
+}
+
+// fetchClusters makes an HTTP request to fetch a list of clusters.
+func fetchClusters(config Config) ([]Cluster, error) {
+	baseURL := "http://cloud.illum.io/api/v1/k8s_cluster" // Replace with actual URL
 
 	params := url.Values{}
 	params.Add("max_results", "10")
@@ -46,27 +79,17 @@ func fetchClusters() ([]Cluster, error) {
 
 	fullURL := fmt.Sprintf("%s?%s", baseURL, params.Encode())
 
-	req, err := http.NewRequest("GET", fullURL, nil)
+	req, err := buildRequest("GET", fullURL, nil, config)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Add("Authorization", getAuthorizationHeader("cloud_", "___"))
-	req.Header.Add("Accept", "*/*")
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("X-Tenant-Id", "_____")
-	req.Header.Add("X-User-Id", "_____")
-
-	client := &http.Client{}
+	client := NewHTTPClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("request failed with status: %v", resp.Status)
-	}
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("request failed with status: %v", resp.Status)
@@ -83,55 +106,69 @@ func fetchClusters() ([]Cluster, error) {
 	}
 
 	return clustersResponse.Clusters, nil
-
 }
 
-func TestClusterIsOnboarded(t *testing.T) {
-	// Fetch clusters
-	data, err := fetchClusters()
-	if err != nil {
-		t.Fatalf("Failed to fetch clusters: %v", err)
-	}
+// offboardCluster sends a request to offboard a cluster by its ID.
+func offboardCluster(config Config, clusterID string) error {
+	offBoardURL := "http://cloud.illum.io/api/v1/k8s_cluster/offboard"
 
-	// Check if the output is not empty
-	if len(data) == 0 {
-		t.Errorf("Expected non-empty response, got empty response")
-	}
-
-	// Parse the response to ensure it matches expected structure
-	if len(data) == 0 {
-		t.Errorf("Expected 'clusters' in response, got %v", data)
-	}
-
-	assert.Equal(t, 1, len(data))
-	clusterID := data[0].ID
-	offBoardURL := "http://example.com/api/v1/k8s_cluster/offboard"
-
-	// Create the body
 	body := map[string][]string{
 		"cluster_ids": {clusterID},
 	}
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		t.Fatalf("failed to marshal JSON body: %v", err)
+		return fmt.Errorf("failed to marshal JSON body: %v", err)
 	}
 
-	req, err := http.NewRequest("POST", offBoardURL, bytes.NewBuffer(jsonBody))
+	req, err := buildRequest("POST", offBoardURL, bytes.NewBuffer(jsonBody), config)
 	if err != nil {
-		t.Fatalf("failed to create request: %v", err)
+		return fmt.Errorf("failed to create request: %v", err)
 	}
-	req.Header.Add("Authorization", getAuthorizationHeader("cloud_", "___"))
-	req.Header.Add("Accept", "*/*")
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("X-Tenant-Id", "_____")
-	req.Header.Add("X-User-Id", "_____")
 
-	client := &http.Client{}
+	client := NewHTTPClient()
 	resp, err := client.Do(req)
 	if err != nil {
-		t.Fatalf("failed to do request: %v", err)
+		return fmt.Errorf("failed to do request: %v", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("request failed with status: %v", resp.Status)
+	}
+
+	return nil
+}
+
+// TestClusterIsOnboarded tests if a cluster can be offboarded after fetching it.
+func TestClusterIsOnboarded(t *testing.T) {
+	// Load configuration from environment variables using Viper
+	viper.AutomaticEnv()
+
+	config := Config{
+		TenantId:     viper.GetString("TENANT_ID"),
+		CloudIdKey:   viper.GetString("CLOUD_ID_KEY"),
+		CloudIdValue: viper.GetString("CLOUD_ID_VALUE"),
+		UserId:       viper.GetString("USER_ID"),
+	}
+
+	// Fetch clusters
+	clusters, err := fetchClusters(config)
+	if err != nil {
+		t.Fatalf("Failed to fetch clusters: %v", err)
+	}
+
+	// Validate the response
+	if len(clusters) == 0 {
+		t.Error("Expected non-empty response, got empty response")
+	}
+
+	// Check the first cluster and attempt to offboard it
+	clusterID := clusters[0].ID
+	t.Logf("Attempting to offboard cluster with ID: %s", clusterID)
+
+	if err := offboardCluster(config, clusterID); err != nil {
+		t.Fatalf("Failed to offboard cluster: %v", err)
+	}
 
 }

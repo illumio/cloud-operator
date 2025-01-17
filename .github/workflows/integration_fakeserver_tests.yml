@@ -1,4 +1,4 @@
-name: Build, Deploy and Onboard Cloud Operator
+name: Integration Tests with Fakeserver
 
 on:
   push:
@@ -85,7 +85,7 @@ jobs:
             --set env.runningGHA=$RUNNING_GHA \
             --set falco.enabled=false
 
-      - name: Wait for Kubernetes Pod to be Ready and Run Integration Tests
+      - name: Wait for Kubernetes Pod to be Ready
         run: |
           # Wait for a few seconds to ensure the cluster and resources are fully up
           echo "Waiting for the cluster and resources to initialize..."
@@ -97,7 +97,9 @@ jobs:
           # Wait for the cloud-operator pod to be ready
           kubectl wait --for=condition=ready pod -l app=cloud-operator --timeout=600s -n illumio-cloud
       
-          # Run your test against the fake server
+      - name:  Run Integration Tests
+        run: |
+         # Run your test against the fake server
           go test -v ./fakeserver/...
           
 

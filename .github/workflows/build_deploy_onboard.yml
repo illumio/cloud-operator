@@ -1,4 +1,4 @@
-name: Build, Deploy and Onboard Cloud Operator 
+name: Build, Deploy and Onboard Cloud Operator To Live Services
 
 on:
     push:
@@ -34,15 +34,28 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.ref_name }}
 
-      - name: Set up Kind cluster
-        uses: helm/kind-action@v1.2.0
-        with:
-            version: v0.11.1  # Specify the version you need
+            - name: Install kubectl
+            uses: azure/setup-kubectl@v3
+            with:
+              version: "v1.24.0"
+          
+      - name: Install Minikube
+        run: |
+          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          sudo install minikube-linux-amd64 /usr/local/bin/minikube
+
+      - name: Start Minikube
+        run: |
+          minikube start --driver=docker
+  
+      - name: Wait for Minikube to be ready
+        run: |
+          minikube kubectl -- get nodes
 
       - name: Set up Helm
-        uses: azure/setup-helm@v3.5
+        uses: azure/setup-helm@v4.2.0
         with:
-            version: "v3.5.2" # Specify the version you need
+            version: "v3.16.4"
 
       - name: Package Helm chart
         run: |
@@ -70,11 +83,17 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-            go-version: '^1.22'
+            go-version: '^1.23'
 
       - name: Install dependencies
         run: go mod tidy
 
       - name: Run tests
+        env:
+          TENANT_ID: ${{ secrets.TENANT_ID }}
+          CLOUD_ID_KEY: ${{ secrets.CLOUD_ID_KEY }}
+          CLOUD_ID_VALUE: ${{ secrets.CLOUD_ID_VALUE }}
+          USER_ID: ${{ secrets.USER_ID }}
+
         run:  go test -v ./integration-testing/...
         
