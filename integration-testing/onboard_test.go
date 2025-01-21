@@ -70,14 +70,14 @@ func buildRequest(method, url string, body io.Reader, config Config) (*http.Requ
 
 // fetchClusters makes an HTTP request to fetch a list of clusters.
 func fetchClusters(config Config) ([]Cluster, error) {
-	baseURL := "http://cloud.illum.io/api/v1/k8s_cluster" // Replace with actual URL
+	baseURL := "https://cloud.illum.io/api/v1/k8s_cluster" // Replace with actual URL
 
 	params := url.Values{}
 	params.Add("max_results", "10")
 	params.Add("sortBy.field", "1")
 	params.Add("sortBy.sort_order", "1")
 	params.Add("filterBy.field", "ILLUMIO_REGION")
-	params.Add("filterBy.value", "aws-us-east-1")
+	params.Add("filterBy.value", "aws-us-west-2")
 
 	fullURL := fmt.Sprintf("%s?%s", baseURL, params.Encode())
 
@@ -111,11 +111,11 @@ func fetchClusters(config Config) ([]Cluster, error) {
 }
 
 // offboardCluster sends a request to offboard a cluster by its ID.
-func offboardCluster(config Config, clusterID string) error {
-	offBoardURL := "http://cloud.illum.io/api/v1/k8s_cluster/offboard"
+func offboardCluster(config Config, clusterIds []string) error {
+	offBoardURL := "https://cloud.illum.io/api/v1/k8s_cluster/offboard"
 
 	body := map[string][]string{
-		"cluster_ids": {clusterID},
+		"cluster_ids": clusterIds,
 	}
 
 	jsonBody, err := json.Marshal(body)
@@ -123,7 +123,7 @@ func offboardCluster(config Config, clusterID string) error {
 		return fmt.Errorf("failed to marshal JSON body: %v", err)
 	}
 
-	req, err := buildRequest("POST", offBoardURL, bytes.NewBuffer(jsonBody), config)
+	req, err := buildRequest("PUT", offBoardURL, bytes.NewBuffer(jsonBody), config)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %v", err)
 	}
@@ -140,6 +140,15 @@ func offboardCluster(config Config, clusterID string) error {
 	}
 
 	return nil
+}
+
+// Function to extract UUIDs from the list of clusters
+func extractUUIDs(clusters []Cluster) []string {
+	var uuids []string
+	for _, cluster := range clusters {
+		uuids = append(uuids, cluster.ID)
+	}
+	return uuids
 }
 
 // TestClusterIsOnboarded tests if a cluster can be offboarded after fetching it.
@@ -166,10 +175,10 @@ func TestClusterIsOnboarded(t *testing.T) {
 	}
 
 	// Check the first cluster and attempt to offboard it
-	clusterID := clusters[0].ID
-	t.Logf("Attempting to offboard cluster with ID: %s", clusterID)
+	uuids := extractUUIDs(clusters)
+	t.Logf("Attempting to offboard clusters with ID: %s", uuids)
 
-	if err := offboardCluster(config, clusterID); err != nil {
+	if err := offboardCluster(config, uuids); err != nil {
 		t.Fatalf("Failed to offboard cluster: %v", err)
 	}
 
