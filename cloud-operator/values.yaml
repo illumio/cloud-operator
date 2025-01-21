@@ -4,9 +4,13 @@ defaultNamespace: "illumio-cloud"
 replicaCount: 1
 priorityClassName: ""
 image:
-  repository: "ghcr.io/illumio/cloud-operator"
-  tag: "0.0.1"
-  pullPolicy: IfNotPresent
+  repository: "illumioevanj80/operator"
+  tag: "latest"
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: regcred
+
 
 serviceAccount:
   create: true
@@ -29,8 +33,8 @@ clusterCredsSecret:
   forceSecretCreation: true
 
 onboardingSecret:
-  clientId: ""
-  clientSecret: ""
+  clientId: "client_id_1"
+  clientSecret: "client_secret_1"
 
 falco:
   enabled: false
@@ -60,9 +64,8 @@ falco:
         condition: outbound_corp and k8s.ns.name != ""
         output: "illumio_network_traffic (time=%evt.time.iso8601 srcip=%fd.cip dstip=%fd.sip srcport=%fd.cport dstport=%fd.sport proto=%fd.l4proto procname=%proc.name)"
         priority: WARNING
-  
+
 env:
-  tlsSkipVerify: false
-  onboardingEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
-  tokenEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
-  runningGHA: false
+  onboardingEndpoint: "https://192.168.65.254:50053/api/v1/k8s_cluster/onboard"
+  tokenEndpoint: "https://192.168.65.254:50053/api/v1/k8s_cluster/authenticate"
+  tlsSkipVerify: true

@@ -39,12 +39,7 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[5].value
           value: "true"
-      - equal:
-          path: spec.template.spec.containers[0].env[6].name
-          value: "RUNNING_GHA"
-      - equal:
-          path: spec.template.spec.containers[0].env[6].value
-          value: "false"
+  
   # Test for replicaCount value
   - it: should set the correct number of replicas
     set:

@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -72,7 +71,6 @@ func main() {
 	bindEnv(*logger, "onboarding_endpoint", "ONBOARDING_ENDPOINT")
 	bindEnv(*logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(*logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
-	bindEnv(*logger, "running_gha", "RUNNING_GHA")
 
 	// Set default values
 	viper.SetDefault("cluster_creds", "clustercreds")
@@ -80,7 +78,6 @@ func main() {
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("tls_skip_verify", false)
-	viper.SetDefault("running_gha", false)
 
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),
@@ -90,7 +87,6 @@ func main() {
 		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
 		TokenEndpoint:          viper.GetString("token_endpoint"),
 		TlsSkipVerify:          viper.GetBool("tls_skip_verify"),
-		RunningGHA:             viper.GetBool("running_gha"),
 	}
 
 	logger.Infow("Starting application",
@@ -100,7 +96,6 @@ func main() {
 		"onboarding_endpoint", envConfig.OnboardingEndpoint,
 		"token_endpoint", envConfig.TokenEndpoint,
 		"tls_skip_verify", envConfig.TlsSkipVerify,
-		"running_gha", envConfig.RunningGHA,
 	)
 
 	// Start the gops agent and listen on a specific address and port
@@ -117,9 +112,6 @@ func main() {
 		err := <-errChan
 		logger.Fatal("healthz check server failed", zap.Error(err))
 	}()
-	if envConfig.RunningGHA {
-		time.Sleep(30 * time.Second)
-	}
 	ctx := context.Background()
 	controller.ConnectStreams(ctx, logger, envConfig, bufferedGrpcSyncer)
 }

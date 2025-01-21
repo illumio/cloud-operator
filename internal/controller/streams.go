@@ -57,8 +57,6 @@ type EnvironmentConfig struct {
 	TokenEndpoint string
 	// Whether to skip TLS certificate verification when starting a stream.
 	TlsSkipVerify bool
-	// Whether to add a delay on startup to make time for Github Actions for testing
-	RunningGHA bool
 }
 
 var resourceAPIGroupMap = map[string]string{
