@@ -98,6 +98,7 @@ jobs:
       - name:  Run Integration Tests
         run: |
          # Run your test against the fake server
+          minikube ip
           go test -v ./fakeserver/...
           POD_NAME=$(kubectl get pods -l app=cloud-operator -n illumio-cloud -o jsonpath="{.items[0].metadata.name}")
           kubectl logs $POD_NAME -n illumio-cloud
