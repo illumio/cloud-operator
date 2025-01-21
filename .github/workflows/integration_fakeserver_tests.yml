@@ -91,7 +91,7 @@ jobs:
         run: |
           # Wait for a few seconds to ensure the cluster and resources are fully up
           echo "Waiting for the cluster and resources to initialize..."
-          sleep 10  # Adjust the sleep time as needed
+          sleep 3  # Adjust the sleep time as needed
       
           # Verify cluster status and list all pods across namespaces
           kubectl get pods -A
