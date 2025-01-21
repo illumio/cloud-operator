@@ -77,11 +77,7 @@ jobs:
             --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET
 
       - name: Wait for Kubernetes Pod to be Ready
-        run: |
-          # Wait for a few seconds to ensure the cluster and resources are fully up
-          echo "Waiting for the cluster and resources to initialize..."
-          sleep 3  # Adjust the sleep time as needed
-      
+        run: |  
           # Verify cluster status and list all pods across namespaces
           kubectl get pods -A
           
