@@ -1,4 +1,4 @@
-# Step 1: Build the manager binary
+# Build the manager binary
 FROM golang:1.23 AS builder
 ARG VERSION=dev
 ARG TARGETOS
@@ -26,12 +26,9 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags
 # Install debugging tools (including bash) and gops for troubleshooting
 RUN go install github.com/google/gops@latest
 
-# Step 2: Use Alpine as base image for debugging
-FROM alpine:latest AS debug
-
-# Install bash and any other debugging tools you need
-RUN apk update && \
-    apk add --no-cache bash curl ca-certificates
+# Use distroless as minimal base image to package the manager binary
+# Refer to https://github.com/GoogleContainerTools/distroless for more details
+FROM gcr.io/distroless/static:nonroot
 
 # Copy the manager binary and gops (from the builder)
 WORKDIR /
@@ -45,6 +42,6 @@ USER myuser
 # Set the entrypoint for your app
 ENTRYPOINT ["/manager"]
 
-# Step 3: Finalize the image for debugging
+# Finalize the image for debugging
 # This will allow you to exec into the container and interact with the shell
 CMD ["/bin/bash"]

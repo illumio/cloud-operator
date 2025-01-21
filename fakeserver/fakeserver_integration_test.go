@@ -1,3 +1,5 @@
+// Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 package main
 
 import (
@@ -33,7 +35,7 @@ func createSignedToken() string {
 
 }
 
-// Simulating a client interacting with the gRPC server
+// TestFakeServerConnectionSuccesfulAndRetry tests a client connecting to the gRPC server
 func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
 	logger := zap.NewNop()
 	// Setup: Start the FakeServer

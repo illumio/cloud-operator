@@ -62,7 +62,8 @@ func jsonResponse(w http.ResponseWriter, status int, data any) {
 	}
 }
 
-func startOAuth2HTTPServer(address string, cert tls.Certificate, authService *AuthService) (*http.Server, error) {
+// startHTTPServer initializes and starts an HTTP server with TLS and logging, using the provided credentials and token.
+func startHTTPServer(address string, cert tls.Certificate, authService *AuthService) (*http.Server, error) {
 	// Set up the server with desired TLS configuration
 	server := &http.Server{
 		Addr:         address,

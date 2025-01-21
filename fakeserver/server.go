@@ -1,3 +1,5 @@
+// Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 package main
 
 import (
@@ -216,7 +218,7 @@ func (fs *FakeServer) start() error {
 	}
 
 	// Start the OAuth2 HTTP server
-	fs.httpServer, err = startOAuth2HTTPServer(fs.httpAddress, creds, fs.authService)
+	fs.httpServer, err = startHTTPServer(fs.httpAddress, creds, fs.authService)
 	if err != nil {
 		return err
 	}
