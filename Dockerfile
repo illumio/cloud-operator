@@ -34,14 +34,7 @@ FROM gcr.io/distroless/static:nonroot
 WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=builder /go/bin/gops .
-
-# Add a non-root user for security
-RUN adduser -D myuser
-USER myuser
+USER 65532:65532
 
 # Set the entrypoint for your app
 ENTRYPOINT ["/manager"]
-
-# Finalize the image for debugging
-# This will allow you to exec into the container and interact with the shell
-CMD ["/bin/bash"]

@@ -76,9 +76,17 @@ jobs:
             --set onboardingSecret.clientId=$ONBOARDING_CLIENT_ID \
             --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET
 
-      - name: Sleep for 30 seconds
-        run: sleep 30s
-        shell: bash
+      - name: Wait for Kubernetes Pod to be Ready
+        run: |
+          # Wait for a few seconds to ensure the cluster and resources are fully up
+          echo "Waiting for the cluster and resources to initialize..."
+          sleep 10  # Adjust the sleep time as needed
+      
+          # Verify cluster status and list all pods across namespaces
+          kubectl get pods -A
+          
+          # Wait for the cloud-operator pod to be ready
+          kubectl wait --for=condition=ready pod -l app=cloud-operator --timeout=600s -n illumio-cloud
 
       - name: Set up Go
         uses: actions/setup-go@v5
