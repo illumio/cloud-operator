@@ -114,7 +114,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			r.logger.Errorw("Cannot convert runtime.Object to metav1.ObjectMeta", "error", err)
 			return err
 		}
-		resource := event.Object.GetObjectKind().GroupVersionKind().String()
+		resource := event.Object.GetObjectKind().GroupVersionKind().Kind
 		metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, *convertedData, r.clientset, resource)
 		if err != nil {
 			r.logger.Errorw("Cannot convert object metadata", "error", err)

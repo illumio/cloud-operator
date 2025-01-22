@@ -93,14 +93,13 @@ func convertMetaObjectToMetadata(logger *zap.SugaredLogger, ctx context.Context,
 			return objMetadata, nil
 		}
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: convertHostIPsToStrings(hostIPs)}}
-	case "nodes":
+	case "Node":
 		providerId, err := getProviderIdNodeSpec(ctx, clientset, obj.GetName())
 		if err != nil {
 			return objMetadata, nil
 		}
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Node{Node: &pb.KubernetesNodeData{ProviderId: providerId}}
 	}
-	fmt.Println(objMetadata)
 	return objMetadata, nil
 }
 
