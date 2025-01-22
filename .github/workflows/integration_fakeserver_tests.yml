@@ -87,13 +87,13 @@ jobs:
             --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
             --set falco.enabled=false
 
-      - name: Wait for Kubernetes Pod to be Ready
-        run: |
-          # Verify cluster status and list all pods across namespaces
-          kubectl get pods -A
+      # - name: Wait for Kubernetes Pod to be Ready
+      #   run: |
+      #     # Verify cluster status and list all pods across namespaces
+      #     kubectl get pods -A
           
-          # Wait for the cloud-operator pod to be ready
-          kubectl wait --for=condition=ready pod -l app=cloud-operator --timeout=600s -n illumio-cloud
+      #     # Wait for the cloud-operator pod to be ready
+      #     kubectl wait --for=condition=ready pod -l app=cloud-operator --timeout=600s -n illumio-cloud
       
       - name:  Run Integration Tests
         run: |

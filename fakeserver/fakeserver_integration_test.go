@@ -54,9 +54,6 @@ func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
 	// Cleanup: Stop the server after the test
 	defer fakeServer.stop()
 
-	// Allow the server a bit of time to start
-	time.Sleep(2 * time.Second)
-
 	// Wait for the state to change, Wanting to see client succesfully connect to fakeserver
 	timeout := time.After(120 * time.Second)
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -66,7 +63,7 @@ mainloop:
 		select {
 		case <-timeout:
 			// Test failure if the state hasn't changed in time
-			assert.Equal(t, true, true)
+			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
 			// time.Sleep(25 * time.Second)
@@ -98,10 +95,9 @@ mainloop:
 		select {
 		case <-timeout:
 			// Test failure if the state hasn't changed in time
-			assert.Equal(t, true, true)
+			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
-			// time.Sleep(10 * time.Second)
 			// Check if the log entry has been recorded
 			stateChanged := fakeServer.state.ConnectionSuccessful
 
@@ -133,8 +129,6 @@ func TestFailureDuringIntialCommit(t *testing.T) {
 	// Cleanup: Stop the server after the test
 	defer fakeServer.stop()
 
-	// Allow the server a bit of time to start
-	time.Sleep(2 * time.Second)
 	// Wait for the state to change, Wanting to see client succesfully connect to fakeserver
 	timeout := time.After(120 * time.Second)
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -144,7 +138,7 @@ mainloop:
 		select {
 		case <-timeout:
 			// Test failure if the state hasn't changed in time
-			assert.Equal(t, true, true)
+			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
 			// Check if the log entry has been recorded
