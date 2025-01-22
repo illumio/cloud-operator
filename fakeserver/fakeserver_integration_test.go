@@ -80,16 +80,12 @@ mainloop:
 	}
 	fakeServer.stop()
 
-	time.Sleep(5 * time.Second)
 	fakeServer.state.ConnectionSuccessful = false
 	// Start the server
 	err = fakeServer.start()
 	assert.NoError(t, err, "Failed to start the FakeServer")
 	// Cleanup: Stop the server after the test
 	defer fakeServer.stop()
-
-	// Allow the server a bit of time to start
-	time.Sleep(2 * time.Second)
 
 	for {
 		select {
