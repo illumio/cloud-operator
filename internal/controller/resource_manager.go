@@ -65,12 +65,12 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 // DynamicListResources lists a specifed resource dynamically and sends down the current gRPC stream.
 func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string, apiGroup string) (string, error) {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
-	objs, resourceListVersion, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
+	objs, resourceListVersion, resource, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
 		return "", err
 	}
 	for _, obj := range objs {
-		metadataObj, err := convertMetaObjectToMetadata(ctx, obj, r.clientset, resource)
+		metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, obj, r.clientset, resource)
 		if err != nil {
 			r.logger.Errorw("Cannot convert object metadata", "error", err)
 			return "", err
@@ -113,7 +113,8 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			r.logger.Errorw("Cannot convert runtime.Object to metav1.ObjectMeta", "error", err)
 			return err
 		}
-		metadataObj, err := convertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resource)
+		resource := event.Object.GetObjectKind().GroupVersionKind().String()
+		metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, *convertedData, r.clientset, resource)
 		if err != nil {
 			r.logger.Errorw("Cannot convert object metadata", "error", err)
 			return err
@@ -154,16 +155,16 @@ func (r *ResourceManager) ExtractObjectMetas(resources *unstructured.Unstructure
 
 // ListResources fetches resources of a specified type and namespace, returning their ObjectMeta,
 // the last resource version observed, and any error encountered.
-func (r *ResourceManager) ListResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) ([]metav1.ObjectMeta, string, error) {
+func (r *ResourceManager) ListResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) ([]metav1.ObjectMeta, string, string, error) {
 	unstructuredResources, err := r.FetchResources(ctx, resource, namespace)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	objectMetas, err := r.ExtractObjectMetas(unstructuredResources)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
-	return objectMetas, unstructuredResources.GetResourceVersion(), nil
+	return objectMetas, unstructuredResources.GetResourceVersion(), unstructuredResources.GetKind(), nil
 }
