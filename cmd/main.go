@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -112,6 +113,7 @@ func main() {
 		err := <-errChan
 		logger.Fatal("healthz check server failed", zap.Error(err))
 	}()
+	time.Sleep(time.Second * 30)
 	ctx := context.Background()
 	controller.ConnectStreams(ctx, logger, envConfig, bufferedGrpcSyncer)
 }
