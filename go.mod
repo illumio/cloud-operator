@@ -4,7 +4,6 @@ go 1.23.0
 
 require (
 	github.com/cilium/cilium v1.16.5
-	github.com/golang-jwt/jwt v3.2.2+incompatible
 	go.uber.org/zap v1.27.0
 	golang.org/x/oauth2 v0.24.0
 	google.golang.org/grpc v1.69.2
@@ -44,6 +43,7 @@ require (
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/golang-jwt/jwt/v4 v4.5.1
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
