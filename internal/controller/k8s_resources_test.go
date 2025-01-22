@@ -200,7 +200,7 @@ func (suite *ControllerTestSuite) TestConvertOwnerReferences() {
 		"empty slice": {
 			ownerReferences: []metav1.OwnerReference{},
 			expectedRefs:    nil,
-			expectedError:   true,
+			expectedError:   false,
 		},
 		"single OwnerReference with all fields set": {
 			ownerReferences: []metav1.OwnerReference{
