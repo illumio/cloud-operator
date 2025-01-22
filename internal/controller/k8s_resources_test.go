@@ -59,6 +59,49 @@ func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 	}
 }
 
+func TestRemoveListSuffix(t *testing.T) {
+	tests := map[string]struct {
+		input          string
+		expectedOutput string
+	}{
+		"empty string": {
+			input:          "",
+			expectedOutput: "",
+		},
+		"no List suffix": {
+			input:          "Pod",
+			expectedOutput: "Pod",
+		},
+		"with List suffix": {
+			input:          "PodList",
+			expectedOutput: "Pod",
+		},
+		"multiple capitalizations": {
+			input:          "StatefulSetList",
+			expectedOutput: "StatefulSet",
+		},
+		"List suffix at the end": {
+			input:          "ReplicaSetList",
+			expectedOutput: "ReplicaSet",
+		},
+		"string with List at the start": {
+			input:          "ListPod",
+			expectedOutput: "ListPod", // Since "List" is at the start, it shouldn't be removed
+		},
+		"string with embedded List": {
+			input:          "MyListPod",
+			expectedOutput: "MyListPod", // Should not remove the "List" that appears inside the string
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := removeListSuffix(tt.input)
+
+			assert.Equal(t, tt.expectedOutput, result, "test failed: %s", name)
+		})
+	}
+}
 func TestGetObjectMetadataFromRuntimeObject(t *testing.T) {
 	// A successful case with a valid Kubernetes object.
 	pod := &v1.Pod{

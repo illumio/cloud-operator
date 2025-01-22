@@ -87,7 +87,7 @@ func convertMetaObjectToMetadata(logger *zap.SugaredLogger, ctx context.Context,
 		Uid:               string(obj.GetUID()),
 	}
 	switch resource {
-	case "pods":
+	case "Pod":
 		hostIPs, err := getPodIPAddresses(ctx, obj.GetName(), clientset, obj.GetNamespace())
 		if err != nil {
 			return objMetadata, nil

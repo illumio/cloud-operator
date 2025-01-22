@@ -3,6 +3,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -65,12 +66,12 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 // DynamicListResources lists a specifed resource dynamically and sends down the current gRPC stream.
 func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string, apiGroup string) (string, error) {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
-	objs, resourceListVersion, resource, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
+	objs, resourceListVersion, resourceK8sKind, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
 		return "", err
 	}
 	for _, obj := range objs {
-		metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, obj, r.clientset, resource)
+		metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, obj, r.clientset, resourceK8sKind)
 		if err != nil {
 			r.logger.Errorw("Cannot convert object metadata", "error", err)
 			return "", err
@@ -166,5 +167,14 @@ func (r *ResourceManager) ListResources(ctx context.Context, resource schema.Gro
 		return nil, "", "", err
 	}
 
-	return objectMetas, unstructuredResources.GetResourceVersion(), unstructuredResources.GetKind(), nil
+	return objectMetas, unstructuredResources.GetResourceVersion(), removeListSuffix(unstructuredResources.GetKind()), nil
+}
+
+// removeListSuffix removes the "List" suffix from a given string
+// Ex: PodList -> Pod, StafefulSetList -> StatefulSet
+func removeListSuffix(s string) string {
+	if strings.HasSuffix(s, "List") {
+		return s[:len(s)-4] // Remove the last 4 characters ("List")
+	}
+	return s
 }
