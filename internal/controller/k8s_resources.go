@@ -108,7 +108,7 @@ func convertOwnerReferences(ownerReferences []metav1.OwnerReference) ([]*pb.Kube
 		return nil, nil
 	}
 
-	var result []*pb.KubernetesOwnerReference
+	result := make([]*pb.KubernetesOwnerReference, 0, len(ownerReferences))
 	for _, ownerRef := range ownerReferences {
 		// Safely checking for nil values
 		var blockOwnerDeletion bool
