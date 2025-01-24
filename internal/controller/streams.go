@@ -71,6 +71,7 @@ var resourceAPIGroupMap = map[string]string{
 	"ingresses":                 "networking.k8s.io",
 	"ingressclasses":            "networking.k8s.io",
 	"jobs":                      "batch",
+	"namespaces":                "",
 	"networkpolicies":           "networking.k8s.io",
 	"nodes":                     "",
 	"pods":                      "",
@@ -157,6 +158,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, cancel context.Can
 	dd.processingResources = true
 	dd.mutex.Unlock()
 	resourceLister := &ResourceManager{
+		clientset:     clientset,
 		logger:        sm.logger,
 		dynamicClient: dynamicClient,
 		streamManager: sm,

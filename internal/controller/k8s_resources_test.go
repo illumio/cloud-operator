@@ -5,7 +5,6 @@ package controller
 import (
 	"context"
 	"flag"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -13,7 +12,6 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	v1 "k8s.io/api/core/v1"
@@ -25,7 +23,12 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
-func TestConvertObjectToMetadata(t *testing.T) {
+// ptrBool is a helper function to create pointers to bool values (used in metav1.OwnerReference)
+// Used to simulate the nil behavior of the optional fields
+func ptrBool(b bool) *bool {
+	return &b
+}
+func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 	// Setup a mock object, e.g., a ConfigMap with predefined metadata
 	configMap := metav1.ObjectMeta{
 		Name:            "test-pod",
@@ -34,9 +37,13 @@ func TestConvertObjectToMetadata(t *testing.T) {
 		ResourceVersion: "test-version",
 	}
 	logger := zap.NewNop().Sugar()
-
+	clientset, err := NewClientSet()
+	if err != nil {
+		logger.Errorw("Failed to create clientset", "error", err)
+		suite.T().Error("could not create clientset")
+	}
 	// Execute the function under test.
-	got, _ := convertMetaObjectToMetadata(context.Background(), logger, configMap, "configMap")
+	got, _ := convertMetaObjectToMetadata(logger, context.Background(), configMap, clientset, "configMap")
 
 	// Define what you expect to get.
 	want := metav1.ObjectMeta{
@@ -48,10 +55,53 @@ func TestConvertObjectToMetadata(t *testing.T) {
 
 	// Compare the result with the expected outcome.
 	if got.Name != want.Name || got.Namespace != want.Namespace || string(got.GetUid()) != string(want.UID) || got.ResourceVersion != want.ResourceVersion {
-		t.Errorf("convertObjectToMetadata() = %#v, want %#v", got, want)
+		suite.T().Errorf("convertObjectToMetadata() = %#v, want %#v", got, want)
 	}
 }
 
+func TestRemoveListSuffix(t *testing.T) {
+	tests := map[string]struct {
+		input          string
+		expectedOutput string
+	}{
+		"empty string": {
+			input:          "",
+			expectedOutput: "",
+		},
+		"no List suffix": {
+			input:          "Pod",
+			expectedOutput: "Pod",
+		},
+		"with List suffix": {
+			input:          "PodList",
+			expectedOutput: "Pod",
+		},
+		"multiple capitalizations": {
+			input:          "StatefulSetList",
+			expectedOutput: "StatefulSet",
+		},
+		"List suffix at the end": {
+			input:          "ReplicaSetList",
+			expectedOutput: "ReplicaSet",
+		},
+		"string with List at the start": {
+			input:          "ListPod",
+			expectedOutput: "ListPod", // Since "List" is at the start, it shouldn't be removed
+		},
+		"string with embedded List": {
+			input:          "MyListPod",
+			expectedOutput: "MyListPod", // Should not remove the "List" that appears inside the string
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := removeListSuffix(tt.input)
+
+			assert.Equal(t, tt.expectedOutput, result, "test failed: %s", name)
+		})
+	}
+}
 func TestGetObjectMetadataFromRuntimeObject(t *testing.T) {
 	// A successful case with a valid Kubernetes object.
 	pod := &v1.Pod{
@@ -99,8 +149,15 @@ func TestGetMetadataFromResource(t *testing.T) {
 	}
 }
 
-func TestConvertMetaObjectToMetadata(t *testing.T) {
+func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 	logger := zap.NewNop().Sugar()
+
+	clientset, err := NewClientSet()
+	if err != nil {
+		logger.Errorw("Failed to create clientset", "error", err)
+		suite.T().Fatalf("could not create clientset: %v", err)
+	}
+
 	sampleData := make(map[string]string)
 	resource := "test-resource"
 	creationTimestamp := metav1.Time{Time: time.Now()}
@@ -125,8 +182,127 @@ func TestConvertMetaObjectToMetadata(t *testing.T) {
 		Uid:               "test-uid",
 	}
 
-	result, _ := convertMetaObjectToMetadata(context.Background(), logger, objMeta, resource)
-	assert.Equal(t, expected, result)
+	// Ensure proper error handling
+	result, err := convertMetaObjectToMetadata(logger, context.Background(), objMeta, clientset, resource)
+	if err != nil {
+		suite.T().Fatalf("Error converting MetaObject to Metadata: %v", err)
+	}
+
+	assert.Equal(suite.T(), expected, result)
+}
+
+func (suite *ControllerTestSuite) TestConvertOwnerReferences() {
+	tests := map[string]struct {
+		ownerReferences []metav1.OwnerReference
+		expectedRefs    []*pb.KubernetesOwnerReference
+		expectedError   bool
+	}{
+		"empty slice": {
+			ownerReferences: []metav1.OwnerReference{},
+			expectedRefs:    nil,
+			expectedError:   false,
+		},
+		"single OwnerReference with all fields set": {
+			ownerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "v1",
+					BlockOwnerDeletion: ptrBool(true),
+					Controller:         ptrBool(true),
+					Kind:               "Pod",
+					Name:               "pod-name",
+					UID:                "uid-1234",
+				},
+			},
+			expectedRefs: []*pb.KubernetesOwnerReference{
+				{
+					ApiVersion:         "v1",
+					BlockOwnerDeletion: true,
+					Controller:         true,
+					Kind:               "Pod",
+					Name:               "pod-name",
+					Uid:                "uid-1234",
+				},
+			},
+			expectedError: false,
+		},
+		"OwnerReference with nil BlockOwnerDeletion and Controller": {
+			ownerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "v1",
+					BlockOwnerDeletion: nil,
+					Controller:         nil,
+					Kind:               "Deployment",
+					Name:               "deployment-name",
+					UID:                "uid-5678",
+				},
+			},
+			expectedRefs: []*pb.KubernetesOwnerReference{
+				{
+					ApiVersion:         "v1",
+					BlockOwnerDeletion: false,
+					Controller:         false,
+					Kind:               "Deployment",
+					Name:               "deployment-name",
+					Uid:                "uid-5678",
+				},
+			},
+			expectedError: false,
+		},
+		"multiple OwnerReferences": {
+			ownerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "v1",
+					BlockOwnerDeletion: ptrBool(false),
+					Controller:         ptrBool(true),
+					Kind:               "ReplicaSet",
+					Name:               "replicaset-1",
+					UID:                "uid-9999",
+				},
+				{
+					APIVersion:         "apps/v1",
+					BlockOwnerDeletion: ptrBool(true),
+					Controller:         ptrBool(false),
+					Kind:               "Deployment",
+					Name:               "deployment-2",
+					UID:                "uid-8888",
+				},
+			},
+			expectedRefs: []*pb.KubernetesOwnerReference{
+				{
+					ApiVersion:         "v1",
+					BlockOwnerDeletion: false,
+					Controller:         true,
+					Kind:               "ReplicaSet",
+					Name:               "replicaset-1",
+					Uid:                "uid-9999",
+				},
+				{
+					ApiVersion:         "apps/v1",
+					BlockOwnerDeletion: true,
+					Controller:         false,
+					Kind:               "Deployment",
+					Name:               "deployment-2",
+					Uid:                "uid-8888",
+				},
+			},
+			expectedError: false,
+		},
+	}
+
+	for name, tt := range tests {
+		suite.T().Run(name, func(t *testing.T) {
+			result, err := convertOwnerReferences(tt.ownerReferences)
+
+			// Check for errors
+			if tt.expectedError {
+				assert.Error(t, err, "expected error for test: %s", name)
+			} else {
+				assert.NoError(t, err, "unexpected error for test: %s", name)
+				// Compare the result
+				assert.Equal(t, tt.expectedRefs, result, "test failed: %s", name)
+			}
+		})
+	}
 }
 
 func TestConvertToProtoTimestamp(t *testing.T) {
@@ -176,19 +352,68 @@ func TestConvertHostIPsToStrings(t *testing.T) {
 	}
 }
 
+func (suite *ControllerTestSuite) TestGetProviderIdNodeSpec() {
+
+	tests := map[string]struct {
+		nodeName       string
+		node           *v1.Node
+		expectedID     string
+		expectedErrMsg string
+	}{
+		"node not found": {
+			nodeName:       "nonexistent-node",
+			node:           nil,
+			expectedID:     "",
+			expectedErrMsg: "",
+		},
+		"node with providerID": {
+			nodeName: "test-node",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-node",
+				},
+				Spec: v1.NodeSpec{
+					ProviderID: "provider-id-123",
+				},
+			},
+			expectedID:     "provider-id-123",
+			expectedErrMsg: "",
+		},
+		"node without providerID": {
+			nodeName: "test-node-no-id",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-node-no-id",
+				},
+				Spec: v1.NodeSpec{
+					ProviderID: "",
+				},
+			},
+			expectedID:     "",
+			expectedErrMsg: "no providerID set",
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			clientset, _ := NewClientSet()
+			if tt.node != nil {
+				_, err := clientset.CoreV1().Nodes().Create(context.TODO(), tt.node, metav1.CreateOptions{})
+				assert.NoError(suite.T(), err)
+			}
+
+			id, err := getProviderIdNodeSpec(context.TODO(), clientset, tt.nodeName)
+			if tt.expectedErrMsg != "" {
+				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
+			} else {
+				assert.NoError(suite.T(), err)
+				assert.Equal(suite.T(), tt.expectedID, id)
+			}
+		})
+	}
+}
+
 func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
-	// Create a development encoder config
-	encoderConfig := zap.NewDevelopmentEncoderConfig()
-	// Create a JSON encoder
-	encoder := zapcore.NewJSONEncoder(encoderConfig)
-	// Create syncers for console output
-	consoleSyncer := zapcore.AddSync(os.Stdout)
-	// Create the core with the atomic level
-	core := zapcore.NewTee(
-		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
-	)
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
-	logger = logger.With(zap.String("name", "test"))
 	tests := map[string]struct {
 		podName        string
 		namespace      string
@@ -216,7 +441,7 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 				assert.NoError(suite.T(), err)
 			}
 
-			ips, err := getPodIPAddresses(context.TODO(), logger, tt.podName, tt.namespace)
+			ips, err := getPodIPAddresses(context.TODO(), tt.podName, clientset, tt.namespace)
 			if tt.expectedErrMsg != "" {
 				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
 			} else {

@@ -4,6 +4,10 @@
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "falco.namespace" -}}
+{{ .Values.falco.namespace | default "falco" }}
+{{- end -}}
+
 {{- define "cloud-operator.fullname" -}}
 {{- $name := default .Chart.Name .Values.nameOverride -}}
 {{- $fullname := printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}

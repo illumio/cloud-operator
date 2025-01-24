@@ -23,7 +23,14 @@ message KubernetesObjectData {
   string uid = 9;
   oneof kind_specific {
     KubernetesPodData pod = 100;
+    KubernetesNodeData node = 101;
   }
+}
+
+// KubernetesNodeData contains information specific to a Node Object.
+message KubernetesNodeData {
+  // Node.spec.providerID
+  string provider_id = 1;
 }
 
 // KubernetesPodData contains information specific to a Pod object.
@@ -111,12 +118,14 @@ message FalcoFlow {
   IP layer3 = 1;
   // Proto contains protocol used
   Layer4 layer4 = 2;
+  // Time when flow occurred.
+  string time = 3;
 }
 
 // A flow received from Cilium Hubble Relay using the Observer service's GetFlows RPC.
 // https://github.com/cilium/cilium/blob/main/api/v1/observer/observer.proto
 message CiliumFlow {
-  // Time when flow occured.
+  // Time when flow occurred.
   google.protobuf.Timestamp time = 1;
   // node_name is the name of the node from which this Flow was captured.
   string node_name = 2;
