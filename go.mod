@@ -3,7 +3,7 @@ module github.com/illumio/cloud-operator
 go 1.23.0
 
 require (
-	github.com/cilium/cilium v1.16.5
+	github.com/cilium/cilium v1.16.6
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	go.uber.org/zap v1.27.0
 	golang.org/x/oauth2 v0.24.0

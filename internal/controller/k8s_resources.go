@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
@@ -68,7 +69,12 @@ func getMetadatafromResource(logger *zap.SugaredLogger, resource unstructured.Un
 }
 
 // convertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
-func convertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, clientset *kubernetes.Clientset, resource string) (*pb.KubernetesObjectData, error) {
+func convertMetaObjectToMetadata(logger *zap.SugaredLogger, ctx context.Context, obj metav1.ObjectMeta, clientset *kubernetes.Clientset, resource string) (*pb.KubernetesObjectData, error) {
+	ownerReferences, err := convertOwnerReferences(obj.GetOwnerReferences())
+	if err != nil {
+		logger.Errorw("cannot convert OwnerReferences", "error", err)
+		return &pb.KubernetesObjectData{}, fmt.Errorf("cannot convert OwnerReferences")
+	}
 	objMetadata := &pb.KubernetesObjectData{
 		Annotations:       obj.GetAnnotations(),
 		CreationTimestamp: convertToProtoTimestamp(obj.CreationTimestamp),
@@ -76,17 +82,18 @@ func convertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, cli
 		Labels:            obj.GetLabels(),
 		Name:              obj.GetName(),
 		Namespace:         obj.GetNamespace(),
+		OwnerReferences:   ownerReferences,
 		ResourceVersion:   obj.GetResourceVersion(),
 		Uid:               string(obj.GetUID()),
 	}
 	switch resource {
-	case "pods":
+	case "Pod":
 		hostIPs, err := getPodIPAddresses(ctx, obj.GetName(), clientset, obj.GetNamespace())
 		if err != nil {
 			return objMetadata, nil
 		}
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: convertHostIPsToStrings(hostIPs)}}
-	case "nodes":
+	case "Node":
 		providerId, err := getProviderIdNodeSpec(ctx, clientset, obj.GetName())
 		if err != nil {
 			return objMetadata, nil
@@ -94,6 +101,38 @@ func convertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, cli
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Node{Node: &pb.KubernetesNodeData{ProviderId: providerId}}
 	}
 	return objMetadata, nil
+}
+
+func convertOwnerReferences(ownerReferences []metav1.OwnerReference) ([]*pb.KubernetesOwnerReference, error) {
+	if len(ownerReferences) == 0 {
+		return nil, nil
+	}
+
+	result := make([]*pb.KubernetesOwnerReference, 0, len(ownerReferences))
+	for _, ownerRef := range ownerReferences {
+		// Safely checking for nil values
+		var blockOwnerDeletion bool
+		if ownerRef.BlockOwnerDeletion != nil {
+			blockOwnerDeletion = *ownerRef.BlockOwnerDeletion
+		}
+
+		var controller bool
+		if ownerRef.Controller != nil {
+			controller = *ownerRef.Controller
+		}
+
+		k8sOwnerRef := &pb.KubernetesOwnerReference{
+			ApiVersion:         ownerRef.APIVersion,
+			BlockOwnerDeletion: blockOwnerDeletion,
+			Controller:         controller,
+			Kind:               ownerRef.Kind,
+			Name:               ownerRef.Name,
+			Uid:                string(ownerRef.UID),
+		}
+		result = append(result, k8sOwnerRef)
+	}
+
+	return result, nil
 }
 
 // getProviderIdNodeSpec uses a node name to return the providerID within the node's spec
