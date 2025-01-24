@@ -6,7 +6,7 @@ require (
 	github.com/cilium/cilium v1.16.6
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	go.uber.org/zap v1.27.0
-	golang.org/x/oauth2 v0.24.0
+	golang.org/x/oauth2 v0.25.0
 	google.golang.org/grpc v1.69.2
 	google.golang.org/protobuf v1.36.0
 	k8s.io/api v0.32.1
