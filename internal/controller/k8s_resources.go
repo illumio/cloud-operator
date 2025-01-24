@@ -6,12 +6,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/client-go/kubernetes"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -67,7 +69,12 @@ func getMetadatafromResource(logger *zap.SugaredLogger, resource unstructured.Un
 }
 
 // convertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
-func convertMetaObjectToMetadata(ctx context.Context, logger *zap.SugaredLogger, obj metav1.ObjectMeta, resource string) (*pb.KubernetesObjectData, error) {
+func convertMetaObjectToMetadata(logger *zap.SugaredLogger, ctx context.Context, obj metav1.ObjectMeta, clientset *kubernetes.Clientset, resource string) (*pb.KubernetesObjectData, error) {
+	ownerReferences, err := convertOwnerReferences(obj.GetOwnerReferences())
+	if err != nil {
+		logger.Errorw("cannot convert OwnerReferences", "error", err)
+		return &pb.KubernetesObjectData{}, fmt.Errorf("cannot convert OwnerReferences")
+	}
 	objMetadata := &pb.KubernetesObjectData{
 		Annotations:       obj.GetAnnotations(),
 		CreationTimestamp: convertToProtoTimestamp(obj.CreationTimestamp),
@@ -75,26 +82,73 @@ func convertMetaObjectToMetadata(ctx context.Context, logger *zap.SugaredLogger,
 		Labels:            obj.GetLabels(),
 		Name:              obj.GetName(),
 		Namespace:         obj.GetNamespace(),
+		OwnerReferences:   ownerReferences,
 		ResourceVersion:   obj.GetResourceVersion(),
 		Uid:               string(obj.GetUID()),
 	}
-	if resource == "pods" {
-		hostIPs, err := getPodIPAddresses(ctx, logger, obj.GetName(), obj.GetNamespace())
+	switch resource {
+	case "Pod":
+		hostIPs, err := getPodIPAddresses(ctx, obj.GetName(), clientset, obj.GetNamespace())
 		if err != nil {
 			return objMetadata, nil
 		}
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: convertHostIPsToStrings(hostIPs)}}
+	case "Node":
+		providerId, err := getProviderIdNodeSpec(ctx, clientset, obj.GetName())
+		if err != nil {
+			return objMetadata, nil
+		}
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_Node{Node: &pb.KubernetesNodeData{ProviderId: providerId}}
 	}
 	return objMetadata, nil
 }
 
-// getPodIPAddresses uses a pod name and namespace to grab the hostIP addresses within the podStatus
-func getPodIPAddresses(ctx context.Context, logger *zap.SugaredLogger, podName string, namespace string) ([]v1.HostIP, error) {
-	clientset, err := NewClientSet()
-	if err != nil {
-		logger.Errorw("Failed to create clientset", "error", err)
-		return []v1.HostIP{}, err
+func convertOwnerReferences(ownerReferences []metav1.OwnerReference) ([]*pb.KubernetesOwnerReference, error) {
+	if len(ownerReferences) == 0 {
+		return nil, nil
 	}
+
+	result := make([]*pb.KubernetesOwnerReference, 0, len(ownerReferences))
+	for _, ownerRef := range ownerReferences {
+		// Safely checking for nil values
+		var blockOwnerDeletion bool
+		if ownerRef.BlockOwnerDeletion != nil {
+			blockOwnerDeletion = *ownerRef.BlockOwnerDeletion
+		}
+
+		var controller bool
+		if ownerRef.Controller != nil {
+			controller = *ownerRef.Controller
+		}
+
+		k8sOwnerRef := &pb.KubernetesOwnerReference{
+			ApiVersion:         ownerRef.APIVersion,
+			BlockOwnerDeletion: blockOwnerDeletion,
+			Controller:         controller,
+			Kind:               ownerRef.Kind,
+			Name:               ownerRef.Name,
+			Uid:                string(ownerRef.UID),
+		}
+		result = append(result, k8sOwnerRef)
+	}
+
+	return result, nil
+}
+
+// getProviderIdNodeSpec uses a node name to return the providerID within the node's spec
+func getProviderIdNodeSpec(ctx context.Context, clientset *kubernetes.Clientset, nodeName string) (string, error) {
+	node, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return "", nil
+	}
+	if node.Spec.ProviderID != "" {
+		return node.Spec.ProviderID, nil
+	}
+	return "", errors.New("no providerID set")
+}
+
+// getPodIPAddresses uses a pod name and namespace to grab the hostIP addresses within the podStatus
+func getPodIPAddresses(ctx context.Context, podName string, clientset *kubernetes.Clientset, namespace string) ([]v1.HostIP, error) {
 	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
 		// Could be that the pod no longer exists

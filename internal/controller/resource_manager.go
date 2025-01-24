@@ -3,6 +3,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -12,10 +13,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 )
 
 // ResourceManager encapsulates components for listing and managing Kubernetes resources.
 type ResourceManager struct {
+	// Clientset providing accees to k8s api.
+	clientset *kubernetes.Clientset
 	// Logger provides strucuted logging interface.
 	logger *zap.SugaredLogger
 	// DynamicClient offers generic Kubernetes API operations.
@@ -23,6 +27,8 @@ type ResourceManager struct {
 	// streamManager abstracts logic related to starting, using, and managing streams.
 	streamManager *streamManager
 }
+
+// TODO: Make a struct with the ClientSet as a field, and convertMetaObjectToMetadata, getPodIPAddresses, getProviderIdNodeSpec should be methods of that struct.
 
 // DynamicListAndWatchResources lists and watches the specified resource dynamically, managing context cancellation and synchronization with wait groups.
 func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, allResourcesSnapshotted *sync.WaitGroup, snapshotCompleted *sync.WaitGroup) {
@@ -60,12 +66,12 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 // DynamicListResources lists a specifed resource dynamically and sends down the current gRPC stream.
 func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string, apiGroup string) (string, error) {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
-	objs, resourceListVersion, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
+	objs, resourceListVersion, resourceK8sKind, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
 		return "", err
 	}
 	for _, obj := range objs {
-		metadataObj, err := convertMetaObjectToMetadata(ctx, r.logger, obj, resource)
+		metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, obj, r.clientset, resourceK8sKind)
 		if err != nil {
 			r.logger.Errorw("Cannot convert object metadata", "error", err)
 			return "", err
@@ -108,7 +114,8 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			r.logger.Errorw("Cannot convert runtime.Object to metav1.ObjectMeta", "error", err)
 			return err
 		}
-		metadataObj, err := convertMetaObjectToMetadata(ctx, r.logger, *convertedData, resource)
+		resource := event.Object.GetObjectKind().GroupVersionKind().Kind
+		metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, *convertedData, r.clientset, resource)
 		if err != nil {
 			r.logger.Errorw("Cannot convert object metadata", "error", err)
 			return err
@@ -149,16 +156,25 @@ func (r *ResourceManager) ExtractObjectMetas(resources *unstructured.Unstructure
 
 // ListResources fetches resources of a specified type and namespace, returning their ObjectMeta,
 // the last resource version observed, and any error encountered.
-func (r *ResourceManager) ListResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) ([]metav1.ObjectMeta, string, error) {
+func (r *ResourceManager) ListResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) ([]metav1.ObjectMeta, string, string, error) {
 	unstructuredResources, err := r.FetchResources(ctx, resource, namespace)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	objectMetas, err := r.ExtractObjectMetas(unstructuredResources)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
-	return objectMetas, unstructuredResources.GetResourceVersion(), nil
+	return objectMetas, unstructuredResources.GetResourceVersion(), removeListSuffix(unstructuredResources.GetKind()), nil
+}
+
+// removeListSuffix removes the "List" suffix from a given string
+// Ex: PodList -> Pod, StafefulSetList -> StatefulSet
+func removeListSuffix(s string) string {
+	if strings.HasSuffix(s, "List") {
+		return s[:len(s)-4] // Remove the last 4 characters ("List")
+	}
+	return s
 }
