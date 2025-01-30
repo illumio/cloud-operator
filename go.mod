@@ -8,7 +8,7 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/oauth2 v0.25.0
 	google.golang.org/grpc v1.70.0
-	google.golang.org/protobuf v1.36.3
+	google.golang.org/protobuf v1.36.4
 	k8s.io/api v0.32.1
 	k8s.io/apimachinery v0.32.1
 	k8s.io/client-go v0.32.1
