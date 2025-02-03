@@ -3,8 +3,10 @@
 # Run Go tests and send it to the background
 go test -v ./fakeserver/.. &
 
+ls
+
 # Run Helm upgrade/install command
-helm upgrade --install illumio cloud-operator-*.tgz \
+helm upgrade --install illumio cloud-operator-1.0.0.tgz \
   --namespace illumio-cloud \
   --create-namespace \
   --set image.repository=ghcr.io/${GITHUB_REPOSITORY} \
