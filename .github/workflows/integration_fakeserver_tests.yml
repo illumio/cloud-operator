@@ -73,19 +73,19 @@ jobs:
       #       TLS_SKIP_VERIFY: true
       #       ONBOARDING_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/onboard"
       #       TOKEN_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/authenticate"
-      #   run: |
-      #       helm upgrade --install illumio cloud-operator-*.tgz \
-      #       --namespace illumio-cloud \
-      #       --create-namespace \
-      #       --set image.repository=ghcr.io/${{ github.repository }} \
-      #       --set image.tag=${{ github.ref_name }} \
-      #       --set image.pullPolicy=Always \
-      #       --set onboardingSecret.clientId=$ONBOARDING_CLIENT_ID \
-      #       --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET \
-      #       --set env.onboardingEndpoint=$ONBOARDING_ENDPOINT \
-      #       --set env.tokenEndpoint=$TOKEN_ENDPOINT \
-      #       --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
-      #       --set falco.enabled=false
+        # run: |
+        #     # helm upgrade --install illumio cloud-operator-*.tgz \
+        #     # --namespace illumio-cloud \
+        #     # --create-namespace \
+        #     # --set image.repository=ghcr.io/${{ github.repository }} \
+        #     # --set image.tag=${{ github.ref_name }} \
+        #     # --set image.pullPolicy=Always \
+        #     # --set onboardingSecret.clientId=$ONBOARDING_CLIENT_ID \
+        #     # --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET \
+        #     # --set env.onboardingEndpoint=$ONBOARDING_ENDPOINT \
+        #     # --set env.tokenEndpoint=$TOKEN_ENDPOINT \
+        #     # --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
+        #     # --set falco.enabled=false
       
       - name:  Run Integration Tests
         env:
@@ -96,7 +96,7 @@ jobs:
           TOKEN_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/authenticate"
         run: |
          # Run your test against the fake server
-          kubectl create ns illumio-cloud && go test -v ./fakeserver/...
+          kubectl create ns illumio-cloud && cd fakeserver && ./run_test.sh
 
       - name: Fetch Kubernetes Pod logs
         run: |
