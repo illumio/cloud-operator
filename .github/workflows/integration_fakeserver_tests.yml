@@ -94,6 +94,9 @@ jobs:
           TLS_SKIP_VERIFY: true
           ONBOARDING_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/onboard"
           TOKEN_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/authenticate"
+          GITHUB_REPOSITORY: "ghcr.io/${{ github.repository }}"
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          
         run: |
          # Run your test against the fake server
           kubectl create ns illumio-cloud && cd fakeserver && ./run_test.sh

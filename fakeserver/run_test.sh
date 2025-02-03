@@ -7,8 +7,8 @@ go test -v ./fakeserver/.. &
 helm upgrade --install illumio cloud-operator-*.tgz \
   --namespace illumio-cloud \
   --create-namespace \
-  --set image.repository=ghcr.io/${{ github.repository }} \
-  --set image.tag=${{ github.ref_name }} \
+  --set image.repository=ghcr.io/${GITHUB_REPOSITORY} \
+  --set image.tag=${GITHUB_REF_NAME} \
   --set image.pullPolicy=Always \
   --set onboardingSecret.clientId=$ONBOARDING_CLIENT_ID \
   --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET \
