@@ -3,12 +3,18 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
+	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart/loader"
+	"helm.sh/helm/v3/pkg/cli"
 )
 
 var token = createSignedToken()
@@ -35,8 +41,64 @@ func createSignedToken() string {
 
 }
 
+type MyTestSuite struct {
+	suite.Suite
+	logger *zap.SugaredLogger
+}
+
+func (suite *MyTestSuite) SetupSuite() {
+	suite.logger = zap.NewNop().Sugar()
+	suite.runHelmCommand()
+}
+
+func (suite *MyTestSuite) runHelmCommand() {
+	settings := cli.New()
+	actionConfig := new(action.Configuration)
+	err := actionConfig.Init(settings.RESTClientGetter(), settings.Namespace(), os.Getenv("HELM_DRIVER"), suite.logger.Infof)
+	if err != nil {
+		suite.T().Fatal("Failed to initialize Helm action configuration:", err)
+	}
+
+	client := action.NewUpgrade(actionConfig)
+	client.Namespace = "illumio-cloud"
+
+	values := map[string]interface{}{
+		"image": map[string]interface{}{
+			"repository": fmt.Sprintf("ghcr.io/%s", os.Getenv("GITHUB_REPOSITORY")),
+			"tag":        os.Getenv("GITHUB_REF_NAME"),
+			"pullPolicy": "Always",
+		},
+		"onboardingSecret": map[string]interface{}{
+			"clientId":     os.Getenv("ONBOARDING_CLIENT_ID"),
+			"clientSecret": os.Getenv("ONBOARDING_CLIENT_SECRET"),
+		},
+		"env": map[string]interface{}{
+			"onboardingEndpoint": os.Getenv("ONBOARDING_ENDPOINT"),
+			"tokenEndpoint":      os.Getenv("TOKEN_ENDPOINT"),
+			"tlsSkipVerify":      os.Getenv("TLS_SKIP_VERIFY"),
+		},
+		"falco": map[string]interface{}{
+			"enabled": false,
+		},
+	}
+	// Load the chart file
+	chartPath := "cloud-operator-*.tgz"
+	chart, err := loader.Load(chartPath)
+	if err != nil {
+		suite.T().Fatalf("failed to load chart: %v", err)
+	}
+	_, err = client.Run("illumio", chart, values)
+	if err != nil {
+		suite.T().Fatal("Failed to run Helm upgrade/install:", err)
+	}
+}
+
+func TestMySuite(t *testing.T) {
+	suite.Run(t, new(MyTestSuite))
+}
+
 // TestFakeServerConnectionSuccesfulAndRetry tests a client connecting to the gRPC server
-func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
+func (suite *MyTestSuite) TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
 	logger := zap.NewNop()
 	// Setup: Start the FakeServer
 	fakeServer := &FakeServer{
@@ -49,7 +111,7 @@ func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
 
 	// Start the server
 	err := fakeServer.start()
-	assert.NoError(t, err, "Failed to start the FakeServer")
+	assert.NoError(suite.T(), err, "Failed to start the FakeServer")
 
 	// Cleanup: Stop the server after the test
 	defer fakeServer.stop()
@@ -63,7 +125,7 @@ mainloop:
 		select {
 		case <-timeout:
 			// Test failure if the state hasn't changed in time
-			t.Fatal("Operator never connected in alloted time.")
+			suite.T().Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
 			// time.Sleep(25 * time.Second)
@@ -72,8 +134,8 @@ mainloop:
 
 			// Check if the log entry we sent is in the received logs
 			if stateChanged {
-				t.Log("Connection Succes is true. Test passed.")
-				assert.Equal(t, stateChanged, true)
+				suite.T().Log("Connection Succes is true. Test passed.")
+				assert.Equal(suite.T(), stateChanged, true)
 				break mainloop
 			}
 		}
@@ -83,7 +145,7 @@ mainloop:
 	fakeServer.state.ConnectionSuccessful = false
 	// Start the server
 	err = fakeServer.start()
-	assert.NoError(t, err, "Failed to start the FakeServer")
+	assert.NoError(suite.T(), err, "Failed to start the FakeServer")
 	// Cleanup: Stop the server after the test
 	defer fakeServer.stop()
 
@@ -91,7 +153,7 @@ mainloop:
 		select {
 		case <-timeout:
 			// Test failure if the state hasn't changed in time
-			t.Fatal("Operator never connected in alloted time.")
+			suite.T().Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
 			// Check if the log entry has been recorded
@@ -99,15 +161,15 @@ mainloop:
 
 			// Check if the log entry we sent is in the received logs
 			if stateChanged {
-				t.Log("Connection Succes is true. Test passed.")
-				assert.Equal(t, stateChanged, true)
+				suite.T().Log("Connection Succes is true. Test passed.")
+				assert.Equal(suite.T(), stateChanged, true)
 				return
 			}
 		}
 	}
 }
 
-func TestFailureDuringIntialCommit(t *testing.T) {
+func (suite *MyTestSuite) TestFailureDuringIntialCommit(t *testing.T) {
 	logger := zap.NewNop()
 	// Setup: Start the FakeServer
 	fakeServer := &FakeServer{
@@ -120,7 +182,7 @@ func TestFailureDuringIntialCommit(t *testing.T) {
 
 	// Start the server
 	err := fakeServer.start()
-	assert.NoError(t, err, "Failed to start the FakeServer")
+	assert.NoError(suite.T(), err, "Failed to start the FakeServer")
 
 	// Cleanup: Stop the server after the test
 	defer fakeServer.stop()
@@ -134,7 +196,7 @@ mainloop:
 		select {
 		case <-timeout:
 			// Test failure if the state hasn't changed in time
-			t.Fatal("Operator never connected in alloted time.")
+			suite.T().Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
 			// Check if the log entry has been recorded
@@ -142,8 +204,8 @@ mainloop:
 
 			// Check if the log entry we sent is in the received logs
 			if stateChanged {
-				t.Log("Connection Succes is true. Test passed.")
-				assert.Equal(t, stateChanged, true)
+				suite.T().Log("Connection Succes is true. Test passed.")
+				assert.Equal(suite.T(), stateChanged, true)
 				break mainloop
 			}
 		}
