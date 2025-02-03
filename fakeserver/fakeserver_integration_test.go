@@ -59,8 +59,9 @@ func (suite *MyTestSuite) runHelmCommand() {
 		suite.T().Fatal("Failed to initialize Helm action configuration:", err)
 	}
 
-	client := action.NewUpgrade(actionConfig)
+	client := action.NewInstall(actionConfig)
 	client.Namespace = "illumio-cloud"
+	client.ReleaseName = "illumio"
 
 	values := map[string]interface{}{
 		"image": map[string]interface{}{
@@ -82,12 +83,12 @@ func (suite *MyTestSuite) runHelmCommand() {
 		},
 	}
 	// Load the chart file
-	chartPath := "cloud-operator-*.tgz"
+	chartPath := "cloud-operator-1.0.0.tgz"
 	chart, err := loader.Load(chartPath)
 	if err != nil {
 		suite.T().Fatalf("failed to load chart: %v", err)
 	}
-	_, err = client.Run("illumio", chart, values)
+	_, err = client.Run(chart, values)
 	if err != nil {
 		suite.T().Fatal("Failed to run Helm upgrade/install:", err)
 	}
