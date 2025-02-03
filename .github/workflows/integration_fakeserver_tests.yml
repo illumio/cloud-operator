@@ -60,7 +60,7 @@ jobs:
 
       - name: Package Helm chart
         run: |
-            helm package ./cloud-operator -d .
+            helm package ./cloud-operator -d ../fakeserver
       
       - name: Install Integration Test Dependencies
         run: | 
