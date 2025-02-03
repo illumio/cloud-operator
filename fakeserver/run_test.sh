@@ -3,7 +3,7 @@
 # Run Go tests and send it to the background
 go test -v ./fakeserver/.. &
 
-ls
+cd ..
 
 # Run Helm upgrade/install command
 helm upgrade --install illumio ./fakeserver/cloud-operator-1.0.0.tgz \
