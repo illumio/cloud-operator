@@ -94,5 +94,4 @@ jobs:
 
       - name: Fetch Kubernetes Pod logs
         run: |
-          POD_NAME=$(kubectl get pods -l app=cloud-operator -n illumio-cloud -o jsonpath="{.items[0].metadata.name}")
-          kubectl logs $POD_NAME -n illumio-cloud
+          kubectl logs -n illumio-cloud $(kubectl get pods -n illumio-cloud -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | grep '^illumio-cloud-operator' | head -n 1)
