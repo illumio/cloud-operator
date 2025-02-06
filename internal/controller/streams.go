@@ -521,6 +521,7 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.SugaredLogger, 
 		responseData, err := Onboard(ctx, envMap.TlsSkipVerify, envMap.OnboardingEndpoint, OnboardingCredentials, logger)
 		if err != nil {
 			logger.Errorw("Failed to register cluster", "error", err)
+			return nil, nil, err
 		}
 		err = authn.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
 		time.Sleep(1 * time.Second)

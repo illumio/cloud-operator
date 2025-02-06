@@ -38,7 +38,7 @@ func Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string,
 	}
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   5 * time.Second,
+		Timeout:   10 * time.Second,
 	}
 	// Define the URL to which the POST request will be made
 
