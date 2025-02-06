@@ -63,6 +63,7 @@ mainloop:
 		select {
 		case <-timeout:
 			// Test failure if the state hasn't changed in time
+			assert.Equal(t, true, true)
 			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
@@ -91,6 +92,7 @@ mainloop:
 		select {
 		case <-timeout:
 			// Test failure if the state hasn't changed in time
+			assert.Equal(t, true, true)
 			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
@@ -134,6 +136,7 @@ mainloop:
 		select {
 		case <-timeout:
 			// Test failure if the state hasn't changed in time
+			assert.Equal(t, true, true)
 			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
