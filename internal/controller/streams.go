@@ -450,7 +450,7 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 		case <-ctx.Done():
 			return
 		case <-timer:
-			authConContext, authConContextCancel := context.WithTimeout(ctx, time.Second*5)
+			authConContext, authConContextCancel := context.WithCancel(ctx)
 			defer authConContextCancel()
 			authConn, client, err := NewAuthenticatedConnection(authConContext, logger, envMap)
 			if err != nil {

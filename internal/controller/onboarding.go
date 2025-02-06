@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"time"
 
 	"go.uber.org/zap"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,6 +38,7 @@ func Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string,
 	}
 	client := &http.Client{
 		Transport: transport,
+		Timeout:   5 * time.Second,
 	}
 	// Define the URL to which the POST request will be made
 
