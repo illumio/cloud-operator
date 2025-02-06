@@ -450,9 +450,12 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 		case <-ctx.Done():
 			return
 		case <-timer:
-			authConn, client, err := NewAuthenticatedConnection(ctx, logger, envMap)
+			authConContext, authConContextCancel := context.WithTimeout(ctx, time.Second*5)
+			defer authConContextCancel()
+			authConn, client, err := NewAuthenticatedConnection(authConContext, logger, envMap)
 			if err != nil {
 				logger.Errorw("Failed to establish initial connection; will retry", "error", err)
+				authConContextCancel()
 				continue
 			}
 

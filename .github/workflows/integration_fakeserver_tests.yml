@@ -91,8 +91,6 @@ jobs:
         run: |
          # Run your test against the fake server
           kubectl create ns illumio-cloud && go test -v ./fakeserver/...
-          POD_NAME=$(kubectl get pods -l app=cloud-operator -n illumio-cloud -o jsonpath="{.items[0].metadata.name}")
-          kubectl logs $POD_NAME -n illumio-cloud
 
       - name: Fetch Kubernetes Pod logs
         run: |
