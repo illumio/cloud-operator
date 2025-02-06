@@ -60,7 +60,7 @@ jobs:
 
       - name: Package Helm chart
         run: |
-            helm package ./cloud-operator -d ../fakeserver && kubectl create ns illumio-cloud 
+            helm package cloud-operator && kubectl create ns illumio-cloud 
       
       - name: Install Integration Test Dependencies
         run: | 
@@ -74,7 +74,7 @@ jobs:
             ONBOARDING_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/onboard"
             TOKEN_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/authenticate"
         run: |
-            cd fakeserver && ls && helm upgrade --install illumio fakeserver/cloud-operator-*.tgz \
+            cd cloud-operator && ls && helm upgrade --install illumio cloud-operator-*.tgz \
             --namespace illumio-cloud \
             --create-namespace \
             --set image.repository=ghcr.io/${{ github.repository }} \
