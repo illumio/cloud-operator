@@ -60,7 +60,7 @@ jobs:
 
       - name: Package Helm chart
         run: |
-            helm package ./cloud-operator -d ../fakeserver
+            helm package ./cloud-operator -d ../fakeserver && kubectl create ns illumio-cloud 
       
       - name: Install Integration Test Dependencies
         run: | 
@@ -90,7 +90,7 @@ jobs:
       - name:  Run Integration Tests
         run: |
          # Run your test against the fake server
-          kubectl create ns illumio-cloud && go test -v ./fakeserver/...
+          kubectl get pods -A && go test -v ./fakeserver/...
 
       - name: Fetch Kubernetes Pod logs
         run: |
