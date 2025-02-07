@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt"
@@ -39,8 +37,7 @@ func main() {
 
 	// Start the server
 	if err := fs.start(); err != nil {
-		fmt.Println("Failed to start server:", err)
-		os.Exit(1)
+		logger.Fatal("Failed to start server", zap.Error(err))
 	}
 	defer fs.stop()
 

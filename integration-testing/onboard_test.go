@@ -32,6 +32,10 @@ type ClustersResponse struct {
 	Page          int       `json:"page"`
 }
 
+type OffboardRequest struct {
+	ClusterIds []string `json:"cluster_ids"`
+}
+
 // Config holds configuration values needed for the API requests.
 type Config struct {
 	TenantId     string
@@ -114,8 +118,8 @@ func fetchClusters(config Config) ([]Cluster, error) {
 func offboardCluster(config Config, clusterIds []string) error {
 	offBoardURL := "https://cloud.illum.io/api/v1/k8s_cluster/offboard"
 
-	body := map[string][]string{
-		"cluster_ids": clusterIds,
+	body := OffboardRequest{
+		ClusterIds: clusterIds,
 	}
 
 	jsonBody, err := json.Marshal(body)
