@@ -90,7 +90,7 @@ jobs:
       - name:  Run Integration Tests
         run: |
          # Run your test against the fake server
-          kubectl wait --for=condition=ready pod -l app=cloud-operator -n illumio-cloud --timeout=300s && go test -v ./fakeserver/...
+          kubectl wait --for=condition=ready pod -l app=cloud-operator -n illumio-cloud --timeout=300s && go test -v ./fakeserver/... && kubectl logs -l app=cloud-operator -n illumio-cloud
 
       - name: Fetch Kubernetes Pod logs
         run: |
