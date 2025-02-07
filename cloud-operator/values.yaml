@@ -33,7 +33,7 @@ onboardingSecret:
   clientSecret: ""
 
 falco:
-  enabled: true
+  enabled: false
   namespace: falco
   falco:
     http_output:
