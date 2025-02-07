@@ -5,7 +5,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/rand"
 	"net"
 	"net/http"
@@ -451,14 +450,6 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 		case <-ctx.Done():
 			return
 		case <-resetTimer.C:
-			// Get the current time
-			currentTime := time.Now()
-
-			// Format the time in a human-readable format
-			formattedTime := currentTime.Format("2006-01-02 15:04:05")
-
-			// Print the formatted time
-			fmt.Println("Current time:", formattedTime)
 			authConContext, _ := context.WithTimeout(ctx, 10*time.Second)
 			authConn, client, err := NewAuthenticatedConnection(authConContext, logger, envMap)
 			if err != nil {
