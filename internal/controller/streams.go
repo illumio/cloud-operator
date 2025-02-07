@@ -445,12 +445,12 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 		}
 	}()
 	// Timer channel for 5 seconds
-	timer := time.After(5 * time.Second)
+	resetTimer := time.NewTimer(time.Second * 5)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-timer:
+		case <-resetTimer.C:
 			// Get the current time
 			currentTime := time.Now()
 
@@ -459,12 +459,11 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 
 			// Print the formatted time
 			fmt.Println("Current time:", formattedTime)
-			authConContext, authConContextCancel := context.WithTimeout(ctx, 10*time.Second)
-			defer authConContextCancel()
+			authConContext, _ := context.WithTimeout(ctx, 10*time.Second)
 			authConn, client, err := NewAuthenticatedConnection(authConContext, logger, envMap)
 			if err != nil {
 				logger.Errorw("Failed to establish initial connection; will retry", "error", err)
-				authConContextCancel()
+				resetTimer.Reset(time.Second * 10)
 				continue
 			}
 
