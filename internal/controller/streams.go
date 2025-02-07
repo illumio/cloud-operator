@@ -71,6 +71,7 @@ var resourceAPIGroupMap = map[string]string{
 	"ingresses":                 "networking.k8s.io",
 	"ingressclasses":            "networking.k8s.io",
 	"jobs":                      "batch",
+	"namespaces":                "",
 	"networkpolicies":           "networking.k8s.io",
 	"nodes":                     "",
 	"pods":                      "",

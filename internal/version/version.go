@@ -2,9 +2,7 @@
 
 package version
 
-var (
-	version = "dev"
-)
+var version string
 
 // Version returns the version of the operator.
 func Version() string {

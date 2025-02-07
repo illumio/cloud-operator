@@ -23,6 +23,11 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
+// ptrBool is a helper function to create pointers to bool values (used in metav1.OwnerReference)
+// Used to simulate the nil behavior of the optional fields
+func ptrBool(b bool) *bool {
+	return &b
+}
 func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 	// Setup a mock object, e.g., a ConfigMap with predefined metadata
 	configMap := metav1.ObjectMeta{
@@ -38,7 +43,7 @@ func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 		suite.T().Error("could not create clientset")
 	}
 	// Execute the function under test.
-	got, _ := convertMetaObjectToMetadata(context.Background(), configMap, clientset, "configMap")
+	got, _ := convertMetaObjectToMetadata(logger, context.Background(), configMap, clientset, "configMap")
 
 	// Define what you expect to get.
 	want := metav1.ObjectMeta{
@@ -54,6 +59,49 @@ func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 	}
 }
 
+func TestRemoveListSuffix(t *testing.T) {
+	tests := map[string]struct {
+		input          string
+		expectedOutput string
+	}{
+		"empty string": {
+			input:          "",
+			expectedOutput: "",
+		},
+		"no List suffix": {
+			input:          "Pod",
+			expectedOutput: "Pod",
+		},
+		"with List suffix": {
+			input:          "PodList",
+			expectedOutput: "Pod",
+		},
+		"multiple capitalizations": {
+			input:          "StatefulSetList",
+			expectedOutput: "StatefulSet",
+		},
+		"List suffix at the end": {
+			input:          "ReplicaSetList",
+			expectedOutput: "ReplicaSet",
+		},
+		"string with List at the start": {
+			input:          "ListPod",
+			expectedOutput: "ListPod", // Since "List" is at the start, it shouldn't be removed
+		},
+		"string with embedded List": {
+			input:          "MyListPod",
+			expectedOutput: "MyListPod", // Should not remove the "List" that appears inside the string
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := removeListSuffix(tt.input)
+
+			assert.Equal(t, tt.expectedOutput, result, "test failed: %s", name)
+		})
+	}
+}
 func TestGetObjectMetadataFromRuntimeObject(t *testing.T) {
 	// A successful case with a valid Kubernetes object.
 	pod := &v1.Pod{
@@ -135,12 +183,126 @@ func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 	}
 
 	// Ensure proper error handling
-	result, err := convertMetaObjectToMetadata(context.Background(), objMeta, clientset, resource)
+	result, err := convertMetaObjectToMetadata(logger, context.Background(), objMeta, clientset, resource)
 	if err != nil {
 		suite.T().Fatalf("Error converting MetaObject to Metadata: %v", err)
 	}
 
 	assert.Equal(suite.T(), expected, result)
+}
+
+func (suite *ControllerTestSuite) TestConvertOwnerReferences() {
+	tests := map[string]struct {
+		ownerReferences []metav1.OwnerReference
+		expectedRefs    []*pb.KubernetesOwnerReference
+		expectedError   bool
+	}{
+		"empty slice": {
+			ownerReferences: []metav1.OwnerReference{},
+			expectedRefs:    nil,
+			expectedError:   false,
+		},
+		"single OwnerReference with all fields set": {
+			ownerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "v1",
+					BlockOwnerDeletion: ptrBool(true),
+					Controller:         ptrBool(true),
+					Kind:               "Pod",
+					Name:               "pod-name",
+					UID:                "uid-1234",
+				},
+			},
+			expectedRefs: []*pb.KubernetesOwnerReference{
+				{
+					ApiVersion:         "v1",
+					BlockOwnerDeletion: true,
+					Controller:         true,
+					Kind:               "Pod",
+					Name:               "pod-name",
+					Uid:                "uid-1234",
+				},
+			},
+			expectedError: false,
+		},
+		"OwnerReference with nil BlockOwnerDeletion and Controller": {
+			ownerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "v1",
+					BlockOwnerDeletion: nil,
+					Controller:         nil,
+					Kind:               "Deployment",
+					Name:               "deployment-name",
+					UID:                "uid-5678",
+				},
+			},
+			expectedRefs: []*pb.KubernetesOwnerReference{
+				{
+					ApiVersion:         "v1",
+					BlockOwnerDeletion: false,
+					Controller:         false,
+					Kind:               "Deployment",
+					Name:               "deployment-name",
+					Uid:                "uid-5678",
+				},
+			},
+			expectedError: false,
+		},
+		"multiple OwnerReferences": {
+			ownerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "v1",
+					BlockOwnerDeletion: ptrBool(false),
+					Controller:         ptrBool(true),
+					Kind:               "ReplicaSet",
+					Name:               "replicaset-1",
+					UID:                "uid-9999",
+				},
+				{
+					APIVersion:         "apps/v1",
+					BlockOwnerDeletion: ptrBool(true),
+					Controller:         ptrBool(false),
+					Kind:               "Deployment",
+					Name:               "deployment-2",
+					UID:                "uid-8888",
+				},
+			},
+			expectedRefs: []*pb.KubernetesOwnerReference{
+				{
+					ApiVersion:         "v1",
+					BlockOwnerDeletion: false,
+					Controller:         true,
+					Kind:               "ReplicaSet",
+					Name:               "replicaset-1",
+					Uid:                "uid-9999",
+				},
+				{
+					ApiVersion:         "apps/v1",
+					BlockOwnerDeletion: true,
+					Controller:         false,
+					Kind:               "Deployment",
+					Name:               "deployment-2",
+					Uid:                "uid-8888",
+				},
+			},
+			expectedError: false,
+		},
+	}
+
+	for name, tt := range tests {
+		suite.T().Run(name, func(t *testing.T) {
+			result, err := convertOwnerReferences(tt.ownerReferences)
+
+			// Check for errors
+			if tt.expectedError {
+				assert.Error(t, err, "expected error for test: %s", name)
+			} else {
+				assert.NoError(t, err, "unexpected error for test: %s", name)
+				// Compare the result
+				assert.Equal(t, tt.expectedRefs, result, "test failed: %s", name)
+			}
+		})
+	}
 }
 
 func TestConvertToProtoTimestamp(t *testing.T) {
