@@ -39,7 +39,7 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[5].value
           value: "true"
-  
+
   # Test for replicaCount value
   - it: should set the correct number of replicas
     set:

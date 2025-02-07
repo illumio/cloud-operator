@@ -8,7 +8,6 @@ image:
   tag: "0.0.1"
   pullPolicy: IfNotPresent
 
-
 serviceAccount:
   create: true
   name: "illumio-cloud-sa"

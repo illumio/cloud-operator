@@ -451,11 +451,12 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 		case <-ctx.Done():
 			return
 		case <-resetTimer.C:
-			authConContext, _ := context.WithTimeout(ctx, 10*time.Second)
+			authConContext, authConContextCancel := context.WithTimeout(ctx, 10*time.Second)
 			authConn, client, err := NewAuthenticatedConnection(authConContext, logger, envMap)
 			if err != nil {
 				logger.Errorw("Failed to establish initial connection; will retry", "error", err)
 				resetTimer.Reset(time.Second * 10)
+				authConContextCancel()
 				continue
 			}
 
@@ -498,7 +499,7 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			case <-resourceDone:
 			case <-logDone:
 			}
-
+			authConContextCancel()
 			logger.Warn("One or more streams have been closed; closing and reopening the connection to CloudSecure")
 		}
 	}

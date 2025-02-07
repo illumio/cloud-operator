@@ -169,6 +169,7 @@ func TestClusterIsOnboarded(t *testing.T) {
 
 	// Fetch clusters
 	clusters, err := fetchClusters(config)
+	fmt.Println(clusters)
 	if err != nil {
 		t.Fatalf("Failed to fetch clusters: %v", err)
 	}
@@ -180,6 +181,7 @@ func TestClusterIsOnboarded(t *testing.T) {
 
 	// Check the first cluster and attempt to offboard it
 	uuids := extractUUIDs(clusters)
+	fmt.Println(uuids)
 	t.Logf("Attempting to offboard clusters with ID: %s", uuids)
 
 	if err := offboardCluster(config, uuids); err != nil {
