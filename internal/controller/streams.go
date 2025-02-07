@@ -459,7 +459,7 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 
 			// Print the formatted time
 			fmt.Println("Current time:", formattedTime)
-			authConContext, authConContextCancel := context.WithCancel(ctx)
+			authConContext, authConContextCancel := context.WithTimeout(ctx, 10*time.Second)
 			defer authConContextCancel()
 			authConn, client, err := NewAuthenticatedConnection(authConContext, logger, envMap)
 			if err != nil {
