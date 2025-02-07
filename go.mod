@@ -3,7 +3,7 @@ module github.com/illumio/cloud-operator
 go 1.23.0
 
 require (
-
+	github.com/cilium/cilium v1.17.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/oauth2 v0.25.0
 	google.golang.org/grpc v1.70.0
@@ -14,7 +14,7 @@ require (
 )
 
 require (
-	github.com/fsnotify/fsnotify v1.7.0 // indirect
+	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/hashicorp/hcl v1.0.1-vault-5 // indirect
@@ -30,7 +30,7 @@ require (
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
+	golang.org/x/exp v0.0.0-20240808152545-0cdaa3abc0fa // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )
