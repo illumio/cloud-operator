@@ -81,7 +81,7 @@ jobs:
             --namespace illumio-cloud \
             --create-namespace \
             --set image.repository=ghcr.io/${{ github.repository }} \
-            --set image.tag=${{ github.ref_name }} \
+            --set image.tag=${{ github.sha }} \
             --set image.pullPolicy=Always \
             --set onboardingSecret.clientId=$ONBOARDING_CLIENT_ID \
             --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET \
