@@ -163,7 +163,7 @@ func TestClusterIsOnboarded(t *testing.T) {
 	config := Config{
 		TenantId:     viper.GetString("TENANT_ID"),
 		CloudIdKey:   viper.GetString("CLOUD_API_KEY"),
-		CloudIdValue: viper.GetString("CLOUD_SECRET"),
+		CloudIdValue: viper.GetString("CLOUD_API_SECRET"),
 		UserId:       viper.GetString("USER_ID"),
 	}
 
