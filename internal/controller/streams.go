@@ -445,15 +445,18 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 		}
 	}()
 	// Timer channel for 5 seconds
-	timer := time.After(5 * time.Second)
+	resetTimer := time.NewTimer(time.Second * 5)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-timer:
-			authConn, client, err := NewAuthenticatedConnection(ctx, logger, envMap)
+		case <-resetTimer.C:
+			authConContext, authConContextCancel := context.WithTimeout(ctx, 10*time.Second)
+			authConn, client, err := NewAuthenticatedConnection(authConContext, logger, envMap)
 			if err != nil {
 				logger.Errorw("Failed to establish initial connection; will retry", "error", err)
+				resetTimer.Reset(time.Second * 10)
+				authConContextCancel()
 				continue
 			}
 
@@ -496,7 +499,7 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			case <-resourceDone:
 			case <-logDone:
 			}
-
+			authConContextCancel()
 			logger.Warn("One or more streams have been closed; closing and reopening the connection to CloudSecure")
 		}
 	}
@@ -519,6 +522,7 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.SugaredLogger, 
 		responseData, err := Onboard(ctx, envMap.TlsSkipVerify, envMap.OnboardingEndpoint, OnboardingCredentials, logger)
 		if err != nil {
 			logger.Errorw("Failed to register cluster", "error", err)
+			return nil, nil, err
 		}
 		err = authn.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
 		time.Sleep(1 * time.Second)
