@@ -115,6 +115,7 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 			logger.Info("Cluster metadata received")
 		case *pb.SendKubernetesResourcesRequest_ResourceData:
 			logger.Info("Initial inventory data")
+			// logger.Info(req.String())
 		case *pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete:
 			logger.Info("Initial inventory complete")
 			if serverState.BadIntialCommit {
@@ -124,7 +125,6 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 			serverState.ConnectionSuccessful = true
 		case *pb.SendKubernetesResourcesRequest_KubernetesResourceMutation:
 			logger.Info("Mutation Detected")
-			logger.Info(req.String())
 		}
 		if err := stream.Send(&pb.SendKubernetesResourcesResponse{}); err != nil {
 			return err

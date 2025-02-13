@@ -110,18 +110,21 @@ func convertMetaObjectToMetadata(logger *zap.SugaredLogger, ctx context.Context,
 	return objMetadata, nil
 }
 
-func getServiceClusterIp(ctx context.Context, namespace string, clientset *kubernetes.Clientset, serviceName string) (string, error) {
+// getServiceClusterIp retrieves the Cluster IP of a given service in a specified namespace.
+func getServiceClusterIp(ctx context.Context, serviceName string, clientset *kubernetes.Clientset, namespace string) (string, error) {
 	service, err := clientset.CoreV1().Services(namespace).Get(ctx, serviceName, metav1.GetOptions{})
 	if err != nil {
 		return "", errors.New("failed to get service")
 	}
-	clusterIP := service.Spec.ClusterIP
-	if clusterIP == "" {
+	clusterIp := service.Spec.ClusterIP
+	if clusterIp == "" {
 		return "", errors.New("service does not have a cluster IP")
 	}
-	return clusterIP, nil
+	return clusterIp, nil
 }
 
+// convertOwnerReferences converts a slice of Kubernetes OwnerReference objects into a slice of
+// protobuf KubernetesOwnerReference objects.
 func convertOwnerReferences(ownerReferences []metav1.OwnerReference) ([]*pb.KubernetesOwnerReference, error) {
 	if len(ownerReferences) == 0 {
 		return nil, nil

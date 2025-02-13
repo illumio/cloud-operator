@@ -452,6 +452,61 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 	}
 }
 
+func (suite *ControllerTestSuite) TestGetServiceClusterIp() {
+	tests := map[string]struct {
+		serviceName    string
+		namespace      string
+		service        *v1.Service
+		expectedIP     string
+		expectedErrMsg string
+	}{
+		"service not found": {
+			serviceName:    "nonexistent-service",
+			namespace:      "default",
+			service:        nil,
+			expectedIP:     "",
+			expectedErrMsg: "failed to get service",
+		},
+		"service with cluster IP": {
+			serviceName: "valid-service",
+			namespace:   "default",
+			service: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "valid-service",
+					Namespace: "default",
+				},
+				Spec: v1.ServiceSpec{
+					ClusterIP: "10.96.0.4",
+					Ports: []v1.ServicePort{
+						{
+							Port: 80,
+						},
+					},
+				},
+			},
+			expectedIP:     "10.96.0.4",
+			expectedErrMsg: "",
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			if tt.service != nil {
+				_, err := suite.clientset.CoreV1().Services(tt.namespace).Create(context.TODO(), tt.service, metav1.CreateOptions{})
+				assert.NoError(suite.T(), err)
+			}
+
+			ip, err := getServiceClusterIp(context.TODO(), tt.serviceName, suite.clientset, tt.namespace)
+			if tt.expectedErrMsg != "" {
+				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
+			} else {
+				assert.NoError(suite.T(), err)
+				assert.Equal(suite.T(), tt.expectedIP, ip)
+			}
+		})
+	}
+}
+
 func (suite *ControllerTestSuite) TestFetchResources() {
 	// Create dynamic client
 	var kubeconfig *string
