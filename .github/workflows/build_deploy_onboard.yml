@@ -3,7 +3,7 @@ name: Build, Deploy and Onboard Cloud Operator To Live Services
 on:
     push:
       branches:
-        - main
+        - edit-gha-to-use-metadata-for-tags
 jobs:
   test-deploy-onboard-live:
     runs-on: ubuntu-latest
@@ -63,7 +63,7 @@ jobs:
 
       - name: Package Helm chart
         run: |
-            helm package ./cloud-operator -d .
+            helm package cloud-operator && kubectl create ns illumio-cloud 
 
       - name: Install Helm chart and Deploy Operator
         env:
@@ -75,7 +75,6 @@ jobs:
             USER_ID: ${{ secrets.USER_ID }}
 
         run: |
-            helm template
             helm upgrade --install illumio cloud-operator-*.tgz \
             --namespace illumio-cloud \
             --create-namespace \
