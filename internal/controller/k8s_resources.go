@@ -99,8 +99,27 @@ func convertMetaObjectToMetadata(logger *zap.SugaredLogger, ctx context.Context,
 			return objMetadata, nil
 		}
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Node{Node: &pb.KubernetesNodeData{ProviderId: providerId}}
+	case "Service":
+		clusterIp, err := getServiceClusterIp(ctx, obj.GetName(), clientset, obj.GetNamespace())
+		if err != nil {
+			return objMetadata, nil
+		}
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_Service{Service: &pb.KubernetesServiceData{ClusterIp: clusterIp}}
+
 	}
 	return objMetadata, nil
+}
+
+func getServiceClusterIp(ctx context.Context, namespace string, clientset *kubernetes.Clientset, serviceName string) (string, error) {
+	service, err := clientset.CoreV1().Services(namespace).Get(ctx, serviceName, metav1.GetOptions{})
+	if err != nil {
+		return "", errors.New("failed to get service")
+	}
+	clusterIP := service.Spec.ClusterIP
+	if clusterIP == "" {
+		return "", errors.New("service does not have a cluster IP")
+	}
+	return clusterIP, nil
 }
 
 func convertOwnerReferences(ownerReferences []metav1.OwnerReference) ([]*pb.KubernetesOwnerReference, error) {

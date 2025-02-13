@@ -24,7 +24,12 @@ message KubernetesObjectData {
   oneof kind_specific {
     KubernetesPodData pod = 100;
     KubernetesNodeData node = 101;
+    KubernetesServiceData service = 102;
   }
+}
+
+message KubernetesServiceData {
+  string cluster_ip = 1;
 }
 
 // KubernetesNodeData contains information specific to a Node Object.
