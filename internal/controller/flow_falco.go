@@ -70,21 +70,21 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 
 	layer3Message, err := createLayer3Message(info.SrcIP, info.DstIP, info.IpVersion)
 	if err != nil {
-		return nil, err
+		return &pb.FalcoFlow{}, err
 	}
 
 	srcPort, err := strconv.ParseUint(info.SrcPort, 10, 32)
 	if err != nil {
-		return nil, fmt.Errorf("invalid source port: %v", err)
+		return &pb.FalcoFlow{}, fmt.Errorf("invalid source port: %v", err)
 	}
 	dstPort, err := strconv.ParseUint(info.DstPort, 10, 32)
 	if err != nil {
-		return nil, fmt.Errorf("invalid destination port: %v", err)
+		return &pb.FalcoFlow{}, fmt.Errorf("invalid destination port: %v", err)
 	}
 
 	layer4Message, err := createLayer4Message(info.Proto, uint32(srcPort), uint32(dstPort), info.IpVersion)
 	if err != nil {
-		return nil, err
+		return &pb.FalcoFlow{}, err
 	}
 
 	flow := &pb.FalcoFlow{
