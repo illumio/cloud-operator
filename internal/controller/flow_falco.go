@@ -132,9 +132,7 @@ func createLayer3Message(source string, destination string, ipVersion string) (*
 		return &pb.IP{Source: source, Destination: destination, IpVersion: pb.IPVersion_IP_VERSION_IPV6}, nil
 	}
 	// If this is IPVersion_IP_VERSION_IP_NOT_USED_UNSPECIFIED do we want to drop this packet?
-	// I think it could be:
-	// return &pb.IP{}, ErrFalcoIncompleteL3Flow
-	return &pb.IP{Source: source, Destination: destination, IpVersion: pb.IPVersion_IP_VERSION_IP_NOT_USED_UNSPECIFIED}, nil
+	return &pb.IP{}, ErrFalcoIncompleteL3Flow
 }
 
 // createLayer4Message converts event protocol and ports to a Layer4 proto message
