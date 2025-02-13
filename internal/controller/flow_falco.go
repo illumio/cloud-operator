@@ -131,6 +131,7 @@ func createLayer3Message(source string, destination string, ipVersion string) (*
 	} else if ipVersion == "ipv6" {
 		return &pb.IP{Source: source, Destination: destination, IpVersion: pb.IPVersion_IP_VERSION_IPV6}, nil
 	}
+	// If this is IPVersion_IP_VERSION_IP_NOT_USED_UNSPECIFIED do we want to drop this packet?
 	return &pb.IP{Source: source, Destination: destination, IpVersion: pb.IPVersion_IP_VERSION_IP_NOT_USED_UNSPECIFIED}, nil
 }
 
@@ -172,5 +173,5 @@ func createLayer4Message(proto string, srcPort, dstPort uint32, ipVersion string
 		}
 	default:
 	}
-	return &pb.Layer4{}, nil
+	return &pb.Layer4{}, ErrFalcoIncompleteL4Flow
 }
