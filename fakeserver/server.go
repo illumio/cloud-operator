@@ -115,7 +115,6 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 			logger.Info("Cluster metadata received")
 		case *pb.SendKubernetesResourcesRequest_ResourceData:
 			logger.Info("Initial inventory data")
-			// logger.Info(req.String())
 		case *pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete:
 			logger.Info("Initial inventory complete")
 			if serverState.BadIntialCommit {
