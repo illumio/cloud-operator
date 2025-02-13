@@ -70,7 +70,7 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 
 	layer3Message, err := createLayer3Message(info.SrcIP, info.DstIP, info.IpVersion)
 	if err != nil {
-		return nil, fmt.Errorf("unable to create Layer3 message falco flows: %v", err)
+		return nil, err
 	}
 
 	srcPort, err := strconv.ParseUint(info.SrcPort, 10, 32)
@@ -84,7 +84,7 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 
 	layer4Message, err := createLayer4Message(info.Proto, uint32(srcPort), uint32(dstPort), info.IpVersion)
 	if err != nil {
-		return nil, fmt.Errorf("could not create Layer4 Message for Falco flow %v", err)
+		return nil, err
 	}
 
 	flow := &pb.FalcoFlow{
@@ -132,6 +132,8 @@ func createLayer3Message(source string, destination string, ipVersion string) (*
 		return &pb.IP{Source: source, Destination: destination, IpVersion: pb.IPVersion_IP_VERSION_IPV6}, nil
 	}
 	// If this is IPVersion_IP_VERSION_IP_NOT_USED_UNSPECIFIED do we want to drop this packet?
+	// I think it could be:
+	// return &pb.IP{}, ErrFalcoIncompleteL3Flow
 	return &pb.IP{Source: source, Destination: destination, IpVersion: pb.IPVersion_IP_VERSION_IP_NOT_USED_UNSPECIFIED}, nil
 }
 

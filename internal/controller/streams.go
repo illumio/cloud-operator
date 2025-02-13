@@ -85,6 +85,7 @@ var resourceAPIGroupMap = map[string]string{
 var dd = &deadlockDetector{}
 var ErrStopRetries = errors.New("stop retries")
 var ErrFalcoEventIsNotFlow = errors.New("ignoring falco event, not a network flow")
+var ErrFalcoIncompleteL3Flow = errors.New("ignoring incomplete falco l3 network flow")
 var ErrFalcoIncompleteL4Flow = errors.New("ignoring incomplete falco l4 network flow")
 var falcoPort = ":5000"
 var reIllumioTraffic *regexp.Regexp

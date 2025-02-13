@@ -54,6 +54,27 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 			},
 			err: nil,
 		},
+		"Incomplete TCP flow": {
+			input: "time=1987-02-22T00:39:07.267635635+0000\t srcip= dstip=192.168.1.2 srcport=1234 dstport=5678 proto=None ipversion=ipv4",
+			expected: &pb.FalcoFlow{
+				Time: "1987-02-22T00:39:07.267635635+0000",
+				Layer3: &pb.IP{
+					Source:      "",
+					Destination: "192.168.1.2",
+					IpVersion:   pb.IPVersion_IP_VERSION_IPV4,
+				},
+				Layer4: &pb.Layer4{
+					Protocol: &pb.Layer4_Tcp{
+						Tcp: &pb.TCP{
+							SourcePort:      1234,
+							DestinationPort: 5678,
+							Flags:           &pb.TCPFlags{},
+						},
+					},
+				},
+			},
+			err: nil,
+		},
 		"invalid input": {
 			input: "invalid=input",
 			expected: &pb.FalcoFlow{
