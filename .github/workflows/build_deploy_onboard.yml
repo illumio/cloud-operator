@@ -80,7 +80,7 @@ jobs:
             --create-namespace \
             --set image.repository=ghcr.io/${{ github.repository }} \
             --set image.tag=${{ steps.meta.outputs.tags }} \
-            --set image.pullPolicy=Always
+            --set image.pullPolicy=Always \
             --set onboardingSecret.clientId=$ONBOARDING_CLIENT_ID \
             --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET
 
