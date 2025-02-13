@@ -244,7 +244,7 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 			convertedFalcoFlow, err := parsePodNetworkInfo(match[1])
 			if errors.Is(err, ErrFalcoEventIsNotFlow) || errors.Is(err, ErrFalcoIncompleteL4Flow) || errors.Is(err, ErrFalcoIncompleteL3Flow) {
 				// If the event can't be parsed, consider that it's not a flow event and just ignore it.
-				// If the event has an incomplete L4 layer lets just ignore it.
+				// If the event has an incomplete L3/L4 layer lets just ignore it.
 				return nil
 			} else if err != nil {
 				sm.logger.Errorw("Failed to parse Falco event into flow", "error", err)
