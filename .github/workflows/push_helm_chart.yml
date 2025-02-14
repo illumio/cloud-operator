@@ -13,7 +13,7 @@ jobs:
 
         - name: Checkout code
           uses: actions/checkout@v4
-        
+
         - name: Set up Helm
           uses: azure/setup-helm@v4
           with:
@@ -31,7 +31,7 @@ jobs:
 
         - name: Package Helm chart
           run: helm package cloud-operator/ --version ${{ github.ref_name }}
-        
+
         - name: Push Helm chart to GHCR
           run: |
             CHART_NAME=$(basename cloud-operator)
