@@ -69,10 +69,6 @@ jobs:
         env:
             ONBOARDING_CLIENT_ID: ${{ secrets.ONBOARDING_CLIENT_ID }}
             ONBOARDING_CLIENT_SECRET: ${{ secrets.ONBOARDING_CLIENT_SECRET }}
-            TENANT_ID: ${{ secrets.TENANT_ID }}
-            CLOUD_API_KEY: ${{ secrets.CLOUD_API_KEY }}
-            CLOUD_API_SECRET: ${{ secrets.CLOUD_API_SECRET }}
-            USER_ID: ${{ secrets.USER_ID }}
 
         run: |
             helm upgrade --install illumio cloud-operator-*.tgz \
@@ -104,8 +100,8 @@ jobs:
       - name: Run tests
         env:
           TENANT_ID: ${{ secrets.TENANT_ID }}
-          CLOUD_ID_KEY: ${{ secrets.CLOUD_ID_KEY }}
-          CLOUD_ID_VALUE: ${{ secrets.CLOUD_ID_VALUE }}
+          CLOUD_API_KEY: ${{ secrets.CLOUD_API_KEY }}
+          CLOUD_API_SECRET: ${{ secrets.CLOUD_API_SECRET }}
           USER_ID: ${{ secrets.USER_ID }}
 
         run:  go test -v ./integration-testing/...
