@@ -28,18 +28,24 @@ message KubernetesObjectData {
   }
 }
 
-message NodePorts {
-  // The port on each node on which this service is exposed
-  int32 node_port = 1;
-  // The port that will be exposed by this service
-  int32 port = 2;
-  // The IP protocol for this port, supports "TCP", "UDP", and "SCTP"
-  string protocol = 3;
-}
-
 message KubernetesServiceData {
+  // List of IP addresses associated with the Kubernetes service
   repeated string ip_addresses = 1;
-  repeated NodePorts node_ports = 2;
+  // List of service ports details
+  repeated ServicePorts ports = 2;
+  // Type of Kubernetes service (e.g., ClusterIP, NodePort, LoadBalancer, etc.)
+  string service_type = 3;
+
+  message ServicePorts {
+    // The port on each node on which this service is exposed
+    int32 node_port = 1;
+    // The port that will be exposed by this service
+    int32 port = 2;
+    // The IP protocol for this port, supports "TCP", "UDP", and "SCTP"
+    string protocol = 3;
+    // List of ports exposing the service via a load balancer
+    repeated string load_balencer_ports = 4;
+  }
 }
 
 // KubernetesNodeData contains information specific to a Node Object.

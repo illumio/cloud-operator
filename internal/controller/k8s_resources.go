@@ -20,19 +20,23 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+// Assuming ServiceAttributes has appropriate fields
 type ServiceAttributes struct {
-	ClusterIPs          []string    `json:"clusterIPs,omitempty"`
-	ExternalIPs         []string    `json:"externalIPs,omitempty"`
-	NodePorts           []*NodePort `json:"nodePorts,omitempty"`
-	LoadBalancerIP      string      `json:"loadBalancerIP,omitempty"`
-	LoadBalancerIngress []string    `json:"loadBalancerIngress,omitempty"`
-	ExternalName        string      `json:"externalName,omitempty"`
+	ClusterIPs          []string
+	ExternalIPs         []string
+	LoadBalancerIP      string
+	LoadBalancerIngress []string
+	LoadBalancerClass   string
+	NodePorts           []*Ports
+	ExternalName        string
+	ServiceType         string // make sure you have this field to capture the service type.
 }
 
-type NodePort struct {
-	NodePort int32  `json:"nodePort"`
-	Port     int32  `json:"port"`
-	Protocol string `json:"protocol"`
+type Ports struct {
+	NodePort          int32
+	Port              int32
+	Protocol          string
+	LoadBalancerPorts []string
 }
 
 // convertObjectToMetadata extracts the ObjectMeta from a metav1.Object interface.
@@ -127,7 +131,7 @@ func convertMetaObjectToMetadata(logger *zap.SugaredLogger, ctx context.Context,
 }
 
 func convertIngressToStringList(ingress []v1.LoadBalancerIngress) []string {
-	var result []string
+	result := []string{}
 	for _, i := range ingress {
 		if i.IP != "" {
 			result = append(result, i.IP)
@@ -139,11 +143,11 @@ func convertIngressToStringList(ingress []v1.LoadBalancerIngress) []string {
 	return result
 }
 
-func convertServicePortsToNodePorts(servicePorts []v1.ServicePort) []*NodePort {
-	var nodePorts []*NodePort
+func convertServicePortsToNodePorts(servicePorts []v1.ServicePort) []*Ports {
+	nodePorts := make([]*Ports, 0, len(servicePorts))
 	for _, sp := range servicePorts {
 		if sp.NodePort != 0 {
-			nodePort := &NodePort{
+			nodePort := &Ports{
 				NodePort: sp.NodePort,
 				Port:     sp.Port,
 				Protocol: string(sp.Protocol),
@@ -159,27 +163,29 @@ func getServiceAttributes(ctx context.Context, serviceName string, clientset *ku
 	if err != nil {
 		return nil, errors.New("failed to get service")
 	}
+	loadBalancerIngress := []string{}
+	if len(service.Status.LoadBalancer.Ingress) > 0 {
+		loadBalancerIngress = convertIngressToStringList(service.Status.LoadBalancer.Ingress)
+	}
+	loadBalancerClass := ""
+	if service.Spec.LoadBalancerClass != nil {
+		loadBalancerClass = *service.Spec.LoadBalancerClass
+	}
+	attributes := &ServiceAttributes{
+		ClusterIPs:          service.Spec.ClusterIPs,
+		ExternalIPs:         service.Spec.ExternalIPs,
+		LoadBalancerIngress: loadBalancerIngress,
+		LoadBalancerIP:      service.Spec.LoadBalancerIP,
+		LoadBalancerClass:   loadBalancerClass,
+	}
 
-	attributes := &ServiceAttributes{}
-	attributes.ClusterIPs = service.Spec.ClusterIPs
-	attributes.ExternalIPs = service.Spec.ExternalIPs
+	if service.Spec.Type == v1.ServiceTypeNodePort || service.Spec.Type == v1.ServiceTypeLoadBalancer {
+		attributes.NodePorts = convertServicePortsToNodePorts(service.Spec.Ports)
+	}
 
-	switch service.Spec.Type {
-	case v1.ServiceTypeExternalName:
+	// Only set ExternalName if the service type is ExternalName
+	if service.Spec.Type == v1.ServiceTypeExternalName {
 		attributes.ExternalName = service.Spec.ExternalName
-
-	case v1.ServiceTypeClusterIP:
-		// ClusterIP-specific processing is not required as ClusterIPs and ExternalIPs are common for other types as well.
-
-	case v1.ServiceTypeNodePort:
-		attributes.NodePorts = convertServicePortsToNodePorts(service.Spec.Ports)
-
-	case v1.ServiceTypeLoadBalancer:
-		attributes.NodePorts = convertServicePortsToNodePorts(service.Spec.Ports)
-		if service.Spec.LoadBalancerIP != "" {
-			attributes.LoadBalancerIP = service.Spec.LoadBalancerIP
-		}
-		attributes.LoadBalancerIngress = convertIngressToStringList(service.Status.LoadBalancer.Ingress)
 	}
 
 	return attributes, nil
@@ -187,7 +193,7 @@ func getServiceAttributes(ctx context.Context, serviceName string, clientset *ku
 
 // Combine all IPs into a single list
 func combineIPAddresses(attributes *ServiceAttributes) []string {
-	var combinedIPs []string
+	combinedIPs := []string{}
 	combinedIPs = append(combinedIPs, attributes.ClusterIPs...)
 	combinedIPs = append(combinedIPs, attributes.ExternalIPs...)
 	combinedIPs = append(combinedIPs, attributes.LoadBalancerIngress...)
@@ -199,19 +205,24 @@ func combineIPAddresses(attributes *ServiceAttributes) []string {
 
 // Convert ServiceAttributes to KubernetesServiceData
 func convertToKubernetesServiceData(attributes *ServiceAttributes) *pb.KubernetesServiceData {
+	// Combine all IPs
 	combinedIPs := combineIPAddresses(attributes)
-	nodePorts := make([]*pb.NodePorts, len(attributes.NodePorts))
+
+	// Convert NodePorts to ServicePorts
+	servicePorts := make([]*pb.KubernetesServiceData_ServicePorts, len(attributes.NodePorts))
 	for i, np := range attributes.NodePorts {
-		nodePorts[i] = &pb.NodePorts{
-			NodePort: np.NodePort,
-			Port:     np.Port,
-			Protocol: np.Protocol,
+		servicePorts[i] = &pb.KubernetesServiceData_ServicePorts{
+			NodePort:          int32(np.NodePort),
+			Port:              int32(np.Port),
+			Protocol:          np.Protocol,
+			LoadBalencerPorts: np.LoadBalancerPorts,
 		}
 	}
 
 	return &pb.KubernetesServiceData{
 		IpAddresses: combinedIPs,
-		NodePorts:   nodePorts,
+		Ports:       servicePorts,
+		ServiceType: attributes.ServiceType,
 	}
 }
 
