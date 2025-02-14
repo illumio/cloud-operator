@@ -3,7 +3,6 @@ package controller
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -65,26 +64,26 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 		}
 	}
 	if (FalcoEvent{}) == info {
-		return &pb.FalcoFlow{}, ErrFalcoEventIsNotFlow
+		return nil, ErrFalcoEventIsNotFlow
 	}
 
 	layer3Message, err := createLayer3Message(info.SrcIP, info.DstIP, info.IpVersion)
 	if err != nil {
-		return &pb.FalcoFlow{}, err
+		return nil, err
 	}
 
 	srcPort, err := strconv.ParseUint(info.SrcPort, 10, 32)
 	if err != nil {
-		return &pb.FalcoFlow{}, fmt.Errorf("invalid source port: %v", err)
+		return nil, ErrFalcoInvalidPort
 	}
 	dstPort, err := strconv.ParseUint(info.DstPort, 10, 32)
 	if err != nil {
-		return &pb.FalcoFlow{}, fmt.Errorf("invalid destination port: %v", err)
+		return nil, ErrFalcoInvalidPort
 	}
 
 	layer4Message, err := createLayer4Message(info.Proto, uint32(srcPort), uint32(dstPort), info.IpVersion)
 	if err != nil {
-		return &pb.FalcoFlow{}, err
+		return nil, err
 	}
 
 	flow := &pb.FalcoFlow{
@@ -132,7 +131,7 @@ func createLayer3Message(source string, destination string, ipVersion string) (*
 		return &pb.IP{Source: source, Destination: destination, IpVersion: pb.IPVersion_IP_VERSION_IPV6}, nil
 	}
 	// If this is IPVersion_IP_VERSION_IP_NOT_USED_UNSPECIFIED we want to drop this packet.
-	return &pb.IP{}, ErrFalcoIncompleteL3Flow
+	return nil, ErrFalcoIncompleteL3Flow
 }
 
 // createLayer4Message converts event protocol and ports to a Layer4 proto message
@@ -173,5 +172,5 @@ func createLayer4Message(proto string, srcPort, dstPort uint32, ipVersion string
 		}
 	default:
 	}
-	return &pb.Layer4{}, ErrFalcoIncompleteL4Flow
+	return nil, ErrFalcoIncompleteL4Flow
 }

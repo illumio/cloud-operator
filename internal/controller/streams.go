@@ -87,6 +87,7 @@ var ErrStopRetries = errors.New("stop retries")
 var ErrFalcoEventIsNotFlow = errors.New("ignoring falco event, not a network flow")
 var ErrFalcoIncompleteL3Flow = errors.New("ignoring incomplete falco l3 network flow")
 var ErrFalcoIncompleteL4Flow = errors.New("ignoring incomplete falco l4 network flow")
+var ErrFalcoInvalidPort = errors.New("ignoring incomplete falco flow due to bad ports")
 var falcoPort = ":5000"
 var reIllumioTraffic *regexp.Regexp
 var reParsePodNetworkInfo *regexp.Regexp
@@ -242,8 +243,9 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 			}
 
 			convertedFalcoFlow, err := parsePodNetworkInfo(match[1])
-			if errors.Is(err, ErrFalcoEventIsNotFlow) || errors.Is(err, ErrFalcoIncompleteL4Flow) || errors.Is(err, ErrFalcoIncompleteL3Flow) {
+			if convertedFalcoFlow == nil {
 				// If the event can't be parsed, consider that it's not a flow event and just ignore it.
+				// If the event has bad ports in any way ignore it.
 				// If the event has an incomplete L3/L4 layer lets just ignore it.
 				return nil
 			} else if err != nil {

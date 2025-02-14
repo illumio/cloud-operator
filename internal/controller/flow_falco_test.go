@@ -55,31 +55,19 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 			err: nil,
 		},
 		"Incomplete L3 TCP flow": {
-			input: "time=1987-02-22T00:39:07.267635635+0000\t srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=udp ipversion=",
-			expected: &pb.FalcoFlow{
-				Time:   "",
-				Layer3: nil,
-				Layer4: nil,
-			},
-			err: ErrFalcoIncompleteL3Flow,
+			input:    "time=1987-02-22T00:39:07.267635635+0000\t srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=udp ipversion=",
+			expected: nil,
+			err:      ErrFalcoIncompleteL3Flow,
 		},
 		"Incomplete L4 TCP flow": {
-			input: "time=1987-02-22T00:39:07.267635635+0000\t srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto= ipversion=ipv4",
-			expected: &pb.FalcoFlow{
-				Time:   "",
-				Layer3: nil,
-				Layer4: nil,
-			},
-			err: ErrFalcoIncompleteL4Flow,
+			input:    "time=1987-02-22T00:39:07.267635635+0000\t srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto= ipversion=ipv4",
+			expected: nil,
+			err:      ErrFalcoIncompleteL4Flow,
 		},
 		"invalid input": {
-			input: "invalid=input",
-			expected: &pb.FalcoFlow{
-				Time:   "",
-				Layer3: nil,
-				Layer4: nil,
-			},
-			err: ErrFalcoEventIsNotFlow,
+			input:    "invalid=input",
+			expected: nil,
+			err:      ErrFalcoEventIsNotFlow,
 		},
 	}
 
@@ -202,7 +190,7 @@ func (suite *ControllerTestSuite) TestCreateLayer4Message() {
 			srcPort:     0,
 			dstPort:     0,
 			ipVersion:   "",
-			expected:    &pb.Layer4{},
+			expected:    nil,
 			expectedErr: ErrFalcoIncompleteL4Flow,
 		},
 	}
@@ -255,7 +243,7 @@ func (suite *ControllerTestSuite) TestCreateLayer3Message() {
 			source:        "192.168.0.1",
 			destination:   "192.168.0.2",
 			ipVersion:     "unknown",
-			expected:      &pb.IP{},
+			expected:      nil,
 			expectedError: ErrFalcoIncompleteL3Flow,
 		},
 	}
