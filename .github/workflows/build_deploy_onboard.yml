@@ -40,7 +40,7 @@ jobs:
             ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.tags }}
 
       - name: Install kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v4
         with:
           version: "v1.24.0"
           
