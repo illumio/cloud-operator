@@ -1,9 +1,10 @@
 name: Build, Deploy and Onboard Cloud Operator To Live Services
 
 on:
-    push:
-      branches:
-        - edit-gha-to-use-metadata-for-tags
+  push:
+    branches:
+      - main
+
 jobs:
   test-deploy-onboard-live:
     runs-on: ubuntu-latest
@@ -83,8 +84,7 @@ jobs:
       - name: Wait for Kubernetes Pod to be Ready
         run: |  
           # Give minikube time to pull image and install operator before trying to check for app label
-          sleep 5s           
-          # Wait for the cloud-operator pod to be ready
+          sleep 5s
           kubectl wait --for=condition=ready pod -l app=cloud-operator -n illumio-cloud --timeout=300s
 
       - name: Set up Go
@@ -103,6 +103,7 @@ jobs:
           USER_ID: ${{ secrets.USER_ID }}
 
         run: |
+          # Give time for cluster to onboard completely
           sleep 10s
           go test -v ./integration-testing/...
         
