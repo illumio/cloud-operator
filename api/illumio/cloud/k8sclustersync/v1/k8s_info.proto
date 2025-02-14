@@ -28,8 +28,18 @@ message KubernetesObjectData {
   }
 }
 
+message NodePorts {
+  // The port on each node on which this service is exposed
+  int32 node_port = 1;
+  // The port that will be exposed by this service
+  int32 port = 2;
+  // The IP protocol for this port, supports "TCP", "UDP", and "SCTP"
+  string protocol = 3;
+}
+
 message KubernetesServiceData {
-  string cluster_ip = 1;
+  repeated string ip_addresses = 1;
+  repeated NodePorts node_ports = 2;
 }
 
 // KubernetesNodeData contains information specific to a Node Object.

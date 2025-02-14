@@ -671,3 +671,64 @@ func (suite *ControllerTestSuite) TestExtractObjectMetas() {
 		})
 	}
 }
+
+func TestConvertIngressToStringList(t *testing.T) {
+	tests := []struct {
+		name     string
+		ingress  []v1.LoadBalancerIngress
+		expected []string
+	}{
+		{
+			name: "Single IP",
+			ingress: []v1.LoadBalancerIngress{
+				{IP: "192.168.1.1"},
+			},
+			expected: []string{"192.168.1.1"},
+		},
+		{
+			name: "Single Hostname",
+			ingress: []v1.LoadBalancerIngress{
+				{Hostname: "example.com"},
+			},
+			expected: []string{"example.com"},
+		},
+		{
+			name: "IP and Hostname",
+			ingress: []v1.LoadBalancerIngress{
+				{IP: "192.168.1.1", Hostname: "example.com"},
+			},
+			expected: []string{"192.168.1.1", "example.com"},
+		},
+		{
+			name: "Multiple IPs and Hostnames",
+			ingress: []v1.LoadBalancerIngress{
+				{IP: "192.168.1.1"},
+				{IP: "192.168.1.2", Hostname: "host.example.com"},
+				{Hostname: "example.com"},
+			},
+			expected: []string{"192.168.1.1", "192.168.1.2", "host.example.com", "example.com"},
+		},
+		{
+			name:     "Empty Ingress List",
+			ingress:  []v1.LoadBalancerIngress{},
+			expected: []string{},
+		},
+		{
+			name: "Empty IP and Hostname Entries",
+			ingress: []v1.LoadBalancerIngress{
+				{IP: "", Hostname: ""},
+				{IP: "192.168.1.3"},
+			},
+			expected: []string{"192.168.1.3"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := convertIngressToStringList(tt.ingress)
+			if !equal(result, tt.expected) {
+				t.Errorf("convertIngressToStringList() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}

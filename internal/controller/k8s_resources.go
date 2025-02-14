@@ -20,6 +20,21 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+type ServiceAttributes struct {
+	ClusterIPs          []string    `json:"clusterIPs,omitempty"`
+	ExternalIPs         []string    `json:"externalIPs,omitempty"`
+	NodePorts           []*NodePort `json:"nodePorts,omitempty"`
+	LoadBalancerIP      string      `json:"loadBalancerIP,omitempty"`
+	LoadBalancerIngress []string    `json:"loadBalancerIngress,omitempty"`
+	ExternalName        string      `json:"externalName,omitempty"`
+}
+
+type NodePort struct {
+	NodePort int32  `json:"nodePort"`
+	Port     int32  `json:"port"`
+	Protocol string `json:"protocol"`
+}
+
 // convertObjectToMetadata extracts the ObjectMeta from a metav1.Object interface.
 func convertObjectToMetadata(obj metav1.Object) metav1.ObjectMeta {
 	objMetadata := metav1.ObjectMeta{
@@ -100,27 +115,104 @@ func convertMetaObjectToMetadata(logger *zap.SugaredLogger, ctx context.Context,
 		}
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Node{Node: &pb.KubernetesNodeData{ProviderId: providerId}}
 	case "Service":
-		clusterIp, err := getServiceClusterIp(ctx, obj.GetName(), clientset, obj.GetNamespace())
+		serviceAttributes, err := getServiceAttributes(ctx, obj.GetName(), clientset, obj.GetNamespace())
 		if err != nil {
 			return objMetadata, nil
 		}
-		objMetadata.KindSpecific = &pb.KubernetesObjectData_Service{Service: &pb.KubernetesServiceData{ClusterIp: clusterIp}}
+		convertedServiceData := convertToKubernetesServiceData(serviceAttributes)
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_Service{Service: convertedServiceData}
 
 	}
 	return objMetadata, nil
 }
 
-// getServiceClusterIp retrieves the Cluster IP of a given service in a specified namespace.
-func getServiceClusterIp(ctx context.Context, serviceName string, clientset *kubernetes.Clientset, namespace string) (string, error) {
+func convertIngressToStringList(ingress []v1.LoadBalancerIngress) []string {
+	var result []string
+	for _, i := range ingress {
+		if i.IP != "" {
+			result = append(result, i.IP)
+		}
+		if i.Hostname != "" {
+			result = append(result, i.Hostname)
+		}
+	}
+	return result
+}
+
+func convertServicePortsToNodePorts(servicePorts []v1.ServicePort) []*NodePort {
+	var nodePorts []*NodePort
+	for _, sp := range servicePorts {
+		if sp.NodePort != 0 {
+			nodePort := &NodePort{
+				NodePort: sp.NodePort,
+				Port:     sp.Port,
+				Protocol: string(sp.Protocol),
+			}
+			nodePorts = append(nodePorts, nodePort)
+		}
+	}
+	return nodePorts
+}
+
+func getServiceAttributes(ctx context.Context, serviceName string, clientset *kubernetes.Clientset, namespace string) (*ServiceAttributes, error) {
 	service, err := clientset.CoreV1().Services(namespace).Get(ctx, serviceName, metav1.GetOptions{})
 	if err != nil {
-		return "", errors.New("failed to get service")
+		return nil, errors.New("failed to get service")
 	}
-	clusterIp := service.Spec.ClusterIP
-	if clusterIp == "" {
-		return "", errors.New("service does not have a cluster IP")
+
+	attributes := &ServiceAttributes{}
+	attributes.ClusterIPs = service.Spec.ClusterIPs
+	attributes.ExternalIPs = service.Spec.ExternalIPs
+
+	switch service.Spec.Type {
+	case v1.ServiceTypeExternalName:
+		attributes.ExternalName = service.Spec.ExternalName
+
+	case v1.ServiceTypeClusterIP:
+		// ClusterIP-specific processing is not required as ClusterIPs and ExternalIPs are common for other types as well.
+
+	case v1.ServiceTypeNodePort:
+		attributes.NodePorts = convertServicePortsToNodePorts(service.Spec.Ports)
+
+	case v1.ServiceTypeLoadBalancer:
+		attributes.NodePorts = convertServicePortsToNodePorts(service.Spec.Ports)
+		if service.Spec.LoadBalancerIP != "" {
+			attributes.LoadBalancerIP = service.Spec.LoadBalancerIP
+		}
+		attributes.LoadBalancerIngress = convertIngressToStringList(service.Status.LoadBalancer.Ingress)
 	}
-	return clusterIp, nil
+
+	return attributes, nil
+}
+
+// Combine all IPs into a single list
+func combineIPAddresses(attributes *ServiceAttributes) []string {
+	var combinedIPs []string
+	combinedIPs = append(combinedIPs, attributes.ClusterIPs...)
+	combinedIPs = append(combinedIPs, attributes.ExternalIPs...)
+	combinedIPs = append(combinedIPs, attributes.LoadBalancerIngress...)
+	if attributes.LoadBalancerIP != "" {
+		combinedIPs = append(combinedIPs, attributes.LoadBalancerIP)
+	}
+	return combinedIPs
+}
+
+// Convert ServiceAttributes to KubernetesServiceData
+func convertToKubernetesServiceData(attributes *ServiceAttributes) *pb.KubernetesServiceData {
+	combinedIPs := combineIPAddresses(attributes)
+	nodePorts := make([]*pb.NodePorts, len(attributes.NodePorts))
+	for i, np := range attributes.NodePorts {
+		nodePorts[i] = &pb.NodePorts{
+			NodePort: np.NodePort,
+			Port:     np.Port,
+			Protocol: np.Protocol,
+		}
+	}
+
+	return &pb.KubernetesServiceData{
+		IpAddresses: combinedIPs,
+		NodePorts:   nodePorts,
+	}
 }
 
 // convertOwnerReferences converts a slice of Kubernetes OwnerReference objects into a slice of
