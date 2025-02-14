@@ -404,9 +404,7 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 
 				consecutiveFailures++
 
-				jitterPct := rand.Float64() * maxJitterPct // [0, maxJitterPct)
-				sleep := time.Duration(float64(backoff) * (1. - jitterPct))
-
+				sleep := jitterTime(backoff, maxJitterPct)
 				if sleep < initialBackoff {
 					sleep = initialBackoff
 				}
@@ -432,11 +430,13 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 	}
 }
 
-// ConnectStreams will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
+// ConnectStreams will continue to reboot and restart the main operations within
+// the operator if any disconnects or errors occur.
 func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
 	// Falco channels communicate news events between http server and our network flows strea,
 	falcoEventChan := make(chan string)
 	http.HandleFunc("/", NewFalcoEventHandler(falcoEventChan))
+
 	// Start our falco server and have it passively listen, if it fails, try to just restart it.
 	go func() {
 		for {
@@ -458,20 +458,38 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			}
 		}
 	}()
-	// Timer channel for 5 seconds
-	resetTimer := time.NewTimer(time.Second * 5)
+
+	// We want to avoid many cloud-operator instances all trying to authenticate
+	// at the same time.
+	//
+	// To that effect, we add a 5 second sleep with 20% jitter here. That way even
+	// if you onboard 100 cloud-operators at the same time, they won't all be
+	// synced up. Normal network delays may do this for us, but we don't want to
+	// rely on that.
+	resetTimer := time.NewTimer(jitterTime(5*time.Second, 0.20))
+	attempt := 0
+
+	// The happy path blocks inside the for loop.
+	// The unhappy path exits the for loop and hits the top-level select.
 	for {
+		failureReason := "We have not failed"
+		attempt++
+		logger.Infow("Trying to authenticate and open streams", "attempt", attempt)
+
 		select {
 		case <-ctx.Done():
+			logger.Info("Context canceled while we were trying to authenticate and open streams")
 			return
 		case <-resetTimer.C:
 			authConContext, authConContextCancel := context.WithCancel(ctx)
 			authConn, client, err := NewAuthenticatedConnection(authConContext, logger, envMap)
 			if err != nil {
 				logger.Errorw("Failed to establish initial connection; will retry", "error", err)
-				resetTimer.Reset(time.Second * 10)
+				// When we try this loop again, we wait 10 seconds with 20% jitter.
+				resetTimer.Reset(jitterTime(10*time.Second, 0.20))
 				authConContextCancel()
-				continue
+				failureReason = "Failed to establish initial connection"
+				break
 			}
 
 			streamClient := &streamClient{
@@ -511,15 +529,26 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 				ciliumDone = nil
 				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone)
 			}
+
+			// Block until one of the streams fail. Then we will jump to the top of
+			// this loop & try again: authenticate and open the streams.
 			select {
 			case <-ciliumDone:
+				failureReason = "Cilium network flow stream closed"
 			case <-falcoDone:
+				failureReason = "Falco network flow stream closed"
 			case <-resourceDone:
+				failureReason = "Resource stream closed"
 			case <-logDone:
+				failureReason = "Log stream closed"
 			}
 			authConContextCancel()
-			logger.Warn("One or more streams have been closed; closing and reopening the connection to CloudSecure")
 		}
+
+		logger.With(
+			"failureReason", failureReason,
+			"attempt", attempt,
+		).Warn("One or more streams have been closed; closing and reopening the connection to CloudSecure")
 	}
 }
 
@@ -562,4 +591,9 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.SugaredLogger, 
 	client := pb.NewKubernetesInfoServiceClient(conn)
 
 	return conn, client, err
+}
+
+func jitterTime(base time.Duration, maxJitterPct float64) time.Duration {
+	jitterPct := rand.Float64() * maxJitterPct // [0, maxJitterPct)
+	return time.Duration(float64(base) * (1. - jitterPct))
 }
