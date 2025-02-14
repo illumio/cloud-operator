@@ -54,14 +54,20 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 			},
 			err: nil,
 		},
+		"Incomplete L3 TCP flow": {
+			input:    "time=1987-02-22T00:39:07.267635635+0000\t srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=udp ipversion=",
+			expected: nil,
+			err:      ErrFalcoIncompleteL3Flow,
+		},
+		"Incomplete L4 TCP flow": {
+			input:    "time=1987-02-22T00:39:07.267635635+0000\t srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto= ipversion=ipv4",
+			expected: nil,
+			err:      ErrFalcoIncompleteL4Flow,
+		},
 		"invalid input": {
-			input: "invalid=input",
-			expected: &pb.FalcoFlow{
-				Time:   "",
-				Layer3: nil,
-				Layer4: nil,
-			},
-			err: ErrFalcoEventIsNotFlow,
+			input:    "invalid=input",
+			expected: nil,
+			err:      ErrFalcoEventIsNotFlow,
 		},
 	}
 
@@ -117,12 +123,12 @@ func (suite *ControllerTestSuite) TestFilterIllumioTraffic() {
 
 func (suite *ControllerTestSuite) TestCreateLayer4Message() {
 	tests := map[string]struct {
-		proto          string
-		srcPort        uint32
-		dstPort        uint32
-		ipVersion      string
-		expected       *pb.Layer4
-		expectedErrMsg string
+		proto       string
+		srcPort     uint32
+		dstPort     uint32
+		ipVersion   string
+		expected    *pb.Layer4
+		expectedErr error
 	}{
 		"TCP protocol": {
 			proto:     "tcp",
@@ -138,7 +144,7 @@ func (suite *ControllerTestSuite) TestCreateLayer4Message() {
 					},
 				},
 			},
-			expectedErrMsg: "",
+			expectedErr: nil,
 		},
 		"UDP protocol": {
 			proto:     "udp",
@@ -153,7 +159,7 @@ func (suite *ControllerTestSuite) TestCreateLayer4Message() {
 					},
 				},
 			},
-			expectedErrMsg: "",
+			expectedErr: nil,
 		},
 		"ICMP protocol with IPv4": {
 			proto:     "icmp",
@@ -165,7 +171,7 @@ func (suite *ControllerTestSuite) TestCreateLayer4Message() {
 					Icmpv4: &pb.ICMPv4{},
 				},
 			},
-			expectedErrMsg: "",
+			expectedErr: nil,
 		},
 		"ICMP protocol with IPv6": {
 			proto:     "icmp",
@@ -177,38 +183,39 @@ func (suite *ControllerTestSuite) TestCreateLayer4Message() {
 					Icmpv6: &pb.ICMPv6{},
 				},
 			},
-			expectedErrMsg: "",
+			expectedErr: nil,
 		},
 		"Unknown protocol": {
-			proto:          "unknown",
-			srcPort:        0,
-			dstPort:        0,
-			ipVersion:      "",
-			expected:       &pb.Layer4{},
-			expectedErrMsg: "",
+			proto:       "unknown",
+			srcPort:     0,
+			dstPort:     0,
+			ipVersion:   "",
+			expected:    nil,
+			expectedErr: ErrFalcoIncompleteL4Flow,
 		},
 	}
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			result, err := createLayer4Message(tt.proto, tt.srcPort, tt.dstPort, tt.ipVersion)
-			if tt.expectedErrMsg != "" {
-				assert.Error(suite.T(), err)
-				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
+			if err != nil {
+				assert.NotNil(suite.T(), err)
+				assert.Equal(suite.T(), tt.expectedErr.Error(), err.Error())
 			} else {
-				assert.NoError(suite.T(), err)
-				assert.Equal(suite.T(), tt.expected, result)
+				assert.Nil(suite.T(), err)
 			}
+			assert.Equal(suite.T(), tt.expected, result)
 		})
 	}
 }
 
 func (suite *ControllerTestSuite) TestCreateLayer3Message() {
 	tests := map[string]struct {
-		source      string
-		destination string
-		ipVersion   string
-		expected    *pb.IP
+		source        string
+		destination   string
+		ipVersion     string
+		expected      *pb.IP
+		expectedError error
 	}{
 		"IPv4": {
 			source:      "192.168.0.1",
@@ -219,6 +226,7 @@ func (suite *ControllerTestSuite) TestCreateLayer3Message() {
 				Destination: "192.168.0.2",
 				IpVersion:   pb.IPVersion_IP_VERSION_IPV4,
 			},
+			expectedError: nil,
 		},
 		"IPv6": {
 			source:      "fe80::1",
@@ -229,23 +237,26 @@ func (suite *ControllerTestSuite) TestCreateLayer3Message() {
 				Destination: "fe80::2",
 				IpVersion:   pb.IPVersion_IP_VERSION_IPV6,
 			},
+			expectedError: nil,
 		},
 		"Unspecified IP version": {
-			source:      "192.168.0.1",
-			destination: "192.168.0.2",
-			ipVersion:   "unknown",
-			expected: &pb.IP{
-				Source:      "192.168.0.1",
-				Destination: "192.168.0.2",
-				IpVersion:   pb.IPVersion_IP_VERSION_IP_NOT_USED_UNSPECIFIED,
-			},
+			source:        "192.168.0.1",
+			destination:   "192.168.0.2",
+			ipVersion:     "unknown",
+			expected:      nil,
+			expectedError: ErrFalcoIncompleteL3Flow,
 		},
 	}
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			result, err := createLayer3Message(tt.source, tt.destination, tt.ipVersion)
-			assert.NoError(suite.T(), err)
+			if err != nil {
+				assert.NotNil(suite.T(), err)
+				assert.Equal(suite.T(), tt.expectedError.Error(), err.Error())
+			} else {
+				assert.Nil(suite.T(), err)
+			}
 			assert.Equal(suite.T(), tt.expected, result)
 		})
 	}
