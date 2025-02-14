@@ -34,6 +34,7 @@ RUN curl -fsSL -o /tmp/helm.tar.gz https://get.helm.sh/helm-${HELM_VERSION}-linu
 USER vscode
 
 RUN go install github.com/bufbuild/buf/cmd/buf@${BUF_VERSION}
+RUN go install sigs.k8s.io/kind@v0.26.0
 
 USER root
 
