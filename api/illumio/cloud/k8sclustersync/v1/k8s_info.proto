@@ -32,19 +32,24 @@ message KubernetesServiceData {
   // List of IP addresses associated with the Kubernetes service
   repeated string ip_addresses = 1;
   // List of service ports details
-  repeated ServicePorts ports = 2;
+  repeated ServicePort ports = 2;
   // Type of Kubernetes service (e.g., ClusterIP, NodePort, LoadBalancer, etc.)
-  string service_type = 3;
+  string type = 3;
+  // The external reference that discovery mechanisms will
+  // return as an alias for this service
+  optional string external_name = 4;
+  // The class of the load balancer implementation this Service belongs to
+  optional string load_balancer_class = 5;
 
-  message ServicePorts {
+  message ServicePort {
     // The port on each node on which this service is exposed
-    int32 node_port = 1;
+    optional uint32 node_port = 1;
     // The port that will be exposed by this service
-    int32 port = 2;
+    uint32 port = 2;
     // The IP protocol for this port, supports "TCP", "UDP", and "SCTP"
     string protocol = 3;
     // List of ports exposing the service via a load balancer
-    repeated string load_balencer_ports = 4;
+    repeated string load_balancer_ports = 4;
   }
 }
 
