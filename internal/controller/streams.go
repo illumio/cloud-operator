@@ -506,7 +506,6 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 				}
 			}
 			if sm.streamClient.disableNetworkFlowsCilium {
-				sm.streamClient.networkFlowsStream = nil
 				ciliumDone = nil
 				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone)
 			}
