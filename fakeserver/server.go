@@ -124,7 +124,6 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 			serverState.ConnectionSuccessful = true
 		case *pb.SendKubernetesResourcesRequest_KubernetesResourceMutation:
 			logger.Info("Mutation Detected")
-			logger.Info(req.String())
 		}
 		if err := stream.Send(&pb.SendKubernetesResourcesResponse{}); err != nil {
 			return err
