@@ -707,7 +707,9 @@ func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
 			servicePorts: []v1.ServicePort{
 				{NodePort: 0, Port: 80, Protocol: v1.ProtocolTCP},
 			},
-			expectedResult: []*Ports{},
+			expectedResult: []*Ports{
+				{Port: 80, Protocol: "TCP"},
+			},
 		},
 		"mix of service ports with and without node ports": {
 			servicePorts: []v1.ServicePort{
@@ -716,6 +718,7 @@ func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
 			},
 			expectedResult: []*Ports{
 				{NodePort: ptrInt32(30000), Port: 80, Protocol: "TCP"},
+				{Port: 443, Protocol: "TCP"},
 			},
 		},
 		"empty service ports": {
