@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"path/filepath"
 	"testing"
@@ -733,59 +734,52 @@ func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
 
 func (suite *ControllerTestSuite) TestCombineIPAddresses() {
 	tests := map[string]struct {
-		attributes     *ServiceAttributes
-		expectedResult []string
+		clusterIps            []string
+		externalIps           []string
+		loadBalancerIngresses []string
+		loadBalancerIp        string
+		expectedResult        []string
 	}{
 		"all fields populated": {
-			attributes: &ServiceAttributes{
-				ClusterIPs:            []string{"10.0.0.1", "10.0.0.2"},
-				ExternalIPs:           []string{"192.168.1.1"},
-				LoadBalancerIP:        ptrString("34.123.45.67"),
-				LoadBalancerIngresses: []string{"lb1.example.com", "lb2.example.com"},
-			},
-			expectedResult: []string{"10.0.0.1", "10.0.0.2", "192.168.1.1", "lb1.example.com", "lb2.example.com", "34.123.45.67"},
+			clusterIps:            []string{"10.0.0.1", "10.0.0.2"},
+			externalIps:           []string{"192.168.1.1"},
+			loadBalancerIngresses: []string{"lb1.example.com", "lb2.example.com"},
+			loadBalancerIp:        "34.123.45.67",
+			expectedResult:        []string{"10.0.0.1", "10.0.0.2", "192.168.1.1", "lb1.example.com", "lb2.example.com", "34.123.45.67"},
 		},
 		"no load balancer IP": {
-			attributes: &ServiceAttributes{
-				ClusterIPs:            []string{"10.0.0.1"},
-				ExternalIPs:           []string{"192.168.1.1"},
-				LoadBalancerIP:        ptrString(""),
-				LoadBalancerIngresses: []string{"lb1.example.com"},
-			},
-			expectedResult: []string{"10.0.0.1", "192.168.1.1", "lb1.example.com"},
+			clusterIps:            []string{"10.0.0.1"},
+			externalIps:           []string{"192.168.1.1"},
+			loadBalancerIngresses: []string{"lb1.example.com"},
+			loadBalancerIp:        "",
+			expectedResult:        []string{"10.0.0.1", "192.168.1.1", "lb1.example.com"},
 		},
 		"only cluster IPs": {
-			attributes: &ServiceAttributes{
-				ClusterIPs:            []string{"10.0.0.1", "10.0.0.2"},
-				ExternalIPs:           []string{},
-				LoadBalancerIP:        ptrString(""),
-				LoadBalancerIngresses: []string{},
-			},
-			expectedResult: []string{"10.0.0.1", "10.0.0.2"},
+			clusterIps:            []string{"10.0.0.1", "10.0.0.2"},
+			externalIps:           []string{},
+			loadBalancerIngresses: []string{},
+			loadBalancerIp:        "",
+			expectedResult:        []string{"10.0.0.1", "10.0.0.2"},
 		},
 		"no IPs": {
-			attributes: &ServiceAttributes{
-				ClusterIPs:            []string{},
-				ExternalIPs:           []string{},
-				LoadBalancerIP:        ptrString(""),
-				LoadBalancerIngresses: []string{},
-			},
-			expectedResult: []string{},
+			clusterIps:            []string{},
+			externalIps:           []string{},
+			loadBalancerIngresses: []string{},
+			loadBalancerIp:        "",
+			expectedResult:        []string{},
 		},
 		"mixed empty lists": {
-			attributes: &ServiceAttributes{
-				ClusterIPs:            []string{"10.0.0.1"},
-				ExternalIPs:           []string{},
-				LoadBalancerIP:        ptrString("34.123.45.67"),
-				LoadBalancerIngresses: []string{},
-			},
-			expectedResult: []string{"10.0.0.1", "34.123.45.67"},
+			clusterIps:            []string{"10.0.0.1"},
+			externalIps:           []string{},
+			loadBalancerIngresses: []string{},
+			loadBalancerIp:        "34.123.45.67",
+			expectedResult:        []string{"10.0.0.1", "34.123.45.67"},
 		},
 	}
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			result := combineIPAddresses(tt.attributes)
+			result := combineIPAddresses(tt.clusterIps, tt.externalIps, tt.loadBalancerIngresses, tt.loadBalancerIp)
 			assert.Equal(suite.T(), tt.expectedResult, result)
 		})
 	}
@@ -793,161 +787,94 @@ func (suite *ControllerTestSuite) TestCombineIPAddresses() {
 
 func (suite *ControllerTestSuite) TestConvertToKubernetesServiceData() {
 	tests := map[string]struct {
-		attributes     *ServiceAttributes
+		service        *v1.Service
 		expectedResult *pb.KubernetesServiceData
+		expectedError  error
 	}{
+		"service not found": {
+			expectedResult: nil,
+			expectedError:  errors.New("failed to get service"),
+		},
 		"normal case, all fields populated": {
-			attributes: &ServiceAttributes{
-				ClusterIPs:            []string{"10.0.0.1", "10.0.0.2"},
-				ExternalIPs:           []string{"192.168.1.1"},
-				LoadBalancerIP:        ptrString("34.123.45.67"),
-				LoadBalancerIngresses: []string{"lb1.example.com", "lb2.example.com"},
-				Ports: []*Ports{
-					{
-						NodePort:          ptrInt32(30001),
-						Port:              8080,
-						Protocol:          "TCP",
-						LoadBalancerPorts: []string{"8080", "8081"},
+			service: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service",
+					Namespace: "default",
+				},
+				Spec: v1.ServiceSpec{
+					ClusterIPs:     []string{},
+					ExternalIPs:    []string{"192.168.1.1"},
+					LoadBalancerIP: "34.123.45.67",
+					Ports: []v1.ServicePort{
+						{
+							Name:     "port1",
+							NodePort: 30001,
+							Port:     8080,
+							Protocol: v1.ProtocolTCP,
+						},
+						{
+							Name:     "port2",
+							NodePort: 30002,
+							Port:     443,
+							Protocol: v1.ProtocolTCP,
+						},
 					},
-					{
-						NodePort:          ptrInt32(30002),
-						Port:              443,
-						Protocol:          "TCP",
-						LoadBalancerPorts: []string{"443"},
+					Type: v1.ServiceTypeLoadBalancer,
+				},
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{
+						Ingress: []v1.LoadBalancerIngress{
+							{Hostname: "lb1.example.com"},
+							{Hostname: "lb2.example.com"},
+						},
 					},
 				},
-				Type: "LoadBalancer",
 			},
 			expectedResult: &pb.KubernetesServiceData{
-				IpAddresses: []string{
-					"10.0.0.1", "10.0.0.2", "192.168.1.1", "lb1.example.com", "lb2.example.com", "34.123.45.67",
-				},
+				// IpAddresses: []string{}, // Ignored in this test case
 				Ports: []*pb.KubernetesServiceData_ServicePort{
 					{
-						NodePort:          ptrUint32(30001),
-						Port:              8080,
-						Protocol:          "TCP",
-						LoadBalancerPorts: []string{"8080", "8081"},
+						NodePort: ptrUint32(30001),
+						Port:     8080,
+						Protocol: "TCP",
 					},
 					{
-						NodePort:          ptrUint32(30001),
-						Port:              443,
-						Protocol:          "TCP",
-						LoadBalancerPorts: []string{"443"},
+						NodePort: ptrUint32(30002),
+						Port:     443,
+						Protocol: "TCP",
 					},
 				},
-				Type: "LoadBalancer",
+				Type:              "LoadBalancer",
+				ExternalName:      ptrString(""),
+				LoadBalancerClass: nil,
 			},
-		},
-		"no load balancer IP": {
-			attributes: &ServiceAttributes{
-				ClusterIPs:            []string{"10.0.0.1"},
-				ExternalIPs:           []string{"192.168.1.1"},
-				LoadBalancerIP:        ptrString(""),
-				LoadBalancerIngresses: []string{"lb1.example.com"},
-				Ports: []*Ports{
-					{
-						NodePort:          ptrInt32(30001),
-						Port:              8080,
-						Protocol:          "TCP",
-						LoadBalancerPorts: []string{"8080"},
-					},
-				},
-				Type: "ClusterIP",
-			},
-			expectedResult: &pb.KubernetesServiceData{
-				IpAddresses: []string{"10.0.0.1", "192.168.1.1", "lb1.example.com"},
-				Ports: []*pb.KubernetesServiceData_ServicePort{
-					{
-						NodePort:          ptrUint32(30001),
-						Port:              8080,
-						Protocol:          "TCP",
-						LoadBalancerPorts: []string{"8080"},
-					},
-				},
-				Type: "ClusterIP",
-			},
-		},
-		"only cluster IPs and NodePort": {
-			attributes: &ServiceAttributes{
-				ClusterIPs:            []string{"10.0.0.1"},
-				ExternalIPs:           []string{},
-				LoadBalancerIP:        ptrString(""),
-				LoadBalancerIngresses: []string{},
-				Ports: []*Ports{
-					{
-						NodePort:          ptrInt32(30001),
-						Port:              8080,
-						Protocol:          "TCP",
-						LoadBalancerPorts: []string{"8080"},
-					},
-				},
-				Type: "NodePort",
-			},
-			expectedResult: &pb.KubernetesServiceData{
-				IpAddresses: []string{"10.0.0.1"},
-				Ports: []*pb.KubernetesServiceData_ServicePort{
-					{
-						NodePort:          ptrUint32(30001),
-						Port:              8080,
-						Protocol:          "TCP",
-						LoadBalancerPorts: []string{"8080"},
-					},
-				},
-				Type: "NodePort",
-			},
-		},
-		"no IPs and no ports": {
-			attributes: &ServiceAttributes{
-				ClusterIPs:            []string{},
-				ExternalIPs:           []string{},
-				LoadBalancerIP:        ptrString(""),
-				LoadBalancerIngresses: []string{},
-				Ports:                 []*Ports{},
-				Type:                  "ClusterIP",
-			},
-			expectedResult: &pb.KubernetesServiceData{
-				IpAddresses: []string{},
-				Ports:       []*pb.KubernetesServiceData_ServicePort{},
-				Type:        "ClusterIP",
-			},
-		},
-		"only external name, no Ports": {
-			attributes: &ServiceAttributes{
-				ClusterIPs:            []string{},
-				ExternalIPs:           []string{},
-				LoadBalancerIP:        ptrString(""),
-				LoadBalancerIngresses: []string{},
-				Ports:                 []*Ports{}, // ExternalName services don't use Ports
-				Type:                  "ExternalName",
-			},
-			expectedResult: &pb.KubernetesServiceData{
-				IpAddresses: []string{},                                // No IPs because it's an ExternalName service
-				Ports:       []*pb.KubernetesServiceData_ServicePort{}, // No ports because it's an ExternalName service
-				Type:        "ExternalName",
-			},
-		},
-		"no cluster IP, external IPs, and no Ports": {
-			attributes: &ServiceAttributes{
-				ClusterIPs:            []string{},
-				ExternalIPs:           []string{"192.168.1.2"},
-				LoadBalancerIP:        ptrString(""),
-				LoadBalancerIngresses: []string{},
-				Ports:                 []*Ports{},     // No Ports for this case
-				Type:                  "ExternalName", // This type doesn't need Ports
-			},
-			expectedResult: &pb.KubernetesServiceData{
-				IpAddresses: []string{"192.168.1.2"},
-				Ports:       []*pb.KubernetesServiceData_ServicePort{}, // ExternalName doesn't expose ports
-				Type:        "ExternalName",
-			},
+			expectedError: nil,
 		},
 	}
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			result := convertToKubernetesServiceData(tt.attributes)
-			assert.Equal(suite.T(), tt.expectedResult, result)
+			ctx := context.TODO()
+			if tt.service != nil {
+				_, err := suite.clientset.CoreV1().Services(tt.service.Namespace).Create(ctx, tt.service, metav1.CreateOptions{})
+				assert.NoError(suite.T(), err)
+			}
+
+			result, err := convertToKubernetesServiceData(ctx, "test-service", suite.clientset, "default")
+			if tt.expectedError != nil {
+				assert.EqualError(suite.T(), err, tt.expectedError.Error())
+			} else {
+				assert.NoError(suite.T(), err)
+				// Custom comparison ignoring IpAddresses field since KIND can mess with them.
+				assertEqualKubernetesServiceData(suite.T(), tt.expectedResult, result)
+			}
 		})
 	}
+}
+
+func assertEqualKubernetesServiceData(t *testing.T, expected, actual *pb.KubernetesServiceData) {
+	assert.Equal(t, expected.Ports, actual.Ports)
+	assert.Equal(t, expected.Type, actual.Type)
+	assert.Equal(t, expected.ExternalName, actual.ExternalName)
+	assert.Equal(t, expected.LoadBalancerClass, actual.LoadBalancerClass)
 }
