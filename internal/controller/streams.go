@@ -395,13 +395,10 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 					resetTimer.Reset(resetPeriod)
 				case consecutiveFailures >= severeErrorThreshold:
 					sleepTimer.Reset(resetPeriod)
-					select {
-					case <-resetTimer.C:
-						consecutiveFailures = 0
-						backoff = initialBackoff
-						resetTimer.Reset(resetPeriod)
-
-					}
+					<-resetTimer.C // Wait for reset timer to reset the failure count
+					consecutiveFailures = 0
+					backoff = initialBackoff
+					resetTimer.Reset(resetPeriod)
 					continue
 				}
 
