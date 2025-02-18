@@ -684,7 +684,7 @@ func (suite *ControllerTestSuite) TestConvertIngressToStringList() {
 
 func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
 	var nodePort int32 = int32(30000)
-	var nodePort2 int32 = int32(30002)
+	var nodePort2 int32 = int32(30001)
 	tests := map[string]struct {
 		servicePorts   []v1.ServicePort
 		expectedResult []*pb.KubernetesServiceData_ServicePort
@@ -713,6 +713,14 @@ func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
 			},
 			expectedResult: []*pb.KubernetesServiceData_ServicePort{
 				{Port: 80, Protocol: "TCP"},
+			},
+		},
+		"single service port without protocol": {
+			servicePorts: []v1.ServicePort{
+				{NodePort: 30000, Port: 80},
+			},
+			expectedResult: []*pb.KubernetesServiceData_ServicePort{
+				{NodePort: ptrInt32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
 			},
 		},
 		"mix of service ports with and without node ports": {
