@@ -20,14 +20,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// Assuming ServiceAttributes has appropriate fields
-type Ports struct {
-	NodePort          *int32
-	Port              int32
-	Protocol          string
-	LoadBalancerPorts []string
-}
-
 // convertObjectToMetadata extracts the ObjectMeta from a metav1.Object interface.
 func convertObjectToMetadata(obj metav1.Object) metav1.ObjectMeta {
 	objMetadata := metav1.ObjectMeta{
@@ -123,35 +115,53 @@ func convertIngressToStringList(ingresses []v1.LoadBalancerIngress) []string {
 	for _, ingress := range ingresses {
 		if ingress.IP != "" {
 			result = append(result, ingress.IP)
-		} else if ingress.Hostname != "" {
+		}
+		if ingress.Hostname != "" {
 			result = append(result, ingress.Hostname)
 		}
 	}
 	return result
 }
 
-func convertServicePortsToPorts(servicePorts []v1.ServicePort) []*Ports {
-	ports := make([]*Ports, 0, len(servicePorts))
+// Assuming ServiceAttributes has appropriate fields
+//
+//	type Ports struct {
+//		NodePort          *int32
+//		Port              int32
+//		Protocol          string
+//		LoadBalancerPorts []string
+//	}
+func convertServicePortsToPorts(servicePorts []v1.ServicePort) []*pb.KubernetesServiceData_ServicePort {
+	ports := make([]*pb.KubernetesServiceData_ServicePort, 0, len(servicePorts))
 	for _, sp := range servicePorts {
 		protocol := string(sp.Protocol)
 		if protocol == "" {
 			protocol = string(v1.ProtocolTCP)
 		}
-		port := &Ports{
-			Port:     sp.Port,
+		port := &pb.KubernetesServiceData_ServicePort{
+			Port:     uint32(sp.Port),
 			Protocol: protocol,
 		}
 		if sp.NodePort != 0 {
-			port.NodePort = &sp.NodePort
+			port.NodePort = int32ToUint32(&sp.NodePort)
 		}
 		ports = append(ports, port)
 	}
 	return ports
 }
 
+// int32ToUint32 converts *int32 to *uint32
+func int32ToUint32(i *int32) *uint32 {
+	if i == nil {
+		return nil
+	}
+	val := uint32(*i)
+	return &val
+}
+
 // Combine all IPs into a single list
 func combineIPAddresses(clusterIps []string, externalIps []string, loadBalancerIngresses []string, loadBalancerIp string) []string {
-	combinedIPs := []string{}
+	combinedIPs := make([]string, 0, len(clusterIps)+len(externalIps)+len(loadBalancerIngresses)+1)
 	combinedIPs = append(combinedIPs, clusterIps...)
 	combinedIPs = append(combinedIPs, externalIps...)
 	combinedIPs = append(combinedIPs, loadBalancerIngresses...)

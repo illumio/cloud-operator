@@ -36,10 +36,13 @@ func ptrString(s string) *string {
 	return &s
 }
 
-// ptrInt32 is a helper function to create pointers to int32 values
-// Used to simulate the nil behavior of the optional fields
-func ptrInt32(n int32) *int32 {
-	return &n
+// int32ToUint32 converts *int32 to *uint32
+func ptrInt32ToUint32(i *int32) *uint32 {
+	if i == nil {
+		return nil
+	}
+	val := uint32(*i)
+	return &val
 }
 
 // ptrUint32 is a helper function to create pointers to int32 values
@@ -680,17 +683,18 @@ func (suite *ControllerTestSuite) TestConvertIngressToStringList() {
 }
 
 func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
-
+	var nodePort int32 = int32(30000)
+	var nodePort2 int32 = int32(30002)
 	tests := map[string]struct {
 		servicePorts   []v1.ServicePort
-		expectedResult []*Ports
+		expectedResult []*pb.KubernetesServiceData_ServicePort
 	}{
 		"single service port with node port": {
 			servicePorts: []v1.ServicePort{
 				{NodePort: 30000, Port: 80, Protocol: v1.ProtocolTCP},
 			},
-			expectedResult: []*Ports{
-				{NodePort: ptrInt32(30000), Port: 80, Protocol: "TCP"},
+			expectedResult: []*pb.KubernetesServiceData_ServicePort{
+				{NodePort: ptrInt32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
 			},
 		},
 		"multiple service ports with node ports": {
@@ -698,16 +702,16 @@ func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 30000, Port: 80, Protocol: v1.ProtocolTCP},
 				{NodePort: 30001, Port: 443, Protocol: v1.ProtocolTCP},
 			},
-			expectedResult: []*Ports{
-				{NodePort: ptrInt32(30000), Port: 80, Protocol: "TCP"},
-				{NodePort: ptrInt32(30001), Port: 443, Protocol: "TCP"},
+			expectedResult: []*pb.KubernetesServiceData_ServicePort{
+				{NodePort: ptrInt32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
+				{NodePort: ptrInt32ToUint32(&nodePort2), Port: 443, Protocol: "TCP"},
 			},
 		},
 		"service port without node port": {
 			servicePorts: []v1.ServicePort{
 				{NodePort: 0, Port: 80, Protocol: v1.ProtocolTCP},
 			},
-			expectedResult: []*Ports{
+			expectedResult: []*pb.KubernetesServiceData_ServicePort{
 				{Port: 80, Protocol: "TCP"},
 			},
 		},
@@ -716,14 +720,14 @@ func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 30000, Port: 80, Protocol: v1.ProtocolTCP},
 				{NodePort: 0, Port: 443, Protocol: v1.ProtocolTCP},
 			},
-			expectedResult: []*Ports{
-				{NodePort: ptrInt32(30000), Port: 80, Protocol: "TCP"},
+			expectedResult: []*pb.KubernetesServiceData_ServicePort{
+				{NodePort: ptrInt32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
 				{Port: 443, Protocol: "TCP"},
 			},
 		},
 		"empty service ports": {
 			servicePorts:   []v1.ServicePort{},
-			expectedResult: []*Ports{},
+			expectedResult: []*pb.KubernetesServiceData_ServicePort{},
 		},
 	}
 
