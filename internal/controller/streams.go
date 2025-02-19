@@ -474,7 +474,7 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 	for {
 		failureReason := ""
 		attempt++
-		logger.Debugw("Trying to authenticate and open streams", "attempt", attempt)
+		logger.Debug("Trying to authenticate and open streams", zap.Int("attempt", attempt))
 
 		select {
 		case <-ctx.Done():
@@ -545,10 +545,10 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			authConContextCancel()
 		}
 
-		logger.With(
-			"failureReason", failureReason,
-			"attempt", attempt,
-		).Warn("One or more streams have been closed; closing and reopening the connection to CloudSecure")
+		logger.Warn("One or more streams have been closed; closing and reopening the connection to CloudSecure",
+			zap.String("failureReason", failureReason),
+			zap.Int("attempt", attempt),
+		)
 	}
 }
 
