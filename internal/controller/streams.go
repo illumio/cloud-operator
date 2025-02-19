@@ -472,13 +472,13 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 	// The happy path blocks inside the for loop.
 	// The unhappy path exits the for loop and hits the top-level select.
 	for {
-		failureReason := "We have not failed"
+		failureReason := ""
 		attempt++
-		logger.Infow("Trying to authenticate and open streams", "attempt", attempt)
+		logger.Debugw("Trying to authenticate and open streams", "attempt", attempt)
 
 		select {
 		case <-ctx.Done():
-			logger.Info("Context canceled while we were trying to authenticate and open streams")
+			logger.Warn("Context canceled while trying to authenticate and open streams")
 			return
 		case <-resetTimer.C:
 			authConContext, authConContextCancel := context.WithCancel(ctx)
