@@ -453,6 +453,7 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			err = falcoEvent.Serve(listener)
 			if err != nil && err != http.ErrServerClosed {
 				logger.Errorf("Falco server failed, restarting in 5 seconds... Error: %v", err)
+				// Giving some time before attempting to restart.....
 				time.Sleep(5 * time.Second)
 			}
 		}
@@ -464,7 +465,7 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 		case <-ctx.Done():
 			return
 		case <-resetTimer.C:
-			authConContext, authConContextCancel := context.WithTimeout(ctx, 10*time.Second)
+			authConContext, authConContextCancel := context.WithCancel(ctx)
 			authConn, client, err := NewAuthenticatedConnection(authConContext, logger, envMap)
 			if err != nil {
 				logger.Errorw("Failed to establish initial connection; will retry", "error", err)
@@ -542,16 +543,16 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.SugaredLogger, 
 			return nil, nil, err
 		}
 		err = authn.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
-		time.Sleep(1 * time.Second)
 		if err != nil {
 			logger.Errorw("Failed to write secret to Kubernetes", "error", err)
 		}
+		// Sleeping just so k8s can finish writing the secret before we read from it.
+		time.Sleep(1 * time.Second)
 		clientID, clientSecret, err = authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 		if err != nil {
 			logger.Errorw("Could not read K8s credentials", "error", err)
 		}
 	}
-
 	conn, err := SetUpOAuthConnection(ctx, logger, envMap.TokenEndpoint, envMap.TlsSkipVerify, clientID, clientSecret)
 	if err != nil {
 		logger.Errorw("Failed to set up an OAuth connection", "error", err)
