@@ -153,14 +153,15 @@ func SetUpOAuthConnection(
 	clientSecret string,
 ) (*grpc.ClientConn, error) {
 	tlsConfig := GetTLSConfig(tlsSkipVerify)
-
+	contextWithTimeout, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
 	oauthConfig := clientcredentials.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		TokenURL:     tokenURL,
 		AuthStyle:    oauth2.AuthStyleInParams,
 	}
-	tokenSource := GetTokenSource(ctx, oauthConfig, tlsConfig)
+	tokenSource := GetTokenSource(contextWithTimeout, oauthConfig, tlsConfig)
 
 	token, err := tokenSource.Token()
 	if err != nil {
