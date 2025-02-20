@@ -542,16 +542,15 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.SugaredLogger, 
 			return nil, nil, err
 		}
 		err = authn.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
-		time.Sleep(1 * time.Second)
 		if err != nil {
 			logger.Errorw("Failed to write secret to Kubernetes", "error", err)
 		}
+		time.Sleep(1 * time.Second)
 		clientID, clientSecret, err = authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 		if err != nil {
 			logger.Errorw("Could not read K8s credentials", "error", err)
 		}
 	}
-
 	conn, err := SetUpOAuthConnection(ctx, logger, envMap.TokenEndpoint, envMap.TlsSkipVerify, clientID, clientSecret)
 	if err != nil {
 		logger.Errorw("Failed to set up an OAuth connection", "error", err)
