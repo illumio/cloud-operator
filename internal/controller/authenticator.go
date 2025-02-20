@@ -95,9 +95,10 @@ func (authn *Authenticator) WriteK8sSecret(ctx context.Context, keyData OnboardR
 		authn.Logger.Errorw("Failed to create clientSet", "error", err)
 		return err
 	}
-	secretData := map[string]string{
-		"client_id":     keyData.ClusterClientId,
-		"client_secret": keyData.ClusterClientSecret,
+
+	secretData := map[string][]byte{
+		"client_id":     []byte(keyData.ClusterClientId),
+		"client_secret": []byte(keyData.ClusterClientSecret),
 	}
 	namespace := "illumio-cloud" // Will be made configurable.
 	secret := &corev1.Secret{
@@ -105,7 +106,7 @@ func (authn *Authenticator) WriteK8sSecret(ctx context.Context, keyData OnboardR
 			Name:      ClusterCreds,
 			Namespace: namespace,
 		},
-		StringData: secretData,
+		Data: secretData,
 	}
 
 	_, err = clientset.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
@@ -153,14 +154,15 @@ func SetUpOAuthConnection(
 	clientSecret string,
 ) (*grpc.ClientConn, error) {
 	tlsConfig := GetTLSConfig(tlsSkipVerify)
-
+	contextWithTimeout, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
 	oauthConfig := clientcredentials.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		TokenURL:     tokenURL,
 		AuthStyle:    oauth2.AuthStyleInParams,
 	}
-	tokenSource := GetTokenSource(ctx, oauthConfig, tlsConfig)
+	tokenSource := GetTokenSource(contextWithTimeout, oauthConfig, tlsConfig)
 
 	token, err := tokenSource.Token()
 	if err != nil {
@@ -179,7 +181,7 @@ func SetUpOAuthConnection(
 		logger.Errorw("Error pulling audience out of token", "error", err)
 		return nil, err
 	}
-
+	tokenSource = GetTokenSource(ctx, oauthConfig, tlsConfig)
 	creds := credentials.NewTLS(tlsConfig)
 	conn, err := grpc.NewClient(
 		aud,
