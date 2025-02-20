@@ -453,6 +453,7 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			err = falcoEvent.Serve(listener)
 			if err != nil && err != http.ErrServerClosed {
 				logger.Errorf("Falco server failed, restarting in 5 seconds... Error: %v", err)
+				// Giving some time before attempting to restart.....
 				time.Sleep(5 * time.Second)
 			}
 		}
@@ -545,6 +546,7 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.SugaredLogger, 
 		if err != nil {
 			logger.Errorw("Failed to write secret to Kubernetes", "error", err)
 		}
+		// Sleeping just so k8s can finish writing the secret before we read from it.
 		time.Sleep(1 * time.Second)
 		clientID, clientSecret, err = authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
 		if err != nil {
