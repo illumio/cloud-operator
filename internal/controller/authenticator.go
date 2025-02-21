@@ -28,6 +28,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+var (
+	ErrSecretUnpopulated = errors.New("failed to get crucial field from secret")
+)
+
 var kacp = keepalive.ClientParameters{
 	Time:                10 * time.Second, // send pings every 10 seconds if there is no activity
 	Timeout:             10 * time.Second, // wait 10s for ping ack before considering the connection dead
@@ -48,7 +52,7 @@ func (authn *Authenticator) GetOnboardingCredentials(ctx context.Context, client
 }
 
 // ReadK8sSecret takes a secretName and reads the file.
-func (authn *Authenticator) ReadCredentialsK8sSecrets(ctx context.Context, secretName string) (string, string, error) {
+func (authn *Authenticator) ReadCredentialsK8sSecrets(ctx context.Context, secretName string, isEmptySecretExpected bool) (string, string, error) {
 	// Create a new clientset
 	clientset, err := NewClientSet()
 	if err != nil {
@@ -66,13 +70,18 @@ func (authn *Authenticator) ReadCredentialsK8sSecrets(ctx context.Context, secre
 	// Assuming your secret data has a "client_id" and "client_secret" key.
 	clientID := string(secret.Data["client_id"])
 	if clientID == "" {
-		authn.Logger.Errorw("Cannot get client_id")
-		return "", "", errors.New("failed to get client_id from secret")
+		if isEmptySecretExpected {
+			authn.Logger.Debugw("Cannot get client_id from secret - it probably has not been created yet")
+			return "", "", ErrSecretUnpopulated
+		} else {
+			authn.Logger.Error("Cannot get client_id from secret")
+			return "", "", ErrSecretUnpopulated
+		}
 	}
 	clientSecret := string(secret.Data["client_secret"])
 	if clientSecret == "" {
-		authn.Logger.Errorw("Cannot get client_secret")
-		return "", "", errors.New("failed to get client_secret from secret")
+		authn.Logger.Error("Cannot get client_secret from secret")
+		return "", "", ErrSecretUnpopulated
 	}
 	return clientID, clientSecret, nil
 }

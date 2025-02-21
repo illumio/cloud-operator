@@ -556,9 +556,13 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 func NewAuthenticatedConnection(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig) (*grpc.ClientConn, pb.KubernetesInfoServiceClient, error) {
 	authn := Authenticator{Logger: logger}
 
-	clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+	clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds, true)
 	if err != nil {
-		logger.Errorw("Could not read K8s credentials", "error", err)
+		if errors.Is(err, ErrSecretUnpopulated) {
+			logger.Debug("Secret is not populated yet", "error", err)
+		} else {
+			logger.Errorw("Could not read K8s credentials", "error", err)
+		}
 	}
 
 	if clientID == "" && clientSecret == "" {
@@ -577,7 +581,7 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.SugaredLogger, 
 		}
 		// Sleeping just so k8s can finish writing the secret before we read from it.
 		time.Sleep(1 * time.Second)
-		clientID, clientSecret, err = authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+		clientID, clientSecret, err = authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds, false)
 		if err != nil {
 			logger.Errorw("Could not read K8s credentials", "error", err)
 		}
