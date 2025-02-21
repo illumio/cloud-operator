@@ -5,8 +5,8 @@ replicaCount: 1
 priorityClassName: ""
 image:
   repository: "ghcr.io/illumio/cloud-operator"
-  tag: "v1.0.0"
-  pullPolicy: Always
+  tag: "0.0.1"
+  pullPolicy: IfNotPresent
 
 serviceAccount:
   create: true
