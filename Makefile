@@ -1,6 +1,7 @@
 # Variables
 APP_NAME := operator
-DOCKER_IMAGE := aaronnguyenillumio/$(APP_NAME)
+DOCKER_USERNAME := aaronnguyenillumio
+DOCKER_IMAGE := $(DOCKER_USERNAME)/$(APP_NAME)
 COMMIT := $(shell git rev-parse --short HEAD)
 DATE := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 LDFLAGS := -ldflags "-X main.Version=latest -X main.Commit=$(COMMIT) -X main.Date=$(DATE)"
