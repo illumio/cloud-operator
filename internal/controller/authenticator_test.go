@@ -139,7 +139,7 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 				}
 			}
 
-			clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, tt.secretName)
+			clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, tt.secretName, false)
 			if tt.expectedError {
 				assert.Error(suite.T(), err)
 				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
