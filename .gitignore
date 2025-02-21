@@ -1,4 +1,2 @@
-bin/
-cmd/cmd
-redeploy_easy.sh
-Makefile
+*local.yaml
+cloud-operator-*.tgz

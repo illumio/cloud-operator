@@ -1,0 +1,18 @@
+# Copyright 2024 Illumio, Inc. All Rights Reserved.
+
+# fakeserver authenticates properly when your onboardingSecret matches these:
+#
+#    DefaultClientID     = "client_id_1"
+#    DefaultClientSecret = "client_secret_1"
+#
+onboardingSecret:
+  clientId: "client_id_1"
+  clientSecret: "client_secret_1"
+
+# * k8s pods clusters can find services on the host via 'host.docker.internal'
+# * fakeserver serves on port 50053
+# * fakeserver doesn't have a trustworthy certificate, so you wanna tlsSkipVerify
+env:
+  tlsSkipVerify: true
+  onboardingEndpoint: "https://host.docker.internal:50053/api/v1/k8s_cluster/onboard"
+  tokenEndpoint: "https://host.docker.internal:50053/api/v1/k8s_cluster/authenticate"
