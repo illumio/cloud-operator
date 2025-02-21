@@ -6,9 +6,6 @@ ARG TARGETARCH
 
 WORKDIR /workspace
 
-# Install debugging tools (including bash) and gops for troubleshooting
-RUN go install github.com/google/gops@latest
-
 # Copy the Go Modules manifests
 COPY go.mod go.mod
 COPY go.sum go.sum
@@ -22,9 +19,12 @@ COPY internal/controller/ internal/controller/
 COPY internal/version/ internal/version/
 COPY internal/config internal/config
 COPY api/ api/
-
 # Build
+
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-X 'github.com/illumio/cloud-operator/internal/version.version=${VERSION}'" -a -o manager cmd/main.go
+
+# Install debugging tools (including bash) and gops for troubleshooting
+RUN go install github.com/google/gops@latest
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
