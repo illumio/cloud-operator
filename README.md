@@ -51,6 +51,18 @@ This will delete all the resources associated with the `illumio` release from th
 - Kubernetes v1.30+ cluster.
 - helm version v3.15.4+
 
+## Making a private build
+
+The following `make` command will build and push a private build to `docker
+hub`.
+
+```
+docker login
+make docker-build docker-push DOCKER_USERNAME=arisweedler386
+```
+
+TODO: ENABLE LOCAL BUILD
+
 ## License
 
 Copyright 2024 Illumio, Inc. All Rights Reserved.
