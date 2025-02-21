@@ -66,12 +66,12 @@ func (authn *Authenticator) ReadCredentialsK8sSecrets(ctx context.Context, secre
 	// Assuming your secret data has a "client_id" and "client_secret" key.
 	clientID := string(secret.Data["client_id"])
 	if clientID == "" {
-		authn.Logger.Errorw("Cannot get client_id", "error", err)
+		authn.Logger.Errorw("Cannot get client_id")
 		return "", "", errors.New("failed to get client_id from secret")
 	}
 	clientSecret := string(secret.Data["client_secret"])
 	if clientSecret == "" {
-		authn.Logger.Errorw("Cannot get client_secret", "error", err)
+		authn.Logger.Errorw("Cannot get client_secret")
 		return "", "", errors.New("failed to get client_secret from secret")
 	}
 	return clientID, clientSecret, nil
