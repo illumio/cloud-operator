@@ -28,10 +28,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var (
-	ErrSecretUnpopulated = errors.New("failed to get crucial field from secret")
-)
-
 var kacp = keepalive.ClientParameters{
 	Time:                10 * time.Second, // send pings every 10 seconds if there is no activity
 	Timeout:             10 * time.Second, // wait 10s for ping ack before considering the connection dead
@@ -52,7 +48,7 @@ func (authn *Authenticator) GetOnboardingCredentials(ctx context.Context, client
 }
 
 // ReadK8sSecret takes a secretName and reads the file.
-func (authn *Authenticator) ReadCredentialsK8sSecrets(ctx context.Context, secretName string, isEmptySecretExpected bool) (string, string, error) {
+func (authn *Authenticator) ReadCredentialsK8sSecrets(ctx context.Context, secretName string) (string, string, error) {
 	// Create a new clientset
 	clientset, err := NewClientSet()
 	if err != nil {
@@ -68,20 +64,13 @@ func (authn *Authenticator) ReadCredentialsK8sSecrets(ctx context.Context, secre
 	}
 
 	// Assuming your secret data has a "client_id" and "client_secret" key.
-	clientID := string(secret.Data["client_id"])
+	clientID := string(secret.Data[string(ONBOARDING_CLIENT_ID)])
 	if clientID == "" {
-		if isEmptySecretExpected {
-			authn.Logger.Debugw("Cannot get client_id from secret - it probably has not been created yet")
-			return "", "", ErrSecretUnpopulated
-		} else {
-			authn.Logger.Error("Cannot get client_id from secret")
-			return "", "", ErrSecretUnpopulated
-		}
+		return "", "", NewCredentialNotFoundInK8sSecretError(ONBOARDING_CLIENT_ID)
 	}
-	clientSecret := string(secret.Data["client_secret"])
+	clientSecret := string(secret.Data[string(ONBOARDING_CLIENT_SECRET)])
 	if clientSecret == "" {
-		authn.Logger.Error("Cannot get client_secret from secret")
-		return "", "", ErrSecretUnpopulated
+		return "", "", NewCredentialNotFoundInK8sSecretError(ONBOARDING_CLIENT_SECRET)
 	}
 	return clientID, clientSecret, nil
 }
@@ -106,8 +95,8 @@ func (authn *Authenticator) WriteK8sSecret(ctx context.Context, keyData OnboardR
 	}
 
 	secretData := map[string][]byte{
-		"client_id":     []byte(keyData.ClusterClientId),
-		"client_secret": []byte(keyData.ClusterClientSecret),
+		string(ONBOARDING_CLIENT_ID):     []byte(keyData.ClusterClientId),
+		string(ONBOARDING_CLIENT_SECRET): []byte(keyData.ClusterClientSecret),
 	}
 	namespace := "illumio-cloud" // Will be made configurable.
 	secret := &corev1.Secret{

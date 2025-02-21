@@ -92,8 +92,8 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 		"success": {
 			secretName: "test-secret",
 			secretData: map[string][]byte{
-				"client_id":     []byte("test-client-id"),
-				"client_secret": []byte("test-client-secret"),
+				string(ONBOARDING_CLIENT_ID):     []byte("test-client-id"),
+				string(ONBOARDING_CLIENT_SECRET): []byte("test-client-secret"),
 			},
 			expectedError:        false,
 			expectedClientID:     "test-client-id",
@@ -107,18 +107,18 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 		"client-id-not-found": {
 			secretName: "test-secret-no-client-id",
 			secretData: map[string][]byte{
-				"client_secret": []byte("test-client-secret"),
+				string(ONBOARDING_CLIENT_SECRET): []byte("test-client-secret"),
 			},
 			expectedError:  true,
-			expectedErrMsg: "failed to get client_id from secret",
+			expectedErrMsg: NewCredentialNotFoundInK8sSecretError(ONBOARDING_CLIENT_ID).Error(),
 		},
 		"client-secret-not-found": {
 			secretName: "test-secret-no-client-secret-id",
 			secretData: map[string][]byte{
-				"client_id": []byte("test-client-id"),
+				string(ONBOARDING_CLIENT_ID): []byte("test-client-id"),
 			},
 			expectedError:  true,
-			expectedErrMsg: "failed to get client_secret from secret",
+			expectedErrMsg: NewCredentialNotFoundInK8sSecretError(ONBOARDING_CLIENT_SECRET).Error(),
 		},
 	}
 
@@ -139,7 +139,7 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 				}
 			}
 
-			clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, tt.secretName, false)
+			clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, tt.secretName)
 			if tt.expectedError {
 				assert.Error(suite.T(), err)
 				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
