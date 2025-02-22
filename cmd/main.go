@@ -98,7 +98,6 @@ func main() {
 		"tls_skip_verify", envConfig.TlsSkipVerify,
 	)
 	gopsDirectory := os.Getenv("GOPS_CONFIG_DIR")
-	logger.Info(gopsDirectory)
 
 	// Start the gops agent and listen on a specific address and port
 	if err := agent.Listen(agent.Options{ConfigDir: gopsDirectory}); err != nil {
