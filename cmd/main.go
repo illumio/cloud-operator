@@ -112,7 +112,6 @@ func main() {
 		},
 		PodNamespace: viper.GetString("pod_namspace"),
 	}
-
 	logger.Info("Starting application",
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
 		zap.String("cilium_namespace", envConfig.CiliumNamespace),
@@ -127,10 +126,11 @@ func main() {
 		zap.Duration("stream_keepalive_period_configuration", envConfig.KeepalivePeriods.Configuration),
 	)
 
-	// Start the gops agent and listen on a specific address and port
+	// Start the gops agent
 	if err := agent.Listen(agent.Options{}); err != nil {
 		logger.Error("Failed to start gops agent", zap.Error(err))
 	}
+
 	http.HandleFunc("/healthz", newHealthHandler(controller.ServerIsHealthy))
 	healthChecker := &http.Server{Addr: ":8080"}
 

@@ -23,6 +23,7 @@ spec:
         release: {{ .Release.Name }}
     spec:
       securityContext:
+        readOnlyRootFilesystem: true
         fsGroup: 65532
       priorityClassName: {{ .Values.priorityClassName }}
       serviceAccountName: {{ .Values.serviceAccount.name }}
@@ -86,3 +87,11 @@ spec:
                   fieldPath: metadata.namespace
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: gops-volume
+              mountPath: /var/run/gops
+      volumes:
+        - name: gops-volume
+          emptyDir:
+            medium: Memory
+            sizeLimit: 10Mi 
