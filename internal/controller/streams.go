@@ -557,10 +557,15 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.SugaredLogger, 
 	authn := Authenticator{Logger: logger}
 
 	clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
-	if err != nil {
+	if errors.Is(err, ErrCredentialNotFoundInK8sSecret) {
+		logger.Debugw("Secret is not populated yet", "error", err)
+	} else if err != nil {
 		logger.Errorw("Could not read K8s credentials", "error", err)
 	}
 
+	// At the end of this block, have the clientID and clientSecret variables
+	// populated. If not, we should have returned. A comment like this is
+	// code-smell, meaning that this block should be hoisted to a function
 	if clientID == "" && clientSecret == "" {
 		OnboardingCredentials, err := authn.GetOnboardingCredentials(ctx, envMap.OnboardingClientId, envMap.OnboardingClientSecret)
 		if err != nil {
@@ -575,11 +580,27 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.SugaredLogger, 
 		if err != nil {
 			logger.Errorw("Failed to write secret to Kubernetes", "error", err)
 		}
-		// Sleeping just so k8s can finish writing the secret before we read from it.
-		time.Sleep(1 * time.Second)
-		clientID, clientSecret, err = authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+
+		// k8s may take some time writing the secret. Here we will try 'maxRetries'
+		// times, waiting 'waitDuration' seconds between each try. Even a single 1
+		// second wait is probably fine, but just to be semantic this wait is done
+		// as a poll.
+		maxRetries := 5
+		waitDuration := 1 * time.Second
+		for i := 0; i < maxRetries; i++ {
+			clientID, clientSecret, err = authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+			if errors.Is(err, ErrCredentialNotFoundInK8sSecret) {
+				logger.Debugw("Secret is not populated yet", "error", err)
+			}
+			if clientID != "" && clientSecret != "" {
+				err = nil
+				break
+			}
+			time.Sleep(waitDuration)
+		}
 		if err != nil {
 			logger.Errorw("Could not read K8s credentials", "error", err)
+			return nil, nil, err
 		}
 	}
 	conn, err := SetUpOAuthConnection(ctx, logger, envMap.TokenEndpoint, envMap.TlsSkipVerify, clientID, clientSecret)

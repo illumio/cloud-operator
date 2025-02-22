@@ -64,15 +64,13 @@ func (authn *Authenticator) ReadCredentialsK8sSecrets(ctx context.Context, secre
 	}
 
 	// Assuming your secret data has a "client_id" and "client_secret" key.
-	clientID := string(secret.Data["client_id"])
+	clientID := string(secret.Data[string(ONBOARDING_CLIENT_ID)])
 	if clientID == "" {
-		authn.Logger.Errorw("Cannot get client_id", "error", err)
-		return "", "", errors.New("failed to get client_id from secret")
+		return "", "", NewCredentialNotFoundInK8sSecretError(ONBOARDING_CLIENT_ID)
 	}
-	clientSecret := string(secret.Data["client_secret"])
+	clientSecret := string(secret.Data[string(ONBOARDING_CLIENT_SECRET)])
 	if clientSecret == "" {
-		authn.Logger.Errorw("Cannot get client_secret", "error", err)
-		return "", "", errors.New("failed to get client_secret from secret")
+		return "", "", NewCredentialNotFoundInK8sSecretError(ONBOARDING_CLIENT_SECRET)
 	}
 	return clientID, clientSecret, nil
 }
@@ -97,8 +95,8 @@ func (authn *Authenticator) WriteK8sSecret(ctx context.Context, keyData OnboardR
 	}
 
 	secretData := map[string][]byte{
-		"client_id":     []byte(keyData.ClusterClientId),
-		"client_secret": []byte(keyData.ClusterClientSecret),
+		string(ONBOARDING_CLIENT_ID):     []byte(keyData.ClusterClientId),
+		string(ONBOARDING_CLIENT_SECRET): []byte(keyData.ClusterClientSecret),
 	}
 	namespace := "illumio-cloud" // Will be made configurable.
 	secret := &corev1.Secret{
