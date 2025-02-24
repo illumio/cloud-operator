@@ -4,6 +4,7 @@ FROM mcr.microsoft.com/vscode/devcontainers/go:${VARIANT}
 ARG BUF_VERSION=v1.30.0
 ARG GOLANGCI_VERSION=v1.60.2
 ARG HELM_VERSION=v3.15.4
+ARG KIND_VERSION=v0.26.0
 
 USER root
 
@@ -34,7 +35,7 @@ RUN curl -fsSL -o /tmp/helm.tar.gz https://get.helm.sh/helm-${HELM_VERSION}-linu
 USER vscode
 
 RUN go install github.com/bufbuild/buf/cmd/buf@${BUF_VERSION}
-RUN go install sigs.k8s.io/kind@v0.26.0
+RUN go install sigs.k8s.io/kind@${KIND_VERSION}
 
 USER root
 
