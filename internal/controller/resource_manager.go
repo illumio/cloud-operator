@@ -91,7 +91,8 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 	return resourceListVersion, nil
 }
 
-// watchEvents watches Kubernetes resources and updates cache based on events.
+// watchEvents watches Kubernetes resources. The second part of the of the "list
+// and watch" strategy.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
 func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiGroup string, watchOptions metav1.ListOptions) error {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
