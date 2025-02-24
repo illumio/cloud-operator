@@ -23,17 +23,20 @@ COPY api/ api/
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-X 'github.com/illumio/cloud-operator/internal/version.version=${VERSION}'" -a -o manager cmd/main.go
 
-# Install debugging tools (including bash) and gops for troubleshooting
+# Install gops for troubleshooting
 RUN go install github.com/google/gops@latest
 
 # Use distroless as minimal base image to package the manager binary
-# Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM gcr.io/distroless/static:nonroot
+
+
+ENV GOPS_CONFIG_DIR="/var/run/gops"
 
 # Copy the manager binary and gops (from the builder)
 WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=builder /go/bin/gops .
+
 USER 65532:65532
 
 # Set the entrypoint for your app
