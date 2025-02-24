@@ -184,6 +184,9 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm streamM
 			return err
 		}
 		ciliumFlow := convertCiliumFlow(flow)
+		if ciliumFlow == nil {
+			continue
+		}
 		err = sendNetworkFlowRequest(&sm, ciliumFlow)
 		if err != nil {
 			fm.logger.Errorw("Cannot send cilium flow", "error", err)
@@ -195,6 +198,20 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm streamM
 // convertCiliumFlow converts a GetFlowsResponse object to a CiliumFlow object
 func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 	flowObj := flow.GetFlow()
+
+	// Check for nil fields
+	if flowObj.GetTime() == nil ||
+		flowObj.GetNodeName() == "" ||
+		flowObj.GetTrafficDirection().String() == "" ||
+		flowObj.GetVerdict().String() == "" ||
+		flowObj.GetIP() == nil ||
+		flowObj.GetL4() == nil ||
+		flowObj.GetDestinationService() == nil {
+
+		// Return nil if any of the essential fields are nil
+		return nil
+	}
+
 	ciliumFlow := pb.CiliumFlow{
 		Time:               flowObj.GetTime(),
 		NodeName:           flowObj.GetNodeName(),
