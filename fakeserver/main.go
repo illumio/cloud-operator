@@ -42,5 +42,6 @@ func main() {
 	defer fs.stop()
 
 	// Wait indefinitely for server stop signal
+	logger.Info("Server started")
 	<-fs.stopChan
 }

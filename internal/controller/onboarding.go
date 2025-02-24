@@ -16,12 +16,6 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Credentials contains attributes that are needed for onboarding.
-type Credentials struct {
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-}
-
 type OnboardResponse struct {
 	ClusterClientId     string `json:"cluster_client_id"`
 	ClusterClientSecret string `json:"cluster_client_secret"`

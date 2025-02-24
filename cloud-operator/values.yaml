@@ -58,7 +58,7 @@ falco:
       - rule: kubernetes outbound connection
         desc: A pod in namespace attempted to connect to the outer world
         condition: outbound_corp and k8s.ns.name != ""
-        output: "illumio_network_traffic (time=%evt.time.iso8601 srcip=%fd.cip dstip=%fd.sip srcport=%fd.cport dstport=%fd.sport proto=%fd.l4proto procname=%proc.name)"
+        output: "illumio_network_traffic (time=%evt.time.iso8601 srcip=%fd.cip dstip=%fd.sip srcport=%fd.cport dstport=%fd.sport proto=%fd.l4proto procname=%proc.name ipversion=%fd.type)"
         priority: WARNING
 
 env:

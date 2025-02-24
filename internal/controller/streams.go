@@ -24,6 +24,7 @@ type streamClient struct {
 	conn                      *grpc.ClientConn
 	client                    pb.KubernetesInfoServiceClient
 	disableNetworkFlowsCilium bool
+	networkFlowWg             sync.WaitGroup
 	falcoEventChan            chan string
 	logStream                 pb.KubernetesInfoService_SendLogsClient
 	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
@@ -216,6 +217,7 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNam
 	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, sm.logger, ciliumNamespace)
 	if err != nil {
 		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
+		sm.streamClient.disableNetworkFlowsCilium = true
 		return err
 	}
 	if ciliumFlowCollector != nil {
@@ -267,6 +269,7 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 func connectAndStreamCiliumNetworkFlows(logger *zap.SugaredLogger, sm *streamManager) error {
 	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
 	defer ciliumCancel()
+	defer sm.streamClient.networkFlowWg.Done()
 
 	sendCiliumNetworkFlowsStream, err := sm.streamClient.client.SendKubernetesNetworkFlows(ciliumCtx)
 	if err != nil {
@@ -391,14 +394,17 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 				case consecutiveFailures == 0:
 					resetTimer.Reset(resetPeriod)
 				case consecutiveFailures >= severeErrorThreshold:
-					return
+					sleepTimer.Reset(resetPeriod)
+					<-resetTimer.C // Wait for reset timer to reset the failure count
+					consecutiveFailures = 0
+					backoff = initialBackoff
+					resetTimer.Reset(resetPeriod)
+					continue
 				}
 
 				consecutiveFailures++
 
-				jitterPct := rand.Float64() * maxJitterPct // [0, maxJitterPct)
-				sleep := time.Duration(float64(backoff) * (1. - jitterPct))
-
+				sleep := jitterTime(backoff, maxJitterPct)
 				if sleep < initialBackoff {
 					sleep = initialBackoff
 				}
@@ -424,11 +430,13 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 	}
 }
 
-// ConnectStreams will continue to reboot and restart the main operations within the operator if any disconnects or errors occur.
+// ConnectStreams will continue to reboot and restart the main operations within
+// the operator if any disconnects or errors occur.
 func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
 	// Falco channels communicate news events between http server and our network flows strea,
 	falcoEventChan := make(chan string)
 	http.HandleFunc("/", NewFalcoEventHandler(falcoEventChan))
+
 	// Start our falco server and have it passively listen, if it fails, try to just restart it.
 	go func() {
 		for {
@@ -445,31 +453,51 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			err = falcoEvent.Serve(listener)
 			if err != nil && err != http.ErrServerClosed {
 				logger.Errorf("Falco server failed, restarting in 5 seconds... Error: %v", err)
+				// Giving some time before attempting to restart.....
 				time.Sleep(5 * time.Second)
 			}
 		}
 	}()
-	// Timer channel for 5 seconds
-	resetTimer := time.NewTimer(time.Second * 5)
+
+	// We want to avoid many cloud-operator instances all trying to authenticate
+	// at the same time.
+	//
+	// To that effect, we add a 5 second sleep with 20% jitter here. That way even
+	// if you onboard 100 cloud-operators at the same time, they won't all be
+	// synced up. Normal network delays may do this for us, but we don't want to
+	// rely on that.
+	resetTimer := time.NewTimer(jitterTime(5*time.Second, 0.20))
+	attempt := 0
+
+	// The happy path blocks inside the for loop.
+	// The unhappy path exits the for loop and hits the top-level select.
 	for {
+		failureReason := ""
+		attempt++
+		logger.Debug("Trying to authenticate and open streams", zap.Int("attempt", attempt))
+
 		select {
 		case <-ctx.Done():
+			logger.Warn("Context canceled while trying to authenticate and open streams")
 			return
 		case <-resetTimer.C:
-			authConContext, authConContextCancel := context.WithTimeout(ctx, 10*time.Second)
+			authConContext, authConContextCancel := context.WithCancel(ctx)
 			authConn, client, err := NewAuthenticatedConnection(authConContext, logger, envMap)
 			if err != nil {
 				logger.Errorw("Failed to establish initial connection; will retry", "error", err)
-				resetTimer.Reset(time.Second * 10)
+				// When we try this loop again, we wait 10 seconds with 20% jitter.
+				resetTimer.Reset(jitterTime(10*time.Second, 0.20))
 				authConContextCancel()
-				continue
+				failureReason = "Failed to establish initial connection"
+				break
 			}
 
 			streamClient := &streamClient{
-				conn:            authConn,
-				client:          client,
-				ciliumNamespace: envMap.CiliumNamespace,
-				falcoEventChan:  falcoEventChan,
+				conn:                      authConn,
+				client:                    client,
+				ciliumNamespace:           envMap.CiliumNamespace,
+				disableNetworkFlowsCilium: false,
+				falcoEventChan:            falcoEventChan,
 			}
 
 			sm := &streamManager{
@@ -489,24 +517,38 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
+				// Must use a waitgroup in order to check for hubble existance before proceeding with CNI selection
+				sm.streamClient.networkFlowWg.Add(1)
 				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
+				sm.streamClient.networkFlowWg.Wait()
 				if !sm.streamClient.disableNetworkFlowsCilium {
 					falcoDone = nil
 				}
 			}
-			if !sm.streamClient.disableNetworkFlowsCilium {
+			if sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = nil
 				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone)
 			}
+
+			// Block until one of the streams fail. Then we will jump to the top of
+			// this loop & try again: authenticate and open the streams.
 			select {
 			case <-ciliumDone:
+				failureReason = "Cilium network flow stream closed"
 			case <-falcoDone:
+				failureReason = "Falco network flow stream closed"
 			case <-resourceDone:
+				failureReason = "Resource stream closed"
 			case <-logDone:
+				failureReason = "Log stream closed"
 			}
 			authConContextCancel()
-			logger.Warn("One or more streams have been closed; closing and reopening the connection to CloudSecure")
 		}
+
+		logger.Warn("One or more streams have been closed; closing and reopening the connection to CloudSecure",
+			zap.String("failureReason", failureReason),
+			zap.Int("attempt", attempt),
+		)
 	}
 }
 
@@ -515,10 +557,15 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.SugaredLogger, 
 	authn := Authenticator{Logger: logger}
 
 	clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
-	if err != nil {
+	if errors.Is(err, ErrCredentialNotFoundInK8sSecret) {
+		logger.Debugw("Secret is not populated yet", "error", err)
+	} else if err != nil {
 		logger.Errorw("Could not read K8s credentials", "error", err)
 	}
 
+	// At the end of this block, have the clientID and clientSecret variables
+	// populated. If not, we should have returned. A comment like this is
+	// code-smell, meaning that this block should be hoisted to a function
 	if clientID == "" && clientSecret == "" {
 		OnboardingCredentials, err := authn.GetOnboardingCredentials(ctx, envMap.OnboardingClientId, envMap.OnboardingClientSecret)
 		if err != nil {
@@ -530,16 +577,32 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.SugaredLogger, 
 			return nil, nil, err
 		}
 		err = authn.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
-		time.Sleep(1 * time.Second)
 		if err != nil {
 			logger.Errorw("Failed to write secret to Kubernetes", "error", err)
 		}
-		clientID, clientSecret, err = authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+
+		// k8s may take some time writing the secret. Here we will try 'maxRetries'
+		// times, waiting 'waitDuration' seconds between each try. Even a single 1
+		// second wait is probably fine, but just to be semantic this wait is done
+		// as a poll.
+		maxRetries := 5
+		waitDuration := 1 * time.Second
+		for i := 0; i < maxRetries; i++ {
+			clientID, clientSecret, err = authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+			if errors.Is(err, ErrCredentialNotFoundInK8sSecret) {
+				logger.Debugw("Secret is not populated yet", "error", err)
+			}
+			if clientID != "" && clientSecret != "" {
+				err = nil
+				break
+			}
+			time.Sleep(waitDuration)
+		}
 		if err != nil {
 			logger.Errorw("Could not read K8s credentials", "error", err)
+			return nil, nil, err
 		}
 	}
-
 	conn, err := SetUpOAuthConnection(ctx, logger, envMap.TokenEndpoint, envMap.TlsSkipVerify, clientID, clientSecret)
 	if err != nil {
 		logger.Errorw("Failed to set up an OAuth connection", "error", err)
@@ -549,4 +612,9 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.SugaredLogger, 
 	client := pb.NewKubernetesInfoServiceClient(conn)
 
 	return conn, client, err
+}
+
+func jitterTime(base time.Duration, maxJitterPct float64) time.Duration {
+	jitterPct := rand.Float64() * maxJitterPct // [0, maxJitterPct)
+	return time.Duration(float64(base) * (1. - jitterPct))
 }
