@@ -5,6 +5,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"net"
 	"net/http"
@@ -24,7 +25,6 @@ type streamClient struct {
 	conn                      *grpc.ClientConn
 	client                    pb.KubernetesInfoServiceClient
 	disableNetworkFlowsCilium bool
-	networkFlowWg             sync.WaitGroup
 	falcoEventChan            chan string
 	logStream                 pb.KubernetesInfoService_SendLogsClient
 	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
@@ -211,18 +211,27 @@ func (sm *streamManager) StreamLogs(ctx context.Context) error {
 	return nil
 }
 
-// StreamCiliumNetworkFlows handles the cilium network flow stream.
-func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNamespace string) error {
+func (sm *streamManager) hubbleRelayDiscovery(ctx context.Context, ciliumNamespace string) (*CiliumFlowCollector, bool) {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, sm.logger, ciliumNamespace)
 	if err != nil {
-		sm.logger.Infow("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector", "error", err)
 		sm.streamClient.disableNetworkFlowsCilium = true
-		return err
+		return nil, false
+	}
+	return ciliumFlowCollector, true
+}
+
+// StreamCiliumNetworkFlows handles the cilium network flow stream.
+func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNamespace string) error {
+	// TODO: Add logic for a discoveribility function to decide which CNI to use.
+	ciliumFlowCollector, ok := sm.hubbleRelayDiscovery(ctx, ciliumNamespace)
+	if ok != true {
+		sm.logger.Info("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector")
+		return fmt.Errorf("hubble relay cannot be found")
 	}
 	if ciliumFlowCollector != nil {
 		for {
-			err = ciliumFlowCollector.exportCiliumFlows(ctx, *sm)
+			err := ciliumFlowCollector.exportCiliumFlows(ctx, *sm)
 			if err != nil {
 				sm.logger.Warnw("Failed to collect and export flows from Cilium Hubble Relay", "error", err)
 				sm.streamClient.disableNetworkFlowsCilium = true
@@ -241,7 +250,7 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 			// Extract the relevant part of the output string
 			match := reIllumioTraffic.FindStringSubmatch(falcoFlow)
 			if len(match) < 2 {
-				return nil
+				continue
 			}
 
 			convertedFalcoFlow, err := parsePodNetworkInfo(match[1])
@@ -249,7 +258,7 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 				// If the event can't be parsed, consider that it's not a flow event and just ignore it.
 				// If the event has bad ports in any way ignore it.
 				// If the event has an incomplete L3/L4 layer lets just ignore it.
-				return nil
+				continue
 			} else if err != nil {
 				sm.logger.Errorw("Failed to parse Falco event into flow", "error", err)
 				return err
@@ -269,7 +278,6 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 func connectAndStreamCiliumNetworkFlows(logger *zap.SugaredLogger, sm *streamManager) error {
 	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
 	defer ciliumCancel()
-	defer sm.streamClient.networkFlowWg.Done()
 
 	sendCiliumNetworkFlowsStream, err := sm.streamClient.client.SendKubernetesNetworkFlows(ciliumCtx)
 	if err != nil {
@@ -506,6 +514,8 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 				bufferedGrpcSyncer: bufferedGrpcSyncer,
 			}
 
+			sm.hubbleRelayDiscovery(ctx, sm.streamClient.ciliumNamespace)
+
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
 			falcoDone := make(chan struct{})
@@ -517,10 +527,7 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
-				// Must use a waitgroup in order to check for hubble existance before proceeding with CNI selection
-				sm.streamClient.networkFlowWg.Add(1)
 				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
-				sm.streamClient.networkFlowWg.Wait()
 				if !sm.streamClient.disableNetworkFlowsCilium {
 					falcoDone = nil
 				}
