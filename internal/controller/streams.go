@@ -211,6 +211,7 @@ func (sm *streamManager) StreamLogs(ctx context.Context) error {
 	return nil
 }
 
+// hubbleRelayDiscoery checks if hubble relay exists and if it does it returns a *CiliumFlowCollector
 func (sm *streamManager) hubbleRelayDiscovery(ctx context.Context, ciliumNamespace string) (*CiliumFlowCollector, bool) {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, sm.logger, ciliumNamespace)
@@ -225,7 +226,7 @@ func (sm *streamManager) hubbleRelayDiscovery(ctx context.Context, ciliumNamespa
 func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNamespace string) error {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	ciliumFlowCollector, ok := sm.hubbleRelayDiscovery(ctx, ciliumNamespace)
-	if ok != true {
+	if !ok {
 		sm.logger.Info("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector")
 		return fmt.Errorf("hubble relay cannot be found")
 	}
