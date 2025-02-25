@@ -33,6 +33,7 @@ func sendObjectData(sm *streamManager, metadata *pb.KubernetesObjectData) error 
 // sendNetworkFlowRequest sends a network flow to the networkFlowsStream
 func sendNetworkFlowRequest(sm *streamManager, flow interface{}) error {
 	var request *pb.SendKubernetesNetworkFlowsRequest
+
 	switch f := flow.(type) {
 	case *pb.FalcoFlow:
 		request = &pb.SendKubernetesNetworkFlowsRequest{
