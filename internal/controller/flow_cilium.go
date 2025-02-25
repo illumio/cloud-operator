@@ -198,21 +198,18 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm streamM
 // convertCiliumFlow converts a GetFlowsResponse object to a CiliumFlow object
 func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 	flowObj := flow.GetFlow()
-
 	// Check for nil fields
 	if flowObj.GetTime() == nil ||
 		flowObj.GetNodeName() == "" ||
 		flowObj.GetTrafficDirection().String() == "" ||
 		flowObj.GetVerdict().String() == "" ||
 		flowObj.GetIP() == nil ||
-		flowObj.GetL4() == nil ||
-		flowObj.GetDestinationService() == nil {
-
+		flowObj.GetL4() == nil {
 		// Return nil if any of the essential fields are nil
 		return nil
 	}
 
-	ciliumFlow := pb.CiliumFlow{
+	ciliumFlow := &pb.CiliumFlow{
 		Time:               flowObj.GetTime(),
 		NodeName:           flowObj.GetNodeName(),
 		Verdict:            pb.Verdict(flowObj.GetVerdict()),
@@ -246,5 +243,5 @@ func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 			Workloads:   convertCiliumWorkflows(flowObj.GetDestination().GetWorkloads()),
 		}
 	}
-	return &ciliumFlow
+	return ciliumFlow
 }
