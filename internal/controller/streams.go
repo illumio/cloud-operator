@@ -215,7 +215,6 @@ func (sm *streamManager) findHubbleRelay(ctx context.Context, ciliumNamespace st
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, sm.logger, ciliumNamespace)
 	if err != nil {
-		sm.streamClient.disableNetworkFlowsCilium = true
 		return nil
 	}
 	return ciliumFlowCollector
@@ -517,7 +516,6 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			} else {
 				sm.streamClient.disableNetworkFlowsCilium = false
 			}
-			sm.findHubbleRelay(ctx, sm.streamClient.ciliumNamespace)
 
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
