@@ -5,7 +5,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/rand"
 	"net"
 	"net/http"
@@ -211,8 +210,8 @@ func (sm *streamManager) StreamLogs(ctx context.Context) error {
 	return nil
 }
 
-// hubbleRelayDiscoery checks if hubble relay exists and if it does it returns a *CiliumFlowCollector
-func (sm *streamManager) hubbleRelayDiscovery(ctx context.Context, ciliumNamespace string) (*CiliumFlowCollector, bool) {
+// findHubbleRelay returns a *CiliumFlowCollector if hubble relay is found in the given namespace
+func (sm *streamManager) findHubbleRelay(ctx context.Context, ciliumNamespace string) (*CiliumFlowCollector, bool) {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, sm.logger, ciliumNamespace)
 	if err != nil {
@@ -228,7 +227,7 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNam
 	ciliumFlowCollector, ok := sm.hubbleRelayDiscovery(ctx, ciliumNamespace)
 	if !ok {
 		sm.logger.Info("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector")
-		return fmt.Errorf("hubble relay cannot be found")
+		return errors.New("hubble relay cannot be found")
 	}
 	if ciliumFlowCollector != nil {
 		for {
