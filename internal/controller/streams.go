@@ -224,7 +224,7 @@ func (sm *streamManager) findHubbleRelay(ctx context.Context, ciliumNamespace st
 // StreamCiliumNetworkFlows handles the cilium network flow stream.
 func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNamespace string) error {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
-	ciliumFlowCollector, ok := sm.hubbleRelayDiscovery(ctx, ciliumNamespace)
+	ciliumFlowCollector, ok := sm.findHubbleRelay(ctx, ciliumNamespace)
 	if !ok {
 		sm.logger.Info("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector")
 		return errors.New("hubble relay cannot be found")
@@ -514,7 +514,7 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 				bufferedGrpcSyncer: bufferedGrpcSyncer,
 			}
 
-			sm.hubbleRelayDiscovery(ctx, sm.streamClient.ciliumNamespace)
+			sm.findHubbleRelay(ctx, sm.streamClient.ciliumNamespace)
 
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
