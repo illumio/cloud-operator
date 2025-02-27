@@ -211,25 +211,24 @@ func (sm *streamManager) StreamLogs(ctx context.Context) error {
 }
 
 // findHubbleRelay returns a *CiliumFlowCollector if hubble relay is found in the given namespace
-func (sm *streamManager) findHubbleRelay(ctx context.Context, ciliumNamespace string) (*CiliumFlowCollector, bool) {
+func (sm *streamManager) findHubbleRelay(ctx context.Context, ciliumNamespace string) *CiliumFlowCollector {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, sm.logger, ciliumNamespace)
 	if err != nil {
 		sm.streamClient.disableNetworkFlowsCilium = true
-		return nil, false
+		return nil
 	}
-	return ciliumFlowCollector, true
+	return ciliumFlowCollector
 }
 
 // StreamCiliumNetworkFlows handles the cilium network flow stream.
 func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNamespace string) error {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
-	ciliumFlowCollector, ok := sm.findHubbleRelay(ctx, ciliumNamespace)
-	if !ok {
+	ciliumFlowCollector := sm.findHubbleRelay(ctx, ciliumNamespace)
+	if ciliumFlowCollector == nil {
 		sm.logger.Info("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector")
 		return errors.New("hubble relay cannot be found")
-	}
-	if ciliumFlowCollector != nil {
+	} else {
 		for {
 			err := ciliumFlowCollector.exportCiliumFlows(ctx, *sm)
 			if err != nil {
@@ -239,7 +238,6 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNam
 			}
 		}
 	}
-	return nil
 }
 
 // StreamFalcoNetworkFlows handles the falco network flow stream.
@@ -513,7 +511,12 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 				logger:             logger,
 				bufferedGrpcSyncer: bufferedGrpcSyncer,
 			}
-
+			ciliumFlowCollector := sm.findHubbleRelay(ctx, sm.streamClient.ciliumNamespace)
+			if ciliumFlowCollector == nil {
+				sm.streamClient.disableNetworkFlowsCilium = true
+			} else {
+				sm.streamClient.disableNetworkFlowsCilium = false
+			}
 			sm.findHubbleRelay(ctx, sm.streamClient.ciliumNamespace)
 
 			resourceDone := make(chan struct{})
