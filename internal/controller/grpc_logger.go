@@ -3,8 +3,13 @@
 package controller
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -78,7 +83,7 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 		lostLogEntry := &zapcore.Entry{
 			Level:   zap.ErrorLevel,
 			Time:    time.Now(),
-			Message: "Lost logs due to buffer overflow",
+			Message: `{"msg":"Lost logs due to buffer overflow"}`,
 		}
 
 		// Additional fields
@@ -122,10 +127,50 @@ func (b *BufferedGrpcWriteSyncer) run() {
 
 // sendLog sends the log as a string to the server.
 func (b *BufferedGrpcWriteSyncer) sendLog(logEntry *zapcore.Entry, extraFields []zap.Field) error {
-	buf, err := b.encoder.EncodeEntry(*logEntry, extraFields)
+	var decodedMessage map[string]any
+
+	// Assume that the message has been serialized into a JSON object
+	err := json.Unmarshal([]byte(logEntry.Message), &decodedMessage)
+	if err != nil {
+		return fmt.Errorf("log entry message is not a JSON object: %w", err)
+	}
+
+	// Overwrite the message to be just the "msg" string field
+	msg, msgFound := decodedMessage["msg"]
+	if !msgFound {
+		return errors.New("log entry message does not contain an msg field")
+	}
+	msgString, msgIsString := msg.(string)
+	if !msgIsString {
+		return errors.New("msg field in log entry message is not a string")
+	}
+	logEntry.Message = msgString
+
+	// Deduplicate the fields; the extra fields override the message's fields
+	extraFieldsSet := make(map[string]zap.Field, len(decodedMessage)-1+len(extraFields))
+	for key, value := range decodedMessage {
+		// All the fields other than "msg" go into the extraFields
+		switch key {
+		case "msg":
+		default:
+			extraFieldsSet[key] = zap.Any(key, value)
+		}
+	}
+	for _, field := range extraFields {
+		extraFieldsSet[field.Key] = field
+	}
+
+	newExtraFields := make([]zap.Field, 0, len(extraFieldsSet))
+	for _, key := range slices.Sorted(maps.Keys(extraFieldsSet)) {
+		newExtraFields = append(newExtraFields, extraFieldsSet[key])
+	}
+
+	buf, err := b.encoder.EncodeEntry(*logEntry, newExtraFields)
 	if err != nil {
 		return err
 	}
+	// Remove the newline added by Zap's encoder
+	buf.TrimNewline()
 	err = b.client.Send(&pb.SendLogsRequest{
 		Request: &pb.SendLogsRequest_LogEntry{
 			LogEntry: &pb.LogEntry{

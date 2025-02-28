@@ -116,17 +116,19 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) SetupTest() {
 
 // Test sendLog function to ensure proper formatting and encoding
 func (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLog() {
+	ts, err := time.Parse(time.RFC3339, "2025-02-28T11:56:05Z")
+	suite.NoError(err)
+
 	entry := &zapcore.Entry{
-		Level:   zapcore.InfoLevel,
-		Time:    time.Now(),
-		Message: "test log message",
+		Level: zapcore.InfoLevel,
+		Time:  ts,
+		// Message contains the entry's whole structured context already serialized.
+		// gRPC logger requires that this is serialized into a JSON object.
+		Message: `{"field2":10,"msg":"The Message","field1":"a string"}`,
 	}
 
-	// Manually encode the entry to compare.
-	buf, err := suite.mockEncoder.EncodeEntry(*entry, nil)
-	suite.NoError(err)
 	expectedLogEntry := &pb.LogEntry{
-		JsonMessage: buf.String(),
+		JsonMessage: `{"level":"info","ts":1740743765,"msg":"The Message","field1":"a string","field2":10}`,
 	}
 
 	suite.mockClient.On("Send", &pb.SendLogsRequest{
@@ -138,11 +140,6 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLog() {
 	err = suite.grpcSyncer.sendLog(entry, nil)
 	suite.NoError(err)
 	suite.mockClient.AssertExpectations(suite.T())
-
-	// Assert encoded log format
-	expectedJSON := buf.String()
-	actualBuf, _ := suite.mockEncoder.EncodeEntry(*entry, nil)
-	suite.Equal(expectedJSON, actualBuf.String())
 }
 
 // Run the test suite
