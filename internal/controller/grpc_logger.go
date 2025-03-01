@@ -255,7 +255,7 @@ func (w *zapCoreWrapper) Write(entry zapcore.Entry, fields []zapcore.Field) erro
 		return err
 	}
 
-	// Do not use logging inside the hook to avoid deadlock
+	// Do not use logging while locking this mutex to avoid deadlocks
 	w.grpcSyncer.mutex.Lock()
 	defer w.grpcSyncer.mutex.Unlock()
 
@@ -264,15 +264,14 @@ func (w *zapCoreWrapper) Write(entry zapcore.Entry, fields []zapcore.Field) erro
 	if w.grpcSyncer.conn == nil || w.grpcSyncer.conn.GetState() != connectivity.Ready {
 		shouldBuffer = true
 	} else {
-		// Flush any pending logs
+		// Flush buffered logs
 		w.grpcSyncer.flush()
 		if err := w.grpcSyncer.sendLogEntry(jsonMessage); err != nil {
 			shouldBuffer = true
-			if shouldBuffer {
-				w.grpcSyncer.bufferLogEntry(jsonMessage)
-			}
-			return nil
 		}
+	}
+	if shouldBuffer {
+		w.grpcSyncer.bufferLogEntry(jsonMessage)
 	}
 	return nil
 }
