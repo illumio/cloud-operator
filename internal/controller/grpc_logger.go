@@ -3,6 +3,7 @@
 package controller
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -29,7 +30,7 @@ type ClientConnInterface interface {
 type BufferedGrpcWriteSyncer struct {
 	client              pb.KubernetesInfoService_SendLogsClient
 	conn                ClientConnInterface
-	buffer              []*zapcore.Entry
+	buffer              []string
 	mutex               sync.Mutex
 	done                chan struct{}
 	logger              *zap.Logger
@@ -44,7 +45,7 @@ func NewBufferedGrpcWriteSyncer() *BufferedGrpcWriteSyncer {
 	bws := &BufferedGrpcWriteSyncer{
 		client:              nil,
 		conn:                nil,
-		buffer:              make([]*zapcore.Entry, 0, maxBufferSize),
+		buffer:              make([]string, 0, maxBufferSize),
 		done:                make(chan struct{}),
 		lostLogEntriesCount: 0,
 	}
@@ -75,18 +76,24 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	}
 
 	if b.lostLogEntriesCount > 0 {
-		lostLogEntry := zapcore.Entry{
-			Level:   zap.ErrorLevel,
-			Time:    time.Now().UTC(),
-			Message: "Lost logs due to buffer overflow",
+		lostLogsMessage, err := encodeLogEntry(
+			b.encoder,
+			zapcore.Entry{
+				Level:   zap.ErrorLevel,
+				Time:    time.Now().UTC(),
+				Message: "Lost logs due to buffer overflow",
+			},
+			[]zap.Field{
+				zap.Error(b.lostLogEntriesErr),
+				zap.Int("lost_log_entries", b.lostLogEntriesCount),
+			},
+		)
+		if err != nil {
+			b.lostLogEntriesErr = err
+			return
 		}
 
-		fields := []zap.Field{
-			zap.Error(b.lostLogEntriesErr),
-			zap.Int("lost_log_entries", b.lostLogEntriesCount),
-		}
-
-		if err := b.sendLog(lostLogEntry, fields); err != nil {
+		if err := b.sendLogEntry(lostLogsMessage); err != nil {
 			b.lostLogEntriesErr = err
 			return
 		}
@@ -94,7 +101,7 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	}
 
 	for _, logEntry := range b.buffer {
-		if err := b.sendLog(*logEntry, nil); err != nil {
+		if err := b.sendLogEntry(logEntry); err != nil {
 			b.lostLogEntriesCount += 1
 			b.lostLogEntriesErr = err
 		}
@@ -119,25 +126,31 @@ func (b *BufferedGrpcWriteSyncer) run() {
 	}
 }
 
-// sendLog sends the log as a string to the server.
-func (b *BufferedGrpcWriteSyncer) sendLog(logEntry zapcore.Entry, fields []zap.Field) error {
-	buf, err := b.encoder.EncodeEntry(logEntry, fields)
+// encodeLogEntry encodes a log Entry and fields into a string using the given Encoder.
+func encodeLogEntry(encoder zapcore.Encoder, logEntry zapcore.Entry, fields []zap.Field) (string, error) {
+	buf, err := encoder.EncodeEntry(logEntry, fields)
 	if err != nil {
-		return err
+		return "", fmt.Errorf("Failed to encode log entry: %w", err)
 	}
-	// Remove the newline added by Zap's encoder
+
+	// Remove any newline added by Zap's encoder
 	buf.TrimNewline()
-	err = b.client.Send(&pb.SendLogsRequest{
+
+	return buf.String(), nil
+}
+
+// sendLogEntry sends the log encoded into a string to the log server.
+func (b *BufferedGrpcWriteSyncer) sendLogEntry(jsonMessage string) error {
+	return b.client.Send(&pb.SendLogsRequest{
 		Request: &pb.SendLogsRequest_LogEntry{
 			LogEntry: &pb.LogEntry{
-				JsonMessage: buf.String(),
+				JsonMessage: jsonMessage,
 			},
 		},
 	})
-	return err
 }
 
-// UpdateClient will update BufferedGrpcWriteSyncer with new client stream and GRPC connection
+// UpdateClient updates the gRPC connection and connection in the BufferedGrpcWriteSyncer.
 func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_SendLogsClient, conn ClientConnInterface) {
 	b.mutex.Lock()
 	b.client = client
@@ -147,14 +160,14 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 	b.mutex.Unlock()
 }
 
-// ListenToLogStream will wait for responses from server and will update log level
-// depending on response contents
+// ListenToLogStream waits for responses from the server and updates the log level
+// based on the contents of responses.
 func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
 	for {
 		res, err := b.client.Recv()
 		if err == io.EOF {
 			// The client has closed the stream
-			b.logger.Info("Server has closed the SendLogs stream")
+			b.logger.Info("Server closed the SendLogs stream")
 			return nil
 		}
 		if err != nil {
@@ -170,11 +183,11 @@ func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
 }
 
 // bufferLog adds the log entry to in-memory buffer
-func (b *BufferedGrpcWriteSyncer) bufferLogEntry(entry zapcore.Entry) {
+func (b *BufferedGrpcWriteSyncer) bufferLogEntry(jsonMessage string) {
 	if len(b.buffer) >= maxBufferSize {
 		b.lostLogEntriesCount += 1
 	}
-	b.buffer = append(b.buffer, &entry)
+	b.buffer = append(b.buffer, jsonMessage)
 }
 
 // updateLogLevel sets the logger's log level based on the response from the server.
@@ -201,10 +214,11 @@ func (b *BufferedGrpcWriteSyncer) updateLogLevel(level pb.LogLevel) {
 // zapCoreWrapper wraps a zapcore.Core to duplicate log entries into a BufferedGrpcWriteSyncer
 type zapCoreWrapper struct {
 	core       zapcore.Core
+	encoder    zapcore.Encoder
 	grpcSyncer *BufferedGrpcWriteSyncer
 }
 
-var _ zapcore.Core = &zapCoreWrapper{} 
+var _ zapcore.Core = &zapCoreWrapper{}
 
 func (w *zapCoreWrapper) Check(entry zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
 	if downstream := w.core.Check(entry, ce); downstream != nil {
@@ -222,13 +236,25 @@ func (w *zapCoreWrapper) Sync() error {
 }
 
 func (w *zapCoreWrapper) With(fields []zapcore.Field) zapcore.Core {
-	return &zapCoreWrapper{
+	newWrapper := &zapCoreWrapper{
 		core:       w.core.With(fields),
+		encoder:    w.encoder.Clone(),
 		grpcSyncer: w.grpcSyncer,
 	}
+	for i := range fields {
+		fields[i].AddTo(newWrapper.encoder)
+	}
+	return newWrapper
 }
 
 func (w *zapCoreWrapper) Write(entry zapcore.Entry, fields []zapcore.Field) error {
+	// Encode the entry immediately and never refer to the Entry and Fields afterwards,
+	// as it is more compact and the fields can be garbage-collected while the entry is buffered.
+	jsonMessage, err := encodeLogEntry(w.encoder, entry, fields)
+	if err != nil {
+		return err
+	}
+
 	// Do not use logging inside the hook to avoid deadlock
 	w.grpcSyncer.mutex.Lock()
 	defer w.grpcSyncer.mutex.Unlock()
@@ -240,10 +266,10 @@ func (w *zapCoreWrapper) Write(entry zapcore.Entry, fields []zapcore.Field) erro
 	} else {
 		// Flush any pending logs
 		w.grpcSyncer.flush()
-		if err := w.grpcSyncer.sendLog(entry, fields); err != nil {
+		if err := w.grpcSyncer.sendLogEntry(jsonMessage); err != nil {
 			shouldBuffer = true
 			if shouldBuffer {
-				w.grpcSyncer.bufferLogEntry(entry)
+				w.grpcSyncer.bufferLogEntry(jsonMessage)
 			}
 			return nil
 		}
@@ -281,6 +307,7 @@ func NewGRPCLogger(grpcSyncer *BufferedGrpcWriteSyncer, addCaller bool, clock za
 		zap.WrapCore(func(core zapcore.Core) zapcore.Core {
 			return &zapCoreWrapper{
 				core:       core,
+				encoder:    encoder,
 				grpcSyncer: grpcSyncer,
 			}
 		}),

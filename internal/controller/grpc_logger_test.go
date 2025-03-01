@@ -107,7 +107,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) SetupTest() {
 	suite.grpcSyncer = &BufferedGrpcWriteSyncer{
 		client:   mockClient,
 		conn:     mockConn,
-		buffer:   make([]*zapcore.Entry, 0, maxBufferSize),
+		buffer:   make([]string, 0, maxBufferSize),
 		done:     make(chan struct{}),
 		logger:   zap.NewNop(), // Use a no-op logger for simplicity
 		logLevel: zap.NewAtomicLevel(),
@@ -118,8 +118,8 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) SetupTest() {
 	mockConn.On("Close").Return(nil)
 }
 
-// TestSendLog tests the sendLog method to ensure proper formatting and encoding
-func (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLog() {
+// TestSendLogEntry tests the sendLogEntry method to ensure proper formatting and encoding
+func (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLogEntry() {
 	ts, err := time.Parse(time.RFC3339, "2025-02-28T11:56:05Z")
 	suite.NoError(err)
 
@@ -136,6 +136,9 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLog() {
 		zap.Int("field2", 10),
 	}
 
+	jsonMessage, err := encodeLogEntry(suite.grpcSyncer.encoder, entry, fields)
+	suite.NoError(err)
+
 	expectedLogEntry := &pb.LogEntry{
 		JsonMessage: `{"level":"info","ts":1740743765,"msg":"The Message","field1":"a string","field2":10}`,
 	}
@@ -146,7 +149,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLog() {
 		},
 	}).Return(nil).Once()
 
-	err = suite.grpcSyncer.sendLog(entry, fields)
+	err = suite.grpcSyncer.sendLogEntry(jsonMessage)
 	suite.NoError(err)
 	suite.mockClient.AssertExpectations(suite.T())
 }
@@ -166,6 +169,7 @@ func (c *mockZapClock) NewTicker(duration time.Duration) *time.Ticker {
 	return time.NewTicker(duration)
 }
 
+// TestZapCoreWrapper tests the gRPC logger end-to-end.
 func (suite *BufferedGrpcWriteSyncerTestSuite) TestZapCoreWrapper() {
 	ts, err := time.Parse(time.RFC3339, "2025-02-28T11:56:05Z")
 	suite.NoError(err)
