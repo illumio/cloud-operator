@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -14,7 +15,7 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-// Mock for the SendLogsClient
+// MockSendLogsClient mocks the SendLogsClient gRPC interface
 type MockSendLogsClient struct {
 	mock.Mock
 }
@@ -67,7 +68,7 @@ func (m *MockSendLogsClient) RecvMsg(msg interface{}) error {
 	return args.Error(0)
 }
 
-// Implementation of ClientConnInterface for MockClientConn
+// MockClientConn mocks ClientConnInterface
 type MockClientConn struct {
 	mock.Mock
 }
@@ -82,49 +83,57 @@ func (m *MockClientConn) Close() error {
 	return args.Error(0)
 }
 
-// Test suite for BufferedGrpcWriteSyncer
+// BufferedGrpcWriteSyncerTestSuite is a test suite for BufferedGrpcWriteSyncer
 type BufferedGrpcWriteSyncerTestSuite struct {
 	suite.Suite
-	grpcSyncer  *BufferedGrpcWriteSyncer
-	mockClient  *MockSendLogsClient
-	mockConn    *MockClientConn
-	mockEncoder zapcore.Encoder
+	grpcSyncer *BufferedGrpcWriteSyncer
+	mockClient *MockSendLogsClient
+	mockConn   *MockClientConn
+}
+
+// TestBufferedGrpcWriteSyncerTestSuite runs the test suite
+func TestBufferedGrpcWriteSyncerTestSuite(t *testing.T) {
+	suite.Run(t, new(BufferedGrpcWriteSyncerTestSuite))
 }
 
 func (suite *BufferedGrpcWriteSyncerTestSuite) SetupTest() {
 	mockClient := &MockSendLogsClient{}
 	mockConn := &MockClientConn{}
 	encoderConfig := zap.NewProductionEncoderConfig()
-	mockEncoder := zapcore.NewJSONEncoder(encoderConfig)
+	encoder := zapcore.NewJSONEncoder(encoderConfig)
 
 	suite.mockClient = mockClient
 	suite.mockConn = mockConn
-	suite.mockEncoder = mockEncoder
 	suite.grpcSyncer = &BufferedGrpcWriteSyncer{
 		client:   mockClient,
 		conn:     mockConn,
 		buffer:   make([]*zapcore.Entry, 0, maxBufferSize),
 		done:     make(chan struct{}),
-		logger:   zap.NewNop().Sugar(), // Use a no-op logger for simplicity
+		logger:   zap.NewNop(), // Use a no-op logger for simplicity
 		logLevel: zap.NewAtomicLevel(),
-		encoder:  mockEncoder,
+		encoder:  encoder,
 	}
 
 	mockConn.On("GetState").Return(connectivity.Ready)
 	mockConn.On("Close").Return(nil)
 }
 
-// Test sendLog function to ensure proper formatting and encoding
+// TestSendLog tests the sendLog method to ensure proper formatting and encoding
 func (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLog() {
 	ts, err := time.Parse(time.RFC3339, "2025-02-28T11:56:05Z")
 	suite.NoError(err)
 
-	entry := &zapcore.Entry{
+	entry := zapcore.Entry{
 		Level: zapcore.InfoLevel,
 		Time:  ts,
 		// Message contains the entry's whole structured context already serialized.
 		// gRPC logger requires that this is serialized into a JSON object.
-		Message: `{"field2":10,"msg":"The Message","field1":"a string"}`,
+		Message: "The Message",
+	}
+
+	fields := []zap.Field{
+		zap.String("field1", "a string"),
+		zap.Int("field2", 10),
 	}
 
 	expectedLogEntry := &pb.LogEntry{
@@ -137,12 +146,55 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLog() {
 		},
 	}).Return(nil).Once()
 
-	err = suite.grpcSyncer.sendLog(entry, nil)
+	err = suite.grpcSyncer.sendLog(entry, fields)
 	suite.NoError(err)
 	suite.mockClient.AssertExpectations(suite.T())
 }
 
-// Run the test suite
-func TestBufferedGrpcWriteSyncerTestSuite(t *testing.T) {
-	suite.Run(t, new(BufferedGrpcWriteSyncerTestSuite))
+// mockZapClock mocks zapcore.Clock to always return the same time for "now".
+type mockZapClock struct {
+	now time.Time
+}
+
+var _ zapcore.Clock = &mockZapClock{}
+
+func (c *mockZapClock) Now() time.Time {
+	return c.now
+}
+
+func (c *mockZapClock) NewTicker(duration time.Duration) *time.Ticker {
+	return time.NewTicker(duration)
+}
+
+func (suite *BufferedGrpcWriteSyncerTestSuite) TestZapCoreWrapper() {
+	ts, err := time.Parse(time.RFC3339, "2025-02-28T11:56:05Z")
+	suite.NoError(err)
+
+	mockClock := &mockZapClock{
+		now: ts,
+	}
+
+	// Disable logging the caller and mock the clock to make the test deterministic
+	logger := NewGRPCLogger(suite.grpcSyncer, false, mockClock)
+
+	expectedLogEntry := &pb.LogEntry{
+		JsonMessage: `{"level":"info","ts":"2025-02-28T11:56:05Z","msg":"The Message","field1":"a string","field2":10,"error":"some error"}`,
+	}
+
+	suite.mockClient.On("Send", &pb.SendLogsRequest{
+		Request: &pb.SendLogsRequest_LogEntry{
+			LogEntry: expectedLogEntry,
+		},
+	}).Return(nil).Once()
+
+	logger = logger.With(
+		zap.String("field1", "a string"),
+	)
+
+	logger.Info("The Message",
+		zap.Int("field2", 10),
+		zap.Error(errors.New("some error")),
+	)
+
+	suite.mockClient.AssertExpectations(suite.T())
 }
