@@ -130,7 +130,7 @@ func (b *BufferedGrpcWriteSyncer) run() {
 func encodeLogEntry(encoder zapcore.Encoder, logEntry zapcore.Entry, fields []zap.Field) (string, error) {
 	buf, err := encoder.EncodeEntry(logEntry, fields)
 	if err != nil {
-		return "", fmt.Errorf("Failed to encode log entry: %w", err)
+		return "", fmt.Errorf("failed to encode log entry: %w", err)
 	}
 
 	// Remove any newline added by Zap's encoder
