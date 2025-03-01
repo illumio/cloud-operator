@@ -46,7 +46,7 @@ func getObjectMetadataFromRuntimeObject(obj runtime.Object) (*metav1.ObjectMeta,
 
 // getMetadatafromResource extracts the metav1.ObjectMeta from an unstructured.Unstructured resource.
 // It utilizes the unstructured's inherent methods to access the metadata directly.
-func getMetadatafromResource(logger *zap.SugaredLogger, resource unstructured.Unstructured) (*metav1.ObjectMeta, error) {
+func getMetadatafromResource(logger *zap.Logger, resource unstructured.Unstructured) (*metav1.ObjectMeta, error) {
 	// Convert unstructured object to a map.
 	itemMap := resource.Object
 	// Extract metadata from map.
@@ -54,12 +54,12 @@ func getMetadatafromResource(logger *zap.SugaredLogger, resource unstructured.Un
 		// Convert the metadata map to JSON and then unmarshal into metav1.ObjectMeta.
 		metadataJSON, err := json.Marshal(metadata)
 		if err != nil {
-			logger.Errorw("Error marshalling metadata", "error", err)
+			logger.Error("Error marshalling metadata", zap.Error(err))
 			return &metav1.ObjectMeta{}, err
 		}
 		var objectMeta metav1.ObjectMeta
 		if err := json.Unmarshal(metadataJSON, &objectMeta); err != nil {
-			logger.Errorw("Error unmarshalling metadata", "error", err)
+			logger.Error("Error unmarshalling metadata", zap.Error(err))
 			return &metav1.ObjectMeta{}, err
 		}
 		return &objectMeta, err
@@ -69,10 +69,10 @@ func getMetadatafromResource(logger *zap.SugaredLogger, resource unstructured.Un
 }
 
 // convertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
-func convertMetaObjectToMetadata(logger *zap.SugaredLogger, ctx context.Context, obj metav1.ObjectMeta, clientset *kubernetes.Clientset, resource string) (*pb.KubernetesObjectData, error) {
+func convertMetaObjectToMetadata(logger *zap.Logger, ctx context.Context, obj metav1.ObjectMeta, clientset *kubernetes.Clientset, resource string) (*pb.KubernetesObjectData, error) {
 	ownerReferences, err := convertOwnerReferences(obj.GetOwnerReferences())
 	if err != nil {
-		logger.Errorw("cannot convert OwnerReferences", "error", err)
+		logger.Error("cannot convert OwnerReferences", zap.Error(err))
 		return &pb.KubernetesObjectData{}, fmt.Errorf("cannot convert OwnerReferences")
 	}
 	objMetadata := &pb.KubernetesObjectData{

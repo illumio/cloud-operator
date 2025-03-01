@@ -45,11 +45,11 @@ func newHealthHandler(checkFunc func() bool) http.HandlerFunc {
 }
 
 // bindEnv is a helper function that binds an environment variable to a key and handles errors.
-func bindEnv(logger zap.SugaredLogger, key, envVar string) {
+func bindEnv(logger *zap.Logger, key, envVar string) {
 	if err := viper.BindEnv(key, envVar); err != nil {
-		logger.Errorw("Error binding environment variable",
-			"error", errors.New("error binding environment variable"),
-			"variable", envVar,
+		logger.Error("Error binding environment variable",
+			zap.Error(errors.New("error binding environment variable")),
+			zap.String("variable", envVar),
 		)
 	}
 }
@@ -58,19 +58,19 @@ func main() {
 	// Create a buffered grpc write syncer without a valid gRPC connection initially
 	// Using nil for the `pb.KubernetesInfoService_KubernetesLogsClient`.
 	bufferedGrpcSyncer := controller.NewBufferedGrpcWriteSyncer()
-	logger := controller.NewGRPClogger(bufferedGrpcSyncer)
+	logger := controller.NewProductionGRPCLogger(bufferedGrpcSyncer)
 	defer logger.Sync() //nolint:errcheck
 
 	viper.AutomaticEnv()
 
 	// Bind specific environment variables to keys
-	bindEnv(*logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
-	bindEnv(*logger, "cilium_namespace", "CILIUM_NAMESPACE")
-	bindEnv(*logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
-	bindEnv(*logger, "onboarding_client_secret", "ONBOARDING_CLIENT_SECRET")
-	bindEnv(*logger, "onboarding_endpoint", "ONBOARDING_ENDPOINT")
-	bindEnv(*logger, "token_endpoint", "TOKEN_ENDPOINT")
-	bindEnv(*logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
+	bindEnv(logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
+	bindEnv(logger, "cilium_namespace", "CILIUM_NAMESPACE")
+	bindEnv(logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
+	bindEnv(logger, "onboarding_client_secret", "ONBOARDING_CLIENT_SECRET")
+	bindEnv(logger, "onboarding_endpoint", "ONBOARDING_ENDPOINT")
+	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
+	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
 
 	// Set default values
 	viper.SetDefault("cluster_creds", "clustercreds")
@@ -89,18 +89,18 @@ func main() {
 		TlsSkipVerify:          viper.GetBool("tls_skip_verify"),
 	}
 
-	logger.Infow("Starting application",
-		"cluster_creds_secret", envConfig.ClusterCreds,
-		"cilium_namespace", envConfig.CiliumNamespace,
-		"onboarding_client_id", envConfig.OnboardingClientId,
-		"onboarding_endpoint", envConfig.OnboardingEndpoint,
-		"token_endpoint", envConfig.TokenEndpoint,
-		"tls_skip_verify", envConfig.TlsSkipVerify,
+	logger.Info("Starting application",
+		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
+		zap.String("cilium_namespace", envConfig.CiliumNamespace),
+		zap.String("onboarding_client_id", envConfig.OnboardingClientId),
+		zap.String("onboarding_endpoint", envConfig.OnboardingEndpoint),
+		zap.String("token_endpoint", envConfig.TokenEndpoint),
+		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
 	)
 
 	// Start the gops agent and listen on a specific address and port
 	if err := agent.Listen(agent.Options{}); err != nil {
-		logger.Errorw("Failed to start gops agent", "error", err)
+		logger.Error("Failed to start gops agent", zap.Error(err))
 	}
 	http.HandleFunc("/healthz", newHealthHandler(controller.ServerIsHealthy))
 	healthChecker := &http.Server{Addr: ":8080"}
