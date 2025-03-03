@@ -182,7 +182,6 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 	b.mutex.Lock()
 	b.client = client
 	b.conn = conn
-	b.done = make(chan struct{})
 	b.flush()
 	b.mutex.Unlock()
 }
