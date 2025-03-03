@@ -302,17 +302,15 @@ func NewGRPCLogger(grpcSyncer *BufferedGrpcWriteSyncer, addCaller bool, clock za
 	consoleCore := zapcore.NewCore(encoder, consoleSyncer, atomicLevel)
 
 	// Create zap logger with the console core
-	logger := zap.New(consoleCore,
+	logger := zap.New(
+		&zapCoreWrapper{
+			core:       consoleCore,
+			encoder:    encoder,
+			grpcSyncer: grpcSyncer,
+		},
 		zap.WithCaller(addCaller),
 		zap.AddStacktrace(zapcore.ErrorLevel),
 		zap.WithClock(clock),
-		zap.WrapCore(func(core zapcore.Core) zapcore.Core {
-			return &zapCoreWrapper{
-				core:       core,
-				encoder:    encoder,
-				grpcSyncer: grpcSyncer,
-			}
-		}),
 	)
 
 	grpcSyncer.logger = logger
