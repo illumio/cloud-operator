@@ -100,8 +100,8 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 		b.lostLogEntriesCount = 0
 	}
 
-	for _, logEntry := range b.buffer {
-		if err := b.sendLogEntry(logEntry); err != nil {
+	for _, jsonMessage := range b.buffer {
+		if err := b.sendLogEntry(jsonMessage); err != nil {
 			b.lostLogEntriesCount += 1
 			b.lostLogEntriesErr = err
 		}
