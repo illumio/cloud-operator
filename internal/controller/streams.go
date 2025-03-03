@@ -5,6 +5,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"io"
 	"math/rand"
 	"net"
 	"net/http"
@@ -357,6 +358,41 @@ func connectAndStreamLogs(logger *zap.SugaredLogger, sm *streamManager) error {
 	return nil
 }
 
+// connectAndStreamConfigurationUpdates creates a configuration update stream client and listens for configuration changes.
+func connectAndStreamConfigurationUpdates(logger *zap.SugaredLogger, sm *streamManager) error {
+	configCtx, configCancel := context.WithCancel(context.Background())
+	defer configCancel()
+
+	configStream, err := sm.streamClient.client.SendConfigurationUpdates(configCtx)
+	if err != nil {
+		logger.Errorw("Failed to open configuration update stream", "error", err)
+		return err
+	}
+	go func() {
+		for {
+			resp, err := configStream.Recv()
+			if err == io.EOF {
+				logger.Warn("Configuration update stream closed by server")
+				return
+			}
+			if err != nil {
+				logger.Errorw("Error receiving configuration update", "error", err)
+				return
+			}
+			logger.Infow("Received configuration update response", "response", resp)
+		}
+	}()
+
+	// Listen to the configuration update stream.
+	// ListenToConfigurationStream is implemented in config_streams.go.
+	err = ListenToConfigurationStream(configStream, sm.bufferedGrpcSyncer)
+	if err != nil {
+		logger.Errorw("Configuration update stream encountered an error", "error", err)
+		return err
+	}
+	return nil
+}
+
 // Generic function to manage any stream with backoff and reconnection logic.
 func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredLogger, *streamManager) error, sm *streamManager, done chan struct{}) {
 	defer close(done)
@@ -509,11 +545,14 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
 			falcoDone := make(chan struct{})
+			configDone := make(chan struct{})
 			var ciliumDone chan struct{}
 			sm.bufferedGrpcSyncer.done = logDone
 
 			go manageStream(logger, connectAndStreamResources, sm, resourceDone)
 			go manageStream(logger, connectAndStreamLogs, sm, logDone)
+			go manageStream(logger, connectAndStreamConfigurationUpdates, sm, configDone)
+
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
@@ -541,6 +580,8 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 				failureReason = "Resource stream closed"
 			case <-logDone:
 				failureReason = "Log stream closed"
+			case <-configDone:
+				failureReason = "Configuration update stream closed"
 			}
 			authConContextCancel()
 		}
