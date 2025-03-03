@@ -28,7 +28,7 @@ func (suite *ControllerTestSuite) TestGetOnboardingCredentials() {
 	core := zapcore.NewTee(
 		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
 	)
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 	logger = logger.With(zap.String("name", "test"))
 
 	tests := map[string]struct {
@@ -78,7 +78,7 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 	core := zapcore.NewTee(
 		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
 	)
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 	logger = logger.With(zap.String("name", "test"))
 
 	tests := map[string]struct {
