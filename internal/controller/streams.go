@@ -383,8 +383,6 @@ func connectAndStreamConfigurationUpdates(logger *zap.SugaredLogger, sm *streamM
 		}
 	}()
 
-	// Listen to the configuration update stream.
-	// ListenToConfigurationStream is implemented in config_streams.go.
 	err = ListenToConfigurationStream(configStream, sm.bufferedGrpcSyncer)
 	if err != nil {
 		logger.Errorw("Configuration update stream encountered an error", "error", err)

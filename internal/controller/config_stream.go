@@ -6,7 +6,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-// ListenToConfigurationStream listens on the configuration update stream and applies updates.
+// ListenToConfigurationStream listens for configuration updates and applies them dynamically.
 func ListenToConfigurationStream(configClient pb.KubernetesInfoService_SendConfigurationUpdatesClient, syncer *BufferedGrpcWriteSyncer) error {
 	for {
 		// Receive the next configuration update from the stream.
@@ -20,12 +20,14 @@ func ListenToConfigurationStream(configClient pb.KubernetesInfoService_SendConfi
 			return err
 		}
 
-		// Handle the log level update if present.
-		if update := resp.GetSetLogLevel(); update != nil {
-			syncer.logger.Infow("Received configuration update", "new_level", update.Level)
-			// Forward the update to the BufferedGrpcWriteSyncer instance.
-			syncer.updateLogLevel(update.Level)
+		// Process the configuration update based on its type.
+		switch update := resp.GetResponse().(type) {
+		case *pb.SendConfigurationUpdatesResponse_SetLogLevel:
+			syncer.logger.Infow("Received log level update", "new_level", update.SetLogLevel.Level)
+			syncer.updateLogLevel(update.SetLogLevel.Level)
+
+		default:
+			syncer.logger.Warnw("Received unknown configuration update", "response", resp)
 		}
-		// Extend here to handle additional configuration updates if needed.
 	}
 }
