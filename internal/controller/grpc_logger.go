@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	maxBufferSize = 2048
-	flushInterval = 5 * time.Second
+	logMaxBufferSize = 2048
+	logFlushInterval = 5 * time.Second
 )
 
 type ClientConnInterface interface {
@@ -45,7 +45,7 @@ func NewBufferedGrpcWriteSyncer() *BufferedGrpcWriteSyncer {
 	bws := &BufferedGrpcWriteSyncer{
 		client:              nil,
 		conn:                nil,
-		buffer:              make([]string, 0, maxBufferSize),
+		buffer:              make([]string, 0, logMaxBufferSize),
 		done:                make(chan struct{}),
 		lostLogEntriesCount: 0,
 	}
@@ -111,7 +111,7 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 
 // run flushes the buffer at the configured interval until Stop is called.
 func (b *BufferedGrpcWriteSyncer) run() {
-	ticker := time.NewTicker(flushInterval)
+	ticker := time.NewTicker(logFlushInterval)
 	defer ticker.Stop()
 
 	for {
@@ -159,10 +159,11 @@ func (b *BufferedGrpcWriteSyncer) write(jsonMessage string) {
 	}
 
 	if shouldBuffer {
-		if len(b.buffer) >= maxBufferSize {
+		if len(b.buffer) < cap(b.buffer) {
+			b.buffer = append(b.buffer, jsonMessage)
+		} else {
 			b.lostLogEntriesCount += 1
 		}
-		b.buffer = append(b.buffer, jsonMessage)
 	}
 }
 

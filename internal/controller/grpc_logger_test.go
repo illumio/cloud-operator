@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -107,7 +108,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) SetupTest() {
 	suite.grpcSyncer = &BufferedGrpcWriteSyncer{
 		client:   mockClient,
 		conn:     mockConn,
-		buffer:   make([]string, 0, maxBufferSize),
+		buffer:   make([]string, 0, logMaxBufferSize),
 		done:     make(chan struct{}),
 		logger:   zap.NewNop(), // Use a no-op logger for simplicity
 		logLevel: zap.NewAtomicLevel(),
@@ -201,4 +202,40 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestZapCoreWrapper() {
 	)
 
 	suite.mockClient.AssertExpectations(suite.T())
+}
+
+// TestWriteBuffering tests the gRPC logger's buffering when the connection is not established.
+func (suite *BufferedGrpcWriteSyncerTestSuite) TestWriteBuffering() {
+	ts, err := time.Parse(time.RFC3339, "2025-02-28T11:56:05Z")
+	suite.NoError(err)
+
+	mockClock := &mockZapClock{
+		now: ts,
+	}
+
+	// Disable logging the caller and mock the clock to make the test deterministic
+	logger := NewGRPCLogger(suite.grpcSyncer, false, mockClock)
+
+	// Equivalent to a disconnection
+	suite.grpcSyncer.conn = nil
+
+	expectedLostLogEntriesCount := 0
+
+	for i := 0; i < logMaxBufferSize+10; i += 1 {
+		suite.Run(fmt.Sprintf("Message %d", i), func() {
+			logger.Info("The Message",
+				zap.Int("num", i),
+			)
+
+			if i < logMaxBufferSize {
+				expectedJsonMessage := fmt.Sprintf(`{"level":"info","ts":"2025-02-28T11:56:05Z","msg":"The Message","num":%d}`, i)
+				suite.Equal(i+1, len(suite.grpcSyncer.buffer))
+				suite.Equal(expectedJsonMessage, suite.grpcSyncer.buffer[i])
+			} else {
+				suite.Equal(logMaxBufferSize, len(suite.grpcSyncer.buffer))
+				expectedLostLogEntriesCount += 1
+				suite.Equal(expectedLostLogEntriesCount, suite.grpcSyncer.lostLogEntriesCount)
+			}
+		})
+	}
 }
