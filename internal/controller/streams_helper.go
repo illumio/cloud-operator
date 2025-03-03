@@ -152,6 +152,12 @@ func sendKeepalive(sm *streamManager, st StreamType) error {
 				Keepalive: &pb.Keepalive{},
 			},
 		})
+	case STREAM_CONFIGURATION:
+		err = sm.streamClient.configStream.Send(&pb.GetConfigurationUpdatesRequest{
+			Request: &pb.GetConfigurationUpdatesRequest_Keepalive{
+				Keepalive: &pb.Keepalive{},
+			},
+		})
 	default:
 		return fmt.Errorf("unsupported stream type: %s", st)
 	}

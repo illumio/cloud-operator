@@ -58,10 +58,10 @@ func (b *BufferedGrpcWriteSyncer) Close() error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	b.flush()
-	// Close the channel if not already closed.
+	//close the channel if not already closed
 	select {
 	case <-b.done:
-		// Already closed; do nothing
+		//Already closed; do nothing
 		return nil
 	default:
 	}
@@ -92,7 +92,6 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 			b.lostLogEntriesErr = err
 			return
 		}
-
 		if err := b.sendLogEntry(lostLogsMessage); err != nil {
 			b.lostLogEntriesErr = err
 			return
@@ -191,7 +190,7 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 // based on the contents of responses.
 func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
 	for {
-		res, err := b.client.Recv()
+		_, err := b.client.Recv()
 		if err == io.EOF {
 			// The client has closed the stream
 			b.logger.Info("Server closed the SendLogs stream")
@@ -201,11 +200,7 @@ func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
 			b.logger.Error("Stream terminated", zap.Error(err))
 			return err
 		}
-		switch res.Response.(type) {
-		case *pb.SendLogsResponse_SetLogLevel:
-			newLevel := res.GetSetLogLevel().Level
-			b.updateLogLevel(newLevel)
-		}
+
 	}
 }
 

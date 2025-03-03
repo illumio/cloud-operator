@@ -35,10 +35,12 @@ type streamClient struct {
 	conn                      *grpc.ClientConn
 	client                    pb.KubernetesInfoServiceClient
 	disableNetworkFlowsCilium bool
+	networkFlowWg             sync.WaitGroup
 	falcoEventChan            chan string
 	logStream                 pb.KubernetesInfoService_SendLogsClient
 	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient
+	configStream              pb.KubernetesInfoService_GetConfigurationUpdatesClient
 }
 
 type deadlockDetector struct {
@@ -57,6 +59,7 @@ type KeepalivePeriods struct {
 	KubernetesNetworkFlows time.Duration
 	Logs                   time.Duration
 	KubernetesResources    time.Duration
+	Configuration          time.Duration
 }
 
 type EnvironmentConfig struct {
@@ -257,6 +260,7 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNam
 			}
 		}
 	}
+	return nil
 }
 
 // StreamFalcoNetworkFlows handles the falco network flow stream.
@@ -387,12 +391,12 @@ func connectAndStreamResources(logger *zap.Logger, sm *streamManager, KeepaliveP
 	resourceCtx, resourceCancel := context.WithCancel(context.Background())
 	defer resourceCancel()
 
-	SendKubernetesResourcesStream, err := sm.streamClient.client.SendKubernetesResources(resourceCtx)
+	sendKubernetesResourcesStream, err := sm.streamClient.client.SendKubernetesResources(resourceCtx)
 	if err != nil {
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
 	}
-	sm.streamClient.resourceStream = SendKubernetesResourcesStream
+	sm.streamClient.resourceStream = sendKubernetesResourcesStream
 
 	go func() {
 		err := sm.StreamKeepalives(resourceCtx, KeepalivePeriod, STREAM_RESOURCES)
@@ -439,6 +443,36 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager, KeepalivePeriod
 		return err
 	}
 
+	return nil
+}
+
+// connectAndStreamConfigurationUpdates creates a configuration update stream client and listens for configuration changes.
+func connectAndStreamConfigurationUpdates(logger *zap.Logger, sm *streamManager, KeepalivePeriod time.Duration) error {
+	configCtx, configCancel := context.WithCancel(context.Background())
+	defer configCancel()
+
+	getConfigurationUpdatesStream, err := sm.streamClient.client.GetConfigurationUpdates(configCtx)
+	if err != nil {
+		logger.Error("Failed to connect to server", zap.Error(err))
+		return err
+	}
+	sm.streamClient.configStream = getConfigurationUpdatesStream
+
+	go func() {
+		err := sm.StreamKeepalives(configCtx, KeepalivePeriod, STREAM_CONFIGURATION)
+		if err != nil {
+			logger.Error("Failed to send keepalives", zap.Error(err))
+		}
+		configCancel()
+	}()
+
+	// Listen to the configuration update stream.
+	// ListenToConfigurationStream is implemented in config_streams.go.
+	err = ListenToConfigurationStream(getConfigurationUpdatesStream, sm.bufferedGrpcSyncer)
+	if err != nil {
+		logger.Error("Configuration update stream encountered an error", zap.Error(err))
+		return err
+	}
 	return nil
 }
 
@@ -581,10 +615,13 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
 			var ciliumDone, falcoDone chan struct{}
+			configDone := make(chan struct{})
 			sm.bufferedGrpcSyncer.done = logDone
 
 			go manageStream(logger, connectAndStreamResources, sm, resourceDone, envMap.KeepalivePeriods.KubernetesResources)
 			go manageStream(logger, connectAndStreamLogs, sm, logDone, envMap.KeepalivePeriods.Logs)
+			go manageStream(logger, connectAndStreamConfigurationUpdates, sm, configDone, envMap.KeepalivePeriods.Configuration)
+
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
@@ -607,6 +644,8 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				failureReason = "Resource stream closed"
 			case <-logDone:
 				failureReason = "Log stream closed"
+			case <-configDone:
+				failureReason = "Configuration update stream closed"
 			}
 			authConContextCancel()
 		}
