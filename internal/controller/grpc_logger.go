@@ -139,6 +139,33 @@ func encodeLogEntry(encoder zapcore.Encoder, logEntry zapcore.Entry, fields []za
 	return buf.String(), nil
 }
 
+// write sends a JSON-encoded log entry, or buffers it if there is no
+// connection currently established to the server.
+func (b *BufferedGrpcWriteSyncer) write(jsonMessage string) {
+	// Do not use logging while locking this mutex to avoid deadlocks
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	var shouldBuffer bool
+
+	if b.conn == nil || b.conn.GetState() != connectivity.Ready {
+		shouldBuffer = true
+	} else {
+		// Flush buffered logs
+		b.flush()
+		if err := b.sendLogEntry(jsonMessage); err != nil {
+			shouldBuffer = true
+		}
+	}
+
+	if shouldBuffer {
+		if len(b.buffer) >= maxBufferSize {
+			b.lostLogEntriesCount += 1
+		}
+		b.buffer = append(b.buffer, jsonMessage)
+	}
+}
+
 // sendLogEntry sends the log encoded into a string to the log server.
 func (b *BufferedGrpcWriteSyncer) sendLogEntry(jsonMessage string) error {
 	return b.client.Send(&pb.SendLogsRequest{
@@ -180,14 +207,6 @@ func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
 			b.updateLogLevel(newLevel)
 		}
 	}
-}
-
-// bufferLog adds the log entry to in-memory buffer
-func (b *BufferedGrpcWriteSyncer) bufferLogEntry(jsonMessage string) {
-	if len(b.buffer) >= maxBufferSize {
-		b.lostLogEntriesCount += 1
-	}
-	b.buffer = append(b.buffer, jsonMessage)
 }
 
 // updateLogLevel sets the logger's log level based on the response from the server.
@@ -255,24 +274,8 @@ func (w *zapCoreWrapper) Write(entry zapcore.Entry, fields []zapcore.Field) erro
 		return err
 	}
 
-	// Do not use logging while locking this mutex to avoid deadlocks
-	w.grpcSyncer.mutex.Lock()
-	defer w.grpcSyncer.mutex.Unlock()
+	w.grpcSyncer.write(jsonMessage)
 
-	var shouldBuffer bool
-
-	if w.grpcSyncer.conn == nil || w.grpcSyncer.conn.GetState() != connectivity.Ready {
-		shouldBuffer = true
-	} else {
-		// Flush buffered logs
-		w.grpcSyncer.flush()
-		if err := w.grpcSyncer.sendLogEntry(jsonMessage); err != nil {
-			shouldBuffer = true
-		}
-	}
-	if shouldBuffer {
-		w.grpcSyncer.bufferLogEntry(jsonMessage)
-	}
 	return nil
 }
 
