@@ -16,18 +16,18 @@ func ListenToConfigurationStream(configClient pb.KubernetesInfoService_SendConfi
 			return nil
 		}
 		if err != nil {
-			syncer.logger.Errorw("Error receiving configuration update", "error", err)
+			syncer.logger.Sugar().Errorw("Error receiving configuration update", "error", err)
 			return err
 		}
 
 		// Process the configuration update based on its type.
-		switch update := resp.GetResponse().(type) {
+		switch update := resp.Response.(type) {
 		case *pb.SendConfigurationUpdatesResponse_SetLogLevel:
-			syncer.logger.Infow("Received log level update", "new_level", update.SetLogLevel.Level)
+			syncer.logger.Sugar().Infow("Received log level update", "new_level", update.SetLogLevel.Level)
 			syncer.updateLogLevel(update.SetLogLevel.Level)
 
 		default:
-			syncer.logger.Warnw("Received unknown configuration update", "response", resp)
+			syncer.logger.Sugar().Warnw("Received unknown configuration update", "response", resp)
 		}
 	}
 }
