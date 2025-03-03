@@ -19,7 +19,7 @@ import (
 
 // CiliumFlowCollector collects flows from Cilium Hubble Relay running in this cluster.
 type CiliumFlowCollector struct {
-	logger *zap.SugaredLogger
+	logger *zap.Logger
 	client observer.ObserverClient
 }
 
@@ -49,7 +49,7 @@ func discoverCiliumHubbleRelayAddress(ctx context.Context, ciliumNamespace strin
 }
 
 // newCiliumCollector connects to Ciilium Hubble Relay, sets up an Observer client, and returns a new Collector using it.
-func newCiliumFlowCollector(ctx context.Context, logger *zap.SugaredLogger, ciliumNamespace string) (*CiliumFlowCollector, error) {
+func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace string) (*CiliumFlowCollector, error) {
 	config, err := NewClientSet()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new client set: %w", err)
@@ -163,13 +163,13 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm streamM
 	observerClient := fm.client
 	stream, err := observerClient.GetFlows(ctx, req)
 	if err != nil {
-		fm.logger.Errorw("Error getting network flows", "error", err)
+		fm.logger.Error("Error getting network flows", zap.Error(err))
 		return err
 	}
 	defer func() {
 		err = stream.CloseSend()
 		if err != nil {
-			fm.logger.Errorw("Error closing observerClient stream", "error", err)
+			fm.logger.Error("Error closing observerClient stream", zap.Error(err))
 		}
 	}()
 	for {
@@ -180,7 +180,7 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm streamM
 		}
 		flow, err := stream.Recv()
 		if err != nil {
-			fm.logger.Warnw("Failed to get flow log from stream", "error", err)
+			fm.logger.Warn("Failed to get flow log from stream", zap.Error(err))
 			return err
 		}
 		ciliumFlow := convertCiliumFlow(flow)
@@ -189,7 +189,7 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm streamM
 		}
 		err = sendNetworkFlowRequest(&sm, ciliumFlow)
 		if err != nil {
-			fm.logger.Errorw("Cannot send cilium flow", "error", err)
+			fm.logger.Error("Cannot send cilium flow", zap.Error(err))
 			return err
 		}
 	}
@@ -198,21 +198,18 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm streamM
 // convertCiliumFlow converts a GetFlowsResponse object to a CiliumFlow object
 func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 	flowObj := flow.GetFlow()
-
 	// Check for nil fields
 	if flowObj.GetTime() == nil ||
 		flowObj.GetNodeName() == "" ||
 		flowObj.GetTrafficDirection().String() == "" ||
 		flowObj.GetVerdict().String() == "" ||
 		flowObj.GetIP() == nil ||
-		flowObj.GetL4() == nil ||
-		flowObj.GetDestinationService() == nil {
-
+		flowObj.GetL4() == nil {
 		// Return nil if any of the essential fields are nil
 		return nil
 	}
 
-	ciliumFlow := pb.CiliumFlow{
+	ciliumFlow := &pb.CiliumFlow{
 		Time:               flowObj.GetTime(),
 		NodeName:           flowObj.GetNodeName(),
 		Verdict:            pb.Verdict(flowObj.GetVerdict()),
@@ -246,5 +243,5 @@ func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 			Workloads:   convertCiliumWorkflows(flowObj.GetDestination().GetWorkloads()),
 		}
 	}
-	return &ciliumFlow
+	return ciliumFlow
 }

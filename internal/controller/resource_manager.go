@@ -21,7 +21,7 @@ type ResourceManager struct {
 	// Clientset providing accees to k8s api.
 	clientset *kubernetes.Clientset
 	// Logger provides strucuted logging interface.
-	logger *zap.SugaredLogger
+	logger *zap.Logger
 	// DynamicClient offers generic Kubernetes API operations.
 	dynamicClient dynamic.Interface
 	// streamManager abstracts logic related to starting, using, and managing streams.
@@ -35,7 +35,7 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 	resourceListVersion, err := r.DynamicListResources(ctx, resource, apiGroup)
 	if err != nil {
 		allResourcesSnapshotted.Done()
-		r.logger.Errorw("Unable to list resources", "error", err)
+		r.logger.Error("Unable to list resources", zap.Error(err))
 		cancel()
 		return
 	}
@@ -50,14 +50,14 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 	limiter := rate.NewLimiter(1, 5)
 	err = limiter.Wait(ctx)
 	if err != nil {
-		r.logger.Errorw("Cannot wait using rate limiter", "error", err)
+		r.logger.Error("Cannot wait using rate limiter", zap.Error(err))
 		cancel()
 		return
 	}
 
 	err = r.watchEvents(ctx, resource, apiGroup, watchOptions)
 	if err != nil {
-		r.logger.Errorw("Unable to watch events", "error", err)
+		r.logger.Error("Unable to watch events", zap.Error(err))
 		cancel()
 		return
 	}
@@ -73,12 +73,12 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 	for _, obj := range objs {
 		metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, obj, r.clientset, resourceK8sKind)
 		if err != nil {
-			r.logger.Errorw("Cannot convert object metadata", "error", err)
+			r.logger.Error("Cannot convert object metadata", zap.Error(err))
 			return "", err
 		}
 		err = sendObjectData(r.streamManager, metadataObj)
 		if err != nil {
-			r.logger.Errorw("Cannot send object metadata", "error", err)
+			r.logger.Error("Cannot send object metadata", zap.Error(err))
 			return "", err
 		}
 	}
@@ -91,19 +91,20 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 	return resourceListVersion, nil
 }
 
-// watchEvents watches Kubernetes resources and updates cache based on events.
+// watchEvents watches Kubernetes resources. The second part of the of the "list
+// and watch" strategy.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
 func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiGroup string, watchOptions metav1.ListOptions) error {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
-		r.logger.Errorw("Error setting up watch on resource", "error", err)
+		r.logger.Error("Error setting up watch on resource", zap.Error(err))
 		return err
 	}
 	for event := range watcher.ResultChan() {
 		switch event.Type {
 		case watch.Error:
-			r.logger.Errorw("Watcher event has returned an error", "error", err)
+			r.logger.Error("Watcher event has returned an error", zap.Error(err))
 			return err
 		case watch.Bookmark:
 			continue
@@ -111,18 +112,18 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 		}
 		convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
 		if err != nil {
-			r.logger.Errorw("Cannot convert runtime.Object to metav1.ObjectMeta", "error", err)
+			r.logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
 			return err
 		}
 		resource := event.Object.GetObjectKind().GroupVersionKind().Kind
 		metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, *convertedData, r.clientset, resource)
 		if err != nil {
-			r.logger.Errorw("Cannot convert object metadata", "error", err)
+			r.logger.Error("Cannot convert object metadata", zap.Error(err))
 			return err
 		}
 		err = streamMutationObjectData(r.streamManager, metadataObj, event.Type)
 		if err != nil {
-			r.logger.Errorw("Cannot send resource mutation", "error", err)
+			r.logger.Error("Cannot send resource mutation", zap.Error(err))
 			return err
 		}
 
@@ -134,7 +135,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 func (r *ResourceManager) FetchResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) (*unstructured.UnstructuredList, error) {
 	unstructuredResources, err := r.dynamicClient.Resource(resource).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		r.logger.Errorw("Cannot list resource", "error", err, "kind", resource)
+		r.logger.Error("Cannot list resource", zap.Stringer("kind", resource), zap.Error(err))
 		return nil, err
 	}
 	return unstructuredResources, nil
@@ -146,7 +147,7 @@ func (r *ResourceManager) ExtractObjectMetas(resources *unstructured.Unstructure
 	for _, item := range resources.Items {
 		objMeta, err := getMetadatafromResource(r.logger, item)
 		if err != nil {
-			r.logger.Errorw("Cannot get Metadata from resource", "error", err)
+			r.logger.Error("Cannot get Metadata from resource", zap.Error(err))
 			return nil, err
 		}
 		objectMetas = append(objectMetas, *objMeta)

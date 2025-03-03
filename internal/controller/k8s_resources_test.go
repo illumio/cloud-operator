@@ -58,10 +58,10 @@ func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 		UID:             "test-uid",
 		ResourceVersion: "test-version",
 	}
-	logger := zap.NewNop().Sugar()
+	logger := zap.NewNop()
 	clientset, err := NewClientSet()
 	if err != nil {
-		logger.Errorw("Failed to create clientset", "error", err)
+		logger.Error("Failed to create clientset", zap.Error(err))
 		suite.T().Error("could not create clientset")
 	}
 	// Execute the function under test.
@@ -145,7 +145,7 @@ func TestGetObjectMetadataFromRuntimeObject(t *testing.T) {
 
 func TestGetMetadataFromResource(t *testing.T) {
 	// Create a no-op logger.
-	logger := zap.NewNop().Sugar()
+	logger := zap.NewNop()
 
 	// Create an `unstructured.Unstructured` object with metadata.
 	resource := unstructured.Unstructured{
@@ -172,11 +172,11 @@ func TestGetMetadataFromResource(t *testing.T) {
 }
 
 func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
-	logger := zap.NewNop().Sugar()
+	logger := zap.NewNop()
 
 	clientset, err := NewClientSet()
 	if err != nil {
-		logger.Errorw("Failed to create clientset", "error", err)
+		logger.Error("Failed to create clientset", zap.Error(err))
 		suite.T().Fatalf("could not create clientset: %v", err)
 	}
 
