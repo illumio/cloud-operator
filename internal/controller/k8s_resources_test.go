@@ -435,6 +435,99 @@ func (suite *ControllerTestSuite) TestGetProviderIdNodeSpec() {
 	}
 }
 
+func (suite *ControllerTestSuite) TestGetNodeIpAddresses() {
+	tests := map[string]struct {
+		nodeName       string
+		node           *v1.Node
+		expectedIPs    []string
+		expectedErrMsg string
+	}{
+		"node not found": {
+			nodeName:       "nonexistent-node",
+			node:           nil,
+			expectedIPs:    nil,
+			expectedErrMsg: "failed to get node",
+		},
+		"node with internal and external IPs": {
+			nodeName: "test-node",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-node",
+				},
+				Status: v1.NodeStatus{
+					Addresses: []v1.NodeAddress{
+						{Type: v1.NodeInternalIP, Address: "192.168.1.1"},
+						{Type: v1.NodeExternalIP, Address: "1.2.3.4"},
+					},
+				},
+			},
+			expectedIPs:    []string{"192.168.1.1", "1.2.3.4"},
+			expectedErrMsg: "",
+		},
+		"node with only internal IP": {
+			nodeName: "test-node-internal",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-node-internal",
+				},
+				Status: v1.NodeStatus{
+					Addresses: []v1.NodeAddress{
+						{Type: v1.NodeInternalIP, Address: "192.168.1.1"},
+					},
+				},
+			},
+			expectedIPs:    []string{"192.168.1.1"},
+			expectedErrMsg: "",
+		},
+		"node with only external IP": {
+			nodeName: "test-node-external",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-node-external",
+				},
+				Status: v1.NodeStatus{
+					Addresses: []v1.NodeAddress{
+						{Type: v1.NodeExternalIP, Address: "1.2.3.4"},
+					},
+				},
+			},
+			expectedIPs:    []string{"1.2.3.4"},
+			expectedErrMsg: "",
+		},
+		"node with no IPs": {
+			nodeName: "test-node-no-ips",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-node-no-ips",
+				},
+				Status: v1.NodeStatus{
+					Addresses: []v1.NodeAddress{},
+				},
+			},
+			expectedIPs:    []string{},
+			expectedErrMsg: "",
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			clientset, _ := NewClientSet()
+			if tt.node != nil {
+				_, err := clientset.CoreV1().Nodes().Create(context.TODO(), tt.node, metav1.CreateOptions{})
+				assert.NoError(suite.T(), err)
+			}
+
+			ips, err := getNodeIpAddresses(context.TODO(), clientset, tt.nodeName)
+			if tt.expectedErrMsg != "" {
+				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
+			} else {
+				assert.NoError(suite.T(), err)
+				assert.Equal(suite.T(), tt.expectedIPs, ips)
+			}
+		})
+	}
+}
+
 func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 	tests := map[string]struct {
 		podName        string

@@ -98,7 +98,11 @@ func convertMetaObjectToMetadata(logger *zap.Logger, ctx context.Context, obj me
 		if err != nil {
 			return objMetadata, nil
 		}
-		objMetadata.KindSpecific = &pb.KubernetesObjectData_Node{Node: &pb.KubernetesNodeData{ProviderId: providerId}}
+		ipAddresses, err := getNodeIpAddresses(ctx, clientset, obj.GetName())
+		if err != nil {
+			return objMetadata, nil
+		}
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_Node{Node: &pb.KubernetesNodeData{ProviderId: providerId, IpAddresses: ipAddresses}}
 	case "Service":
 		convertedServiceData, err := convertToKubernetesServiceData(ctx, obj.GetName(), clientset, obj.GetNamespace())
 		if err != nil {
@@ -108,6 +112,24 @@ func convertMetaObjectToMetadata(logger *zap.Logger, ctx context.Context, obj me
 
 	}
 	return objMetadata, nil
+}
+
+// getNodeIpAddresses fetches the IP addresses of a node by its name using the Kubernetes API
+func getNodeIpAddresses(ctx context.Context, clientset *kubernetes.Clientset, nodeName string) ([]string, error) {
+	node, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return nil, errors.New("failed to get node")
+	}
+
+	ipAddresses := []string{}
+	for _, address := range node.Status.Addresses {
+		// We are excluding hostnames
+		if address.Type == v1.NodeInternalIP || address.Type == v1.NodeExternalIP {
+			ipAddresses = append(ipAddresses, address.Address)
+		}
+	}
+
+	return ipAddresses, nil
 }
 
 func convertIngressToStringList(ingresses []v1.LoadBalancerIngress) []string {
@@ -123,14 +145,6 @@ func convertIngressToStringList(ingresses []v1.LoadBalancerIngress) []string {
 	return result
 }
 
-// Assuming ServiceAttributes has appropriate fields
-//
-//	type Ports struct {
-//		NodePort          *int32
-//		Port              int32
-//		Protocol          string
-//		LoadBalancerPorts []string
-//	}
 func convertServicePortsToPorts(servicePorts []v1.ServicePort) []*pb.KubernetesServiceData_ServicePort {
 	ports := make([]*pb.KubernetesServiceData_ServicePort, 0, len(servicePorts))
 	for _, sp := range servicePorts {
