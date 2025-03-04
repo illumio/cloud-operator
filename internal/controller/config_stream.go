@@ -1,13 +1,14 @@
 package controller
 
 import (
+	"go.uber.org/zap"
 	"io"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 // ListenToConfigurationStream listens for configuration updates and applies them dynamically.
-func ListenToConfigurationStream(configClient pb.KubernetesInfoService_SendConfigurationUpdatesClient, syncer *BufferedGrpcWriteSyncer) error {
+func ListenToConfigurationStream(configClient pb.KubernetesInfoService_GetConfigurationUpdatesClient, syncer *BufferedGrpcWriteSyncer) error {
 	for {
 		// Receive the next configuration update from the stream.
 		resp, err := configClient.Recv()
@@ -16,18 +17,23 @@ func ListenToConfigurationStream(configClient pb.KubernetesInfoService_SendConfi
 			return nil
 		}
 		if err != nil {
-			syncer.logger.Sugar().Errorw("Error receiving configuration update", "error", err)
+			syncer.logger.Error("Error receiving configuration update", zap.Error(err))
 			return err
 		}
 
 		// Process the configuration update based on its type.
 		switch update := resp.Response.(type) {
-		case *pb.SendConfigurationUpdatesResponse_SetLogLevel:
-			syncer.logger.Sugar().Infow("Received log level update", "new_level", update.SetLogLevel.Level)
+		case *pb.GetConfigurationUpdatesResponse_SetLogLevel:
+			// Directly use the log level string conversion inside zap logging
+			syncer.logger.Info("Received log level update",
+				zap.String("new_level", pb.LogLevel_name[int32(update.SetLogLevel.Level)]),
+			)
+
+			//  Apply the new log level
 			syncer.updateLogLevel(update.SetLogLevel.Level)
 
 		default:
-			syncer.logger.Sugar().Warnw("Received unknown configuration update", "response", resp)
+			syncer.logger.Warn("Received unknown configuration update", zap.Any("response", resp))
 		}
 	}
 }

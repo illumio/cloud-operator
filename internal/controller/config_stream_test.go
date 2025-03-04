@@ -1,4 +1,4 @@
-// Copyright 2024 Illumio, Inc. All Rights Reserved.
+// Copyright 2025 Illumio, Inc. All Rights Reserved.
 
 package controller
 
@@ -26,16 +26,16 @@ func (m *MockConfigUpdateClient) CloseSend() error {
 }
 
 // Implement missing Recv method
-func (m *MockConfigUpdateClient) Recv() (*pb.SendConfigurationUpdatesResponse, error) {
+func (m *MockConfigUpdateClient) Recv() (*pb.GetConfigurationUpdatesResponse, error) {
 	args := m.Called()
-	if resp, ok := args.Get(0).(*pb.SendConfigurationUpdatesResponse); ok {
+	if resp, ok := args.Get(0).(*pb.GetConfigurationUpdatesResponse); ok {
 		return resp, args.Error(1)
 	}
 	return nil, args.Error(1)
 }
 
 // Implement missing Send method
-func (m *MockConfigUpdateClient) Send(req *pb.SendConfigurationUpdatesRequest) error {
+func (m *MockConfigUpdateClient) Send(req *pb.GetConfigurationUpdatesRequest) error {
 	args := m.Called(req)
 	return args.Error(0)
 }
@@ -80,12 +80,12 @@ type ConfigStreamTestSuite struct {
 	suite.Suite
 	mockClient *MockConfigUpdateClient
 	grpcSyncer *BufferedGrpcWriteSyncer
-	mockLogger *zap.SugaredLogger
+	mockLogger *zap.Logger
 }
 
 func (suite *ConfigStreamTestSuite) SetupTest() {
 	suite.mockClient = new(MockConfigUpdateClient)
-	suite.mockLogger = zap.NewNop().Sugar() // Use a no-op logger to avoid clutter
+	suite.mockLogger = zap.NewNop() // Use a no-op zap.Logger instead of SugaredLogger
 	suite.grpcSyncer = &BufferedGrpcWriteSyncer{
 		logger:   suite.mockLogger,
 		logLevel: zap.NewAtomicLevel(),
@@ -95,16 +95,17 @@ func (suite *ConfigStreamTestSuite) SetupTest() {
 // Test that log-level updates are applied correctly
 func (suite *ConfigStreamTestSuite) TestLogLevelUpdate() {
 	// Simulate receiving a log-level change
-	update := &pb.SendConfigurationUpdatesResponse{
-		Response: &pb.SendConfigurationUpdatesResponse_SetLogLevel{
+	update := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_SetLogLevel{
 			SetLogLevel: &pb.SetLogLevel{
 				Level: pb.LogLevel_LOG_LEVEL_DEBUG,
 			},
 		},
 	}
 
-	// Mock the `Recv` method call **once** and return the update response
+	// Mock the `Recv` method call once and return the update response
 	suite.mockClient.On("Recv").Return(update, nil).Once()
+	suite.mockClient.On("Recv").Return(nil, io.EOF).Once()
 
 	err := ListenToConfigurationStream(suite.mockClient, suite.grpcSyncer)
 	suite.NoError(err)
