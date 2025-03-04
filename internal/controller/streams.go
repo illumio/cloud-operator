@@ -364,13 +364,13 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager) error {
 }
 
 // connectAndStreamConfigurationUpdates creates a configuration update stream client and listens for configuration changes.
-func connectAndStreamConfigurationUpdates(logger *zap.SugaredLogger, sm *streamManager) error {
+func connectAndStreamConfigurationUpdates(logger *zap.Logger, sm *streamManager) error {
 	configCtx, configCancel := context.WithCancel(context.Background())
 	defer configCancel()
 
-	configStream, err := sm.streamClient.client.SendConfigurationUpdates(configCtx)
+	configStream, err := sm.streamClient.client.GetConfigurationUpdates(configCtx)
 	if err != nil {
-		logger.Errorw("Failed to open configuration update stream", "error", err)
+		logger.Error("Failed to open configuration update stream", zap.Error(err))
 		return err
 	}
 	go func() {
@@ -381,16 +381,16 @@ func connectAndStreamConfigurationUpdates(logger *zap.SugaredLogger, sm *streamM
 				return
 			}
 			if err != nil {
-				logger.Errorw("Error receiving configuration update", "error", err)
+				logger.Error("Error receiving configuration update", zap.Error(err))
 				return
 			}
-			logger.Infow("Received configuration update response", "response", resp)
+			logger.Debug("Received configuration update response", zap.Any("response", resp))
 		}
 	}()
 
 	err = ListenToConfigurationStream(configStream, sm.bufferedGrpcSyncer)
 	if err != nil {
-		logger.Errorw("Configuration update stream encountered an error", "error", err)
+		logger.Error("Configuration update stream encountered an error", zap.Error(err))
 		return err
 	}
 	return nil
