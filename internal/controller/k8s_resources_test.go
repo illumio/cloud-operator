@@ -449,10 +449,10 @@ func (suite *ControllerTestSuite) TestGetNodeIpAddresses() {
 			expectedErrMsg: "failed to get node",
 		},
 		"node with internal and external IPs": {
-			nodeName: "test-node",
+			nodeName: "test-node-with-internal-external",
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node",
+					Name: "test-node-with-internal-external",
 				},
 				Status: v1.NodeStatus{
 					Addresses: []v1.NodeAddress{
