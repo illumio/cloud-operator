@@ -1,3 +1,4 @@
+// Copyright 2025 Illumio, Inc. All Rights Reserved.
 package controller
 
 import (
@@ -24,12 +25,10 @@ func ListenToConfigurationStream(configClient pb.KubernetesInfoService_GetConfig
 		// Process the configuration update based on its type.
 		switch update := resp.Response.(type) {
 		case *pb.GetConfigurationUpdatesResponse_SetLogLevel:
-			// Directly use the log level string conversion inside zap logging
-			syncer.logger.Info("Received log level update",
-				zap.String("new_level", pb.LogLevel_name[int32(update.SetLogLevel.Level)]),
-			)
+			// Using zap.Stringer if LogLevel implements fmt.Stringer
+			syncer.logger.Info("Received log level update", zap.Stringer("level", update.SetLogLevel.Level))
 
-			//  Apply the new log level
+			// Apply the new log level
 			syncer.updateLogLevel(update.SetLogLevel.Level)
 
 		default:

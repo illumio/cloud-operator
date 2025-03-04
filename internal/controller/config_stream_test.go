@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-// Mock for the SendConfigurationUpdatesClient
+// Mock for the GetConfigurationUpdatesClient
 type MockConfigUpdateClient struct {
 	mock.Mock
 }
@@ -105,7 +105,7 @@ func (suite *ConfigStreamTestSuite) TestLogLevelUpdate() {
 
 	// Mock the `Recv` method call once and return the update response
 	suite.mockClient.On("Recv").Return(update, nil).Once()
-	suite.mockClient.On("Recv").Return(nil, io.EOF).Once()
+	suite.mockClient.On("Recv").Return(nil, io.EOF).Once() // Properly terminate the stream
 
 	err := ListenToConfigurationStream(suite.mockClient, suite.grpcSyncer)
 	suite.NoError(err)
@@ -125,19 +125,21 @@ func (suite *ConfigStreamTestSuite) TestStreamEOF() {
 	err := ListenToConfigurationStream(suite.mockClient, suite.grpcSyncer)
 	suite.NoError(err)
 
-	// Ensure all expectations were met
+	// Ensure the function exited cleanly
 	suite.mockClient.AssertExpectations(suite.T())
 }
 
 // Test handling of stream errors
 func (suite *ConfigStreamTestSuite) TestStreamError() {
-	// Mock an unexpected EOF error
+	// Mock an unexpected stream error
 	suite.mockClient.On("Recv").Return(nil, io.ErrUnexpectedEOF).Once()
 
 	err := ListenToConfigurationStream(suite.mockClient, suite.grpcSyncer)
-	suite.Error(err)
 
-	// Ensure all expectations were met
+	// Ensure function returned an error
+	suite.Error(err, "Expected ListenToConfigurationStream to return an error on unexpected EOF")
+
+	// Verify that Recv() was only called once
 	suite.mockClient.AssertExpectations(suite.T())
 }
 

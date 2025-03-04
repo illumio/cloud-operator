@@ -5,7 +5,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"io"
 	"math/rand"
 	"net"
 	"net/http"
@@ -368,32 +367,30 @@ func connectAndStreamConfigurationUpdates(logger *zap.Logger, sm *streamManager)
 	configCtx, configCancel := context.WithCancel(context.Background())
 	defer configCancel()
 
+	logger.Info("Opening configuration update stream...")
+
 	configStream, err := sm.streamClient.client.GetConfigurationUpdates(configCtx)
 	if err != nil {
 		logger.Error("Failed to open configuration update stream", zap.Error(err))
 		return err
 	}
+
+	// Run the listener in a separate goroutine
 	go func() {
-		for {
-			resp, err := configStream.Recv()
-			if err == io.EOF {
-				logger.Warn("Configuration update stream closed by server")
-				return
-			}
-			if err != nil {
-				logger.Error("Error receiving configuration update", zap.Error(err))
-				return
-			}
-			logger.Debug("Received configuration update response", zap.Any("response", resp))
+		logger.Info("Configuration update stream listener started")
+
+		err := ListenToConfigurationStream(configStream, sm.bufferedGrpcSyncer)
+		if err != nil {
+			logger.Error("Configuration update stream listener encountered an error", zap.Error(err))
 		}
 	}()
 
-	err = ListenToConfigurationStream(configStream, sm.bufferedGrpcSyncer)
-	if err != nil {
-		logger.Error("Configuration update stream encountered an error", zap.Error(err))
-		return err
+	// Keep track of the stream and return any errors
+	select {
+	case <-configCtx.Done():
+		logger.Warn("Configuration update stream context canceled")
+		return configCtx.Err()
 	}
-	return nil
 }
 
 // Generic function to manage any stream with backoff and reconnection logic.
