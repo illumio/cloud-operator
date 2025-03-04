@@ -191,7 +191,7 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 // based on the contents of responses.
 func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
 	for {
-		res, err := b.client.Recv()
+		_, err := b.client.Recv()
 		if err == io.EOF {
 			// The client has closed the stream
 			b.logger.Info("Server closed the SendLogs stream")
@@ -201,11 +201,7 @@ func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
 			b.logger.Error("Stream terminated", zap.Error(err))
 			return err
 		}
-		switch res.Response.(type) {
-		case *pb.SendLogsResponse_SetLogLevel:
-			newLevel := res.GetSetLogLevel().Level
-			b.updateLogLevel(newLevel)
-		}
+
 	}
 }
 
