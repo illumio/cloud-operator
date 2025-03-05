@@ -371,39 +371,14 @@ message SendLogsResponse {
 }
 
 // Message to encapsulate a  request to send configuration updates.
-message GetConfigurationUpdatesRequest {
-  // Send any of these "request" messages that can contain any of the documented types.
-  oneof request {
-    // Metadata about the requesting Kubernetes cluster/operator.
-    KubernetesClusterMetadata cluster_metadata = 1;
-    // Update the operator's log level.
-    SetLogLevel set_log_level = 2;
-    // Additional configuration update messages can be added here.
-    ConfigurationUpdateComplete update_complete = 99;
-  }
-}
+message GetConfigurationUpdatesRequest {}
 
 // Message to encapsulate the response for configuration update requests.
 message GetConfigurationUpdatesResponse {
   // Send any of these "response" messages that can contain any of the documented types.
   oneof response {
-    // Acknowledge receipt of metadata.
-    AcknowledgeClusterMetadata ack_cluster_metadata = 1;
-    // Acknowledge the log level update.
-    SetLogLevel set_log_level = 2;
-    // Additional response fields for configuration updates can be added here.
-    ConfigurationUpdateComplete update_complete = 99;
+    SetLogLevel set_log_level = 1;
   }
-}
-
-// Acknowledgment message for cluster metadata.
-message AcknowledgeClusterMetadata {
-  string message = 1;
-}
-
-// Message to indicate that all configuration updates have been sent.
-message ConfigurationUpdateComplete {
-  string message = 1;
 }
 
 // Syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.

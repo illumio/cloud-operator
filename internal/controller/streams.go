@@ -374,15 +374,15 @@ func connectAndStreamConfigurationUpdates(logger *zap.Logger, sm *streamManager)
 		logger.Error("Failed to open configuration update stream", zap.Error(err))
 		return err
 	}
-
+	errCh := make(chan error)
 	// Run the listener in a separate goroutine
 	go func() {
 		logger.Info("Configuration update stream listener started")
 
-		err := ListenToConfigurationStream(configStream, sm.bufferedGrpcSyncer)
-		if err != nil {
+		if err := ListenToConfigurationStream(configStream, sm.bufferedGrpcSyncer); err != nil {
 			logger.Error("Configuration update stream listener encountered an error", zap.Error(err))
 		}
+		close(errCh) //  Close channel to prevent blocking
 	}()
 
 	// Keep track of the stream and return any errors
@@ -390,7 +390,13 @@ func connectAndStreamConfigurationUpdates(logger *zap.Logger, sm *streamManager)
 	case <-configCtx.Done():
 		logger.Warn("Configuration update stream context canceled")
 		return configCtx.Err()
+	case err := <-errCh:
+		if err != nil {
+			logger.Error("Configuration update stream failed", zap.Error(err))
+			return err //Return listener error to the caller
+		}
 	}
+	return nil
 }
 
 // Generic function to manage any stream with backoff and reconnection logic.
