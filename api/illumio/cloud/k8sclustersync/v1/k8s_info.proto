@@ -374,10 +374,19 @@ message SendLogsResponse {
 message GetConfigurationUpdatesRequest {}
 
 // Message to encapsulate the response for configuration update requests.
+// CloudSecure sends a update_configuration immediately upon stream establishment,then every time the configuration is updated.
 message GetConfigurationUpdatesResponse {
   // Send any of these "response" messages that can contain any of the documented types.
+  message Configuration {
+    // the operator's log level.
+    LogLevel log_level = 1;
+    // Additional configuration fields will be added here.
+  }
   oneof response {
-    SetLogLevel set_log_level = 1;
+    //update the complete configuration for the operator.
+    Configuration update_configuration = 1;
+
+    // Additional configuration messages will be added here.
   }
 }
 

@@ -96,9 +96,9 @@ func (suite *ConfigStreamTestSuite) SetupTest() {
 func (suite *ConfigStreamTestSuite) TestLogLevelUpdate() {
 	// Simulate receiving a log-level change
 	update := &pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_SetLogLevel{
-			SetLogLevel: &pb.SetLogLevel{
-				Level: pb.LogLevel_LOG_LEVEL_DEBUG,
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_DEBUG,
 			},
 		},
 	}
@@ -140,6 +140,24 @@ func (suite *ConfigStreamTestSuite) TestStreamError() {
 	suite.Error(err, "Expected ListenToConfigurationStream to return an error on unexpected EOF")
 
 	// Verify that Recv() was only called once
+	suite.mockClient.AssertExpectations(suite.T())
+}
+
+// Test handling of unknown configuration updates
+func (suite *ConfigStreamTestSuite) TestUnknownConfigurationUpdate() {
+	// Simulate receiving an unknown update
+	unknownUpdate := &pb.GetConfigurationUpdatesResponse{
+		Response: nil, // Simulating an unknown response type
+	}
+
+	// Mock the `Recv` method call once and return an unknown update response
+	suite.mockClient.On("Recv").Return(unknownUpdate, nil).Once()
+	suite.mockClient.On("Recv").Return(nil, io.EOF).Once() // Properly terminate the stream
+
+	err := ListenToConfigurationStream(suite.mockClient, suite.grpcSyncer)
+	suite.NoError(err)
+
+	// Ensure all expectations were met
 	suite.mockClient.AssertExpectations(suite.T())
 }
 
