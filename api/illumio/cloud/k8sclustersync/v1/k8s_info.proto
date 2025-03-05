@@ -57,6 +57,8 @@ message KubernetesServiceData {
 message KubernetesNodeData {
   // Node.spec.providerID
   string provider_id = 1;
+  // List of ip addresses that are tied to Node so we can resolve them as workloads
+  repeated string ip_addresses = 2;
 }
 
 // KubernetesPodData contains information specific to a Pod object.
