@@ -85,13 +85,7 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 			b.lostLogEntriesErr = err
 			return
 		}
-		if err := b.client.Send(&pb.SendLogsRequest{
-			Request: &pb.SendLogsRequest_LogEntry{
-				LogEntry: &pb.LogEntry{
-					JsonMessage: lostLogsMessage,
-				},
-			},
-		}); err != nil {
+		if err := b.sendLogEntry(lostLogsMessage); err != nil {
 			b.lostLogEntriesErr = err
 			return
 		}
@@ -99,13 +93,7 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	}
 
 	for _, jsonMessage := range b.buffer {
-		if err := b.client.Send(&pb.SendLogsRequest{
-			Request: &pb.SendLogsRequest_LogEntry{
-				LogEntry: &pb.LogEntry{
-					JsonMessage: jsonMessage,
-				},
-			},
-		}); err != nil {
+		if err := b.sendLogEntry(jsonMessage); err != nil {
 			b.lostLogEntriesCount += 1
 			b.lostLogEntriesErr = err
 		}
@@ -157,13 +145,7 @@ func (b *BufferedGrpcWriteSyncer) write(jsonMessage string) {
 	} else {
 		// Flush buffered logs
 		b.flush()
-		if err := b.client.Send(&pb.SendLogsRequest{
-			Request: &pb.SendLogsRequest_LogEntry{
-				LogEntry: &pb.LogEntry{
-					JsonMessage: jsonMessage,
-				},
-			},
-		}); err != nil {
+		if err := b.sendLogEntry(jsonMessage); err != nil {
 			shouldBuffer = true
 		}
 	}
@@ -177,7 +159,16 @@ func (b *BufferedGrpcWriteSyncer) write(jsonMessage string) {
 	}
 }
 
-//Removed: sendLogEntry function (since log level updates are now separate)
+// sendLogEntry sends the log encoded into a string to the log server.
+func (b *BufferedGrpcWriteSyncer) sendLogEntry(jsonMessage string) error {
+	return b.client.Send(&pb.SendLogsRequest{
+		Request: &pb.SendLogsRequest_LogEntry{
+			LogEntry: &pb.LogEntry{
+				JsonMessage: jsonMessage,
+			},
+		},
+	})
+}
 
 // UpdateClient updates the gRPC connection and connection in the BufferedGrpcWriteSyncer.
 func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_SendLogsClient, conn ClientConnInterface) {

@@ -2421,7 +2421,7 @@ func (*SendLogsResponse) Descriptor() ([]byte, []int) {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{28}
 }
 
-// Message to encapsulate a  request to send configuration updates.
+// Message to encapsulate a request to send configuration updates.
 type GetConfigurationUpdatesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields

@@ -25,16 +25,11 @@ func ListenToConfigurationStream(configClient pb.KubernetesInfoService_GetConfig
 		// Process the configuration update based on its type.
 		switch update := resp.Response.(type) {
 		case *pb.GetConfigurationUpdatesResponse_UpdateConfiguration:
-			if update.UpdateConfiguration != nil {
-				// Handling log level updates
-				syncer.logger.Info("Received log level update",
-					zap.Stringer("level", update.UpdateConfiguration.LogLevel),
-				)
-				syncer.updateLogLevel(update.UpdateConfiguration.LogLevel)
-			} else {
-				syncer.logger.Warn("Received empty configuration update")
-			}
-
+			// Handling log level updates
+			syncer.logger.Info("Received log level update",
+				zap.Stringer("level", update.UpdateConfiguration.LogLevel),
+			)
+			syncer.updateLogLevel(update.UpdateConfiguration.LogLevel)
 		default:
 			syncer.logger.Warn("Received unknown configuration update", zap.Any("response", resp))
 		}

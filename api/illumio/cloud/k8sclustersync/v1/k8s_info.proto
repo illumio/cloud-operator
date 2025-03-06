@@ -358,21 +358,10 @@ message SendLogsRequest {
   }
 }
 
-//// Message to encapsulate setting the log level.
-//message SetLogLevel {
-//  // The log level to be set in the operator.
-//  LogLevel level = 1;
-//}
-
 // Message to encapsulate the response for sending logs.
-message SendLogsResponse {
-  //  oneof response {
-  //    // set_log_level sets the operator's log level to the given level.
-  //    SetLogLevel set_log_level = 1;
-  //  }
-}
+message SendLogsResponse {}
 
-// Message to encapsulate a  request to send configuration updates.
+// Message to encapsulate a request to send configuration updates.
 message GetConfigurationUpdatesRequest {}
 
 // Message to encapsulate the response for configuration update requests.
