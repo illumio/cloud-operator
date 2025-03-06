@@ -119,40 +119,40 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) SetupTest() {
 	mockConn.On("Close").Return(nil)
 }
 
-// TestSendLogEntry tests the sendLogEntry method to ensure proper formatting and encoding
-func (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLogEntry() {
-	ts, err := time.Parse(time.RFC3339, "2025-02-28T11:56:05Z")
-	suite.NoError(err)
-
-	entry := zapcore.Entry{
-		Level: zapcore.InfoLevel,
-		Time:  ts,
-		// Message contains the entry's whole structured context already serialized.
-		// gRPC logger requires that this is serialized into a JSON object.
-		Message: "The Message",
-	}
-
-	fields := []zap.Field{
-		zap.String("field1", "a string"),
-		zap.Int("field2", 10),
-	}
-
-	jsonMessage, err := encodeLogEntry(suite.grpcSyncer.encoder, entry, fields)
-	suite.NoError(err)
-
-	expectedLogEntry := &pb.LogEntry{
-		JsonMessage: `{"level":"info","ts":1740743765,"msg":"The Message","field1":"a string","field2":10}`,
-	}
+// TestBufferFlushOnReconnect ensures buffered logs are sent after reconnection.
+func (suite *BufferedGrpcWriteSyncerTestSuite) TestBufferFlushOnReconnect() {
+	expectedMessage := `{"level":"info","ts":1740743765,"msg":"Buffered log entry"}`
+	suite.grpcSyncer.buffer = append(suite.grpcSyncer.buffer, expectedMessage)
 
 	suite.mockClient.On("Send", &pb.SendLogsRequest{
 		Request: &pb.SendLogsRequest_LogEntry{
-			LogEntry: expectedLogEntry,
+			LogEntry: &pb.LogEntry{
+				JsonMessage: expectedMessage,
+			},
 		},
 	}).Return(nil).Once()
 
-	err = suite.grpcSyncer.sendLogEntry(jsonMessage)
-	suite.NoError(err)
+	suite.grpcSyncer.flush()
+
 	suite.mockClient.AssertExpectations(suite.T())
+	suite.Empty(suite.grpcSyncer.buffer, "Buffer should be empty after flushing")
+}
+
+// TestUpdateLogLevel verifies that log levels are correctly updated.
+func (suite *BufferedGrpcWriteSyncerTestSuite) TestUpdateLogLevel() {
+	logLevels := map[pb.LogLevel]zapcore.Level{
+		pb.LogLevel_LOG_LEVEL_DEBUG: zapcore.DebugLevel,
+		pb.LogLevel_LOG_LEVEL_INFO:  zapcore.InfoLevel,
+		pb.LogLevel_LOG_LEVEL_WARN:  zapcore.WarnLevel,
+		pb.LogLevel_LOG_LEVEL_ERROR: zapcore.ErrorLevel,
+	}
+
+	for grpcLevel, expectedZapLevel := range logLevels {
+		suite.Run(fmt.Sprintf("Set log level %v", grpcLevel), func() {
+			suite.grpcSyncer.updateLogLevel(grpcLevel)
+			suite.Equal(expectedZapLevel, suite.grpcSyncer.logLevel.Level())
+		})
+	}
 }
 
 // mockZapClock mocks zapcore.Clock to always return the same time for "now".

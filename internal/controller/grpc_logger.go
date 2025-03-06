@@ -58,13 +58,6 @@ func (b *BufferedGrpcWriteSyncer) Close() error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	b.flush()
-	// Close the channel if not already closed.
-	select {
-	case <-b.done:
-		// Already closed; do nothing
-		return nil
-	default:
-	}
 	close(b.done)
 	return b.conn.Close()
 }
@@ -92,8 +85,13 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 			b.lostLogEntriesErr = err
 			return
 		}
-
-		if err := b.sendLogEntry(lostLogsMessage); err != nil {
+		if err := b.client.Send(&pb.SendLogsRequest{
+			Request: &pb.SendLogsRequest_LogEntry{
+				LogEntry: &pb.LogEntry{
+					JsonMessage: lostLogsMessage,
+				},
+			},
+		}); err != nil {
 			b.lostLogEntriesErr = err
 			return
 		}
@@ -101,7 +99,13 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	}
 
 	for _, jsonMessage := range b.buffer {
-		if err := b.sendLogEntry(jsonMessage); err != nil {
+		if err := b.client.Send(&pb.SendLogsRequest{
+			Request: &pb.SendLogsRequest_LogEntry{
+				LogEntry: &pb.LogEntry{
+					JsonMessage: jsonMessage,
+				},
+			},
+		}); err != nil {
 			b.lostLogEntriesCount += 1
 			b.lostLogEntriesErr = err
 		}
@@ -153,7 +157,13 @@ func (b *BufferedGrpcWriteSyncer) write(jsonMessage string) {
 	} else {
 		// Flush buffered logs
 		b.flush()
-		if err := b.sendLogEntry(jsonMessage); err != nil {
+		if err := b.client.Send(&pb.SendLogsRequest{
+			Request: &pb.SendLogsRequest_LogEntry{
+				LogEntry: &pb.LogEntry{
+					JsonMessage: jsonMessage,
+				},
+			},
+		}); err != nil {
 			shouldBuffer = true
 		}
 	}
@@ -167,16 +177,7 @@ func (b *BufferedGrpcWriteSyncer) write(jsonMessage string) {
 	}
 }
 
-// sendLogEntry sends the log encoded into a string to the log server.
-func (b *BufferedGrpcWriteSyncer) sendLogEntry(jsonMessage string) error {
-	return b.client.Send(&pb.SendLogsRequest{
-		Request: &pb.SendLogsRequest_LogEntry{
-			LogEntry: &pb.LogEntry{
-				JsonMessage: jsonMessage,
-			},
-		},
-	})
-}
+//Removed: sendLogEntry function (since log level updates are now separate)
 
 // UpdateClient updates the gRPC connection and connection in the BufferedGrpcWriteSyncer.
 func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_SendLogsClient, conn ClientConnInterface) {

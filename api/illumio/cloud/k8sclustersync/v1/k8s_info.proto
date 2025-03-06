@@ -358,25 +358,25 @@ message SendLogsRequest {
   }
 }
 
-// Message to encapsulate setting the log level.
-message SetLogLevel {
-  // The log level to be set in the operator.
-  LogLevel level = 1;
-}
+//// Message to encapsulate setting the log level.
+//message SetLogLevel {
+//  // The log level to be set in the operator.
+//  LogLevel level = 1;
+//}
 
 // Message to encapsulate the response for sending logs.
 message SendLogsResponse {
-  oneof response {
-    // set_log_level sets the operator's log level to the given level.
-    SetLogLevel set_log_level = 1;
-  }
+  //  oneof response {
+  //    // set_log_level sets the operator's log level to the given level.
+  //    SetLogLevel set_log_level = 1;
+  //  }
 }
 
 // Message to encapsulate a  request to send configuration updates.
 message GetConfigurationUpdatesRequest {}
 
 // Message to encapsulate the response for configuration update requests.
-// CloudSecure sends a update_configuration immediately upon stream establishment,then every time the configuration is updated.
+// CloudSecure sends a update_configuration immediately upon stream establishment, then every time the configuration is updated.
 message GetConfigurationUpdatesResponse {
   // Send any of these "response" messages that can contain any of the documented types.
   message Configuration {
@@ -385,7 +385,7 @@ message GetConfigurationUpdatesResponse {
     // Additional configuration fields will be added here.
   }
   oneof response {
-    //update the complete configuration for the operator.
+    //update the desired configuration for the operator.
     Configuration update_configuration = 1;
 
     // Additional configuration messages will be added here.
@@ -400,6 +400,6 @@ service KubernetesInfoService {
   rpc SendKubernetesNetworkFlows(stream SendKubernetesNetworkFlowsRequest) returns (stream SendKubernetesNetworkFlowsResponse);
   // Continuously syncs logs from operator and cluster.
   rpc SendLogs(stream SendLogsRequest) returns (stream SendLogsResponse);
-  // Continuously receives configuration updates from CloudSecure .
+  // Continuously receives configuration updates from CloudSecure.
   rpc GetConfigurationUpdates(stream GetConfigurationUpdatesRequest) returns (stream GetConfigurationUpdatesResponse);
 }

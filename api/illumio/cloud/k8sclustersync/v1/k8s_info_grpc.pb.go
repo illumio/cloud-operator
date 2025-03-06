@@ -37,7 +37,7 @@ type KubernetesInfoServiceClient interface {
 	SendKubernetesNetworkFlows(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendKubernetesNetworkFlowsClient, error)
 	// Continuously syncs logs from operator and cluster.
 	SendLogs(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendLogsClient, error)
-	// Continuously receives configuration updates from CloudSecure .
+	// Continuously receives configuration updates from CloudSecure.
 	GetConfigurationUpdates(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_GetConfigurationUpdatesClient, error)
 }
 
@@ -183,7 +183,7 @@ type KubernetesInfoServiceServer interface {
 	SendKubernetesNetworkFlows(KubernetesInfoService_SendKubernetesNetworkFlowsServer) error
 	// Continuously syncs logs from operator and cluster.
 	SendLogs(KubernetesInfoService_SendLogsServer) error
-	// Continuously receives configuration updates from CloudSecure .
+	// Continuously receives configuration updates from CloudSecure.
 	GetConfigurationUpdates(KubernetesInfoService_GetConfigurationUpdatesServer) error
 	mustEmbedUnimplementedKubernetesInfoServiceServer()
 }
