@@ -362,6 +362,30 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager) error {
 	return nil
 }
 
+// connectAndStreamConfigurationUpdates creates a configuration update stream client and listens for configuration changes.
+func connectAndStreamConfigurationUpdates(logger *zap.Logger, sm *streamManager) error {
+	configCtx, configCancel := context.WithCancel(context.Background())
+	defer configCancel()
+
+	logger.Info("Opening configuration update stream...")
+
+	configStream, err := sm.streamClient.client.GetConfigurationUpdates(configCtx)
+	if err != nil {
+		logger.Error("Failed to open configuration update stream", zap.Error(err))
+		return err
+	}
+
+	logger.Info("Configuration update stream listener started")
+
+	// Directly listen to configuration updates
+	err = ListenToConfigurationStream(configStream, sm.bufferedGrpcSyncer)
+	if err != nil {
+		logger.Error("Configuration update stream encountered an error", zap.Error(err))
+	}
+
+	return err // Return listener error to caller
+}
+
 // Generic function to manage any stream with backoff and reconnection logic.
 func manageStream(logger *zap.Logger, connectAndStream func(*zap.Logger, *streamManager) error, sm *streamManager, done chan struct{}) {
 	defer close(done)
@@ -520,11 +544,14 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
 			falcoDone := make(chan struct{})
+			configDone := make(chan struct{})
 			var ciliumDone chan struct{}
 			sm.bufferedGrpcSyncer.done = logDone
 
 			go manageStream(logger, connectAndStreamResources, sm, resourceDone)
 			go manageStream(logger, connectAndStreamLogs, sm, logDone)
+			go manageStream(logger, connectAndStreamConfigurationUpdates, sm, configDone)
+
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
@@ -549,6 +576,8 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				failureReason = "Resource stream closed"
 			case <-logDone:
 				failureReason = "Log stream closed"
+			case <-configDone:
+				failureReason = "Configuration update stream closed"
 			}
 			authConContextCancel()
 		}
