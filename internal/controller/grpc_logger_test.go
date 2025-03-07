@@ -155,6 +155,42 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestUpdateLogLevel() {
 	}
 }
 
+// TestSendLogEntry tests the sendLogEntry method to ensure proper formatting and encoding
+func (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLogEntry() {
+	ts, err := time.Parse(time.RFC3339, "2025-02-28T11:56:05Z")
+	suite.NoError(err)
+
+	entry := zapcore.Entry{
+		Level: zapcore.InfoLevel,
+		Time:  ts,
+		// Message contains the entry's whole structured context already serialized.
+		// gRPC logger requires that this is serialized into a JSON object.
+		Message: "The Message",
+	}
+
+	fields := []zap.Field{
+		zap.String("field1", "a string"),
+		zap.Int("field2", 10),
+	}
+
+	jsonMessage, err := encodeLogEntry(suite.grpcSyncer.encoder, entry, fields)
+	suite.NoError(err)
+
+	expectedLogEntry := &pb.LogEntry{
+		JsonMessage: `{"level":"info","ts":1740743765,"msg":"The Message","field1":"a string","field2":10}`,
+	}
+
+	suite.mockClient.On("Send", &pb.SendLogsRequest{
+		Request: &pb.SendLogsRequest_LogEntry{
+			LogEntry: expectedLogEntry,
+		},
+	}).Return(nil).Once()
+
+	err = suite.grpcSyncer.sendLogEntry(jsonMessage)
+	suite.NoError(err)
+	suite.mockClient.AssertExpectations(suite.T())
+}
+
 // mockZapClock mocks zapcore.Clock to always return the same time for "now".
 type mockZapClock struct {
 	now time.Time
