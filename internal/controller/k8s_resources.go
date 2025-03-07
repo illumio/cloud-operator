@@ -120,19 +120,22 @@ func getNodeIpAddresses(ctx context.Context, clientset *kubernetes.Clientset, no
 	if err != nil {
 		return nil, errors.New("failed to get node")
 	}
-	ipAddresses := []string{}
+	var ipAddresses []string
 	for _, address := range node.Status.Addresses {
 		// We are excluding hostnames
 		if address.Type == v1.NodeInternalIP || address.Type == v1.NodeExternalIP {
 			ipAddresses = append(ipAddresses, address.Address)
 		}
 	}
+	if len(ipAddresses) == 0 {
+		return nil, nil
+	}
 	return ipAddresses, nil
 }
 
 // convertIngressToStringList converts an array of v1.LoadBalancerIngress to a string array
 func convertIngressToStringList(ingresses []v1.LoadBalancerIngress) []string {
-	result := []string{}
+	var result []string
 	for _, ingress := range ingresses {
 		if ingress.IP != "" {
 			result = append(result, ingress.IP)
@@ -140,6 +143,9 @@ func convertIngressToStringList(ingresses []v1.LoadBalancerIngress) []string {
 		if ingress.Hostname != "" {
 			result = append(result, ingress.Hostname)
 		}
+	}
+	if len(result) == 0 {
+		return nil
 	}
 	return result
 }
@@ -191,7 +197,7 @@ func convertToKubernetesServiceData(ctx context.Context, serviceName string, cli
 	if err != nil {
 		return nil, errors.New("failed to get service")
 	}
-	loadBalancerIngress := []string{}
+	var loadBalancerIngress []string
 	if len(service.Status.LoadBalancer.Ingress) > 0 {
 		loadBalancerIngress = convertIngressToStringList(service.Status.LoadBalancer.Ingress)
 	}
@@ -277,7 +283,7 @@ func getPodIPAddresses(ctx context.Context, podName string, clientset *kubernete
 		// Could be that the pod no longer exists
 		return []v1.HostIP{}, nil
 	}
-	if pod.Status.HostIPs != nil {
+	if pod.Status.HoPstIPs != nil {
 		return pod.Status.HostIPs, nil
 	}
 	return []v1.HostIP{}, nil
