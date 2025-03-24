@@ -1,0 +1,73 @@
+# Copyright 2024 Illumio, Inc. All Rights Reserved.
+
+# For local development using minikube, please start your minikube instance using 
+# minikube start --insecure-registry="192.168.65.254:5000"
+
+defaultNamespace: "illumio-cloud"
+replicaCount: 1
+priorityClassName: ""
+# This IP is the address that allows minikube to directly access localhost through its networking
+# The reason this is used is because using the build script found we are hosting our own registry on our 
+# Local docker app and requiring minikubes docker daemon to pull from it.
+image:
+  repository: 192.168.65.254:5000/operator 
+  tag: latest
+
+serviceAccount:
+  create: true
+  name: "illumio-cloud-sa"
+  annotations: {}
+  automount: true
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+clusterCredsSecret:
+  clientId: ""
+  clientSecret: ""
+  disableSecretCreation: false
+  forceSecretCreation: true
+
+onboardingSecret:
+  clientId: "client_id_1"
+  clientSecret: "client_secret_1"
+
+falco:
+  enabled: false
+  namespace: falco
+  falco:
+    http_output:
+      enabled: true
+      keep_alive: true
+      url: "http://illumio-cloud-operator.illumio-cloud.svc.cluster.local:5000/"
+      insecure: true
+    json_output: true
+    json_include_tags_property: false
+    json_include_output_property: true
+    buffered_outputs: true
+  customRules:
+    rules-networking.yaml: |-
+      - macro: outbound_corp
+        condition: >
+          (((evt.type = connect and evt.dir=<) or
+            (evt.type in (sendto,sendmsg) and evt.dir=< and
+             fd.l4proto != tcp and fd.connected=false and fd.name_changed=true)) and
+           (fd.typechar = 4 or fd.typechar = 6) and
+           (fd.ip != "0.0.0.0" and fd.net != "127.0.0.0/8") and
+           (evt.rawres >= 0 or evt.res = EINPROGRESS))
+      - rule: kubernetes outbound connection
+        desc: A pod in namespace attempted to connect to the outer world
+        condition: outbound_corp and k8s.ns.name != ""
+        output: "illumio_network_traffic (time=%evt.time.iso8601 srcip=%fd.cip dstip=%fd.sip srcport=%fd.cport dstport=%fd.sport proto=%fd.l4proto procname=%proc.name ipversion=%fd.type)"
+        priority: WARNING
+
+env:
+  tlsSkipVerify: true
+  onboardingEndpoint: "https://192.168.65.254:50053/api/v1/k8s_cluster/onboard"
+  tokenEndpoint: "https://192.168.65.254:50053/api/v1/k8s_cluster/authenticate"
+
