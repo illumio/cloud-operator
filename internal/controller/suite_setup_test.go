@@ -18,7 +18,7 @@ type ControllerTestSuite struct {
 	suite.Suite
 	ctx       context.Context
 	clientset *kubernetes.Clientset
-	logger    *zap.SugaredLogger
+	logger    *zap.Logger
 }
 
 func TestGenerateTestSuite(t *testing.T) {
@@ -79,7 +79,7 @@ func (w *LogWriter) Sync() error {
 	return nil
 }
 
-func newCustomLogger(t *testing.T) *zap.SugaredLogger {
+func newCustomLogger(t *testing.T) *zap.Logger {
 	logWriter := &LogWriter{
 		logFunc: t.Logf,
 	}
@@ -90,5 +90,5 @@ func newCustomLogger(t *testing.T) *zap.SugaredLogger {
 
 	core := zapcore.NewCore(encoder, syncWriter, zap.DebugLevel)
 
-	return zap.New(core).Sugar()
+	return zap.New(core)
 }

@@ -27,7 +27,7 @@ func (suite *ControllerTestSuite) TestOnboard() {
 	core := zapcore.NewTee(
 		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
 	)
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 	logger = logger.With(zap.String("name", "test"))
 
 	tests := map[string]struct {
@@ -184,5 +184,5 @@ func (suite *ControllerTestSuite) TestGetClusterID() {
 	assert.Equal(suite.T(), expectedUID, clusterID)
 
 	// Log the cluster ID for verification
-	logger.Infow("Cluster ID", "uid", clusterID)
+	suite.T().Logf("Cluster ID: %s", clusterID)
 }

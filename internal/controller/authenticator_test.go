@@ -28,7 +28,7 @@ func (suite *ControllerTestSuite) TestGetOnboardingCredentials() {
 	core := zapcore.NewTee(
 		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
 	)
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 	logger = logger.With(zap.String("name", "test"))
 
 	tests := map[string]struct {
@@ -78,7 +78,7 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 	core := zapcore.NewTee(
 		zapcore.NewCore(encoder, consoleSyncer, zapcore.InfoLevel),
 	)
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 	logger = logger.With(zap.String("name", "test"))
 
 	tests := map[string]struct {
@@ -92,8 +92,8 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 		"success": {
 			secretName: "test-secret",
 			secretData: map[string][]byte{
-				"client_id":     []byte("test-client-id"),
-				"client_secret": []byte("test-client-secret"),
+				string(ONBOARDING_CLIENT_ID):     []byte("test-client-id"),
+				string(ONBOARDING_CLIENT_SECRET): []byte("test-client-secret"),
 			},
 			expectedError:        false,
 			expectedClientID:     "test-client-id",
@@ -107,18 +107,18 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 		"client-id-not-found": {
 			secretName: "test-secret-no-client-id",
 			secretData: map[string][]byte{
-				"client_secret": []byte("test-client-secret"),
+				string(ONBOARDING_CLIENT_SECRET): []byte("test-client-secret"),
 			},
 			expectedError:  true,
-			expectedErrMsg: "failed to get client_id from secret",
+			expectedErrMsg: NewCredentialNotFoundInK8sSecretError(ONBOARDING_CLIENT_ID).Error(),
 		},
 		"client-secret-not-found": {
 			secretName: "test-secret-no-client-secret-id",
 			secretData: map[string][]byte{
-				"client_id": []byte("test-client-id"),
+				string(ONBOARDING_CLIENT_ID): []byte("test-client-id"),
 			},
 			expectedError:  true,
-			expectedErrMsg: "failed to get client_secret from secret",
+			expectedErrMsg: NewCredentialNotFoundInK8sSecretError(ONBOARDING_CLIENT_SECRET).Error(),
 		},
 	}
 

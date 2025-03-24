@@ -11,9 +11,9 @@ import (
 )
 
 // Helper function to send a request to the resource stream
-func sendToResourceStream(logger *zap.SugaredLogger, stream pb.KubernetesInfoService_SendKubernetesResourcesClient, request *pb.SendKubernetesResourcesRequest) error {
+func sendToResourceStream(logger *zap.Logger, stream pb.KubernetesInfoService_SendKubernetesResourcesClient, request *pb.SendKubernetesResourcesRequest) error {
 	if err := stream.Send(request); err != nil {
-		logger.Errorw("Failed to send request", "request", request, "error", err)
+		logger.Error("Failed to send request", zap.Stringer("request", request), zap.Error(err))
 		return err
 	}
 	return nil
@@ -51,7 +51,7 @@ func sendNetworkFlowRequest(sm *streamManager, flow interface{}) error {
 		return fmt.Errorf("unsupported flow type: %T", flow)
 	}
 	if err := sm.streamClient.networkFlowsStream.Send(request); err != nil {
-		sm.logger.Errorw("Failed to send network flow", "error", err)
+		sm.logger.Error("Failed to send network flow", zap.Error(err))
 		return err
 	}
 	return nil
@@ -92,17 +92,17 @@ func streamMutationObjectData(sm *streamManager, metadata *pb.KubernetesObjectDa
 func sendClusterMetadata(ctx context.Context, sm *streamManager) error {
 	clusterUid, err := GetClusterID(ctx, sm.logger)
 	if err != nil {
-		sm.logger.Errorw("Error getting cluster id", "error", err)
+		sm.logger.Error("Error getting cluster id", zap.Error(err))
 		return err
 	}
 	clientset, err := NewClientSet()
 	if err != nil {
-		sm.logger.Errorw("Error creating clientset", "error", err)
+		sm.logger.Error("Error creating clientset", zap.Error(err))
 		return err
 	}
 	kubernetesVersion, err := clientset.Discovery().ServerVersion()
 	if err != nil {
-		sm.logger.Errorw("Error getting Kubernetes version", "error", err)
+		sm.logger.Error("Error getting Kubernetes version", zap.Error(err))
 		return err
 	}
 	request := &pb.SendKubernetesResourcesRequest{

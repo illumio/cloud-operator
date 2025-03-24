@@ -36,7 +36,7 @@ var kacp = keepalive.ClientParameters{
 
 // Authenticator keeps a logger for its own methods.
 type Authenticator struct {
-	Logger *zap.SugaredLogger
+	Logger *zap.Logger
 }
 
 // GetOnboardingCredentials returns credentials to onboard this cluster with CloudSecure.
@@ -52,27 +52,25 @@ func (authn *Authenticator) ReadCredentialsK8sSecrets(ctx context.Context, secre
 	// Create a new clientset
 	clientset, err := NewClientSet()
 	if err != nil {
-		authn.Logger.Errorw("Failed to create clientSet", "error", err)
+		authn.Logger.Error("Failed to create clientSet", zap.Error(err))
 		return "", "", err
 	}
 
 	// Get the secret
 	secret, err := clientset.CoreV1().Secrets("illumio-cloud").Get(ctx, secretName, metav1.GetOptions{})
 	if err != nil {
-		authn.Logger.Errorw("Failed to get secret", "error", err)
+		authn.Logger.Error("Failed to get secret", zap.Error(err))
 		return "", "", err
 	}
 
 	// Assuming your secret data has a "client_id" and "client_secret" key.
-	clientID := string(secret.Data["client_id"])
+	clientID := string(secret.Data[string(ONBOARDING_CLIENT_ID)])
 	if clientID == "" {
-		authn.Logger.Errorw("Cannot get client_id", "error", err)
-		return "", "", errors.New("failed to get client_id from secret")
+		return "", "", NewCredentialNotFoundInK8sSecretError(ONBOARDING_CLIENT_ID)
 	}
-	clientSecret := string(secret.Data["client_secret"])
+	clientSecret := string(secret.Data[string(ONBOARDING_CLIENT_SECRET)])
 	if clientSecret == "" {
-		authn.Logger.Errorw("Cannot get client_secret", "error", err)
-		return "", "", errors.New("failed to get client_secret from secret")
+		return "", "", NewCredentialNotFoundInK8sSecretError(ONBOARDING_CLIENT_SECRET)
 	}
 	return clientID, clientSecret, nil
 }
@@ -80,7 +78,7 @@ func (authn *Authenticator) ReadCredentialsK8sSecrets(ctx context.Context, secre
 func (authn *Authenticator) DoesK8sSecretExist(ctx context.Context, secretName string) bool {
 	clientset, err := NewClientSet()
 	if err != nil {
-		authn.Logger.Errorw("Failed to create clientSet", "error", err)
+		authn.Logger.Error("Failed to create clientSet", zap.Error(err))
 	}
 
 	// Get the secret -> illumio-cloud will need to be configurable
@@ -92,13 +90,13 @@ func (authn *Authenticator) DoesK8sSecretExist(ctx context.Context, secretName s
 func (authn *Authenticator) WriteK8sSecret(ctx context.Context, keyData OnboardResponse, ClusterCreds string) error {
 	clientset, err := NewClientSet()
 	if err != nil {
-		authn.Logger.Errorw("Failed to create clientSet", "error", err)
+		authn.Logger.Error("Failed to create clientSet", zap.Error(err))
 		return err
 	}
 
 	secretData := map[string][]byte{
-		"client_id":     []byte(keyData.ClusterClientId),
-		"client_secret": []byte(keyData.ClusterClientSecret),
+		string(ONBOARDING_CLIENT_ID):     []byte(keyData.ClusterClientId),
+		string(ONBOARDING_CLIENT_SECRET): []byte(keyData.ClusterClientSecret),
 	}
 	namespace := "illumio-cloud" // Will be made configurable.
 	secret := &corev1.Secret{
@@ -111,7 +109,7 @@ func (authn *Authenticator) WriteK8sSecret(ctx context.Context, keyData OnboardR
 
 	_, err = clientset.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
 	if err != nil {
-		authn.Logger.Errorw("Failed to update secret", "error", err)
+		authn.Logger.Error("Failed to update secret", zap.Error(err))
 		return err
 	}
 	return nil
@@ -147,7 +145,7 @@ func IsRunningInCluster() bool {
 // SetUpOAuthConnection establishes a gRPC connection using OAuth credentials and logging the process.
 func SetUpOAuthConnection(
 	ctx context.Context,
-	logger *zap.SugaredLogger,
+	logger *zap.Logger,
 	tokenURL string,
 	tlsSkipVerify bool,
 	clientID string,
@@ -166,19 +164,19 @@ func SetUpOAuthConnection(
 
 	token, err := tokenSource.Token()
 	if err != nil {
-		logger.Errorw("Error retrieving a valid token", "error", err)
+		logger.Error("Error retrieving a valid token", zap.Error(err))
 		return nil, err
 	}
 
 	claims, err := ParseToken(token.AccessToken)
 	if err != nil {
-		logger.Errorw("Error parsing token", "error", err)
+		logger.Error("Error parsing token", zap.Error(err))
 		return nil, err
 	}
 
 	aud, err := getFirstAudience(logger, claims)
 	if err != nil {
-		logger.Errorw("Error pulling audience out of token", "error", err)
+		logger.Error("Error pulling audience out of token", zap.Error(err))
 		return nil, err
 	}
 	tokenSource = GetTokenSource(ctx, oauthConfig, tlsConfig)
