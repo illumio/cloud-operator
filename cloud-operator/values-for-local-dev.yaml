@@ -1,16 +1,16 @@
 # Copyright 2024 Illumio, Inc. All Rights Reserved.
 
 # For local development using minikube, please start your minikube instance using 
-# minikube start --insecure-registry="192.168.65.254:5000"
+# minikube start --insecure-registry="host.docker.internal:5000"
 
 defaultNamespace: "illumio-cloud"
 replicaCount: 1
 priorityClassName: ""
-# This IP is the address that allows minikube to directly access localhost through its networking
-# The reason this is used is because using the build script found we are hosting our own registry on our 
+# This IP is the address that allows minikube to directly access localhost through its networking.
+# This is used is because using the build script we are hosting our own registry on our 
 # Local docker app and requiring minikubes docker daemon to pull from it.
 image:
-  repository: 192.168.65.254:5000/operator 
+  repository: host.docker.internal:5000/operator 
   tag: latest
 
 serviceAccount:
@@ -68,6 +68,6 @@ falco:
 
 env:
   tlsSkipVerify: true
-  onboardingEndpoint: "https://192.168.65.254:50053/api/v1/k8s_cluster/onboard"
-  tokenEndpoint: "https://192.168.65.254:50053/api/v1/k8s_cluster/authenticate"
+  onboardingEndpoint: "https://host.docker.internal:50053/api/v1/k8s_cluster/onboard"
+  tokenEndpoint: "https://host.docker.internal:50053/api/v1/k8s_cluster/authenticate"
 
