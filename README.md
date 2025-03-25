@@ -61,7 +61,35 @@ docker login
 make docker-build docker-push DOCKER_USERNAME=arisweedler386
 ```
 
-TODO: ENABLE LOCAL BUILD
+If you would like to build to your local machine we currently support this via minikube and docker local registry
+
+The following command starts a minikube cluster that will allow you to pull from your local registry
+`
+minikube start --insecure-registry="host.docker.internal:5000"
+`
+
+To create a local registry please use the following `make` command
+`
+make local-registry
+`
+
+Once you have made your local changes, the following `make` command will build and push to your local registry
+`
+make deploy-local
+`
+
+To deploy using helm and to test the operator using fakeserver here is an example of the command with `--set` args
+`
+helm install illumio --namespace illumio-cloud --create-namespace \
+  --set image.repository=host.docker.internal:5000/operator \
+  --set image.tag=latest \
+  --set onboardingSecret.clientId=client_id_1 \
+  --set onboardingSecret.clientSecret=client_secret_1 \
+  --set env.tlsSkipVerify=true \
+  --set env.onboardingEndpoint=https://host.docker.internal:50053/api/v1/k8s_cluster/onboard \
+  --set env.tokenEndpoint=https://host.docker.internal:50053/api/v1/k8s_cluster/authenticate \
+  oci://ghcr.io/illumio/charts/cloud-operator --version v1.0.5
+`
 
 ## License
 
