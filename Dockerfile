@@ -7,8 +7,7 @@ ARG TARGETARCH
 WORKDIR /workspace
 
 # Copy the Go Modules manifests
-COPY go.mod go.mod
-COPY go.sum go.sum
+COPY go.mod go.sum ./
 
 # Cache dependencies before copying the source to avoid re-downloading
 RUN go mod download
@@ -20,6 +19,7 @@ COPY internal/version/ internal/version/
 COPY internal/config internal/config
 COPY api/ api/
 
+# Build the Go binary
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-X 'github.com/illumio/cloud-operator/internal/version.version=${VERSION}'" -a -o manager cmd/main.go
 
 # Install gops for troubleshooting
@@ -32,7 +32,7 @@ FROM gcr.io/distroless/static:nonroot
 ENV GOPS_CONFIG_DIR="/var/run/gops"
 WORKDIR /
 COPY --from=builder /workspace/manager .
-COPY --from=builder /go/bin/gops .
+COPY --from=builder /go/bin/gops /bin/gops
 
 USER 65532:65532
 
