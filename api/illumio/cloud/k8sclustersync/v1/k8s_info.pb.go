@@ -1081,9 +1081,7 @@ type FalcoFlow struct {
 	// Proto contains protocol used
 	Layer4 *Layer4 `protobuf:"bytes,2,opt,name=layer4,proto3" json:"layer4,omitempty"`
 	// Time when flow occurred.
-	Time string `protobuf:"bytes,3,opt,name=time,proto3" json:"time,omitempty"`
-	// Time when flow occured TimeStamp
-	TimeStamp     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=time_stamp,json=timeStamp,proto3" json:"time_stamp,omitempty"`
+	Time          *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=time,proto3" json:"time,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1132,16 +1130,9 @@ func (x *FalcoFlow) GetLayer4() *Layer4 {
 	return nil
 }
 
-func (x *FalcoFlow) GetTime() string {
+func (x *FalcoFlow) GetTime() *timestamppb.Timestamp {
 	if x != nil {
 		return x.Time
-	}
-	return ""
-}
-
-func (x *FalcoFlow) GetTimeStamp() *timestamppb.Timestamp {
-	if x != nil {
-		return x.TimeStamp
 	}
 	return nil
 }
@@ -2652,13 +2643,11 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x0fupdate_resource\x18\x02 \x01(\v25.illumio.cloud.k8sclustersync.v1.KubernetesObjectDataH\x00R\x0eupdateResource\x12`\n" +
 	"\x0fdelete_resource\x18\x03 \x01(\v25.illumio.cloud.k8sclustersync.v1.KubernetesObjectDataH\x00R\x0edeleteResourceB\n" +
 	"\n" +
-	"\bmutation\"\xd8\x01\n" +
+	"\bmutation\"\xb9\x01\n" +
 	"\tFalcoFlow\x12;\n" +
 	"\x06layer3\x18\x01 \x01(\v2#.illumio.cloud.k8sclustersync.v1.IPR\x06layer3\x12?\n" +
-	"\x06layer4\x18\x02 \x01(\v2'.illumio.cloud.k8sclustersync.v1.Layer4R\x06layer4\x12\x12\n" +
-	"\x04time\x18\x03 \x01(\tR\x04time\x129\n" +
-	"\n" +
-	"time_stamp\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\ttimeStamp\"\xca\b\n" +
+	"\x06layer4\x18\x02 \x01(\v2'.illumio.cloud.k8sclustersync.v1.Layer4R\x06layer4\x12.\n" +
+	"\x04time\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\"\xca\b\n" +
 	"\n" +
 	"CiliumFlow\x12.\n" +
 	"\x04time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x1b\n" +
@@ -2858,7 +2847,7 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	4,  // 14: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation.delete_resource:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
 	17, // 15: illumio.cloud.k8sclustersync.v1.FalcoFlow.layer3:type_name -> illumio.cloud.k8sclustersync.v1.IP
 	18, // 16: illumio.cloud.k8sclustersync.v1.FalcoFlow.layer4:type_name -> illumio.cloud.k8sclustersync.v1.Layer4
-	37, // 17: illumio.cloud.k8sclustersync.v1.FalcoFlow.time_stamp:type_name -> google.protobuf.Timestamp
+	37, // 17: illumio.cloud.k8sclustersync.v1.FalcoFlow.time:type_name -> google.protobuf.Timestamp
 	37, // 18: illumio.cloud.k8sclustersync.v1.CiliumFlow.time:type_name -> google.protobuf.Timestamp
 	0,  // 19: illumio.cloud.k8sclustersync.v1.CiliumFlow.traffic_direction:type_name -> illumio.cloud.k8sclustersync.v1.TrafficDirection
 	1,  // 20: illumio.cloud.k8sclustersync.v1.CiliumFlow.verdict:type_name -> illumio.cloud.k8sclustersync.v1.Verdict
