@@ -42,6 +42,12 @@ type streamManager struct {
 	streamClient       *streamClient
 }
 
+type KeepaliveFrequencies struct {
+	Flow     time.Duration
+	Log      time.Duration
+	Resource time.Duration
+}
+
 type EnvironmentConfig struct {
 	// Namspace of Cilium.
 	CiliumNamespace string
@@ -57,6 +63,8 @@ type EnvironmentConfig struct {
 	TokenEndpoint string
 	// Whether to skip TLS certificate verification when starting a stream.
 	TlsSkipVerify bool
+	// How often do we send keepalives for each stream
+	KeepaliveFrequencies KeepaliveFrequencies
 }
 
 var resourceAPIGroupMap = map[string]string{

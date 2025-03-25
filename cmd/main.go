@@ -71,6 +71,9 @@ func main() {
 	bindEnv(logger, "onboarding_endpoint", "ONBOARDING_ENDPOINT")
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
+	bindEnv(logger, "stream_keepalive_resource", "STREAM_KEEPALIVE_RESOURCE")
+	bindEnv(logger, "stream_keepalive_flow", "STREAM_KEEPALIVE_FLOW")
+	bindEnv(logger, "stream_keepalive_log", "STREAM_KEEPALIVE_LOG")
 
 	// Set default values
 	viper.SetDefault("cluster_creds", "clustercreds")
@@ -78,6 +81,9 @@ func main() {
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("tls_skip_verify", false)
+	viper.SetDefault("stream_keepalive_resource", "10s")
+	viper.SetDefault("stream_keepalive_flow", "10s")
+	viper.SetDefault("stream_keepalive_log", "10s")
 
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),
@@ -87,6 +93,11 @@ func main() {
 		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
 		TokenEndpoint:          viper.GetString("token_endpoint"),
 		TlsSkipVerify:          viper.GetBool("tls_skip_verify"),
+		KeepaliveFrequencies: controller.KeepaliveFrequencies{
+			Resource: viper.GetDuration("stream_keepalive_resource"),
+			Flow:     viper.GetDuration("stream_keepalive_flow"),
+			Log:      viper.GetDuration("stream_keepalive_log"),
+		},
 	}
 
 	logger.Info("Starting application",
@@ -96,6 +107,9 @@ func main() {
 		zap.String("onboarding_endpoint", envConfig.OnboardingEndpoint),
 		zap.String("token_endpoint", envConfig.TokenEndpoint),
 		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
+		zap.Duration("stream_keepalive_resource", envConfig.KeepaliveFrequencies.Resource),
+		zap.Duration("stream_keepalive_flow", envConfig.KeepaliveFrequencies.Flow),
+		zap.Duration("stream_keepalive_log", envConfig.KeepaliveFrequencies.Log),
 	)
 
 	// Start the gops agent and listen on a specific address and port
