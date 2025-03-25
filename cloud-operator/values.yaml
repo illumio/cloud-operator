@@ -65,3 +65,7 @@ env:
   tlsSkipVerify: false
   onboardingEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
   tokenEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
+  streamKeepalive:
+    resource: "10s"
+    flow: "10s"
+    log: "10s"
