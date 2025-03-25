@@ -75,7 +75,7 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 			case "time":
 				ts, err := convertStringToTimestamp(value)
 				if err != nil {
-					return nil, err
+					return nil, ErrFalcoTimeStamp
 				}
 				info.Time = ts
 			case "srcip":
