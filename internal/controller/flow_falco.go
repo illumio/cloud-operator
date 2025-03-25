@@ -3,18 +3,23 @@ package controller
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/golang/protobuf/ptypes/timestamp"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // FalcoEvent represents the network information extracted from a Falco event.
 type FalcoEvent struct {
 	// Time is the time the network event occured. ISO 8601 format
 	Time string `json:"time"`
+	// Time is the time the network event occured. ISO 8601 format
+	TimeStamp *timestamppb.Timestamp `json:"timestamp"`
 	// SrcIP is the source IP address involved in the network event.
 	SrcIP string `json:"srcip"`
 	// DstIP is the destination IP address involved in the network event.
@@ -36,6 +41,29 @@ func removeTrailingTab(time string) string {
 	return strings.TrimRight(time, "\t")
 }
 
+// convertStringToTimestamp converts the provided string value to a timestamppb.Timestamp object
+// and updates the Time field of the FalcoEvent struct with the provided value.
+// It parses the input string value in RFC3339 format and returns a timestamppb.Timestamp object.
+func convertStringToTimestamp(value string) (*timestamppb.Timestamp, error) {
+	value = removeTrailingTab(value)
+	// Define the layout string for parsing the timestamp
+	layout := "2006-01-02T15:04:05.999999999-0700"
+
+	// Parse the timestamp string using the specified layout
+	t, err := time.Parse(layout, value)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ISO time: %v", err)
+	}
+
+	// Convert the parsed timestamp to timestamppb.Timestamp
+	timestampPB := &timestamp.Timestamp{
+		Seconds: t.Unix(),
+		Nanos:   int32(t.Nanosecond()),
+	}
+
+	return timestampPB, nil
+}
+
 // parsePodNetworkInfo parses the input string to extract network information into a FalcoFlow message.
 func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 	var info FalcoEvent
@@ -48,6 +76,11 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 			switch key {
 			case "time":
 				info.Time = value
+				ts, err := convertStringToTimestamp(value)
+				if err != nil {
+					return nil, err
+				}
+				info.TimeStamp = ts
 			case "srcip":
 				info.SrcIP = value
 			case "dstip":
@@ -87,9 +120,10 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 	}
 
 	flow := &pb.FalcoFlow{
-		Time:   removeTrailingTab(info.Time),
-		Layer3: layer3Message,
-		Layer4: layer4Message,
+		//Time:      removeTrailingTab(info.Time),
+		Layer3:    layer3Message,
+		Layer4:    layer4Message,
+		TimeStamp: info.TimeStamp,
 	}
 
 	return flow, nil
