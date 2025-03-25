@@ -9,6 +9,9 @@ import "google/protobuf/wrappers.proto";
 
 option go_package = "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1";
 
+// Keepalive
+message Keepalive {}
+
 // Metadata associated with a Kubernetes resource.
 // https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta
 message KubernetesObjectData {
@@ -102,6 +105,8 @@ message KubernetesClusterMetadata {
 message SendKubernetesResourcesRequest {
   // Send any of these "request" messages that can contain any of the documented types.
   oneof request {
+    Keepalive keepalive_ping = 5;
+
     // Metadata about the cluster and operator.
     KubernetesClusterMetadata cluster_metadata = 1;
     // Metadata about a Kubernetes resource in the cluster.
@@ -326,6 +331,8 @@ message Policy {
 // Flow exported by the CNI plugin in the cluster.
 message SendKubernetesNetworkFlowsRequest {
   oneof request {
+    Keepalive keepalive_ping = 3;
+
     CiliumFlow cilium_flow = 1;
     FalcoFlow falco_flow = 2;
   }
@@ -357,6 +364,8 @@ message LogEntry {
 // Message to encapsulate a request to send logs.
 message SendLogsRequest {
   oneof request {
+    Keepalive keepalive_ping = 2;
+
     // A single log entry to be sent.
     LogEntry log_entry = 1;
   }
