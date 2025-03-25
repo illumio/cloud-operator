@@ -62,7 +62,7 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 			key, value := match[1], match[2]
 			switch key {
 			case "time":
-				info.Time = value
+				info.Time = removeTrailingTab(value)
 				timestamp, err := convertStringToTimestamp(value)
 				if err != nil {
 					return nil, err
