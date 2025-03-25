@@ -117,7 +117,6 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 	}
 
 	flow := &pb.FalcoFlow{
-		//Time:      removeTrailingTab(info.Time),
 		Layer3: layer3Message,
 		Layer4: layer4Message,
 		Time:   info.Time,
