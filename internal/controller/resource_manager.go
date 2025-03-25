@@ -3,6 +3,8 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -14,6 +16,10 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+)
+
+var (
+	ErrContextCanceled = fmt.Errorf("context canceled")
 )
 
 // ResourceManager encapsulates components for listing and managing Kubernetes resources.
@@ -41,11 +47,13 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 	}
 	allResourcesSnapshotted.Done()
 	snapshotCompleted.Wait()
+
 	// Here intiatate the watch event
 	watchOptions := metav1.ListOptions{
 		Watch:           true,
 		ResourceVersion: resourceListVersion,
 	}
+
 	// Prevent us from overwhelming K8 api
 	limiter := rate.NewLimiter(1, 5)
 	err = limiter.Wait(ctx)
@@ -57,7 +65,14 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 
 	err = r.watchEvents(ctx, resource, apiGroup, watchOptions)
 	if err != nil {
-		r.logger.Error("Unable to watch events", zap.Error(err))
+		if !errors.Is(err, ErrContextCanceled) {
+			r.logger.Error("Noticed that we are disconnected from CloudSecure",
+				zap.String("reason", "watch error"),
+				zap.String("apiGroup", apiGroup),
+				zap.String("resource", resource),
+				zap.Error(err),
+			)
+		}
 		cancel()
 		return
 	}
@@ -101,34 +116,52 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 		r.logger.Error("Error setting up watch on resource", zap.Error(err))
 		return err
 	}
-	for event := range watcher.ResultChan() {
-		switch event.Type {
-		case watch.Error:
-			r.logger.Error("Watcher event has returned an error", zap.Error(err))
-			return err
-		case watch.Bookmark:
-			continue
-		default:
-		}
-		convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
-		if err != nil {
-			r.logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
-			return err
-		}
-		resource := event.Object.GetObjectKind().GroupVersionKind().Kind
-		metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, *convertedData, r.clientset, resource)
-		if err != nil {
-			r.logger.Error("Cannot convert object metadata", zap.Error(err))
-			return err
-		}
-		err = streamMutationObjectData(r.streamManager, metadataObj, event.Type)
-		if err != nil {
-			r.logger.Error("Cannot send resource mutation", zap.Error(err))
-			return err
-		}
 
+	var event watch.Event
+	for {
+		select {
+		case <-ctx.Done():
+			r.logger.Debug("Noticed that we are disconnected from CloudSecure",
+				zap.String("reason", "context cancelled"),
+				zap.String("apiGroup", apiGroup),
+				zap.String("resource", resource),
+			)
+			return ErrContextCanceled
+
+		case event = <-watcher.ResultChan():
+			// Exhaustive enum check on event type. We only want to report mutations
+			switch event.Type {
+			case watch.Error:
+				r.logger.Error("Watcher event has returned an error", zap.Error(err))
+				return err
+			case watch.Bookmark:
+				continue
+			case watch.Added, watch.Modified, watch.Deleted:
+			default:
+				r.logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
+			}
+
+			// Type gymnastics: turn the watch.Event into a 'KubernetesObjectData'
+			convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
+			if err != nil {
+				r.logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
+				return err
+			}
+			resource := event.Object.GetObjectKind().GroupVersionKind().Kind
+			metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, *convertedData, r.clientset, resource)
+			if err != nil {
+				r.logger.Error("Cannot convert object metadata", zap.Error(err))
+				return err
+			}
+
+			// Helper function: type gymnastics + send the KubernetesObjectData out on the wire
+			err = streamMutationObjectData(r.streamManager, metadataObj, event.Type)
+			if err != nil {
+				r.logger.Error("Cannot send resource mutation", zap.Error(err))
+				return err
+			}
+		}
 	}
-	return nil
 }
 
 // FetchResources retrieves unstructured resources from the K8s API.
