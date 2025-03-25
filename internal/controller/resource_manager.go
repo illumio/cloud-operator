@@ -3,6 +3,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -57,7 +58,7 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 
 	err = r.watchEvents(ctx, resource, apiGroup, watchOptions)
 	if err != nil {
-		r.logger.Error("Unable to watch events", zap.Error(err))
+		r.logger.Error("Disconnected from CloudSecure, stopping watchers on resources", zap.Error(err))
 		cancel()
 		return
 	}
@@ -101,34 +102,45 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 		r.logger.Error("Error setting up watch on resource", zap.Error(err))
 		return err
 	}
-	for event := range watcher.ResultChan() {
-		switch event.Type {
-		case watch.Error:
-			r.logger.Error("Watcher event has returned an error", zap.Error(err))
-			return err
-		case watch.Bookmark:
-			continue
-		default:
-		}
-		convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
-		if err != nil {
-			r.logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
-			return err
-		}
-		resource := event.Object.GetObjectKind().GroupVersionKind().Kind
-		metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, *convertedData, r.clientset, resource)
-		if err != nil {
-			r.logger.Error("Cannot convert object metadata", zap.Error(err))
-			return err
-		}
-		err = streamMutationObjectData(r.streamManager, metadataObj, event.Type)
-		if err != nil {
-			r.logger.Error("Cannot send resource mutation", zap.Error(err))
-			return err
-		}
+	// watcherChan :=  make(chan)
+	// go func ()  {
+	// 	event := <-watcher.ResultChan():
+	// }
 
+	var event watch.Event
+	for {
+		select {
+		case <-ctx.Done():
+			r.logger.Info("Disconnected from CloudSecure, stopping watcher")
+			return fmt.Errorf("Error")
+
+		case event = <-watcher.ResultChan():
+			switch event.Type {
+			case watch.Error:
+				r.logger.Error("Watcher event has returned an error", zap.Error(err))
+				return err
+			case watch.Bookmark:
+				continue
+			default:
+			}
+			convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
+			if err != nil {
+				r.logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
+				return err
+			}
+			resource := event.Object.GetObjectKind().GroupVersionKind().Kind
+			metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, *convertedData, r.clientset, resource)
+			if err != nil {
+				r.logger.Error("Cannot convert object metadata", zap.Error(err))
+				return err
+			}
+			err = streamMutationObjectData(r.streamManager, metadataObj, event.Type)
+			if err != nil {
+				r.logger.Error("Cannot send resource mutation", zap.Error(err))
+				return err
+			}
+		}
 	}
-	return nil
 }
 
 // FetchResources retrieves unstructured resources from the K8s API.
