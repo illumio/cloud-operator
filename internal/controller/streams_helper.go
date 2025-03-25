@@ -57,7 +57,10 @@ func sendNetworkFlowRequest(sm *streamManager, flow interface{}) error {
 	return nil
 }
 
-// streamMutationObjectData sends a resource mutation message into the given stream.
+// streamMutationObjectData does type gymnastics then sends the result over the
+// wire. It "upgrades" a KubernetesObjectData into a KubernetesResourceMutation
+// (which can be sent over the wire). It needs to use information from the
+// watch.EventType to accomplish this
 func streamMutationObjectData(sm *streamManager, metadata *pb.KubernetesObjectData, eventType watch.EventType) error {
 	var mutation *pb.KubernetesResourceMutation
 	switch eventType {
