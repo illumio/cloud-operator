@@ -40,6 +40,7 @@ type streamManager struct {
 	bufferedGrpcSyncer *BufferedGrpcWriteSyncer
 	logger             *zap.Logger
 	streamClient       *streamClient
+	keepaliveFrequency *time.Duration
 }
 
 type KeepaliveFrequencies struct {
@@ -280,8 +281,39 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 	}
 }
 
-// connectAndStreamCiliumNetworkFlows creates networkFlowsStream client and begins the streaming of network flows.
-func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager) error {
+// StreamKeepalives loops infinitely as long as the keepalives are working. We
+// halt when the 'keepaliveDone' channel is written to, or when sending a
+// keepalive ping fails.
+//
+// This should be run inside a goroutine in every `connectAndStream*` function
+func (sm *streamManager) StreamKeepalives(
+	freq time.Duration,
+	sendKeepalive func(*streamManager) error,
+	keepaliveDone chan struct{},
+) {
+	defer func() {
+		keepaliveDone <- struct{}{}
+	}()
+
+	for {
+		timer := time.NewTimer(freq)
+		select {
+		case <-timer.C:
+			err := sendKeepalive(sm)
+			if err != nil {
+				return
+			}
+			timer.Reset(freq)
+		case <-keepaliveDone:
+			return
+		}
+	}
+}
+
+// connectAndStreamCiliumNetworkFlows creates networkFlowsStream client and
+// begins the streaming of network flows. Also starts a goroutine to send
+// keepalives at the configured frequency
+func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager, keepaliveFrequency time.Duration) error {
 	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
 	defer ciliumCancel()
 
@@ -292,6 +324,10 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager) e
 	}
 
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
+
+	keepaliveDone := make(chan struct{})
+	defer close(keepaliveDone)
+	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveNetworkFlow, keepaliveDone)
 
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, sm.streamClient.ciliumNamespace)
 	if err != nil {
@@ -305,10 +341,13 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager) e
 	return nil
 }
 
-// connectAndStreamFalcoNetworkFlows creates networkFlowsStream client and begins the streaming of network flows.
-func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager) error {
+// connectAndStreamFalcoNetworkFlows creates networkFlowsStream client and
+// begins the streaming of network flows. Also starts a goroutine to send
+// keepalives at the configured frequency
+func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager, keepaliveFrequency time.Duration) error {
 	falcoCtx, falcoCancel := context.WithCancel(context.Background())
 	defer falcoCancel()
+
 	sendFalcoNetworkFlows, err := sm.streamClient.client.SendKubernetesNetworkFlows(falcoCtx)
 	if err != nil {
 		logger.Error("Failed to connect to server", zap.Error(err))
@@ -316,6 +355,10 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager) er
 	}
 
 	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
+
+	keepaliveDone := make(chan struct{})
+	defer close(keepaliveDone)
+	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveNetworkFlow, keepaliveDone)
 
 	err = sm.StreamFalcoNetworkFlows(falcoCtx)
 	if err != nil {
@@ -326,8 +369,10 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager) er
 	return nil
 }
 
-// connectAndStreamResources creates resourceStream client and begins the streaming of resources.
-func connectAndStreamResources(logger *zap.Logger, sm *streamManager) error {
+// connectAndStreamResources creates resourceStream client and begins the
+// streaming of resources. Also starts a goroutine to send keepalives at the
+// configured frequency
+func connectAndStreamResources(logger *zap.Logger, sm *streamManager, keepaliveFrequency time.Duration) error {
 	resourceCtx, resourceCancel := context.WithCancel(context.Background())
 	defer resourceCancel()
 
@@ -339,6 +384,10 @@ func connectAndStreamResources(logger *zap.Logger, sm *streamManager) error {
 
 	sm.streamClient.resourceStream = SendKubernetesResourcesStream
 
+	keepaliveDone := make(chan struct{})
+	defer close(keepaliveDone)
+	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveResource, keepaliveDone)
+
 	err = sm.StreamResources(resourceCtx, resourceCancel)
 	if err != nil {
 		logger.Error("Failed to bootup and stream resources", zap.Error(err))
@@ -348,8 +397,9 @@ func connectAndStreamResources(logger *zap.Logger, sm *streamManager) error {
 	return nil
 }
 
-// connectAndStreamLogs creates sendLogs client and begins the streaming of logs.
-func connectAndStreamLogs(logger *zap.Logger, sm *streamManager) error {
+// connectAndStreamLogs creates sendLogs client and begins the streaming of
+// logs. Also starts a goroutine to send keepalives at the configured frequency
+func connectAndStreamLogs(logger *zap.Logger, sm *streamManager, keepaliveFrequency time.Duration) error {
 	logCtx, logCancel := context.WithCancel(context.Background())
 	defer logCancel()
 
@@ -362,6 +412,10 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager) error {
 	sm.streamClient.logStream = SendLogsStream
 	sm.bufferedGrpcSyncer.UpdateClient(sm.streamClient.logStream, sm.streamClient.conn)
 
+	keepaliveDone := make(chan struct{})
+	defer close(keepaliveDone)
+	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveLog, keepaliveDone)
+
 	err = sm.StreamLogs(logCtx)
 	if err != nil {
 		logger.Error("Failed to bootup and stream logs", zap.Error(err))
@@ -372,7 +426,13 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager) error {
 }
 
 // Generic function to manage any stream with backoff and reconnection logic.
-func manageStream(logger *zap.Logger, connectAndStream func(*zap.Logger, *streamManager) error, sm *streamManager, done chan struct{}) {
+func manageStream(
+	logger *zap.Logger,
+	connectAndStream func(*zap.Logger, *streamManager) error,
+	sm *streamManager,
+	done chan struct{},
+	keepaliveFrequency time.Duration,
+) {
 	defer close(done)
 	const (
 		initialBackoff       = 1 * time.Second
@@ -532,19 +592,19 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			var ciliumDone chan struct{}
 			sm.bufferedGrpcSyncer.done = logDone
 
-			go manageStream(logger, connectAndStreamResources, sm, resourceDone)
-			go manageStream(logger, connectAndStreamLogs, sm, logDone)
+			go manageStream(logger, connectAndStreamResources, sm, resourceDone, envMap.KeepaliveFrequencies.Resource)
+			go manageStream(logger, connectAndStreamLogs, sm, logDone, envMap.KeepaliveFrequencies.Log)
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
-				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
+				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone, envMap.KeepaliveFrequencies.Flow)
 				if !sm.streamClient.disableNetworkFlowsCilium {
 					falcoDone = nil
 				}
 			}
 			if sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = nil
-				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone)
+				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone, envMap.KeepaliveFrequencies.Flow)
 			}
 
 			// Block until one of the streams fail. Then we will jump to the top of
