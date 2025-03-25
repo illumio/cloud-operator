@@ -291,10 +291,6 @@ func (sm *streamManager) StreamKeepalives(
 	sendKeepalive func(*streamManager) error,
 	keepaliveDone chan struct{},
 ) {
-	defer func() {
-		keepaliveDone <- struct{}{}
-	}()
-
 	for {
 		timer := time.NewTimer(freq)
 		select {
@@ -428,7 +424,7 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager, keepaliveFreque
 // Generic function to manage any stream with backoff and reconnection logic.
 func manageStream(
 	logger *zap.Logger,
-	connectAndStream func(*zap.Logger, *streamManager) error,
+	connectAndStream func(*zap.Logger, *streamManager, time.Duration) error,
 	sm *streamManager,
 	done chan struct{},
 	keepaliveFrequency time.Duration,
@@ -457,7 +453,7 @@ func manageStream(
 			backoff = initialBackoff
 			resetTimer.Reset(resetPeriod)
 		case <-sleepTimer.C:
-			err := connectAndStream(logger, sm)
+			err := connectAndStream(logger, sm, keepaliveFrequency)
 			if err != nil {
 				if errors.Is(err, ErrStopRetries) {
 					logger.Info("Stopping retries for this stream as instructed.")
