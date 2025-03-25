@@ -5,6 +5,7 @@ package controller
 import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
@@ -295,4 +296,36 @@ func (suite *ControllerTestSuite) TestRemoveTrailingTab() {
 			assert.Equal(suite.T(), tt.expected, result)
 		})
 	}
+}
+
+func (suite *ControllerTestSuite) TestConvertStringToTimestamp() {
+	tests := map[string]struct {
+		input    string
+		expected *timestamppb.Timestamp
+	}{
+		"Valid ISO 8601 time string": {
+			input: "2022-10-15T15:04:05Z",
+			expected: &timestamppb.Timestamp{
+				Seconds: 1665894245,
+				Nanos:   0,
+			},
+		},
+		"Invalid ISO 8601 time string": {
+			input:    "2022-10-15T15:04:05", // Missing time zone
+			expected: nil,                   // Expected error
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			result, err := convertStringToTimestamp(tt.input)
+			if tt.expected == nil {
+				assert.NotNil(suite.T(), err, "Expected an error but got nil")
+			} else {
+				assert.Nil(suite.T(), err, "Unexpected error occurred")
+				assert.Equal(suite.T(), tt.expected, result)
+			}
+		})
+	}
+
 }
