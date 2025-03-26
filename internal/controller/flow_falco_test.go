@@ -307,7 +307,7 @@ func (suite *ControllerTestSuite) TestConvertStringToTimestamp() {
 		expected *timestamppb.Timestamp
 	}{
 		"Valid ISO 8601 time string": {
-			input: "1987-02-22T00:39:07.267635635+0000",
+			input: "1987-02-22T00:39:07.267635635+0000\t",
 			expected: &timestamppb.Timestamp{
 				Seconds: 540952747,
 				Nanos:   267635635,
