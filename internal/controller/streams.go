@@ -541,6 +541,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 
 			// Block until one of the streams fail. Then we will jump to the top of
 			// this loop & try again: authenticate and open the streams.
+			logger.Info("All streams are open and running")
 			select {
 			case <-ciliumDone:
 				failureReason = "Cilium network flow stream closed"
