@@ -46,11 +46,20 @@ docker-push:
 .PHONY: deploy
 deploy: docker-build docker-push
 
+# Check if Docker is running
+.PHONY: docker-check
+docker-check:
+	@docker info > /dev/null 2>&1 || (echo "Docker is not running. Please start Docker." && exit 1)
+
 # Create and run a local Docker registry
-.PHONY: local-registry
-local-registry:
+.PHONY: docker-registry-local
+docker-registry-local: docker-check
 	@echo "Creating Local Docker Registry..."
-	docker run -d -p 5000:5000 --name registry registry:2 || echo "Local registry already running"
+	@if [ "`docker ps -a -q -f name=registry`" ]; then \
+		echo "Local registry already running"; \
+	else \
+		docker run -d -p 5000:5000 --name registry registry:2; \
+	fi
 
 # Build Docker image for local registry
 .PHONY: docker-build-local
@@ -84,7 +93,7 @@ help:
 	@echo "  docker-build       Build Docker image"
 	@echo "  docker-push        Push Docker image to Docker Hub"
 	@echo "  deploy             Build and push Docker image to Docker Hub"
-	@echo "  local-registry     Create and run a local Docker registry"
+	@echo "  docker-registry-local     Create and run a local Docker registry"
 	@echo "  docker-build-local Build Docker image for local registry"
 	@echo "  docker-push-local  Push Docker image to local registry"
 	@echo "  deploy-local       Build and push Docker image to local registry"
