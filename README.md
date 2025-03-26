@@ -51,7 +51,7 @@ This will delete all the resources associated with the `illumio` release from th
 - Kubernetes v1.30+ cluster.
 - helm version v3.15.4+
 
-## Making a private build
+## Making a private build to Docker hub
 
 The following `make` command will build and push a private build to `docker
 hub`.
@@ -61,7 +61,36 @@ docker login
 make docker-build docker-push DOCKER_USERNAME=arisweedler386
 ```
 
-TODO: ENABLE LOCAL BUILD
+## Making a private build to a local registry (if testing with a local cluster)
+
+### Creating a minikube clsuter
+
+The following command starts a minikube cluster that will allow you to pull from your local registry
+`
+minikube start --insecure-registry="host.docker.internal:5000"
+`
+
+### Creating a local registry for your Cloud-Operator images
+
+To create a local registry please use the following `make` command
+`
+make local-registry
+`
+
+### Building a local image to registry
+
+Once you have made your local changes, the following `make` command will build and push to your local registry
+`
+make deploy-local
+`
+
+### Deploying local image to Kubernetes
+
+To deploy using helm and to test the operator using fakeserver here is an example of the command with `--set` args
+`
+helm install illumio --namespace illumio-cloud oci://ghcr.io/illumio/charts/cloud-operator --version v1.0.5 --create-namespace \
+ --values ./fakeserver/cloud-operator.fakeserver.yaml,./cloud-operator.image.yaml
+`
 
 ## License
 
