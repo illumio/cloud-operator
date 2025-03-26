@@ -88,7 +88,7 @@ var ErrFalcoEventIsNotFlow = errors.New("ignoring falco event, not a network flo
 var ErrFalcoIncompleteL3Flow = errors.New("ignoring incomplete falco l3 network flow")
 var ErrFalcoIncompleteL4Flow = errors.New("ignoring incomplete falco l4 network flow")
 var ErrFalcoInvalidPort = errors.New("ignoring incomplete falco flow due to bad ports")
-var ErrFalcoTimeStamp = errors.New("incomplete or incorrectly formatted timestamp found in Falco flow")
+var ErrFalcoTimestamp = errors.New("incomplete or incorrectly formatted timestamp found in Falco flow")
 var falcoPort = ":5000"
 var reIllumioTraffic *regexp.Regexp
 var reParsePodNetworkInfo *regexp.Regexp

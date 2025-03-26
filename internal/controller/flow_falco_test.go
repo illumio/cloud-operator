@@ -9,7 +9,6 @@ import (
 )
 
 func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
-	//t := "1987-02-22T00:39:07.267635635+0000"
 	ts, _ := convertStringToTimestamp("1987-02-22T00:39:07.267635635+0000")
 
 	tests := map[string]struct {
