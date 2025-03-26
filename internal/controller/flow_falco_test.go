@@ -9,6 +9,7 @@ import (
 )
 
 func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
+	//t := "1987-02-22T00:39:07.267635635+0000"
 	ts, _ := convertStringToTimestamp("1987-02-22T00:39:07.267635635+0000")
 
 	tests := map[string]struct {
@@ -19,7 +20,7 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 		"valid TCP flow": {
 			input: "time=1987-02-22T00:39:07.267635635+0000\t srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=tcp ipversion=ipv4",
 			expected: &pb.FalcoFlow{
-				Time: ts,
+				TimeStamp: ts,
 				Layer3: &pb.IP{
 					Source:      "192.168.1.1",
 					Destination: "192.168.1.2",
@@ -40,7 +41,7 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 		"valid UDP flow": {
 			input: "time=1987-02-22T00:39:07.267635635+0000\t srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=udp ipversion=ipv4",
 			expected: &pb.FalcoFlow{
-				Time: ts,
+				TimeStamp: ts,
 				Layer3: &pb.IP{
 					Source:      "192.168.1.1",
 					Destination: "192.168.1.2",
