@@ -131,7 +131,7 @@ func sendResourceSnapshotComplete(sm *streamManager) error {
 // sendKeepaliveNetworkFlow is a `sendKeepalive*` function that simply
 // formulates a keepalive ping for the specific stream & sends it
 func sendKeepaliveNetworkFlow(sm *streamManager) error {
-	request := &pb.SendKubernetesNetworkFlowsRequest{Request: &pb.SendKubernetesNetworkFlowsRequest_KeepalivePing{}}
+	request := &pb.SendKubernetesNetworkFlowsRequest{Request: &pb.SendKubernetesNetworkFlowsRequest_Keepalive{}}
 	if err := sm.streamClient.networkFlowsStream.Send(request); err != nil {
 		sm.logger.Error("Failed to send keepalive for network flow", zap.Error(err))
 		return err
@@ -142,7 +142,7 @@ func sendKeepaliveNetworkFlow(sm *streamManager) error {
 // sendKeepaliveResource is a `sendKeepalive*` function that simply
 // formulates a keepalive ping for the specific stream & sends it
 func sendKeepaliveResource(sm *streamManager) error {
-	request := &pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_KeepalivePing{}}
+	request := &pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_Keepalive{}}
 	if err := sm.streamClient.resourceStream.Send(request); err != nil {
 		sm.logger.Error("Failed to send keepalive for network flow", zap.Error(err))
 		return err
@@ -153,7 +153,7 @@ func sendKeepaliveResource(sm *streamManager) error {
 // sendKeepaliveLog is a `sendKeepalive*` function that simply
 // formulates a keepalive ping for the specific stream & sends it
 func sendKeepaliveLog(sm *streamManager) error {
-	request := &pb.SendLogsRequest{Request: &pb.SendLogsRequest_KeepalivePing{}}
+	request := &pb.SendLogsRequest{Request: &pb.SendLogsRequest_Keepalive{}}
 	if err := sm.streamClient.logStream.Send(request); err != nil {
 		sm.logger.Error("Failed to send keepalive for network flow", zap.Error(err))
 		return err
