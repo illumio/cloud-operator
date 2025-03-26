@@ -72,7 +72,7 @@ spec:
               value: "{{ .Values.env.tokenEndpoint }}"
             - name: TLS_SKIP_VERIFY
               value: "{{ .Values.env.tlsSkipVerify }}"
-            - name: STREAM_KEEPALIVE_RESOURCE
+            - name: STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES
               value: "{{ .Values.env.streamKeepalive.resource }}"
             - name: STREAM_KEEPALIVE_FLOW
               value: "{{ .Values.env.streamKeepalive.flow }}"
