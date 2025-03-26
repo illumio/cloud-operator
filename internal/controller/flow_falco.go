@@ -3,7 +3,6 @@ package controller
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -50,7 +49,7 @@ func convertStringToTimestamp(value string) (*timestamppb.Timestamp, error) {
 	// Parse the timestamp string using the specified layout
 	t, err := time.Parse(layout, value)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse ISO time: %v", err)
+		return nil, ErrFalcoTimeStamp
 	}
 
 	// Convert the parsed timestamp to timestamppb.Timestamp
@@ -75,7 +74,7 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 			case "time":
 				ts, err := convertStringToTimestamp(value)
 				if err != nil {
-					return nil, ErrFalcoTimeStamp
+					return nil, err
 				}
 				info.Time = ts
 			case "srcip":
