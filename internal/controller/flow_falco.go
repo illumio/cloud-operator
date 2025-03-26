@@ -49,7 +49,7 @@ func convertStringToTimestamp(value string) (*timestamppb.Timestamp, error) {
 	// Parse the timestamp string using the specified layout
 	t, err := time.Parse(layout, value)
 	if err != nil {
-		return nil, ErrFalcoTimeStamp
+		return nil, ErrFalcoTimestamp
 	}
 
 	// Convert the parsed timestamp to timestamppb.Timestamp
