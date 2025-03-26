@@ -91,11 +91,7 @@ To deploy using helm and to test the operator using fakeserver here is an exampl
 helm install illumio --namespace illumio-cloud --create-namespace \
   --set image.repository=host.docker.internal:5000/operator \
   --set image.tag=latest \
-  --set onboardingSecret.clientId=client_id_1 \
-  --set onboardingSecret.clientSecret=client_secret_1 \
-  --set env.tlsSkipVerify=true \
-  --set env.onboardingEndpoint=https://host.docker.internal:50053/api/v1/k8s_cluster/onboard \
-  --set env.tokenEndpoint=https://host.docker.internal:50053/api/v1/k8s_cluster/authenticate \
+  --values ./fakeserver/cloud-operator.fakeserver.yaml \
   oci://ghcr.io/illumio/charts/cloud-operator --version v1.0.5
 `
 
