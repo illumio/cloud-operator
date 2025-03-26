@@ -59,7 +59,7 @@ tests:
           value: "10s"
       - equal:
           path: spec.template.spec.containers[0].env[8].name
-          value: "STREAM_KEEPALIVE_LOG"
+          value: "STREAM_KEEPALIVE_PERIOD_LOGS"
       - equal:
           path: spec.template.spec.containers[0].env[8].value
           value: "10s"
