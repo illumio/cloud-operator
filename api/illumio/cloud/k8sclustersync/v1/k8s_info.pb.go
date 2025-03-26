@@ -1140,6 +1140,7 @@ func (x *FalcoFlow) GetTimeField() isFalcoFlow_TimeField {
 	return nil
 }
 
+// Deprecated: Marked as deprecated in illumio/cloud/k8sclustersync/v1/k8s_info.proto.
 func (x *FalcoFlow) GetTime() string {
 	if x != nil {
 		if x, ok := x.TimeField.(*FalcoFlow_Time); ok {
@@ -1163,6 +1164,7 @@ type isFalcoFlow_TimeField interface {
 }
 
 type FalcoFlow_Time struct {
+	// Deprecated: Marked as deprecated in illumio/cloud/k8sclustersync/v1/k8s_info.proto.
 	Time string `protobuf:"bytes,3,opt,name=time,proto3,oneof"`
 }
 
@@ -2680,11 +2682,11 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x0fupdate_resource\x18\x02 \x01(\v25.illumio.cloud.k8sclustersync.v1.KubernetesObjectDataH\x00R\x0eupdateResource\x12`\n" +
 	"\x0fdelete_resource\x18\x03 \x01(\v25.illumio.cloud.k8sclustersync.v1.KubernetesObjectDataH\x00R\x0edeleteResourceB\n" +
 	"\n" +
-	"\bmutation\"\xea\x01\n" +
+	"\bmutation\"\xee\x01\n" +
 	"\tFalcoFlow\x12;\n" +
 	"\x06layer3\x18\x01 \x01(\v2#.illumio.cloud.k8sclustersync.v1.IPR\x06layer3\x12?\n" +
-	"\x06layer4\x18\x02 \x01(\v2'.illumio.cloud.k8sclustersync.v1.Layer4R\x06layer4\x12\x14\n" +
-	"\x04time\x18\x03 \x01(\tH\x00R\x04time\x12;\n" +
+	"\x06layer4\x18\x02 \x01(\v2'.illumio.cloud.k8sclustersync.v1.Layer4R\x06layer4\x12\x18\n" +
+	"\x04time\x18\x03 \x01(\tB\x02\x18\x01H\x00R\x04time\x12;\n" +
 	"\n" +
 	"time_stamp\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampH\x00R\ttimeStampB\f\n" +
 	"\n" +

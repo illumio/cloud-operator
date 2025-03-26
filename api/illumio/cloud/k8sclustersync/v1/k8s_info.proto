@@ -169,7 +169,7 @@ message FalcoFlow {
   //Time field to make old Operators compatible
 
   oneof time_field {
-    string time = 3;
+    string time = 3 [deprecated = true];
     google.protobuf.Timestamp time_stamp = 4;
   }
 }
