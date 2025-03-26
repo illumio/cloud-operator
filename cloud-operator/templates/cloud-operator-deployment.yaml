@@ -73,10 +73,10 @@ spec:
             - name: TLS_SKIP_VERIFY
               value: "{{ .Values.env.tlsSkipVerify }}"
             - name: STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES
-              value: "{{ .Values.env.streamKeepalivePeriods.resource }}"
+              value: "{{ .Values.env.streamKeepalivePeriods.kubernetes_resource }}"
             - name: STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS
-              value: "{{ .Values.env.streamKeepalivePeriods.flow }}"
+              value: "{{ .Values.env.streamKeepalivePeriods.kubernetes_network_flows }}"
             - name: STREAM_KEEPALIVE_PERIOD_LOGS
-              value: "{{ .Values.env.streamKeepalivePeriods.log }}"
+              value: "{{ .Values.env.streamKeepalivePeriods.logs }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
