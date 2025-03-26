@@ -47,7 +47,7 @@ tests:
 
       - equal:
           path: spec.template.spec.containers[0].env[6].name
-          value: "STREAM_KEEPALIVE_RESOURCE"
+          value: "STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES"
       - equal:
           path: spec.template.spec.containers[0].env[6].value
           value: "10s"
