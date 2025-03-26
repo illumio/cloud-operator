@@ -76,7 +76,7 @@ spec:
               value: "{{ .Values.env.streamKeepalivePeriods.resource }}"
             - name: STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS
               value: "{{ .Values.env.streamKeepalivePeriods.flow }}"
-            - name: STREAM_KEEPALIVE_LOG
+            - name: STREAM_KEEPALIVE_PERIOD_LOGS
               value: "{{ .Values.env.streamKeepalivePeriods.log }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
