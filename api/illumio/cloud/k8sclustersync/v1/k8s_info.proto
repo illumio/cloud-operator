@@ -9,7 +9,23 @@ import "google/protobuf/wrappers.proto";
 
 option go_package = "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1";
 
-// Keepalive
+// Application-level keepalives. While gRPC already has a system-level keepalive
+// mechanism, we have seen deployments where the onboarding server lives behind
+// an ingress. The gRPC system-level keepalive (represented by the `-`s in the
+// diagram) terminates at the ingress, and thus doesn't do its job fully. This
+// is solved with an application level keepalive (represented by the `=`s in the
+// diagram)
+//
+// +----------------+       +---------+          +-------------------+
+// |                +------>+         +          +                   |
+// | cloud-operator +       + ingress +          + onboarding server |
+// |                +======>+         +=========>+                   |
+// +----------------+       +---------+          +-------------------+
+//
+// Keepalives are important to us, because when the onboarding server restarts,
+// the cloud-operator will not know until it sends a message. So these
+// application-level keepalives will re-establish connections to the onboarding
+// server faster than if we wait for reasons to send data over the channel
 message Keepalive {}
 
 // Metadata associated with a Kubernetes resource.
@@ -105,7 +121,7 @@ message KubernetesClusterMetadata {
 message SendKubernetesResourcesRequest {
   // Send any of these "request" messages that can contain any of the documented types.
   oneof request {
-    Keepalive keepalive_ping = 5;
+    Keepalive keepalive = 5;
 
     // Metadata about the cluster and operator.
     KubernetesClusterMetadata cluster_metadata = 1;
@@ -331,7 +347,7 @@ message Policy {
 // Flow exported by the CNI plugin in the cluster.
 message SendKubernetesNetworkFlowsRequest {
   oneof request {
-    Keepalive keepalive_ping = 3;
+    Keepalive keepalive = 3;
 
     CiliumFlow cilium_flow = 1;
     FalcoFlow falco_flow = 2;
@@ -364,7 +380,7 @@ message LogEntry {
 // Message to encapsulate a request to send logs.
 message SendLogsRequest {
   oneof request {
-    Keepalive keepalive_ping = 2;
+    Keepalive keepalive = 2;
 
     // A single log entry to be sent.
     LogEntry log_entry = 1;
