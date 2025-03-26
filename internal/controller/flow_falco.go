@@ -31,6 +31,9 @@ type FalcoEvent struct {
 	IpVersion string `json:"prototype"`
 }
 
+// Define the layout string for parsing the Falco timestamp
+const falcoTimestampFormat = "2006-01-02T15:04:05.999999999-0700"
+
 // removeTrailingTab removes the trailing tab character from the input string if it exists.
 // Within the falco network logs, the timestamp comes with a trailing '\t', this function
 // trims that tab off before sending up to CloudSecure.
@@ -38,16 +41,12 @@ func removeTrailingTab(time string) string {
 	return strings.TrimRight(time, "\t")
 }
 
-// convertStringToTimestamp converts the provided string value to a timestamppb.Timestamp object
-// and updates the Time field of the FalcoEvent struct with the provided value.
-// It parses the input string value in RFC3339 format and returns a timestamppb.Timestamp object.
-func convertStringToTimestamp(value string) (*timestamppb.Timestamp, error) {
+// parseFalcoTimestamp  parses the input string value in a Falco's timestamp format that is similar to RFC3339 and returns a timestamppb.Timestamp.
+func parseFalcoTimestamp(value string) (*timestamppb.Timestamp, error) {
 	value = removeTrailingTab(value)
-	// Define the layout string for parsing the timestamp
-	layout := "2006-01-02T15:04:05.999999999-0700"
 
 	// Parse the timestamp string using the specified layout
-	t, err := time.Parse(layout, value)
+	t, err := time.Parse(falcoTimestampFormat, value)
 	if err != nil {
 		return nil, ErrFalcoTimestamp
 	}
@@ -72,7 +71,7 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 			key, value := match[1], match[2]
 			switch key {
 			case "time":
-				ts, err := convertStringToTimestamp(value)
+				ts, err := parseFalcoTimestamp(value)
 				if err != nil {
 					return nil, err
 				}

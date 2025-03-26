@@ -9,7 +9,7 @@ import (
 )
 
 func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
-	ts, _ := convertStringToTimestamp("1987-02-22T00:39:07.267635635+0000")
+	ts, _ := parseFalcoTimestamp("1987-02-22T00:39:07.267635635+0000")
 
 	tests := map[string]struct {
 		input    string
@@ -324,7 +324,7 @@ func (suite *ControllerTestSuite) TestConvertStringToTimestamp() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			result, err := convertStringToTimestamp(tt.input)
+			result, err := parseFalcoTimestamp(tt.input)
 			if tt.expected == nil {
 				assert.NotNil(suite.T(), err, "Expected an error but got nil")
 			} else {
