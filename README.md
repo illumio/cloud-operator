@@ -88,11 +88,8 @@ make deploy-local
 
 To deploy using helm and to test the operator using fakeserver here is an example of the command with `--set` args
 `
-helm install illumio --namespace illumio-cloud --create-namespace \
-  --set image.repository=host.docker.internal:5000/operator \
-  --set image.tag=latest \
-  --values ./fakeserver/cloud-operator.fakeserver.yaml \
-  oci://ghcr.io/illumio/charts/cloud-operator --version v1.0.5
+helm install illumio --namespace illumio-cloud oci://ghcr.io/illumio/charts/cloud-operator --version v1.0.5 --create-namespace \
+ --values ./fakeserver/cloud-operator.fakeserver.yaml,./cloud-operator.image.yaml
 `
 
 ## License
