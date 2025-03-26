@@ -1079,11 +1079,12 @@ type FalcoFlow struct {
 	// layer3 IP layer, source, destination and ip_version
 	Layer3 *IP `protobuf:"bytes,1,opt,name=layer3,proto3" json:"layer3,omitempty"`
 	// Proto contains protocol used
-	Layer4 *Layer4 `protobuf:"bytes,2,opt,name=layer4,proto3" json:"layer4,omitempty"`
-	// Time field to make old Operators compatible
-	Time *string `protobuf:"bytes,4,opt,name=time,proto3,oneof" json:"time,omitempty"`
-	// Time when flow occurred.
-	TimeStamp     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=time_stamp,json=timeStamp,proto3" json:"time_stamp,omitempty"`
+	Layer4 *Layer4 `protobuf:"bytes,2,opt,name=layer4,proto3" json:"layer4,omitempty"` //Time field to make old Operators compatible
+	// Types that are valid to be assigned to TimeField:
+	//
+	//	*FalcoFlow_Time
+	//	*FalcoFlow_TimeStamp
+	TimeField     isFalcoFlow_TimeField `protobuf_oneof:"time_field"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1132,19 +1133,46 @@ func (x *FalcoFlow) GetLayer4() *Layer4 {
 	return nil
 }
 
+func (x *FalcoFlow) GetTimeField() isFalcoFlow_TimeField {
+	if x != nil {
+		return x.TimeField
+	}
+	return nil
+}
+
 func (x *FalcoFlow) GetTime() string {
-	if x != nil && x.Time != nil {
-		return *x.Time
+	if x != nil {
+		if x, ok := x.TimeField.(*FalcoFlow_Time); ok {
+			return x.Time
+		}
 	}
 	return ""
 }
 
 func (x *FalcoFlow) GetTimeStamp() *timestamppb.Timestamp {
 	if x != nil {
-		return x.TimeStamp
+		if x, ok := x.TimeField.(*FalcoFlow_TimeStamp); ok {
+			return x.TimeStamp
+		}
 	}
 	return nil
 }
+
+type isFalcoFlow_TimeField interface {
+	isFalcoFlow_TimeField()
+}
+
+type FalcoFlow_Time struct {
+	Time string `protobuf:"bytes,3,opt,name=time,proto3,oneof"`
+}
+
+type FalcoFlow_TimeStamp struct {
+	TimeStamp *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=time_stamp,json=timeStamp,proto3,oneof"`
+}
+
+func (*FalcoFlow_Time) isFalcoFlow_TimeField() {}
+
+func (*FalcoFlow_TimeStamp) isFalcoFlow_TimeField() {}
 
 // A flow received from Cilium Hubble Relay using the Observer service's GetFlows RPC.
 // https://github.com/cilium/cilium/blob/main/api/v1/observer/observer.proto
@@ -2652,14 +2680,15 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x0fupdate_resource\x18\x02 \x01(\v25.illumio.cloud.k8sclustersync.v1.KubernetesObjectDataH\x00R\x0eupdateResource\x12`\n" +
 	"\x0fdelete_resource\x18\x03 \x01(\v25.illumio.cloud.k8sclustersync.v1.KubernetesObjectDataH\x00R\x0edeleteResourceB\n" +
 	"\n" +
-	"\bmutation\"\xe6\x01\n" +
+	"\bmutation\"\xea\x01\n" +
 	"\tFalcoFlow\x12;\n" +
 	"\x06layer3\x18\x01 \x01(\v2#.illumio.cloud.k8sclustersync.v1.IPR\x06layer3\x12?\n" +
-	"\x06layer4\x18\x02 \x01(\v2'.illumio.cloud.k8sclustersync.v1.Layer4R\x06layer4\x12\x17\n" +
-	"\x04time\x18\x04 \x01(\tH\x00R\x04time\x88\x01\x01\x129\n" +
+	"\x06layer4\x18\x02 \x01(\v2'.illumio.cloud.k8sclustersync.v1.Layer4R\x06layer4\x12\x14\n" +
+	"\x04time\x18\x03 \x01(\tH\x00R\x04time\x12;\n" +
 	"\n" +
-	"time_stamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimeStampB\a\n" +
-	"\x05_time\"\xca\b\n" +
+	"time_stamp\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampH\x00R\ttimeStampB\f\n" +
+	"\n" +
+	"time_field\"\xca\b\n" +
 	"\n" +
 	"CiliumFlow\x12.\n" +
 	"\x04time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x1b\n" +
@@ -2921,7 +2950,10 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() {
 		(*KubernetesResourceMutation_UpdateResource)(nil),
 		(*KubernetesResourceMutation_DeleteResource)(nil),
 	}
-	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[10].OneofWrappers = []any{}
+	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[10].OneofWrappers = []any{
+		(*FalcoFlow_Time)(nil),
+		(*FalcoFlow_TimeStamp)(nil),
+	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[11].OneofWrappers = []any{}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[14].OneofWrappers = []any{
 		(*Layer4_Tcp)(nil),
