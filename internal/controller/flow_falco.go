@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/ptypes/timestamp"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -51,13 +50,7 @@ func parseFalcoTimestamp(value string) (*timestamppb.Timestamp, error) {
 		return nil, ErrFalcoTimestamp
 	}
 
-	// Convert the parsed timestamp to timestamppb.Timestamp
-	timestampPB := &timestamp.Timestamp{
-		Seconds: t.Unix(),
-		Nanos:   int32(t.Nanosecond()),
-	}
-
-	return timestampPB, nil
+	return timestamppb.New(t), nil
 }
 
 // parsePodNetworkInfo parses the input string to extract network information into a FalcoFlow message.

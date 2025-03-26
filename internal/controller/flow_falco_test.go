@@ -3,6 +3,8 @@
 package controller
 
 import (
+	"time"
+
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -305,16 +307,14 @@ func (suite *ControllerTestSuite) TestRemoveTrailingTab() {
 }
 
 func (suite *ControllerTestSuite) TestConvertStringToTimestamp() {
+	ts, _ := time.Parse(falcoTimestampFormat, "1987-02-22T00:39:07.267635635+0000")
 	tests := map[string]struct {
 		input    string
 		expected *timestamppb.Timestamp
 	}{
 		"Valid ISO 8601 time string": {
-			input: "1987-02-22T00:39:07.267635635+0000\t",
-			expected: &timestamppb.Timestamp{
-				Seconds: 540952747,
-				Nanos:   267635635,
-			},
+			input:    "1987-02-22T00:39:07.267635635+0000\t",
+			expected: timestamppb.New(ts),
 		},
 		"Invalid ISO 8601 time string": {
 			input:    "2022-10-15T15:04:05", // Missing time zone
