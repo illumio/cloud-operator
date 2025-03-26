@@ -12,11 +12,12 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 type streamClient struct {
@@ -43,10 +44,10 @@ type streamManager struct {
 	keepaliveFrequency *time.Duration
 }
 
-type KeepaliveFrequencies struct {
-	Flow     time.Duration
-	Log      time.Duration
-	Resource time.Duration
+type KeepalivePeriods struct {
+	KubernetesNetworkFlows time.Duration
+	Logs                   time.Duration
+	KubernetesResources    time.Duration
 }
 
 type EnvironmentConfig struct {
@@ -64,8 +65,8 @@ type EnvironmentConfig struct {
 	TokenEndpoint string
 	// Whether to skip TLS certificate verification when starting a stream.
 	TlsSkipVerify bool
-	// How often do we send keepalives for each stream
-	KeepaliveFrequencies KeepaliveFrequencies
+	// KeepalivePeriods specifies the period (minus jitter) between two keepalives sent on each stream
+	KeepalivePeriods KeepalivePeriods
 }
 
 var resourceAPIGroupMap = map[string]string{
@@ -282,24 +283,24 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 }
 
 // StreamKeepalives loops infinitely as long as the keepalives are working. We
-// halt when the 'keepaliveDone' channel is written to, or when sending a
+// halt when the 'keepaliveDone' channel is closed, or when sending a
 // keepalive ping fails.
 //
 // This should be run inside a goroutine in every `connectAndStream*` function
 func (sm *streamManager) StreamKeepalives(
-	freq time.Duration,
+	period time.Duration,
 	sendKeepalive func(*streamManager) error,
 	keepaliveDone chan struct{},
 ) {
 	for {
-		timer := time.NewTimer(freq)
+		timer := time.NewTimer(period)
 		select {
 		case <-timer.C:
 			err := sendKeepalive(sm)
 			if err != nil {
 				return
 			}
-			timer.Reset(freq)
+			timer.Reset(period)
 		case <-keepaliveDone:
 			return
 		}
@@ -588,19 +589,19 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			var ciliumDone chan struct{}
 			sm.bufferedGrpcSyncer.done = logDone
 
-			go manageStream(logger, connectAndStreamResources, sm, resourceDone, envMap.KeepaliveFrequencies.Resource)
-			go manageStream(logger, connectAndStreamLogs, sm, logDone, envMap.KeepaliveFrequencies.Log)
+			go manageStream(logger, connectAndStreamResources, sm, resourceDone, envMap.KeepalivePeriods.KubernetesResources)
+			go manageStream(logger, connectAndStreamLogs, sm, logDone, envMap.KeepalivePeriods.Logs)
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
-				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone, envMap.KeepaliveFrequencies.Flow)
+				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone, envMap.KeepalivePeriods.KubernetesNetworkFlows)
 				if !sm.streamClient.disableNetworkFlowsCilium {
 					falcoDone = nil
 				}
 			}
 			if sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = nil
-				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone, envMap.KeepaliveFrequencies.Flow)
+				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone, envMap.KeepalivePeriods.KubernetesNetworkFlows)
 			}
 
 			// Block until one of the streams fail. Then we will jump to the top of
