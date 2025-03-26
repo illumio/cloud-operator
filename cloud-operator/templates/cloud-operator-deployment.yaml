@@ -74,7 +74,7 @@ spec:
               value: "{{ .Values.env.tlsSkipVerify }}"
             - name: STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES
               value: "{{ .Values.env.streamKeepalivePeriods.resource }}"
-            - name: STREAM_KEEPALIVE_FLOW
+            - name: STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS
               value: "{{ .Values.env.streamKeepalivePeriods.flow }}"
             - name: STREAM_KEEPALIVE_LOG
               value: "{{ .Values.env.streamKeepalivePeriods.log }}"

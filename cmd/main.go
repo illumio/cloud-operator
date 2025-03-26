@@ -72,7 +72,7 @@ func main() {
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
 	bindEnv(logger, "stream_keepalive_resource", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES")
-	bindEnv(logger, "stream_keepalive_flow", "STREAM_KEEPALIVE_FLOW")
+	bindEnv(logger, "stream_keepalive_flow", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS")
 	bindEnv(logger, "stream_keepalive_log", "STREAM_KEEPALIVE_LOG")
 
 	// Set default values

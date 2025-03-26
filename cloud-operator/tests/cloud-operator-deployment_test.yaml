@@ -53,7 +53,7 @@ tests:
           value: "10s"
       - equal:
           path: spec.template.spec.containers[0].env[7].name
-          value: "STREAM_KEEPALIVE_FLOW"
+          value: "STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS"
       - equal:
           path: spec.template.spec.containers[0].env[7].value
           value: "10s"
