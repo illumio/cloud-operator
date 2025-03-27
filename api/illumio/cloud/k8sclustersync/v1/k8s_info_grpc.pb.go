@@ -24,6 +24,7 @@ const (
 	KubernetesInfoService_SendKubernetesResources_FullMethodName    = "/illumio.cloud.k8sclustersync.v1.KubernetesInfoService/SendKubernetesResources"
 	KubernetesInfoService_SendKubernetesNetworkFlows_FullMethodName = "/illumio.cloud.k8sclustersync.v1.KubernetesInfoService/SendKubernetesNetworkFlows"
 	KubernetesInfoService_SendLogs_FullMethodName                   = "/illumio.cloud.k8sclustersync.v1.KubernetesInfoService/SendLogs"
+	KubernetesInfoService_GetConfigurationUpdates_FullMethodName    = "/illumio.cloud.k8sclustersync.v1.KubernetesInfoService/GetConfigurationUpdates"
 )
 
 // KubernetesInfoServiceClient is the client API for KubernetesInfoService service.
@@ -36,6 +37,8 @@ type KubernetesInfoServiceClient interface {
 	SendKubernetesNetworkFlows(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendKubernetesNetworkFlowsClient, error)
 	// Continuously syncs logs from operator and cluster.
 	SendLogs(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_SendLogsClient, error)
+	// Continuously receives configuration updates from CloudSecure.
+	GetConfigurationUpdates(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_GetConfigurationUpdatesClient, error)
 }
 
 type kubernetesInfoServiceClient struct {
@@ -139,6 +142,37 @@ func (x *kubernetesInfoServiceSendLogsClient) Recv() (*SendLogsResponse, error) 
 	return m, nil
 }
 
+func (c *kubernetesInfoServiceClient) GetConfigurationUpdates(ctx context.Context, opts ...grpc.CallOption) (KubernetesInfoService_GetConfigurationUpdatesClient, error) {
+	stream, err := c.cc.NewStream(ctx, &KubernetesInfoService_ServiceDesc.Streams[3], KubernetesInfoService_GetConfigurationUpdates_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &kubernetesInfoServiceGetConfigurationUpdatesClient{stream}
+	return x, nil
+}
+
+type KubernetesInfoService_GetConfigurationUpdatesClient interface {
+	Send(*GetConfigurationUpdatesRequest) error
+	Recv() (*GetConfigurationUpdatesResponse, error)
+	grpc.ClientStream
+}
+
+type kubernetesInfoServiceGetConfigurationUpdatesClient struct {
+	grpc.ClientStream
+}
+
+func (x *kubernetesInfoServiceGetConfigurationUpdatesClient) Send(m *GetConfigurationUpdatesRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *kubernetesInfoServiceGetConfigurationUpdatesClient) Recv() (*GetConfigurationUpdatesResponse, error) {
+	m := new(GetConfigurationUpdatesResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // KubernetesInfoServiceServer is the server API for KubernetesInfoService service.
 // All implementations must embed UnimplementedKubernetesInfoServiceServer
 // for forward compatibility
@@ -149,6 +183,8 @@ type KubernetesInfoServiceServer interface {
 	SendKubernetesNetworkFlows(KubernetesInfoService_SendKubernetesNetworkFlowsServer) error
 	// Continuously syncs logs from operator and cluster.
 	SendLogs(KubernetesInfoService_SendLogsServer) error
+	// Continuously receives configuration updates from CloudSecure.
+	GetConfigurationUpdates(KubernetesInfoService_GetConfigurationUpdatesServer) error
 	mustEmbedUnimplementedKubernetesInfoServiceServer()
 }
 
@@ -164,6 +200,9 @@ func (UnimplementedKubernetesInfoServiceServer) SendKubernetesNetworkFlows(Kuber
 }
 func (UnimplementedKubernetesInfoServiceServer) SendLogs(KubernetesInfoService_SendLogsServer) error {
 	return status.Errorf(codes.Unimplemented, "method SendLogs not implemented")
+}
+func (UnimplementedKubernetesInfoServiceServer) GetConfigurationUpdates(KubernetesInfoService_GetConfigurationUpdatesServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetConfigurationUpdates not implemented")
 }
 func (UnimplementedKubernetesInfoServiceServer) mustEmbedUnimplementedKubernetesInfoServiceServer() {}
 
@@ -256,6 +295,32 @@ func (x *kubernetesInfoServiceSendLogsServer) Recv() (*SendLogsRequest, error) {
 	return m, nil
 }
 
+func _KubernetesInfoService_GetConfigurationUpdates_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(KubernetesInfoServiceServer).GetConfigurationUpdates(&kubernetesInfoServiceGetConfigurationUpdatesServer{stream})
+}
+
+type KubernetesInfoService_GetConfigurationUpdatesServer interface {
+	Send(*GetConfigurationUpdatesResponse) error
+	Recv() (*GetConfigurationUpdatesRequest, error)
+	grpc.ServerStream
+}
+
+type kubernetesInfoServiceGetConfigurationUpdatesServer struct {
+	grpc.ServerStream
+}
+
+func (x *kubernetesInfoServiceGetConfigurationUpdatesServer) Send(m *GetConfigurationUpdatesResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *kubernetesInfoServiceGetConfigurationUpdatesServer) Recv() (*GetConfigurationUpdatesRequest, error) {
+	m := new(GetConfigurationUpdatesRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // KubernetesInfoService_ServiceDesc is the grpc.ServiceDesc for KubernetesInfoService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -279,6 +344,12 @@ var KubernetesInfoService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "SendLogs",
 			Handler:       _KubernetesInfoService_SendLogs_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "GetConfigurationUpdates",
+			Handler:       _KubernetesInfoService_GetConfigurationUpdates_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
