@@ -1080,11 +1080,11 @@ type FalcoFlow struct {
 	Layer3 *IP `protobuf:"bytes,1,opt,name=layer3,proto3" json:"layer3,omitempty"`
 	// Proto contains protocol used
 	Layer4 *Layer4 `protobuf:"bytes,2,opt,name=layer4,proto3" json:"layer4,omitempty"` //Time field to make old Operators compatible
-	// Types that are valid to be assigned to TimeField:
+	// Types that are valid to be assigned to Ts:
 	//
 	//	*FalcoFlow_Time
-	//	*FalcoFlow_TimeStamp
-	TimeField     isFalcoFlow_TimeField `protobuf_oneof:"time_field"`
+	//	*FalcoFlow_Timestamp
+	Ts            isFalcoFlow_Ts `protobuf_oneof:"ts"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1133,9 +1133,9 @@ func (x *FalcoFlow) GetLayer4() *Layer4 {
 	return nil
 }
 
-func (x *FalcoFlow) GetTimeField() isFalcoFlow_TimeField {
+func (x *FalcoFlow) GetTs() isFalcoFlow_Ts {
 	if x != nil {
-		return x.TimeField
+		return x.Ts
 	}
 	return nil
 }
@@ -1143,24 +1143,24 @@ func (x *FalcoFlow) GetTimeField() isFalcoFlow_TimeField {
 // Deprecated: Marked as deprecated in illumio/cloud/k8sclustersync/v1/k8s_info.proto.
 func (x *FalcoFlow) GetTime() string {
 	if x != nil {
-		if x, ok := x.TimeField.(*FalcoFlow_Time); ok {
+		if x, ok := x.Ts.(*FalcoFlow_Time); ok {
 			return x.Time
 		}
 	}
 	return ""
 }
 
-func (x *FalcoFlow) GetTimeStamp() *timestamppb.Timestamp {
+func (x *FalcoFlow) GetTimestamp() *timestamppb.Timestamp {
 	if x != nil {
-		if x, ok := x.TimeField.(*FalcoFlow_TimeStamp); ok {
-			return x.TimeStamp
+		if x, ok := x.Ts.(*FalcoFlow_Timestamp); ok {
+			return x.Timestamp
 		}
 	}
 	return nil
 }
 
-type isFalcoFlow_TimeField interface {
-	isFalcoFlow_TimeField()
+type isFalcoFlow_Ts interface {
+	isFalcoFlow_Ts()
 }
 
 type FalcoFlow_Time struct {
@@ -1168,13 +1168,13 @@ type FalcoFlow_Time struct {
 	Time string `protobuf:"bytes,3,opt,name=time,proto3,oneof"`
 }
 
-type FalcoFlow_TimeStamp struct {
-	TimeStamp *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=time_stamp,json=timeStamp,proto3,oneof"`
+type FalcoFlow_Timestamp struct {
+	Timestamp *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=timestamp,proto3,oneof"`
 }
 
-func (*FalcoFlow_Time) isFalcoFlow_TimeField() {}
+func (*FalcoFlow_Time) isFalcoFlow_Ts() {}
 
-func (*FalcoFlow_TimeStamp) isFalcoFlow_TimeField() {}
+func (*FalcoFlow_Timestamp) isFalcoFlow_Ts() {}
 
 // A flow received from Cilium Hubble Relay using the Observer service's GetFlows RPC.
 // https://github.com/cilium/cilium/blob/main/api/v1/observer/observer.proto
@@ -2682,15 +2682,13 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x0fupdate_resource\x18\x02 \x01(\v25.illumio.cloud.k8sclustersync.v1.KubernetesObjectDataH\x00R\x0eupdateResource\x12`\n" +
 	"\x0fdelete_resource\x18\x03 \x01(\v25.illumio.cloud.k8sclustersync.v1.KubernetesObjectDataH\x00R\x0edeleteResourceB\n" +
 	"\n" +
-	"\bmutation\"\xee\x01\n" +
+	"\bmutation\"\xe5\x01\n" +
 	"\tFalcoFlow\x12;\n" +
 	"\x06layer3\x18\x01 \x01(\v2#.illumio.cloud.k8sclustersync.v1.IPR\x06layer3\x12?\n" +
 	"\x06layer4\x18\x02 \x01(\v2'.illumio.cloud.k8sclustersync.v1.Layer4R\x06layer4\x12\x18\n" +
-	"\x04time\x18\x03 \x01(\tB\x02\x18\x01H\x00R\x04time\x12;\n" +
-	"\n" +
-	"time_stamp\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampH\x00R\ttimeStampB\f\n" +
-	"\n" +
-	"time_field\"\xca\b\n" +
+	"\x04time\x18\x03 \x01(\tB\x02\x18\x01H\x00R\x04time\x12:\n" +
+	"\ttimestamp\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampH\x00R\ttimestampB\x04\n" +
+	"\x02ts\"\xca\b\n" +
 	"\n" +
 	"CiliumFlow\x12.\n" +
 	"\x04time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x1b\n" +
@@ -2890,7 +2888,7 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	4,  // 14: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation.delete_resource:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
 	17, // 15: illumio.cloud.k8sclustersync.v1.FalcoFlow.layer3:type_name -> illumio.cloud.k8sclustersync.v1.IP
 	18, // 16: illumio.cloud.k8sclustersync.v1.FalcoFlow.layer4:type_name -> illumio.cloud.k8sclustersync.v1.Layer4
-	37, // 17: illumio.cloud.k8sclustersync.v1.FalcoFlow.time_stamp:type_name -> google.protobuf.Timestamp
+	37, // 17: illumio.cloud.k8sclustersync.v1.FalcoFlow.timestamp:type_name -> google.protobuf.Timestamp
 	37, // 18: illumio.cloud.k8sclustersync.v1.CiliumFlow.time:type_name -> google.protobuf.Timestamp
 	0,  // 19: illumio.cloud.k8sclustersync.v1.CiliumFlow.traffic_direction:type_name -> illumio.cloud.k8sclustersync.v1.TrafficDirection
 	1,  // 20: illumio.cloud.k8sclustersync.v1.CiliumFlow.verdict:type_name -> illumio.cloud.k8sclustersync.v1.Verdict
@@ -2954,7 +2952,7 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() {
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[10].OneofWrappers = []any{
 		(*FalcoFlow_Time)(nil),
-		(*FalcoFlow_TimeStamp)(nil),
+		(*FalcoFlow_Timestamp)(nil),
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[11].OneofWrappers = []any{}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[14].OneofWrappers = []any{
