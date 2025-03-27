@@ -326,11 +326,8 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager, k
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
 	}
-
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
 
-	keepaliveDone := make(chan struct{})
-	defer close(keepaliveDone)
 	go sm.StreamKeepalives(ciliumCtx, keepaliveFrequency, STREAM_NETWORK_FLOWS)
 
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, sm.streamClient.ciliumNamespace)
@@ -357,11 +354,8 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager, ke
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
 	}
-
 	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
 
-	keepaliveDone := make(chan struct{})
-	defer close(keepaliveDone)
 	go sm.StreamKeepalives(falcoCtx, keepaliveFrequency, STREAM_NETWORK_FLOWS)
 
 	err = sm.StreamFalcoNetworkFlows(falcoCtx)
@@ -385,11 +379,8 @@ func connectAndStreamResources(logger *zap.Logger, sm *streamManager, keepaliveF
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
 	}
-
 	sm.streamClient.resourceStream = SendKubernetesResourcesStream
 
-	keepaliveDone := make(chan struct{})
-	defer close(keepaliveDone)
 	go sm.StreamKeepalives(resourceCtx, keepaliveFrequency, STREAM_RESOURCES)
 
 	err = sm.StreamResources(resourceCtx, resourceCancel)
@@ -412,12 +403,9 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager, keepaliveFreque
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
 	}
-
 	sm.streamClient.logStream = SendLogsStream
 	sm.bufferedGrpcSyncer.UpdateClient(sm.streamClient.logStream, sm.streamClient.conn)
 
-	keepaliveDone := make(chan struct{})
-	defer close(keepaliveDone)
 	go sm.StreamKeepalives(logCtx, keepaliveFrequency, STREAM_LOGS)
 
 	err = sm.StreamLogs(logCtx)
