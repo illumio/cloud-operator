@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/version"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/watch"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/version"
 )
 
 // Helper function to send a request to the resource stream
@@ -150,7 +151,7 @@ func sendKeepalive(sm *streamManager, st StreamType) error {
 	}
 
 	if err != nil {
-		sm.logger.Error("Failed to send keepalive", zap.String("stream", string(st)), zap.Error(err))
+		sm.logger.Error("Failed to send keepalive on stream", zap.String("stream", string(st)), zap.Error(err))
 		return err
 	}
 	return nil
