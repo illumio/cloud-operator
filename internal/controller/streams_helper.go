@@ -128,34 +128,29 @@ func sendResourceSnapshotComplete(sm *streamManager) error {
 	return sendToResourceStream(sm.logger, sm.streamClient.resourceStream, request)
 }
 
-// sendKeepaliveNetworkFlow is a `sendKeepalive*` function that simply
-// formulates a keepalive ping for the specific stream & sends it
-func sendKeepaliveNetworkFlow(sm *streamManager) error {
-	request := &pb.SendKubernetesNetworkFlowsRequest{Request: &pb.SendKubernetesNetworkFlowsRequest_Keepalive{}}
-	if err := sm.streamClient.networkFlowsStream.Send(request); err != nil {
-		sm.logger.Error("Failed to send keepalive for network flow", zap.Error(err))
-		return err
-	}
-	return nil
-}
+// sendKeepalive accepts a stream type & sends a keepalive ping on that stream
+func sendKeepalive(sm *streamManager, st StreamType) error {
+	var err error
 
-// sendKeepaliveResource is a `sendKeepalive*` function that simply
-// formulates a keepalive ping for the specific stream & sends it
-func sendKeepaliveResource(sm *streamManager) error {
-	request := &pb.SendKubernetesResourcesRequest{Request: &pb.SendKubernetesResourcesRequest_Keepalive{}}
-	if err := sm.streamClient.resourceStream.Send(request); err != nil {
-		sm.logger.Error("Failed to send keepalive for network flow", zap.Error(err))
-		return err
+	switch st {
+	case STREAM_NETWORK_FLOWS:
+		err = sm.streamClient.networkFlowsStream.Send(&pb.SendKubernetesNetworkFlowsRequest{
+			Request: &pb.SendKubernetesNetworkFlowsRequest_Keepalive{},
+		})
+	case STREAM_RESOURCES:
+		err = sm.streamClient.resourceStream.Send(&pb.SendKubernetesResourcesRequest{
+			Request: &pb.SendKubernetesResourcesRequest_Keepalive{},
+		})
+	case STREAM_LOGS:
+		err = sm.streamClient.logStream.Send(&pb.SendLogsRequest{
+			Request: &pb.SendLogsRequest_Keepalive{},
+		})
+	default:
+		return fmt.Errorf("unsupported stream type: %s", st)
 	}
-	return nil
-}
 
-// sendKeepaliveLog is a `sendKeepalive*` function that simply
-// formulates a keepalive ping for the specific stream & sends it
-func sendKeepaliveLog(sm *streamManager) error {
-	request := &pb.SendLogsRequest{Request: &pb.SendLogsRequest_Keepalive{}}
-	if err := sm.streamClient.logStream.Send(request); err != nil {
-		sm.logger.Error("Failed to send keepalive for network flow", zap.Error(err))
+	if err != nil {
+		sm.logger.Error("Failed to send keepalive", zap.String("stream", string(st)), zap.Error(err))
 		return err
 	}
 	return nil
