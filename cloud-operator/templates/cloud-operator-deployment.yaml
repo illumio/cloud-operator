@@ -72,5 +72,11 @@ spec:
               value: "{{ .Values.env.tokenEndpoint }}"
             - name: TLS_SKIP_VERIFY
               value: "{{ .Values.env.tlsSkipVerify }}"
+            - name: STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES
+              value: "{{ .Values.env.streamKeepalivePeriods.kubernetes_resources }}"
+            - name: STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS
+              value: "{{ .Values.env.streamKeepalivePeriods.kubernetes_network_flows }}"
+            - name: STREAM_KEEPALIVE_PERIOD_LOGS
+              value: "{{ .Values.env.streamKeepalivePeriods.logs }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
