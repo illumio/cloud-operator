@@ -3,8 +3,6 @@ package controller
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -16,10 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
-)
-
-var (
-	ErrContextCanceled = fmt.Errorf("context canceled")
 )
 
 // ResourceManager encapsulates components for listing and managing Kubernetes resources.
@@ -36,13 +30,17 @@ type ResourceManager struct {
 
 // TODO: Make a struct with the ClientSet as a field, and convertMetaObjectToMetadata, getPodIPAddresses, getProviderIdNodeSpec should be methods of that struct.
 
-// DynamicListAndWatchResources lists and watches the specified resource dynamically, managing context cancellation and synchronization with wait groups.
-func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, allResourcesSnapshotted *sync.WaitGroup, snapshotCompleted *sync.WaitGroup) {
+// DynamicListAndWatchResources lists and watches the specified resource
+// dynamically, managing context cancellation and synchronization with wait
+// groups. As long as we are able to watch and stream, we will never return from
+// this function
+func (r *ResourceManager) DynamicListAndWatchResources(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, allResourcesSnapshotted *sync.WaitGroup, snapshotCompleted *sync.WaitGroup) {
+	defer cancel()
+
 	resourceListVersion, err := r.DynamicListResources(ctx, resource, apiGroup)
 	if err != nil {
 		allResourcesSnapshotted.Done()
 		r.logger.Error("Unable to list resources", zap.Error(err))
-		cancel()
 		return
 	}
 	allResourcesSnapshotted.Done()
@@ -59,21 +57,11 @@ func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, canc
 	err = limiter.Wait(ctx)
 	if err != nil {
 		r.logger.Error("Cannot wait using rate limiter", zap.Error(err))
-		cancel()
 		return
 	}
 
 	err = r.watchEvents(ctx, resource, apiGroup, watchOptions)
 	if err != nil {
-		if !errors.Is(err, ErrContextCanceled) {
-			r.logger.Error("Noticed that we are disconnected from CloudSecure",
-				zap.String("reason", "watch error"),
-				zap.String("apiGroup", apiGroup),
-				zap.String("resource", resource),
-				zap.Error(err),
-			)
-		}
-		cancel()
 		return
 	}
 }
@@ -121,12 +109,12 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 	for {
 		select {
 		case <-ctx.Done():
-			r.logger.Debug("Noticed that we are disconnected from CloudSecure",
+			r.logger.Debug("Disconnected from CloudSecure",
 				zap.String("reason", "context cancelled"),
 				zap.String("apiGroup", apiGroup),
 				zap.String("resource", resource),
 			)
-			return ErrContextCanceled
+			return context.Canceled
 
 		case event = <-watcher.ResultChan():
 			// Exhaustive enum check on event type. We only want to report mutations

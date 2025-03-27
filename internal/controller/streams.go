@@ -20,6 +20,15 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
+type StreamType string
+
+const (
+	STREAM_NETWORK_FLOWS = StreamType("network_flows")
+	STREAM_RESOURCES     = StreamType("resources")
+	STREAM_LOGS          = StreamType("logs")
+	// TODO: what do we call the config string?
+)
+
 type streamClient struct {
 	ciliumNamespace           string
 	conn                      *grpc.ClientConn
@@ -184,7 +193,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, cancel context.Can
 	}
 	for resource, apiGroup := range resourceAPIGroupMap {
 		allResourcesSnapshotted.Add(1)
-		go resourceLister.DyanmicListAndWatchResources(ctx, cancel, resource, apiGroup, &allResourcesSnapshotted, &snapshotCompleted)
+		go resourceLister.DynamicListAndWatchResources(ctx, cancel, resource, apiGroup, &allResourcesSnapshotted, &snapshotCompleted)
 	}
 	allResourcesSnapshotted.Wait()
 	err = sendResourceSnapshotComplete(sm)
@@ -324,7 +333,7 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager, k
 
 	keepaliveDone := make(chan struct{})
 	defer close(keepaliveDone)
-	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveNetworkFlow, keepaliveDone)
+	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveNetworkFlows, keepaliveDone)
 
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, sm.streamClient.ciliumNamespace)
 	if err != nil {
@@ -355,7 +364,7 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager, ke
 
 	keepaliveDone := make(chan struct{})
 	defer close(keepaliveDone)
-	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveNetworkFlow, keepaliveDone)
+	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveNetworkFlows, keepaliveDone)
 
 	err = sm.StreamFalcoNetworkFlows(falcoCtx)
 	if err != nil {
@@ -383,7 +392,7 @@ func connectAndStreamResources(logger *zap.Logger, sm *streamManager, keepaliveF
 
 	keepaliveDone := make(chan struct{})
 	defer close(keepaliveDone)
-	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveResource, keepaliveDone)
+	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveResources, keepaliveDone)
 
 	err = sm.StreamResources(resourceCtx, resourceCancel)
 	if err != nil {
@@ -411,7 +420,7 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager, keepaliveFreque
 
 	keepaliveDone := make(chan struct{})
 	defer close(keepaliveDone)
-	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveLog, keepaliveDone)
+	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveLogs, keepaliveDone)
 
 	err = sm.StreamLogs(logCtx)
 	if err != nil {

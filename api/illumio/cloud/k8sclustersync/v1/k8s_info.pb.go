@@ -254,7 +254,23 @@ func (LogLevel) EnumDescriptor() ([]byte, []int) {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{3}
 }
 
-// Keepalive
+// Application-level keepalives. While gRPC already has a system-level keepalive
+// mechanism, we have seen deployments where the onboarding server lives behind
+// an ingress. The gRPC system-level keepalive (represented by the `-`s in the
+// diagram) terminates at the ingress, and thus doesn't do its job fully. This
+// is solved with an application level keepalive (represented by the `=`s in the
+// diagram)
+//
+// +----------------+       +---------+          +-------------------+
+// |                +------>+         +          +                   |
+// | cloud-operator +       + ingress +          + onboarding server |
+// |                +======>+         +=========>+                   |
+// +----------------+       +---------+          +-------------------+
+//
+// Keepalives are important to us, because when the onboarding server restarts,
+// the cloud-operator will not know until it sends a message. So these
+// application-level keepalives will re-establish connections to the onboarding
+// server faster than if we wait for reasons to send data over the channel
 type Keepalive struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -813,7 +829,7 @@ type SendKubernetesResourcesRequest struct {
 	//
 	// Types that are valid to be assigned to Request:
 	//
-	//	*SendKubernetesResourcesRequest_KeepalivePing
+	//	*SendKubernetesResourcesRequest_Keepalive
 	//	*SendKubernetesResourcesRequest_ClusterMetadata
 	//	*SendKubernetesResourcesRequest_ResourceData
 	//	*SendKubernetesResourcesRequest_ResourceSnapshotComplete
@@ -860,10 +876,10 @@ func (x *SendKubernetesResourcesRequest) GetRequest() isSendKubernetesResourcesR
 	return nil
 }
 
-func (x *SendKubernetesResourcesRequest) GetKeepalivePing() *Keepalive {
+func (x *SendKubernetesResourcesRequest) GetKeepalive() *Keepalive {
 	if x != nil {
-		if x, ok := x.Request.(*SendKubernetesResourcesRequest_KeepalivePing); ok {
-			return x.KeepalivePing
+		if x, ok := x.Request.(*SendKubernetesResourcesRequest_Keepalive); ok {
+			return x.Keepalive
 		}
 	}
 	return nil
@@ -909,8 +925,8 @@ type isSendKubernetesResourcesRequest_Request interface {
 	isSendKubernetesResourcesRequest_Request()
 }
 
-type SendKubernetesResourcesRequest_KeepalivePing struct {
-	KeepalivePing *Keepalive `protobuf:"bytes,5,opt,name=keepalive_ping,json=keepalivePing,proto3,oneof"`
+type SendKubernetesResourcesRequest_Keepalive struct {
+	Keepalive *Keepalive `protobuf:"bytes,5,opt,name=keepalive,proto3,oneof"`
 }
 
 type SendKubernetesResourcesRequest_ClusterMetadata struct {
@@ -933,7 +949,7 @@ type SendKubernetesResourcesRequest_KubernetesResourceMutation struct {
 	KubernetesResourceMutation *KubernetesResourceMutation `protobuf:"bytes,4,opt,name=kubernetes_resource_mutation,json=kubernetesResourceMutation,proto3,oneof"`
 }
 
-func (*SendKubernetesResourcesRequest_KeepalivePing) isSendKubernetesResourcesRequest_Request() {}
+func (*SendKubernetesResourcesRequest_Keepalive) isSendKubernetesResourcesRequest_Request() {}
 
 func (*SendKubernetesResourcesRequest_ClusterMetadata) isSendKubernetesResourcesRequest_Request() {}
 
@@ -2249,7 +2265,7 @@ type SendKubernetesNetworkFlowsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Request:
 	//
-	//	*SendKubernetesNetworkFlowsRequest_KeepalivePing
+	//	*SendKubernetesNetworkFlowsRequest_Keepalive
 	//	*SendKubernetesNetworkFlowsRequest_CiliumFlow
 	//	*SendKubernetesNetworkFlowsRequest_FalcoFlow
 	Request       isSendKubernetesNetworkFlowsRequest_Request `protobuf_oneof:"request"`
@@ -2294,10 +2310,10 @@ func (x *SendKubernetesNetworkFlowsRequest) GetRequest() isSendKubernetesNetwork
 	return nil
 }
 
-func (x *SendKubernetesNetworkFlowsRequest) GetKeepalivePing() *Keepalive {
+func (x *SendKubernetesNetworkFlowsRequest) GetKeepalive() *Keepalive {
 	if x != nil {
-		if x, ok := x.Request.(*SendKubernetesNetworkFlowsRequest_KeepalivePing); ok {
-			return x.KeepalivePing
+		if x, ok := x.Request.(*SendKubernetesNetworkFlowsRequest_Keepalive); ok {
+			return x.Keepalive
 		}
 	}
 	return nil
@@ -2325,8 +2341,8 @@ type isSendKubernetesNetworkFlowsRequest_Request interface {
 	isSendKubernetesNetworkFlowsRequest_Request()
 }
 
-type SendKubernetesNetworkFlowsRequest_KeepalivePing struct {
-	KeepalivePing *Keepalive `protobuf:"bytes,3,opt,name=keepalive_ping,json=keepalivePing,proto3,oneof"`
+type SendKubernetesNetworkFlowsRequest_Keepalive struct {
+	Keepalive *Keepalive `protobuf:"bytes,3,opt,name=keepalive,proto3,oneof"`
 }
 
 type SendKubernetesNetworkFlowsRequest_CiliumFlow struct {
@@ -2337,8 +2353,7 @@ type SendKubernetesNetworkFlowsRequest_FalcoFlow struct {
 	FalcoFlow *FalcoFlow `protobuf:"bytes,2,opt,name=falco_flow,json=falcoFlow,proto3,oneof"`
 }
 
-func (*SendKubernetesNetworkFlowsRequest_KeepalivePing) isSendKubernetesNetworkFlowsRequest_Request() {
-}
+func (*SendKubernetesNetworkFlowsRequest_Keepalive) isSendKubernetesNetworkFlowsRequest_Request() {}
 
 func (*SendKubernetesNetworkFlowsRequest_CiliumFlow) isSendKubernetesNetworkFlowsRequest_Request() {}
 
@@ -2432,7 +2447,7 @@ type SendLogsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Request:
 	//
-	//	*SendLogsRequest_KeepalivePing
+	//	*SendLogsRequest_Keepalive
 	//	*SendLogsRequest_LogEntry
 	Request       isSendLogsRequest_Request `protobuf_oneof:"request"`
 	unknownFields protoimpl.UnknownFields
@@ -2476,10 +2491,10 @@ func (x *SendLogsRequest) GetRequest() isSendLogsRequest_Request {
 	return nil
 }
 
-func (x *SendLogsRequest) GetKeepalivePing() *Keepalive {
+func (x *SendLogsRequest) GetKeepalive() *Keepalive {
 	if x != nil {
-		if x, ok := x.Request.(*SendLogsRequest_KeepalivePing); ok {
-			return x.KeepalivePing
+		if x, ok := x.Request.(*SendLogsRequest_Keepalive); ok {
+			return x.Keepalive
 		}
 	}
 	return nil
@@ -2498,8 +2513,8 @@ type isSendLogsRequest_Request interface {
 	isSendLogsRequest_Request()
 }
 
-type SendLogsRequest_KeepalivePing struct {
-	KeepalivePing *Keepalive `protobuf:"bytes,2,opt,name=keepalive_ping,json=keepalivePing,proto3,oneof"`
+type SendLogsRequest_Keepalive struct {
+	Keepalive *Keepalive `protobuf:"bytes,2,opt,name=keepalive,proto3,oneof"`
 }
 
 type SendLogsRequest_LogEntry struct {
@@ -2507,7 +2522,7 @@ type SendLogsRequest_LogEntry struct {
 	LogEntry *LogEntry `protobuf:"bytes,1,opt,name=log_entry,json=logEntry,proto3,oneof"`
 }
 
-func (*SendLogsRequest_KeepalivePing) isSendLogsRequest_Request() {}
+func (*SendLogsRequest_Keepalive) isSendLogsRequest_Request() {}
 
 func (*SendLogsRequest_LogEntry) isSendLogsRequest_Request() {}
 
@@ -2757,9 +2772,9 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x19KubernetesClusterMetadata\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\tR\x03uid\x12-\n" +
 	"\x12kubernetes_version\x18\x02 \x01(\tR\x11kubernetesVersion\x12)\n" +
-	"\x10operator_version\x18\x03 \x01(\tR\x0foperatorVersion\"\xce\x04\n" +
-	"\x1eSendKubernetesResourcesRequest\x12S\n" +
-	"\x0ekeepalive_ping\x18\x05 \x01(\v2*.illumio.cloud.k8sclustersync.v1.KeepaliveH\x00R\rkeepalivePing\x12g\n" +
+	"\x10operator_version\x18\x03 \x01(\tR\x0foperatorVersion\"\xc5\x04\n" +
+	"\x1eSendKubernetesResourcesRequest\x12J\n" +
+	"\tkeepalive\x18\x05 \x01(\v2*.illumio.cloud.k8sclustersync.v1.KeepaliveH\x00R\tkeepalive\x12g\n" +
 	"\x10cluster_metadata\x18\x01 \x01(\v2:.illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadataH\x00R\x0fclusterMetadata\x12\\\n" +
 	"\rresource_data\x18\x02 \x01(\v25.illumio.cloud.k8sclustersync.v1.KubernetesObjectDataH\x00R\fresourceData\x12\x83\x01\n" +
 	"\x1aresource_snapshot_complete\x18\x03 \x01(\v2C.illumio.cloud.k8sclustersync.v1.KubernetesResourceSnapshotCompleteH\x00R\x18resourceSnapshotComplete\x12\x7f\n" +
@@ -2857,9 +2872,9 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x16\n" +
 	"\x06labels\x18\x03 \x03(\tR\x06labels\x12\x1a\n" +
-	"\brevision\x18\x04 \x01(\x04R\brevision\"\xa0\x02\n" +
-	"!SendKubernetesNetworkFlowsRequest\x12S\n" +
-	"\x0ekeepalive_ping\x18\x03 \x01(\v2*.illumio.cloud.k8sclustersync.v1.KeepaliveH\x00R\rkeepalivePing\x12N\n" +
+	"\brevision\x18\x04 \x01(\x04R\brevision\"\x97\x02\n" +
+	"!SendKubernetesNetworkFlowsRequest\x12J\n" +
+	"\tkeepalive\x18\x03 \x01(\v2*.illumio.cloud.k8sclustersync.v1.KeepaliveH\x00R\tkeepalive\x12N\n" +
 	"\vcilium_flow\x18\x01 \x01(\v2+.illumio.cloud.k8sclustersync.v1.CiliumFlowH\x00R\n" +
 	"ciliumFlow\x12K\n" +
 	"\n" +
@@ -2867,9 +2882,9 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\arequest\"$\n" +
 	"\"SendKubernetesNetworkFlowsResponse\"-\n" +
 	"\bLogEntry\x12!\n" +
-	"\fjson_message\x18\x03 \x01(\tR\vjsonMessage\"\xbb\x01\n" +
-	"\x0fSendLogsRequest\x12S\n" +
-	"\x0ekeepalive_ping\x18\x02 \x01(\v2*.illumio.cloud.k8sclustersync.v1.KeepaliveH\x00R\rkeepalivePing\x12H\n" +
+	"\fjson_message\x18\x03 \x01(\tR\vjsonMessage\"\xb2\x01\n" +
+	"\x0fSendLogsRequest\x12J\n" +
+	"\tkeepalive\x18\x02 \x01(\v2*.illumio.cloud.k8sclustersync.v1.KeepaliveH\x00R\tkeepalive\x12H\n" +
 	"\tlog_entry\x18\x01 \x01(\v2).illumio.cloud.k8sclustersync.v1.LogEntryH\x00R\blogEntryB\t\n" +
 	"\arequest\"N\n" +
 	"\vSetLogLevel\x12?\n" +
@@ -2972,7 +2987,7 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	7,  // 5: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.node:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNodeData
 	6,  // 6: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.service:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesServiceData
 	37, // 7: illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ports:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ServicePort
-	4,  // 8: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.keepalive_ping:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
+	4,  // 8: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
 	10, // 9: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.cluster_metadata:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadata
 	5,  // 10: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.resource_data:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
 	12, // 11: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.resource_snapshot_complete:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesResourceSnapshotComplete
@@ -3004,10 +3019,10 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	23, // 37: illumio.cloud.k8sclustersync.v1.Layer4.sctp:type_name -> illumio.cloud.k8sclustersync.v1.SCTP
 	21, // 38: illumio.cloud.k8sclustersync.v1.TCP.flags:type_name -> illumio.cloud.k8sclustersync.v1.TCPFlags
 	27, // 39: illumio.cloud.k8sclustersync.v1.Endpoint.workloads:type_name -> illumio.cloud.k8sclustersync.v1.Workload
-	4,  // 40: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.keepalive_ping:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
+	4,  // 40: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
 	16, // 41: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.cilium_flow:type_name -> illumio.cloud.k8sclustersync.v1.CiliumFlow
 	15, // 42: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.falco_flow:type_name -> illumio.cloud.k8sclustersync.v1.FalcoFlow
-	4,  // 43: illumio.cloud.k8sclustersync.v1.SendLogsRequest.keepalive_ping:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
+	4,  // 43: illumio.cloud.k8sclustersync.v1.SendLogsRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
 	31, // 44: illumio.cloud.k8sclustersync.v1.SendLogsRequest.log_entry:type_name -> illumio.cloud.k8sclustersync.v1.LogEntry
 	3,  // 45: illumio.cloud.k8sclustersync.v1.SetLogLevel.level:type_name -> illumio.cloud.k8sclustersync.v1.LogLevel
 	33, // 46: illumio.cloud.k8sclustersync.v1.SendLogsResponse.set_log_level:type_name -> illumio.cloud.k8sclustersync.v1.SetLogLevel
@@ -3036,7 +3051,7 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() {
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[2].OneofWrappers = []any{}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[7].OneofWrappers = []any{
-		(*SendKubernetesResourcesRequest_KeepalivePing)(nil),
+		(*SendKubernetesResourcesRequest_Keepalive)(nil),
 		(*SendKubernetesResourcesRequest_ClusterMetadata)(nil),
 		(*SendKubernetesResourcesRequest_ResourceData)(nil),
 		(*SendKubernetesResourcesRequest_ResourceSnapshotComplete)(nil),
@@ -3060,12 +3075,12 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() {
 		(*Layer4_Sctp)(nil),
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[25].OneofWrappers = []any{
-		(*SendKubernetesNetworkFlowsRequest_KeepalivePing)(nil),
+		(*SendKubernetesNetworkFlowsRequest_Keepalive)(nil),
 		(*SendKubernetesNetworkFlowsRequest_CiliumFlow)(nil),
 		(*SendKubernetesNetworkFlowsRequest_FalcoFlow)(nil),
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[28].OneofWrappers = []any{
-		(*SendLogsRequest_KeepalivePing)(nil),
+		(*SendLogsRequest_Keepalive)(nil),
 		(*SendLogsRequest_LogEntry)(nil),
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[30].OneofWrappers = []any{
