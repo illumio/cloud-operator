@@ -291,27 +291,26 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 	}
 }
 
-// StreamKeepalives loops infinitely as long as the keepalives are working. We
-// halt when the 'keepaliveDone' channel is closed, or when sending a
-// keepalive ping fails.
-//
-// This should be run inside a goroutine in every `connectAndStream*` function
+// StreamKeepalives loops infinitely as long as the keepalives are working. This
+// should be run inside a goroutine in every `connectAndStream*` function
 func (sm *streamManager) StreamKeepalives(
+	ctx context.Context,
 	period time.Duration,
-	sendKeepalive func(*streamManager) error,
-	keepaliveDone chan struct{},
-) {
+	streamType StreamType,
+) error {
+	timer := time.NewTimer(jitterTime(period, 0.10))
+	defer timer.Stop()
+
 	for {
-		timer := time.NewTimer(period)
 		select {
 		case <-timer.C:
-			err := sendKeepalive(sm)
+			err := sendKeepalive(sm, streamType)
 			if err != nil {
-				return
+				return err
 			}
-			timer.Reset(period)
-		case <-keepaliveDone:
-			return
+			timer.Reset(jitterTime(period, 0.10))
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }
@@ -333,7 +332,7 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager, k
 
 	keepaliveDone := make(chan struct{})
 	defer close(keepaliveDone)
-	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveNetworkFlows, keepaliveDone)
+	go sm.StreamKeepalives(ciliumCtx, keepaliveFrequency, STREAM_NETWORK_FLOWS)
 
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, sm.streamClient.ciliumNamespace)
 	if err != nil {
@@ -364,7 +363,7 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager, ke
 
 	keepaliveDone := make(chan struct{})
 	defer close(keepaliveDone)
-	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveNetworkFlows, keepaliveDone)
+	go sm.StreamKeepalives(falcoCtx, keepaliveFrequency, STREAM_NETWORK_FLOWS)
 
 	err = sm.StreamFalcoNetworkFlows(falcoCtx)
 	if err != nil {
@@ -392,7 +391,7 @@ func connectAndStreamResources(logger *zap.Logger, sm *streamManager, keepaliveF
 
 	keepaliveDone := make(chan struct{})
 	defer close(keepaliveDone)
-	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveResources, keepaliveDone)
+	go sm.StreamKeepalives(resourceCtx, keepaliveFrequency, STREAM_RESOURCES)
 
 	err = sm.StreamResources(resourceCtx, resourceCancel)
 	if err != nil {
@@ -420,7 +419,7 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager, keepaliveFreque
 
 	keepaliveDone := make(chan struct{})
 	defer close(keepaliveDone)
-	go sm.StreamKeepalives(keepaliveFrequency, sendKeepaliveLogs, keepaliveDone)
+	go sm.StreamKeepalives(logCtx, keepaliveFrequency, STREAM_LOGS)
 
 	err = sm.StreamLogs(logCtx)
 	if err != nil {
@@ -698,6 +697,13 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.Logger, envMap 
 	return conn, client, err
 }
 
+// jitterTime subtracts a percentage from the base time, in order to introduce
+// jitter. maxJitterPct must be less than 1
+//
+// jitter is a technical term, meaning "a signal's deviation from true
+// periodicity". This is desirable in distributed systems, because if all agents
+// synchronize their messages, we stop calling that API requests and start
+// calling that a DDoS attack.
 func jitterTime(base time.Duration, maxJitterPct float64) time.Duration {
 	jitterPct := rand.Float64() * maxJitterPct // [0, maxJitterPct)
 	return time.Duration(float64(base) * (1. - jitterPct))
