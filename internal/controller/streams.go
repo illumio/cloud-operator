@@ -327,7 +327,12 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager, K
 	}
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
 
-	go sm.StreamKeepalives(ciliumCtx, KeepalivePeriod, STREAM_NETWORK_FLOWS)
+	go func() {
+		err := sm.StreamKeepalives(ciliumCtx, KeepalivePeriod, STREAM_NETWORK_FLOWS)
+		if err != nil {
+			logger.Error("Failed to send keepalives", zap.Error(err))
+		}
+	}()
 
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, sm.streamClient.ciliumNamespace)
 	if err != nil {
@@ -355,7 +360,12 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager, Ke
 	}
 	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
 
-	go sm.StreamKeepalives(falcoCtx, KeepalivePeriod, STREAM_NETWORK_FLOWS)
+	go func() {
+		err := sm.StreamKeepalives(falcoCtx, KeepalivePeriod, STREAM_NETWORK_FLOWS)
+		if err != nil {
+			logger.Error("Failed to send keepalives", zap.Error(err))
+		}
+	}()
 
 	err = sm.StreamFalcoNetworkFlows(falcoCtx)
 	if err != nil {
@@ -380,7 +390,12 @@ func connectAndStreamResources(logger *zap.Logger, sm *streamManager, KeepaliveP
 	}
 	sm.streamClient.resourceStream = SendKubernetesResourcesStream
 
-	go sm.StreamKeepalives(resourceCtx, KeepalivePeriod, STREAM_RESOURCES)
+	go func() {
+		err := sm.StreamKeepalives(resourceCtx, KeepalivePeriod, STREAM_NETWORK_FLOWS)
+		if err != nil {
+			logger.Error("Failed to send keepalives", zap.Error(err))
+		}
+	}()
 
 	err = sm.StreamResources(resourceCtx, resourceCancel)
 	if err != nil {
@@ -405,7 +420,12 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager, KeepalivePeriod
 	sm.streamClient.logStream = SendLogsStream
 	sm.bufferedGrpcSyncer.UpdateClient(sm.streamClient.logStream, sm.streamClient.conn)
 
-	go sm.StreamKeepalives(logCtx, KeepalivePeriod, STREAM_LOGS)
+	go func() {
+		err := sm.StreamKeepalives(logCtx, KeepalivePeriod, STREAM_NETWORK_FLOWS)
+		if err != nil {
+			logger.Error("Failed to send keepalives", zap.Error(err))
+		}
+	}()
 
 	err = sm.StreamLogs(logCtx)
 	if err != nil {
