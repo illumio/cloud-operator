@@ -9,23 +9,23 @@ import "google/protobuf/wrappers.proto";
 
 option go_package = "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1";
 
-// Application-level keepalives. While gRPC already has a system-level keepalive
-// mechanism, we have seen deployments where the onboarding server lives behind
-// an ingress. The gRPC system-level keepalive (represented by the `-`s in the
-// diagram) terminates at the ingress, and thus doesn't do its job fully. This
-// is solved with an application level keepalive (represented by the `=`s in the
-// diagram)
+// Application-level keepalives. While gRPC already has an HTTP-level keepalive
+// mechanism, we have seen deployments where the server lives behind an ingress.
+// The gRPC system-level keepalive (represented by the `-`s in the diagram)
+// terminates at the ingress, and thus doesn't work end-to-end. This is solved
+// with an application level keepalive (represented by the `=`s in the diagram)
 //
-// +----------------+       +---------+          +-------------------+
-// |                +------>+         +          +                   |
-// | cloud-operator +       + ingress +          + onboarding server |
-// |                +======>+         +=========>+                   |
-// +----------------+       +---------+          +-------------------+
+// +----------------+       +---------+          +--------+
+// |                +------>+         +          +        |
+// | cloud-operator +       + ingress +          + server |
+// |                +======>+         +=========>+        |
+// +----------------+       +---------+          +--------+
 //
-// Keepalives are important to us, because when the onboarding server restarts,
-// the cloud-operator will not know until it sends a message. So these
-// application-level keepalives will re-establish connections to the onboarding
-// server faster than if we wait for reasons to send data over the channel
+// Keepalives are important to us, because when the server restarts, the
+// connection may be closed between the Ingress and the server - but not between
+// the cloud-operator and the Ingress. Application-level keepalives will
+// re-establish connections to the server faster than if we wait for reasons to
+// send data over the channel
 message Keepalive {}
 
 // Metadata associated with a Kubernetes resource.

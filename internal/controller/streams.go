@@ -392,7 +392,7 @@ func connectAndStreamResources(logger *zap.Logger, sm *streamManager, KeepaliveP
 	sm.streamClient.resourceStream = SendKubernetesResourcesStream
 
 	go func() {
-		err := sm.StreamKeepalives(resourceCtx, KeepalivePeriod, STREAM_NETWORK_FLOWS)
+		err := sm.StreamKeepalives(resourceCtx, KeepalivePeriod, STREAM_RESOURCES)
 		if err != nil {
 			logger.Error("Failed to send keepalives", zap.Error(err))
 		}
@@ -422,7 +422,7 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager, KeepalivePeriod
 	sm.bufferedGrpcSyncer.UpdateClient(sm.streamClient.logStream, sm.streamClient.conn)
 
 	go func() {
-		err := sm.StreamKeepalives(logCtx, KeepalivePeriod, STREAM_NETWORK_FLOWS)
+		err := sm.StreamKeepalives(logCtx, KeepalivePeriod, STREAM_LOGS)
 		if err != nil {
 			logger.Error("Failed to send keepalives", zap.Error(err))
 		}
@@ -705,7 +705,7 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.Logger, envMap 
 }
 
 // jitterTime subtracts a percentage from the base time, in order to introduce
-// jitter. maxJitterPct must be less than 1
+// jitter. maxJitterPct must be in the range [0, 1).
 //
 // jitter is a technical term, meaning "a signal's deviation from true
 // periodicity". This is desirable in distributed systems, because if all agents

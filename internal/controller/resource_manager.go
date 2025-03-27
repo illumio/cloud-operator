@@ -3,6 +3,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -94,6 +95,25 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 	return resourceListVersion, nil
 }
 
+// getErrFromWatchEvent returns an error if the watch event is of type Error.
+// Includes the 'code', 'reason', and 'message'. If the watch event is NOT of
+// type Error then return nil
+func getErrFromWatchEvent(event watch.Event) error {
+	if event.Object == nil {
+		return nil
+	}
+	if event.Type != watch.Error {
+		return nil
+	}
+
+	status, ok := event.Object.(*metav1.Status)
+	if !ok {
+		return fmt.Errorf("unexpected error type: %T", event.Object)
+	}
+
+	return fmt.Errorf("code: %d, reason: %s, message: %s", status.Code, status.Reason, status.Message)
+}
+
 // watchEvents watches Kubernetes resources. The second part of the of the "list
 // and watch" strategy.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
@@ -111,15 +131,16 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 		case <-ctx.Done():
 			r.logger.Debug("Disconnected from CloudSecure",
 				zap.String("reason", "context cancelled"),
-				zap.String("apiGroup", apiGroup),
+				zap.String("api_group", apiGroup),
 				zap.String("resource", resource),
 			)
-			return context.Canceled
+			return ctx.Err()
 
 		case event = <-watcher.ResultChan():
 			// Exhaustive enum check on event type. We only want to report mutations
 			switch event.Type {
 			case watch.Error:
+				err := getErrFromWatchEvent(event)
 				r.logger.Error("Watcher event has returned an error", zap.Error(err))
 				return err
 			case watch.Bookmark:
@@ -127,6 +148,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			case watch.Added, watch.Modified, watch.Deleted:
 			default:
 				r.logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
+				continue
 			}
 
 			// Type gymnastics: turn the watch.Event into a 'KubernetesObjectData'
