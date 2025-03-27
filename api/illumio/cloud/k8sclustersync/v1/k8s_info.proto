@@ -146,11 +146,11 @@ message FalcoFlow {
   IP layer3 = 1;
   // Proto contains protocol used
   Layer4 layer4 = 2;
-  //Time field to make old Operators compatible
 
-  oneof time_field {
+  oneof ts {
+    // time contains the unparsed timestamp string received from Falco; parse it and set timestamp instead
     string time = 3 [deprecated = true];
-    google.protobuf.Timestamp time_stamp = 4;
+    google.protobuf.Timestamp timestamp = 4;
   }
 }
 
