@@ -89,6 +89,16 @@ message KubernetesClusterMetadata {
   // Version of the operator. This version is following the Semver 2.0.0 format, e.g. "1.2.0".
   // https://semver.org/spec/v2.0.0.html
   string operator_version = 3;
+
+  CniPluginStatus cni_plugin_status = 4;
+}
+
+enum CniPluginStatus {
+  CNI_PLUGIN_STATUS_UNSPECIFIED = 0;
+  CNI_PLUGIN_STATUS_CILIUM_PRESENT = 1;
+  CNI_PLUGIN_STATUS_FALCO_PRESENT = 2;
+  CNI_PLUGIN_STATUS_BOTH_PRESENT = 3;
+  CNI_PLUGIN_STATUS_NONE_FOUND = 4;
 }
 
 // Message sent by the operator in a KubernetesResources request stream.

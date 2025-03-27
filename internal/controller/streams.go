@@ -15,6 +15,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 )
@@ -26,6 +27,7 @@ type streamClient struct {
 	disableNetworkFlowsCilium bool
 	networkFlowWg             sync.WaitGroup
 	falcoEventChan            chan string
+	cniStatus                 pb.CniPluginStatus
 	logStream                 pb.KubernetesInfoService_SendLogsClient
 	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient
@@ -167,7 +169,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, cancel context.Can
 		dynamicClient: dynamicClient,
 		streamManager: sm,
 	}
-	err = sendClusterMetadata(ctx, sm)
+	err = sendClusterMetadata(ctx, sm, sm.streamClient.cniStatus)
 	if err != nil {
 		sm.logger.Errorw("Failed to send cluster metadata", "error", err)
 		return err
@@ -420,6 +422,23 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 					backoff = maxBackoff
 				}
 			} else {
+				if consecutiveFailures > 0 {
+					logger.Info("cloud-operator connected successfully after retries", zap.Int("retry_count", consecutiveFailures))
+					if sm.streamClient.logStream != nil {
+						//Log cloudOperatorConnectedAfterRetries
+						logEntry := &pb.LogEntry{
+							JsonMessage: "cloud-operator connected successfully after retries",
+						}
+						err := sm.streamClient.logStream.Send(&pb.SendLogsRequest{
+							Request: &pb.SendLogsRequest_LogEntry{
+								LogEntry: logEntry,
+							},
+						})
+						if err != nil {
+							logger.Warn("Failed to send cloudOperatorConnectedAfterRetries log entry", zap.Error(err))
+						}
+					}
+				}
 				consecutiveFailures = 0
 				backoff = initialBackoff
 				// Reset sleep timer back to initial backoff interval
@@ -433,6 +452,7 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 // ConnectStreams will continue to reboot and restart the main operations within
 // the operator if any disconnects or errors occur.
 func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
+	logger.Info("cloud-operator restarting")
 	// Falco channels communicate news events between http server and our network flows strea,
 	falcoEventChan := make(chan string)
 	http.HandleFunc("/", NewFalcoEventHandler(falcoEventChan))
@@ -505,7 +525,25 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 				logger:             logger,
 				bufferedGrpcSyncer: bufferedGrpcSyncer,
 			}
-
+			ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, envMap.CiliumNamespace)
+			falcoPresent := sm.isFalcoInstalled(ctx)
+			switch {
+			case ciliumFlowCollector != nil && falcoPresent:
+				streamClient.cniStatus = pb.CniPluginStatus_CNI_PLUGIN_STATUS_BOTH_PRESENT
+			case ciliumFlowCollector != nil:
+				streamClient.cniStatus = pb.CniPluginStatus_CNI_PLUGIN_STATUS_CILIUM_PRESENT
+			case falcoPresent:
+				streamClient.cniStatus = pb.CniPluginStatus_CNI_PLUGIN_STATUS_FALCO_PRESENT
+			default:
+				streamClient.cniStatus = pb.CniPluginStatus_CNI_PLUGIN_STATUS_NONE_FOUND
+				// Log cloudOperatorNoCNIPlugin
+				logEntry := &pb.LogEntry{
+					JsonMessage: "cloud-operator no CNI plugin found",
+				}
+				_ = bufferedGrpcSyncer.client.Send(&pb.SendLogsRequest{
+					Request: &pb.SendLogsRequest_LogEntry{LogEntry: logEntry},
+				})
+			}
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
 			falcoDone := make(chan struct{})
@@ -550,6 +588,21 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			zap.Int("attempt", attempt),
 		)
 	}
+}
+func (sm *streamManager) isFalcoInstalled(ctx context.Context) bool {
+	clientset, err := NewClientSet()
+	if err != nil {
+		sm.logger.Error("Failed to create clientset to check Falco installation", zap.Error(err))
+		return false
+	}
+
+	_, err = clientset.CoreV1().Namespaces().Get(ctx, "falco", metav1.GetOptions{})
+	if err != nil {
+		sm.logger.Warn("Falco namespace not found, assuming Falco is not installed")
+		return false
+	}
+
+	return true
 }
 
 // NewAuthenticatedConnection gets a valid token and creats a connection to CloudSecure.

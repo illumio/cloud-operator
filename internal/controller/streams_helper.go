@@ -89,7 +89,7 @@ func streamMutationObjectData(sm *streamManager, metadata *pb.KubernetesObjectDa
 }
 
 // sendClusterMetadata sends a message to indicate current cluster metadata
-func sendClusterMetadata(ctx context.Context, sm *streamManager) error {
+func sendClusterMetadata(ctx context.Context, sm *streamManager, cniStatus pb.CniPluginStatus) error {
 	clusterUid, err := GetClusterID(ctx, sm.logger)
 	if err != nil {
 		sm.logger.Errorw("Error getting cluster id", "error", err)
@@ -105,12 +105,25 @@ func sendClusterMetadata(ctx context.Context, sm *streamManager) error {
 		sm.logger.Errorw("Error getting Kubernetes version", "error", err)
 		return err
 	}
+	if cniStatus == pb.CniPluginStatus_CNI_PLUGIN_STATUS_NONE_FOUND {
+		sm.logger.Warn("No CNI plugin found: emitting audit log")
+		// Optionally send an audit event or log to CloudSecure
+		if sm.streamClient.logStream != nil {
+			logEntry := &pb.LogEntry{
+				JsonMessage: "no CNI plugin found in cluster (sent via ClusterMetadata)",
+			}
+			_ = sm.streamClient.logStream.Send(&pb.SendLogsRequest{
+				Request: &pb.SendLogsRequest_LogEntry{LogEntry: logEntry},
+			})
+		}
+	}
 	request := &pb.SendKubernetesResourcesRequest{
 		Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{
 			ClusterMetadata: &pb.KubernetesClusterMetadata{
 				Uid:               clusterUid,
 				KubernetesVersion: kubernetesVersion.String(),
 				OperatorVersion:   version.Version(),
+				CniPluginStatus:   cniStatus,
 			},
 		},
 	}
