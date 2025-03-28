@@ -5,6 +5,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"math"
 	"math/rand"
 	"net"
 	"net/http"
@@ -373,6 +374,58 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager) error {
 }
 
 // Generic function to manage any stream with backoff and reconnection logic.
+func manageStream(
+	logger *zap.Logger,
+	streamType StreamType,
+	sm *streamManager,
+	done chan struct{},
+) {
+	defer close(done)
+
+	connectAndStream := map[StreamType]func(*zap.Logger, *streamManager) error{
+		STREAM_RESOURCES:            connectAndStreamResources,
+		STREAM_LOGS:                 connectAndStreamLogs,
+		STREAM_NETWORK_FLOWS_CILIUM: connectAndStreamCiliumNetworkFlows,
+		STREAM_NETWORK_FLOWS_FALCO:  connectAndStreamFalcoNetworkFlows,
+	}[streamType]
+	lambda := func() error {
+		return connectAndStream(logger, sm)
+	}
+
+	// If a stream goes down, try to reconnect. With exponential backoff
+	lambdaWithBackoff := func() error {
+		return exponentialBackoff(backoffOpts{
+			InitialBackoff:       1 * time.Second,
+			MaxBackoff:           1 * time.Minute,
+			MaxJitterPct:         0.20,
+			SevereErrorThreshold: 10,
+			ExponentialFactor:    2.0,
+			Name:                 "connectToStreamWithBackoff",
+			logger:               logger,
+		}, lambda)
+	}
+
+	// If reapated attempts to connect fail, that is, the "SevereErrorThreshold"
+	// in the above backoff is triggered, then wait and try again. By setting
+	// ExponentialFactor to 1, we will wait the same amount of time between every
+	// attempt. This is desirable
+	lambdaWithBackoffAndReset := func() error {
+		return exponentialBackoff(backoffOpts{
+			InitialBackoff:       10 * time.Minute,
+			MaxBackoff:           10 * time.Second,
+			MaxJitterPct:         0.10,
+			SevereErrorThreshold: math.MaxInt,
+			// Setting ExponentialFactor 1 will cause the backoff timer to stay
+			// constant.
+			ExponentialFactor: 1,
+			Name:              "connectToStreamWithBackoffAndReset",
+			logger:            logger,
+		}, lambdaWithBackoff)
+	}
+
+	lambdaWithBackoffAndReset()
+}
+
 // ConnectStreams will continue to reboot and restart the main operations within
 // the operator if any disconnects or errors occur.
 func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
