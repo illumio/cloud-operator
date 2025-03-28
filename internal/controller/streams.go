@@ -12,11 +12,21 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+)
+
+type StreamType string
+
+const (
+	STREAM_NETWORK_FLOWS_CILIUM = StreamType("network_flows_cilium")
+	STREAM_NETWORK_FLOWS_FALCO  = StreamType("network_flows_falco")
+	STREAM_RESOURCES            = StreamType("resources")
+	STREAM_LOGS                 = StreamType("logs")
 )
 
 type streamClient struct {
@@ -363,78 +373,6 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager) error {
 }
 
 // Generic function to manage any stream with backoff and reconnection logic.
-func manageStream(logger *zap.Logger, connectAndStream func(*zap.Logger, *streamManager) error, sm *streamManager, done chan struct{}) {
-	defer close(done)
-	const (
-		initialBackoff       = 1 * time.Second
-		maxBackoff           = 1 * time.Minute
-		maxJitterPct         = 0.20
-		resetPeriod          = 10 * time.Minute
-		severeErrorThreshold = 10 // Define what constitutes a severe error.
-	)
-
-	var (
-		backoff             = initialBackoff
-		consecutiveFailures = 0
-	)
-
-	resetTimer := time.NewTimer(resetPeriod)
-	sleepTimer := time.NewTimer(initialBackoff) // Start with an initial backoff interval
-	defer sleepTimer.Stop()
-	for {
-		select {
-		case <-resetTimer.C:
-			consecutiveFailures = 0
-			backoff = initialBackoff
-			resetTimer.Reset(resetPeriod)
-		case <-sleepTimer.C:
-			err := connectAndStream(logger, sm)
-			if err != nil {
-				if errors.Is(err, ErrStopRetries) {
-					logger.Info("Stopping retries for this stream as instructed.")
-					return
-				}
-				logger.Error("Failed to establish stream connection; will retry", zap.Error(err))
-				switch {
-				case consecutiveFailures == 0:
-					resetTimer.Reset(resetPeriod)
-				case consecutiveFailures >= severeErrorThreshold:
-					sleepTimer.Reset(resetPeriod)
-					<-resetTimer.C // Wait for reset timer to reset the failure count
-					consecutiveFailures = 0
-					backoff = initialBackoff
-					resetTimer.Reset(resetPeriod)
-					continue
-				}
-
-				consecutiveFailures++
-
-				sleep := jitterTime(backoff, maxJitterPct)
-				if sleep < initialBackoff {
-					sleep = initialBackoff
-				}
-				if sleep > maxBackoff {
-					sleep = maxBackoff
-				}
-
-				logger.Info("Sleeping before retrying connection", zap.Duration("backoff", sleep))
-				sleepTimer.Reset(sleep) // Reset sleep timer with calculated backoff delay
-
-				backoff *= 2
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
-			} else {
-				consecutiveFailures = 0
-				backoff = initialBackoff
-				// Reset sleep timer back to initial backoff interval
-				sleepTimer.Reset(initialBackoff)
-				resetTimer.Reset(resetPeriod)
-			}
-		}
-	}
-}
-
 // ConnectStreams will continue to reboot and restart the main operations within
 // the operator if any disconnects or errors occur.
 func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
@@ -519,23 +457,19 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
-			falcoDone := make(chan struct{})
-			var ciliumDone chan struct{}
+			var ciliumDone, falcoDone chan struct{}
 			sm.bufferedGrpcSyncer.done = logDone
 
-			go manageStream(logger, connectAndStreamResources, sm, resourceDone)
-			go manageStream(logger, connectAndStreamLogs, sm, logDone)
+			go manageStream(logger, STREAM_RESOURCES, sm, resourceDone)
+			go manageStream(logger, STREAM_LOGS, sm, logDone)
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
-				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
-				if !sm.streamClient.disableNetworkFlowsCilium {
-					falcoDone = nil
-				}
+				go manageStream(logger, STREAM_NETWORK_FLOWS_CILIUM, sm, ciliumDone)
 			}
 			if sm.streamClient.disableNetworkFlowsCilium {
-				ciliumDone = nil
-				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone)
+				falcoDone := make(chan struct{})
+				go manageStream(logger, STREAM_NETWORK_FLOWS_FALCO, sm, falcoDone)
 			}
 
 			// Block until one of the streams fail. Then we will jump to the top of
