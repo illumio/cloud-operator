@@ -5,6 +5,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"math"
 	"math/rand"
 	"net"
 	"net/http"
@@ -12,12 +13,15 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
+
+type StreamType string
 
 type streamClient struct {
 	ciliumNamespace           string
@@ -363,76 +367,50 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager) error {
 }
 
 // Generic function to manage any stream with backoff and reconnection logic.
-func manageStream(logger *zap.Logger, connectAndStream func(*zap.Logger, *streamManager) error, sm *streamManager, done chan struct{}) {
+func manageStream(
+	logger *zap.Logger,
+	connectAndStream func(*zap.Logger, *streamManager) error,
+	sm *streamManager,
+	done chan struct{},
+) {
 	defer close(done)
-	const (
-		initialBackoff       = 1 * time.Second
-		maxBackoff           = 1 * time.Minute
-		maxJitterPct         = 0.20
-		resetPeriod          = 10 * time.Minute
-		severeErrorThreshold = 10 // Define what constitutes a severe error.
-	)
 
-	var (
-		backoff             = initialBackoff
-		consecutiveFailures = 0
-	)
-
-	resetTimer := time.NewTimer(resetPeriod)
-	sleepTimer := time.NewTimer(initialBackoff) // Start with an initial backoff interval
-	defer sleepTimer.Stop()
-	for {
-		select {
-		case <-resetTimer.C:
-			consecutiveFailures = 0
-			backoff = initialBackoff
-			resetTimer.Reset(resetPeriod)
-		case <-sleepTimer.C:
-			err := connectAndStream(logger, sm)
-			if err != nil {
-				if errors.Is(err, ErrStopRetries) {
-					logger.Info("Stopping retries for this stream as instructed.")
-					return
-				}
-				logger.Error("Failed to establish stream connection; will retry", zap.Error(err))
-				switch {
-				case consecutiveFailures == 0:
-					resetTimer.Reset(resetPeriod)
-				case consecutiveFailures >= severeErrorThreshold:
-					sleepTimer.Reset(resetPeriod)
-					<-resetTimer.C // Wait for reset timer to reset the failure count
-					consecutiveFailures = 0
-					backoff = initialBackoff
-					resetTimer.Reset(resetPeriod)
-					continue
-				}
-
-				consecutiveFailures++
-
-				sleep := jitterTime(backoff, maxJitterPct)
-				if sleep < initialBackoff {
-					sleep = initialBackoff
-				}
-				if sleep > maxBackoff {
-					sleep = maxBackoff
-				}
-
-				logger.Info("Sleeping before retrying connection", zap.Duration("backoff", sleep))
-				sleepTimer.Reset(sleep) // Reset sleep timer with calculated backoff delay
-
-				backoff *= 2
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
-			} else {
-				consecutiveFailures = 0
-				backoff = initialBackoff
-				// Reset sleep timer back to initial backoff interval
-				sleepTimer.Reset(initialBackoff)
-				resetTimer.Reset(resetPeriod)
-			}
-		}
+	lambda := func() error {
+		return connectAndStream(logger, sm)
 	}
+
+	// If a stream goes down, try to reconnect. With exponential backoff
+	lambdaWithBackoff := func() error {
+		return exponentialBackoff(backoffOpts{
+			InitialBackoff:       1 * time.Second,
+			MaxBackoff:           1 * time.Minute,
+			MaxJitterPct:         0.20,
+			SevereErrorThreshold: 10,
+			ExponentialFactor:    2.0,
+			Name:                 "connectToStreamWithBackoff",
+			logger:               logger,
+		}, lambda)
+	}
+
+	// If reapated attempts to connect fail, that is, the "SevereErrorThreshold"
+	// in the above backoff is triggered, then wait and try again. By setting
+	// ExponentialFactor to 1, we will wait the same amount of time between every
+	// attempt. This is desirable
+	lambdaWithBackoffAndReset := func() error {
+		return exponentialBackoff(backoffOpts{
+			InitialBackoff:       10 * time.Minute,
+			MaxBackoff:           10 * time.Second,
+			MaxJitterPct:         0.10,
+			SevereErrorThreshold: math.MaxInt,
+			// Setting ExponentialFactor 1 will cause the backoff timer to stay
+			// constant.
+			ExponentialFactor: 1,
+			Name:              "connectToStreamWithBackoffAndReset",
+			logger:            logger,
+		}, lambdaWithBackoff)
+	}
+
+	lambdaWithBackoffAndReset()
 }
 
 // ConnectStreams will continue to reboot and restart the main operations within
@@ -519,8 +497,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
-			falcoDone := make(chan struct{})
-			var ciliumDone chan struct{}
+			var ciliumDone, falcoDone chan struct{}
 			sm.bufferedGrpcSyncer.done = logDone
 
 			go manageStream(logger, connectAndStreamResources, sm, resourceDone)
@@ -529,12 +506,9 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
 				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
-				if !sm.streamClient.disableNetworkFlowsCilium {
-					falcoDone = nil
-				}
 			}
 			if sm.streamClient.disableNetworkFlowsCilium {
-				ciliumDone = nil
+				falcoDone := make(chan struct{})
 				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone)
 			}
 
