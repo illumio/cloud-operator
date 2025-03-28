@@ -23,13 +23,6 @@ import (
 
 type StreamType string
 
-const (
-	STREAM_NETWORK_FLOWS_CILIUM = StreamType("network_flows_cilium")
-	STREAM_NETWORK_FLOWS_FALCO  = StreamType("network_flows_falco")
-	STREAM_RESOURCES            = StreamType("resources")
-	STREAM_LOGS                 = StreamType("logs")
-)
-
 type streamClient struct {
 	ciliumNamespace           string
 	conn                      *grpc.ClientConn
@@ -376,18 +369,12 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager) error {
 // Generic function to manage any stream with backoff and reconnection logic.
 func manageStream(
 	logger *zap.Logger,
-	streamType StreamType,
+	connectAndStream func(*zap.Logger, *streamManager) error,
 	sm *streamManager,
 	done chan struct{},
 ) {
 	defer close(done)
 
-	connectAndStream := map[StreamType]func(*zap.Logger, *streamManager) error{
-		STREAM_RESOURCES:            connectAndStreamResources,
-		STREAM_LOGS:                 connectAndStreamLogs,
-		STREAM_NETWORK_FLOWS_CILIUM: connectAndStreamCiliumNetworkFlows,
-		STREAM_NETWORK_FLOWS_FALCO:  connectAndStreamFalcoNetworkFlows,
-	}[streamType]
 	lambda := func() error {
 		return connectAndStream(logger, sm)
 	}
@@ -513,16 +500,16 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			var ciliumDone, falcoDone chan struct{}
 			sm.bufferedGrpcSyncer.done = logDone
 
-			go manageStream(logger, STREAM_RESOURCES, sm, resourceDone)
-			go manageStream(logger, STREAM_LOGS, sm, logDone)
+			go manageStream(logger, connectAndStreamResources, sm, resourceDone)
+			go manageStream(logger, connectAndStreamLogs, sm, logDone)
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
-				go manageStream(logger, STREAM_NETWORK_FLOWS_CILIUM, sm, ciliumDone)
+				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
 			}
 			if sm.streamClient.disableNetworkFlowsCilium {
 				falcoDone := make(chan struct{})
-				go manageStream(logger, STREAM_NETWORK_FLOWS_FALCO, sm, falcoDone)
+				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone)
 			}
 
 			// Block until one of the streams fail. Then we will jump to the top of
