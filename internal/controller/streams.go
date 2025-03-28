@@ -5,6 +5,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"net"
 	"net/http"
@@ -169,7 +170,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, cancel context.Can
 		dynamicClient: dynamicClient,
 		streamManager: sm,
 	}
-	err = sendClusterMetadata(ctx, sm, sm.streamClient.cniStatus)
+	err = sendClusterMetadata(ctx, sm)
 	if err != nil {
 		sm.logger.Errorw("Failed to send cluster metadata", "error", err)
 		return err
@@ -422,23 +423,6 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 					backoff = maxBackoff
 				}
 			} else {
-				if consecutiveFailures > 0 {
-					logger.Info("cloud-operator connected successfully after retries", zap.Int("retry_count", consecutiveFailures))
-					if sm.streamClient.logStream != nil {
-						//Log cloudOperatorConnectedAfterRetries
-						logEntry := &pb.LogEntry{
-							JsonMessage: "cloud-operator connected successfully after retries",
-						}
-						err := sm.streamClient.logStream.Send(&pb.SendLogsRequest{
-							Request: &pb.SendLogsRequest_LogEntry{
-								LogEntry: logEntry,
-							},
-						})
-						if err != nil {
-							logger.Warn("Failed to send cloudOperatorConnectedAfterRetries log entry", zap.Error(err))
-						}
-					}
-				}
 				consecutiveFailures = 0
 				backoff = initialBackoff
 				// Reset sleep timer back to initial backoff interval
@@ -452,7 +436,7 @@ func manageStream(logger *zap.SugaredLogger, connectAndStream func(*zap.SugaredL
 // ConnectStreams will continue to reboot and restart the main operations within
 // the operator if any disconnects or errors occur.
 func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
-	logger.Info("cloud-operator restarting")
+	//logger.Info("cloud-operator restarting")
 	// Falco channels communicate news events between http server and our network flows strea,
 	falcoEventChan := make(chan string)
 	http.HandleFunc("/", NewFalcoEventHandler(falcoEventChan))
@@ -540,9 +524,14 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 				logEntry := &pb.LogEntry{
 					JsonMessage: "cloud-operator no CNI plugin found",
 				}
-				_ = bufferedGrpcSyncer.client.Send(&pb.SendLogsRequest{
+				err := bufferedGrpcSyncer.client.Send(&pb.SendLogsRequest{
 					Request: &pb.SendLogsRequest_LogEntry{LogEntry: logEntry},
 				})
+				if err != nil {
+					logger.Warnw("Failed to send cloudOperatorNoCNIPlugin log entry", "error", err)
+				} else {
+					logger.Infow("Emitted cloudOperatorNoCNIPlugin log entry")
+				}
 			}
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
@@ -581,6 +570,21 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 				failureReason = "Log stream closed"
 			}
 			authConContextCancel()
+			logger.Warn("One or more streams have been closed; restarting all streams", zap.String("reason", failureReason))
+			if attempt > 1 && bufferedGrpcSyncer.client != nil {
+				err := bufferedGrpcSyncer.client.Send(&pb.SendLogsRequest{
+					Request: &pb.SendLogsRequest_LogEntry{
+						LogEntry: &pb.LogEntry{
+							JsonMessage: fmt.Sprintf("cloud-operator connected successfully after %d retries", attempt-1),
+						},
+					},
+				})
+				if err != nil {
+					logger.Warn("Failed to send cloudOperatorConnectedAfterRetries log entry", zap.Error(err))
+				} else {
+					logger.Infow("Emitted cloudOperatorConnectedAfterRetries audit log entry", "retry_count", attempt-1)
+				}
+			}
 		}
 
 		logger.Warn("One or more streams have been closed; closing and reopening the connection to CloudSecure",
@@ -588,7 +592,11 @@ func ConnectStreams(ctx context.Context, logger *zap.SugaredLogger, envMap Envir
 			zap.Int("attempt", attempt),
 		)
 	}
+	logger.Info("cloud-operator restarting")
 }
+
+// isFalcoInstalled checks if the Falco namespace exists in the Kubernetes cluster.
+// Returns true if the Falco namespace is found, otherwise returns false.
 func (sm *streamManager) isFalcoInstalled(ctx context.Context) bool {
 	clientset, err := NewClientSet()
 	if err != nil {

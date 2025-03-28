@@ -89,15 +89,21 @@ message KubernetesClusterMetadata {
   // Version of the operator. This version is following the Semver 2.0.0 format, e.g. "1.2.0".
   // https://semver.org/spec/v2.0.0.html
   string operator_version = 3;
-
+  // CniPluginStatus represents the status of the CNI plugin
   CniPluginStatus cni_plugin_status = 4;
 }
 
+// Enum for CniPluginStatus that defines possible states of the CNI plugin.
 enum CniPluginStatus {
+  // Default value. This value is unused and should not be set.
   CNI_PLUGIN_STATUS_UNSPECIFIED = 0;
+  // Indicates that the Cilium CNI plugin is present.
   CNI_PLUGIN_STATUS_CILIUM_PRESENT = 1;
+  // Indicates that the Falco CNI plugin is present.
   CNI_PLUGIN_STATUS_FALCO_PRESENT = 2;
+  // Indicates that both Cilium and Falco CNI plugins are present.
   CNI_PLUGIN_STATUS_BOTH_PRESENT = 3;
+  // Indicates that no CNI plugin was found.
   CNI_PLUGIN_STATUS_NONE_FOUND = 4;
 }
 

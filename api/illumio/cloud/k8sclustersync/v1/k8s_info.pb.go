@@ -25,14 +25,20 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Enum for CniPluginStatus that defines possible states of the CNI plugin.
 type CniPluginStatus int32
 
 const (
-	CniPluginStatus_CNI_PLUGIN_STATUS_UNSPECIFIED    CniPluginStatus = 0
+	// Default value. This value is unused and should not be set.
+	CniPluginStatus_CNI_PLUGIN_STATUS_UNSPECIFIED CniPluginStatus = 0
+	// Indicates that the Cilium CNI plugin is present.
 	CniPluginStatus_CNI_PLUGIN_STATUS_CILIUM_PRESENT CniPluginStatus = 1
-	CniPluginStatus_CNI_PLUGIN_STATUS_FALCO_PRESENT  CniPluginStatus = 2
-	CniPluginStatus_CNI_PLUGIN_STATUS_BOTH_PRESENT   CniPluginStatus = 3
-	CniPluginStatus_CNI_PLUGIN_STATUS_NONE_FOUND     CniPluginStatus = 4
+	// Indicates that the Falco CNI plugin is present.
+	CniPluginStatus_CNI_PLUGIN_STATUS_FALCO_PRESENT CniPluginStatus = 2
+	// Indicates that both Cilium and Falco CNI plugins are present.
+	CniPluginStatus_CNI_PLUGIN_STATUS_BOTH_PRESENT CniPluginStatus = 3
+	// Indicates that no CNI plugin was found.
+	CniPluginStatus_CNI_PLUGIN_STATUS_NONE_FOUND CniPluginStatus = 4
 )
 
 // Enum value maps for CniPluginStatus.
@@ -754,7 +760,8 @@ type KubernetesClusterMetadata struct {
 	KubernetesVersion string `protobuf:"bytes,2,opt,name=kubernetes_version,json=kubernetesVersion,proto3" json:"kubernetes_version,omitempty"`
 	// Version of the operator. This version is following the Semver 2.0.0 format, e.g. "1.2.0".
 	// https://semver.org/spec/v2.0.0.html
-	OperatorVersion string          `protobuf:"bytes,3,opt,name=operator_version,json=operatorVersion,proto3" json:"operator_version,omitempty"`
+	OperatorVersion string `protobuf:"bytes,3,opt,name=operator_version,json=operatorVersion,proto3" json:"operator_version,omitempty"`
+	// CniPluginStatus represents the status of the CNI plugin
 	CniPluginStatus CniPluginStatus `protobuf:"varint,4,opt,name=cni_plugin_status,json=cniPluginStatus,proto3,enum=illumio.cloud.k8sclustersync.v1.CniPluginStatus" json:"cni_plugin_status,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
