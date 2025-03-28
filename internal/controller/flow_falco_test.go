@@ -3,11 +3,16 @@
 package controller
 
 import (
+	"time"
+
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
+	ts, _ := parseFalcoTimestamp("1987-02-22T00:39:07.267635635+0000")
+
 	tests := map[string]struct {
 		input    string
 		expected *pb.FalcoFlow
@@ -16,7 +21,9 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 		"valid TCP flow": {
 			input: "time=1987-02-22T00:39:07.267635635+0000\t srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=tcp ipversion=ipv4",
 			expected: &pb.FalcoFlow{
-				Time: "1987-02-22T00:39:07.267635635+0000",
+				Ts: &pb.FalcoFlow_Timestamp{
+					Timestamp: ts,
+				},
 				Layer3: &pb.IP{
 					Source:      "192.168.1.1",
 					Destination: "192.168.1.2",
@@ -37,7 +44,9 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 		"valid UDP flow": {
 			input: "time=1987-02-22T00:39:07.267635635+0000\t srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=udp ipversion=ipv4",
 			expected: &pb.FalcoFlow{
-				Time: "1987-02-22T00:39:07.267635635+0000",
+				Ts: &pb.FalcoFlow_Timestamp{
+					Timestamp: ts,
+				},
 				Layer3: &pb.IP{
 					Source:      "192.168.1.1",
 					Destination: "192.168.1.2",
@@ -295,4 +304,34 @@ func (suite *ControllerTestSuite) TestRemoveTrailingTab() {
 			assert.Equal(suite.T(), tt.expected, result)
 		})
 	}
+}
+
+func (suite *ControllerTestSuite) TestConvertStringToTimestamp() {
+	ts, _ := time.Parse(falcoTimestampFormat, "1987-02-22T00:39:07.267635635+0000")
+	tests := map[string]struct {
+		input    string
+		expected *timestamppb.Timestamp
+	}{
+		"Valid ISO 8601 time string": {
+			input:    "1987-02-22T00:39:07.267635635+0000\t",
+			expected: timestamppb.New(ts),
+		},
+		"Invalid ISO 8601 time string": {
+			input:    "2022-10-15T15:04:05", // Missing time zone
+			expected: nil,                   // Expected error
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			result, err := parseFalcoTimestamp(tt.input)
+			if tt.expected == nil {
+				assert.NotNil(suite.T(), err, "Expected an error but got nil")
+			} else {
+				assert.Nil(suite.T(), err, "Unexpected error occurred")
+				assert.Equal(suite.T(), tt.expected, result)
+			}
+		})
+	}
+
 }
