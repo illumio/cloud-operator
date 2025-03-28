@@ -46,7 +46,7 @@ func getObjectMetadataFromRuntimeObject(obj runtime.Object) (*metav1.ObjectMeta,
 
 // getMetadatafromResource extracts the metav1.ObjectMeta from an unstructured.Unstructured resource.
 // It utilizes the unstructured's inherent methods to access the metadata directly.
-func getMetadatafromResource(logger *zap.Logger, resource unstructured.Unstructured) (*metav1.ObjectMeta, error) {
+func getMetadatafromResource(logger *zap.SugaredLogger, resource unstructured.Unstructured) (*metav1.ObjectMeta, error) {
 	// Convert unstructured object to a map.
 	itemMap := resource.Object
 	// Extract metadata from map.
@@ -54,12 +54,12 @@ func getMetadatafromResource(logger *zap.Logger, resource unstructured.Unstructu
 		// Convert the metadata map to JSON and then unmarshal into metav1.ObjectMeta.
 		metadataJSON, err := json.Marshal(metadata)
 		if err != nil {
-			logger.Error("Error marshalling metadata", zap.Error(err))
+			logger.Errorw("Error marshalling metadata", "error", err)
 			return &metav1.ObjectMeta{}, err
 		}
 		var objectMeta metav1.ObjectMeta
 		if err := json.Unmarshal(metadataJSON, &objectMeta); err != nil {
-			logger.Error("Error unmarshalling metadata", zap.Error(err))
+			logger.Errorw("Error unmarshalling metadata", "error", err)
 			return &metav1.ObjectMeta{}, err
 		}
 		return &objectMeta, err
@@ -69,10 +69,10 @@ func getMetadatafromResource(logger *zap.Logger, resource unstructured.Unstructu
 }
 
 // convertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
-func convertMetaObjectToMetadata(logger *zap.Logger, ctx context.Context, obj metav1.ObjectMeta, clientset *kubernetes.Clientset, resource string) (*pb.KubernetesObjectData, error) {
+func convertMetaObjectToMetadata(logger *zap.SugaredLogger, ctx context.Context, obj metav1.ObjectMeta, clientset *kubernetes.Clientset, resource string) (*pb.KubernetesObjectData, error) {
 	ownerReferences, err := convertOwnerReferences(obj.GetOwnerReferences())
 	if err != nil {
-		logger.Error("cannot convert OwnerReferences", zap.Error(err))
+		logger.Errorw("cannot convert OwnerReferences", "error", err)
 		return &pb.KubernetesObjectData{}, fmt.Errorf("cannot convert OwnerReferences")
 	}
 	objMetadata := &pb.KubernetesObjectData{
@@ -98,11 +98,7 @@ func convertMetaObjectToMetadata(logger *zap.Logger, ctx context.Context, obj me
 		if err != nil {
 			return objMetadata, nil
 		}
-		ipAddresses, err := getNodeIpAddresses(ctx, clientset, obj.GetName())
-		if err != nil {
-			return objMetadata, nil
-		}
-		objMetadata.KindSpecific = &pb.KubernetesObjectData_Node{Node: &pb.KubernetesNodeData{ProviderId: providerId, IpAddresses: ipAddresses}}
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_Node{Node: &pb.KubernetesNodeData{ProviderId: providerId}}
 	case "Service":
 		convertedServiceData, err := convertToKubernetesServiceData(ctx, obj.GetName(), clientset, obj.GetNamespace())
 		if err != nil {
@@ -114,23 +110,6 @@ func convertMetaObjectToMetadata(logger *zap.Logger, ctx context.Context, obj me
 	return objMetadata, nil
 }
 
-// getNodeIpAddresses fetches the IP addresses of a node
-func getNodeIpAddresses(ctx context.Context, clientset *kubernetes.Clientset, nodeName string) ([]string, error) {
-	node, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-	if err != nil {
-		return nil, errors.New("failed to get node")
-	}
-	ipAddresses := []string{}
-	for _, address := range node.Status.Addresses {
-		// We are excluding hostnames
-		if address.Type == v1.NodeInternalIP || address.Type == v1.NodeExternalIP {
-			ipAddresses = append(ipAddresses, address.Address)
-		}
-	}
-	return ipAddresses, nil
-}
-
-// convertIngressToStringList converts an array of v1.LoadBalancerIngress to a string array
 func convertIngressToStringList(ingresses []v1.LoadBalancerIngress) []string {
 	result := []string{}
 	for _, ingress := range ingresses {
@@ -144,7 +123,14 @@ func convertIngressToStringList(ingresses []v1.LoadBalancerIngress) []string {
 	return result
 }
 
-// convertServicePortsToPorts coverts an array of v1.ServicePort objects to a proto message KubernetesServiceData_ServicePort
+// Assuming ServiceAttributes has appropriate fields
+//
+//	type Ports struct {
+//		NodePort          *int32
+//		Port              int32
+//		Protocol          string
+//		LoadBalancerPorts []string
+//	}
 func convertServicePortsToPorts(servicePorts []v1.ServicePort) []*pb.KubernetesServiceData_ServicePort {
 	ports := make([]*pb.KubernetesServiceData_ServicePort, 0, len(servicePorts))
 	for _, sp := range servicePorts {

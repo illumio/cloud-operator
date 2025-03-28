@@ -58,10 +58,10 @@ func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 		UID:             "test-uid",
 		ResourceVersion: "test-version",
 	}
-	logger := zap.NewNop()
+	logger := zap.NewNop().Sugar()
 	clientset, err := NewClientSet()
 	if err != nil {
-		logger.Error("Failed to create clientset", zap.Error(err))
+		logger.Errorw("Failed to create clientset", "error", err)
 		suite.T().Error("could not create clientset")
 	}
 	// Execute the function under test.
@@ -145,7 +145,7 @@ func TestGetObjectMetadataFromRuntimeObject(t *testing.T) {
 
 func TestGetMetadataFromResource(t *testing.T) {
 	// Create a no-op logger.
-	logger := zap.NewNop()
+	logger := zap.NewNop().Sugar()
 
 	// Create an `unstructured.Unstructured` object with metadata.
 	resource := unstructured.Unstructured{
@@ -172,11 +172,11 @@ func TestGetMetadataFromResource(t *testing.T) {
 }
 
 func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
-	logger := zap.NewNop()
+	logger := zap.NewNop().Sugar()
 
 	clientset, err := NewClientSet()
 	if err != nil {
-		logger.Error("Failed to create clientset", zap.Error(err))
+		logger.Errorw("Failed to create clientset", "error", err)
 		suite.T().Fatalf("could not create clientset: %v", err)
 	}
 
@@ -430,99 +430,6 @@ func (suite *ControllerTestSuite) TestGetProviderIdNodeSpec() {
 			} else {
 				assert.NoError(suite.T(), err)
 				assert.Equal(suite.T(), tt.expectedID, id)
-			}
-		})
-	}
-}
-
-func (suite *ControllerTestSuite) TestGetNodeIpAddresses() {
-	tests := map[string]struct {
-		nodeName       string
-		node           *v1.Node
-		expectedIPs    []string
-		expectedErrMsg string
-	}{
-		"node not found": {
-			nodeName:       "nonexistent-node",
-			node:           nil,
-			expectedIPs:    nil,
-			expectedErrMsg: "failed to get node",
-		},
-		"node with internal and external IPs": {
-			nodeName: "test-node-with-internal-external",
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node-with-internal-external",
-				},
-				Status: v1.NodeStatus{
-					Addresses: []v1.NodeAddress{
-						{Type: v1.NodeInternalIP, Address: "192.168.1.1"},
-						{Type: v1.NodeExternalIP, Address: "1.2.3.4"},
-					},
-				},
-			},
-			expectedIPs:    []string{"192.168.1.1", "1.2.3.4"},
-			expectedErrMsg: "",
-		},
-		"node with only internal IP": {
-			nodeName: "test-node-internal",
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node-internal",
-				},
-				Status: v1.NodeStatus{
-					Addresses: []v1.NodeAddress{
-						{Type: v1.NodeInternalIP, Address: "192.168.1.1"},
-					},
-				},
-			},
-			expectedIPs:    []string{"192.168.1.1"},
-			expectedErrMsg: "",
-		},
-		"node with only external IP": {
-			nodeName: "test-node-external",
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node-external",
-				},
-				Status: v1.NodeStatus{
-					Addresses: []v1.NodeAddress{
-						{Type: v1.NodeExternalIP, Address: "1.2.3.4"},
-					},
-				},
-			},
-			expectedIPs:    []string{"1.2.3.4"},
-			expectedErrMsg: "",
-		},
-		"node with no IPs": {
-			nodeName: "test-node-no-ips",
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node-no-ips",
-				},
-				Status: v1.NodeStatus{
-					Addresses: []v1.NodeAddress{},
-				},
-			},
-			expectedIPs:    []string{},
-			expectedErrMsg: "",
-		},
-	}
-
-	for name, tt := range tests {
-		suite.Run(name, func() {
-			clientset, _ := NewClientSet()
-			if tt.node != nil {
-				_, err := clientset.CoreV1().Nodes().Create(context.TODO(), tt.node, metav1.CreateOptions{})
-				assert.NoError(suite.T(), err)
-			}
-
-			ips, err := getNodeIpAddresses(context.TODO(), clientset, tt.nodeName)
-			if tt.expectedErrMsg != "" {
-				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
-			} else {
-				assert.NoError(suite.T(), err)
-				assert.Equal(suite.T(), tt.expectedIPs, ips)
 			}
 		})
 	}

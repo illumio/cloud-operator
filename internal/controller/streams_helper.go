@@ -11,9 +11,9 @@ import (
 )
 
 // Helper function to send a request to the resource stream
-func sendToResourceStream(logger *zap.Logger, stream pb.KubernetesInfoService_SendKubernetesResourcesClient, request *pb.SendKubernetesResourcesRequest) error {
+func sendToResourceStream(logger *zap.SugaredLogger, stream pb.KubernetesInfoService_SendKubernetesResourcesClient, request *pb.SendKubernetesResourcesRequest) error {
 	if err := stream.Send(request); err != nil {
-		logger.Error("Failed to send request", zap.Stringer("request", request), zap.Error(err))
+		logger.Errorw("Failed to send request", "request", request, "error", err)
 		return err
 	}
 	return nil
@@ -51,7 +51,7 @@ func sendNetworkFlowRequest(sm *streamManager, flow interface{}) error {
 		return fmt.Errorf("unsupported flow type: %T", flow)
 	}
 	if err := sm.streamClient.networkFlowsStream.Send(request); err != nil {
-		sm.logger.Error("Failed to send network flow", zap.Error(err))
+		sm.logger.Errorw("Failed to send network flow", "error", err)
 		return err
 	}
 	return nil
@@ -92,18 +92,34 @@ func streamMutationObjectData(sm *streamManager, metadata *pb.KubernetesObjectDa
 func sendClusterMetadata(ctx context.Context, sm *streamManager) error {
 	clusterUid, err := GetClusterID(ctx, sm.logger)
 	if err != nil {
-		sm.logger.Error("Error getting cluster id", zap.Error(err))
+		sm.logger.Errorw("Error getting cluster id", "error", err)
 		return err
 	}
 	clientset, err := NewClientSet()
 	if err != nil {
-		sm.logger.Error("Error creating clientset", zap.Error(err))
+		sm.logger.Errorw("Error creating clientset", "error", err)
 		return err
 	}
 	kubernetesVersion, err := clientset.Discovery().ServerVersion()
 	if err != nil {
-		sm.logger.Error("Error getting Kubernetes version", zap.Error(err))
+		sm.logger.Errorw("Error getting Kubernetes version", "error", err)
 		return err
+	}
+	if sm.streamClient.cniStatus == pb.CniPluginStatus_CNI_PLUGIN_STATUS_NONE_FOUND {
+		sm.logger.Warn("No CNI plugin found: emitting audit log")
+		// Optionally send an audit event or log to CloudSecure
+		if sm.streamClient.logStream != nil {
+			logEntry := &pb.LogEntry{
+				JsonMessage: "no CNI plugin found in cluster (sent via ClusterMetadata)",
+			}
+			err = sm.streamClient.logStream.Send(&pb.SendLogsRequest{
+				Request: &pb.SendLogsRequest_LogEntry{LogEntry: logEntry},
+			})
+			if err != nil {
+				sm.logger.Errorw("Failed to send no CNI plugin found log in sendClusterMetadata", "error", err)
+				return err
+			}
+		}
 	}
 	request := &pb.SendKubernetesResourcesRequest{
 		Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{
@@ -111,6 +127,7 @@ func sendClusterMetadata(ctx context.Context, sm *streamManager) error {
 				Uid:               clusterUid,
 				KubernetesVersion: kubernetesVersion.String(),
 				OperatorVersion:   version.Version(),
+				CniPluginStatus:   sm.streamClient.cniStatus,
 			},
 		},
 	}
