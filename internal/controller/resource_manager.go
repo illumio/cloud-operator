@@ -130,7 +130,6 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 		return err
 	}
 
-	var event watch.Event
 	for {
 		select {
 		case <-ctx.Done():
@@ -139,7 +138,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			)
 			return ctx.Err()
 
-		case event = <-watcher.ResultChan():
+		case event := <-watcher.ResultChan():
 			// Exhaustive enum check on event type. We only want to report mutations
 			switch event.Type {
 			case watch.Error:
