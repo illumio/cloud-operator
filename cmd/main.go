@@ -33,6 +33,12 @@ import (
 	//+kubebuilder:scaffold:imports
 )
 
+const (
+	defaultStreamKeepalivePeriodKubernetesResources    = "10s"
+	defaultStreamKeepalivePeriodKubernetesNetworkFlows = "10s"
+	defaultStreamKeepalivePeriodLogs                   = "10s"
+)
+
 // newHealthHandler returns an HTTP HandlerFunc that checks the health of the server by calling the given function and returns a status code accordingly
 func newHealthHandler(checkFunc func() bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -71,6 +77,9 @@ func main() {
 	bindEnv(logger, "onboarding_endpoint", "ONBOARDING_ENDPOINT")
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
+	bindEnv(logger, "stream_keepalive_period_kubernetes_resources", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES")
+	bindEnv(logger, "stream_keepalive_period_kubernetes_network_flows", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS")
+	bindEnv(logger, "stream_keepalive_period_logs", "STREAM_KEEPALIVE_PERIOD_LOGS")
 
 	// Set default values
 	viper.SetDefault("cluster_creds", "clustercreds")
@@ -78,6 +87,9 @@ func main() {
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("tls_skip_verify", false)
+	viper.SetDefault("stream_keepalive_period_kubernetes_resources", defaultStreamKeepalivePeriodKubernetesResources)
+	viper.SetDefault("stream_keepalive_period_kubernetes_network_flows", defaultStreamKeepalivePeriodKubernetesNetworkFlows)
+	viper.SetDefault("stream_keepalive_period_logs", defaultStreamKeepalivePeriodLogs)
 
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),
@@ -87,6 +99,11 @@ func main() {
 		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
 		TokenEndpoint:          viper.GetString("token_endpoint"),
 		TlsSkipVerify:          viper.GetBool("tls_skip_verify"),
+		KeepalivePeriods: controller.KeepalivePeriods{
+			KubernetesResources:    viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
+			KubernetesNetworkFlows: viper.GetDuration("stream_keepalive_period_kubernetes_network_flows"),
+			Logs:                   viper.GetDuration("stream_keepalive_period_logs"),
+		},
 	}
 
 	logger.Info("Starting application",
@@ -96,6 +113,9 @@ func main() {
 		zap.String("onboarding_endpoint", envConfig.OnboardingEndpoint),
 		zap.String("token_endpoint", envConfig.TokenEndpoint),
 		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
+		zap.Duration("stream_keepalive_period_kubernetes_resources", envConfig.KeepalivePeriods.KubernetesResources),
+		zap.Duration("stream_keepalive_period_kubernetes_network_flows", envConfig.KeepalivePeriods.KubernetesNetworkFlows),
+		zap.Duration("stream_keepalive_period_logs", envConfig.KeepalivePeriods.Logs),
 	)
 
 	// Start the gops agent and listen on a specific address and port
