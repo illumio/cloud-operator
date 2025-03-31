@@ -3,6 +3,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -30,35 +31,38 @@ type ResourceManager struct {
 
 // TODO: Make a struct with the ClientSet as a field, and convertMetaObjectToMetadata, getPodIPAddresses, getProviderIdNodeSpec should be methods of that struct.
 
-// DynamicListAndWatchResources lists and watches the specified resource dynamically, managing context cancellation and synchronization with wait groups.
-func (r *ResourceManager) DyanmicListAndWatchResources(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, allResourcesSnapshotted *sync.WaitGroup, snapshotCompleted *sync.WaitGroup) {
+// DynamicListAndWatchResources lists and watches the specified resource
+// dynamically, managing context cancellation and synchronization with wait
+// groups. As long as we are able to watch and stream, we will never return from
+// this function
+func (r *ResourceManager) DynamicListAndWatchResources(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, allResourcesSnapshotted *sync.WaitGroup, snapshotCompleted *sync.WaitGroup) {
+	defer cancel()
+
 	resourceListVersion, err := r.DynamicListResources(ctx, resource, apiGroup)
 	if err != nil {
 		allResourcesSnapshotted.Done()
 		r.logger.Error("Unable to list resources", zap.Error(err))
-		cancel()
 		return
 	}
 	allResourcesSnapshotted.Done()
 	snapshotCompleted.Wait()
+
 	// Here intiatate the watch event
 	watchOptions := metav1.ListOptions{
 		Watch:           true,
 		ResourceVersion: resourceListVersion,
 	}
+
 	// Prevent us from overwhelming K8 api
 	limiter := rate.NewLimiter(1, 5)
 	err = limiter.Wait(ctx)
 	if err != nil {
 		r.logger.Error("Cannot wait using rate limiter", zap.Error(err))
-		cancel()
 		return
 	}
 
 	err = r.watchEvents(ctx, resource, apiGroup, watchOptions)
 	if err != nil {
-		r.logger.Error("Unable to watch events", zap.Error(err))
-		cancel()
 		return
 	}
 }
@@ -91,44 +95,85 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, resource str
 	return resourceListVersion, nil
 }
 
+// getErrFromWatchEvent returns an error if the watch event is of type Error.
+// Includes the 'code', 'reason', and 'message'. If the watch event is NOT of
+// type Error then return nil
+func getErrFromWatchEvent(event watch.Event) error {
+	if event.Object == nil {
+		return nil
+	}
+	if event.Type != watch.Error {
+		return nil
+	}
+
+	status, ok := event.Object.(*metav1.Status)
+	if !ok {
+		return fmt.Errorf("unexpected error type: %T", event.Object)
+	}
+
+	return fmt.Errorf("code: %d, reason: %s, message: %s", status.Code, status.Reason, status.Message)
+}
+
 // watchEvents watches Kubernetes resources. The second part of the of the "list
 // and watch" strategy.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
 func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiGroup string, watchOptions metav1.ListOptions) error {
+	logger := r.logger.With(
+		zap.String("api_group", apiGroup),
+		zap.String("resource", resource),
+	)
+
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
-		r.logger.Error("Error setting up watch on resource", zap.Error(err))
+		logger.Error("Error setting up watch on resource", zap.Error(err))
 		return err
 	}
-	for event := range watcher.ResultChan() {
-		switch event.Type {
-		case watch.Error:
-			r.logger.Error("Watcher event has returned an error", zap.Error(err))
-			return err
-		case watch.Bookmark:
-			continue
-		default:
-		}
-		convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
-		if err != nil {
-			r.logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
-			return err
-		}
-		resource := event.Object.GetObjectKind().GroupVersionKind().Kind
-		metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, *convertedData, r.clientset, resource)
-		if err != nil {
-			r.logger.Error("Cannot convert object metadata", zap.Error(err))
-			return err
-		}
-		err = streamMutationObjectData(r.streamManager, metadataObj, event.Type)
-		if err != nil {
-			r.logger.Error("Cannot send resource mutation", zap.Error(err))
-			return err
-		}
 
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Debug("Disconnected from CloudSecure",
+				zap.String("reason", "context cancelled"),
+			)
+			return ctx.Err()
+
+		case event := <-watcher.ResultChan():
+			// Exhaustive enum check on event type. We only want to report mutations
+			switch event.Type {
+			case watch.Error:
+				err := getErrFromWatchEvent(event)
+				logger.Error("Watcher event has returned an error", zap.Error(err))
+				return err
+			case watch.Bookmark:
+				continue
+			case watch.Added, watch.Modified, watch.Deleted:
+			default:
+				logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
+				continue
+			}
+
+			// Type gymnastics: turn the watch.Event into a 'KubernetesObjectData'
+			convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
+			if err != nil {
+				logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
+				return err
+			}
+			resource := event.Object.GetObjectKind().GroupVersionKind().Kind
+			metadataObj, err := convertMetaObjectToMetadata(logger, ctx, *convertedData, r.clientset, resource)
+			if err != nil {
+				logger.Error("Cannot convert object metadata", zap.Error(err))
+				return err
+			}
+
+			// Helper function: type gymnastics + send the KubernetesObjectData out on the wire
+			err = streamMutationObjectData(r.streamManager, metadataObj, event.Type)
+			if err != nil {
+				logger.Error("Cannot send resource mutation", zap.Error(err))
+				return err
+			}
+		}
 	}
-	return nil
 }
 
 // FetchResources retrieves unstructured resources from the K8s API.

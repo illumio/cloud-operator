@@ -12,11 +12,21 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+)
+
+type StreamType string
+
+const (
+	STREAM_NETWORK_FLOWS = StreamType("network_flows")
+	STREAM_RESOURCES     = StreamType("resources")
+	STREAM_LOGS          = StreamType("logs")
+	STREAM_CONFIGURATION = StreamType("configuration")
 )
 
 type streamClient struct {
@@ -42,6 +52,12 @@ type streamManager struct {
 	streamClient       *streamClient
 }
 
+type KeepalivePeriods struct {
+	KubernetesNetworkFlows time.Duration
+	Logs                   time.Duration
+	KubernetesResources    time.Duration
+}
+
 type EnvironmentConfig struct {
 	// Namspace of Cilium.
 	CiliumNamespace string
@@ -57,6 +73,8 @@ type EnvironmentConfig struct {
 	TokenEndpoint string
 	// Whether to skip TLS certificate verification when starting a stream.
 	TlsSkipVerify bool
+	// KeepalivePeriods specifies the period (minus jitter) between two keepalives sent on each stream
+	KeepalivePeriods KeepalivePeriods
 }
 
 var resourceAPIGroupMap = map[string]string{
@@ -174,7 +192,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, cancel context.Can
 	}
 	for resource, apiGroup := range resourceAPIGroupMap {
 		allResourcesSnapshotted.Add(1)
-		go resourceLister.DyanmicListAndWatchResources(ctx, cancel, resource, apiGroup, &allResourcesSnapshotted, &snapshotCompleted)
+		go resourceLister.DynamicListAndWatchResources(ctx, cancel, resource, apiGroup, &allResourcesSnapshotted, &snapshotCompleted)
 	}
 	allResourcesSnapshotted.Wait()
 	err = sendResourceSnapshotComplete(sm)
@@ -272,8 +290,34 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context) error {
 	}
 }
 
-// connectAndStreamCiliumNetworkFlows creates networkFlowsStream client and begins the streaming of network flows.
-func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager) error {
+// StreamKeepalives loops infinitely as long as the keepalives are working. This
+// should be run inside a goroutine in every `connectAndStream*` function
+func (sm *streamManager) StreamKeepalives(
+	ctx context.Context,
+	period time.Duration,
+	streamType StreamType,
+) error {
+	timer := time.NewTimer(jitterTime(period, 0.10))
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-timer.C:
+			err := sendKeepalive(sm, streamType)
+			if err != nil {
+				return err
+			}
+			timer.Reset(jitterTime(period, 0.10))
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+// connectAndStreamCiliumNetworkFlows creates networkFlowsStream client and
+// begins the streaming of network flows. Also starts a goroutine to send
+// keepalives at the configured period
+func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager, KeepalivePeriod time.Duration) error {
 	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
 	defer ciliumCancel()
 
@@ -282,8 +326,14 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager) e
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
 	}
-
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
+
+	go func() {
+		err := sm.StreamKeepalives(ciliumCtx, KeepalivePeriod, STREAM_NETWORK_FLOWS)
+		if err != nil {
+			logger.Error("Failed to send keepalives", zap.Error(err))
+		}
+	}()
 
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, sm.streamClient.ciliumNamespace)
 	if err != nil {
@@ -297,17 +347,26 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager) e
 	return nil
 }
 
-// connectAndStreamFalcoNetworkFlows creates networkFlowsStream client and begins the streaming of network flows.
-func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager) error {
+// connectAndStreamFalcoNetworkFlows creates networkFlowsStream client and
+// begins the streaming of network flows. Also starts a goroutine to send
+// keepalives at the configured period
+func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager, KeepalivePeriod time.Duration) error {
 	falcoCtx, falcoCancel := context.WithCancel(context.Background())
 	defer falcoCancel()
+
 	sendFalcoNetworkFlows, err := sm.streamClient.client.SendKubernetesNetworkFlows(falcoCtx)
 	if err != nil {
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
 	}
-
 	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
+
+	go func() {
+		err := sm.StreamKeepalives(falcoCtx, KeepalivePeriod, STREAM_NETWORK_FLOWS)
+		if err != nil {
+			logger.Error("Failed to send keepalives", zap.Error(err))
+		}
+	}()
 
 	err = sm.StreamFalcoNetworkFlows(falcoCtx)
 	if err != nil {
@@ -318,8 +377,10 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager) er
 	return nil
 }
 
-// connectAndStreamResources creates resourceStream client and begins the streaming of resources.
-func connectAndStreamResources(logger *zap.Logger, sm *streamManager) error {
+// connectAndStreamResources creates resourceStream client and begins the
+// streaming of resources. Also starts a goroutine to send keepalives at the
+// configured period
+func connectAndStreamResources(logger *zap.Logger, sm *streamManager, KeepalivePeriod time.Duration) error {
 	resourceCtx, resourceCancel := context.WithCancel(context.Background())
 	defer resourceCancel()
 
@@ -328,8 +389,14 @@ func connectAndStreamResources(logger *zap.Logger, sm *streamManager) error {
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
 	}
-
 	sm.streamClient.resourceStream = SendKubernetesResourcesStream
+
+	go func() {
+		err := sm.StreamKeepalives(resourceCtx, KeepalivePeriod, STREAM_RESOURCES)
+		if err != nil {
+			logger.Error("Failed to send keepalives", zap.Error(err))
+		}
+	}()
 
 	err = sm.StreamResources(resourceCtx, resourceCancel)
 	if err != nil {
@@ -340,8 +407,9 @@ func connectAndStreamResources(logger *zap.Logger, sm *streamManager) error {
 	return nil
 }
 
-// connectAndStreamLogs creates sendLogs client and begins the streaming of logs.
-func connectAndStreamLogs(logger *zap.Logger, sm *streamManager) error {
+// connectAndStreamLogs creates sendLogs client and begins the streaming of
+// logs. Also starts a goroutine to send keepalives at the configured period
+func connectAndStreamLogs(logger *zap.Logger, sm *streamManager, KeepalivePeriod time.Duration) error {
 	logCtx, logCancel := context.WithCancel(context.Background())
 	defer logCancel()
 
@@ -350,9 +418,15 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager) error {
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
 	}
-
 	sm.streamClient.logStream = SendLogsStream
 	sm.bufferedGrpcSyncer.UpdateClient(sm.streamClient.logStream, sm.streamClient.conn)
+
+	go func() {
+		err := sm.StreamKeepalives(logCtx, KeepalivePeriod, STREAM_LOGS)
+		if err != nil {
+			logger.Error("Failed to send keepalives", zap.Error(err))
+		}
+	}()
 
 	err = sm.StreamLogs(logCtx)
 	if err != nil {
@@ -364,7 +438,13 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager) error {
 }
 
 // Generic function to manage any stream with backoff and reconnection logic.
-func manageStream(logger *zap.Logger, connectAndStream func(*zap.Logger, *streamManager) error, sm *streamManager, done chan struct{}) {
+func manageStream(
+	logger *zap.Logger,
+	connectAndStream func(*zap.Logger, *streamManager, time.Duration) error,
+	sm *streamManager,
+	done chan struct{},
+	KeepalivePeriod time.Duration,
+) {
 	defer close(done)
 	const (
 		initialBackoff       = 1 * time.Second
@@ -389,7 +469,7 @@ func manageStream(logger *zap.Logger, connectAndStream func(*zap.Logger, *stream
 			backoff = initialBackoff
 			resetTimer.Reset(resetPeriod)
 		case <-sleepTimer.C:
-			err := connectAndStream(logger, sm)
+			err := connectAndStream(logger, sm, KeepalivePeriod)
 			if err != nil {
 				if errors.Is(err, ErrStopRetries) {
 					logger.Info("Stopping retries for this stream as instructed.")
@@ -524,19 +604,19 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			var ciliumDone chan struct{}
 			sm.bufferedGrpcSyncer.done = logDone
 
-			go manageStream(logger, connectAndStreamResources, sm, resourceDone)
-			go manageStream(logger, connectAndStreamLogs, sm, logDone)
+			go manageStream(logger, connectAndStreamResources, sm, resourceDone, envMap.KeepalivePeriods.KubernetesResources)
+			go manageStream(logger, connectAndStreamLogs, sm, logDone, envMap.KeepalivePeriods.Logs)
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
-				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone)
+				go manageStream(logger, connectAndStreamCiliumNetworkFlows, sm, ciliumDone, envMap.KeepalivePeriods.KubernetesNetworkFlows)
 				if !sm.streamClient.disableNetworkFlowsCilium {
 					falcoDone = nil
 				}
 			}
 			if sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = nil
-				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone)
+				go manageStream(logger, connectAndStreamFalcoNetworkFlows, sm, falcoDone, envMap.KeepalivePeriods.KubernetesNetworkFlows)
 			}
 
 			// Block until one of the streams fail. Then we will jump to the top of
@@ -624,6 +704,13 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.Logger, envMap 
 	return conn, client, err
 }
 
+// jitterTime subtracts a percentage from the base time, in order to introduce
+// jitter. maxJitterPct must be in the range [0, 1).
+//
+// jitter is a technical term, meaning "a signal's deviation from true
+// periodicity". This is desirable in distributed systems, because if all agents
+// synchronize their messages, we stop calling that API requests and start
+// calling that a DDoS attack.
 func jitterTime(base time.Duration, maxJitterPct float64) time.Duration {
 	jitterPct := rand.Float64() * maxJitterPct // [0, maxJitterPct)
 	return time.Duration(float64(base) * (1. - jitterPct))

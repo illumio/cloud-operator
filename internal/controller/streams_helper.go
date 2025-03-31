@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/version"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/watch"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/version"
 )
 
 // Helper function to send a request to the resource stream
@@ -57,7 +58,10 @@ func sendNetworkFlowRequest(sm *streamManager, flow interface{}) error {
 	return nil
 }
 
-// streamMutationObjectData sends a resource mutation message into the given stream.
+// streamMutationObjectData does type gymnastics then sends the result over the
+// wire. It "upgrades" a KubernetesObjectData into a KubernetesResourceMutation
+// (which can be sent over the wire). It needs to use information from the
+// watch.EventType to accomplish this
 func streamMutationObjectData(sm *streamManager, metadata *pb.KubernetesObjectData, eventType watch.EventType) error {
 	var mutation *pb.KubernetesResourceMutation
 	switch eventType {
@@ -123,4 +127,38 @@ func sendResourceSnapshotComplete(sm *streamManager) error {
 		Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{},
 	}
 	return sendToResourceStream(sm.logger, sm.streamClient.resourceStream, request)
+}
+
+// sendKeepalive accepts a stream type & sends a keepalive ping on that stream
+func sendKeepalive(sm *streamManager, st StreamType) error {
+	var err error
+
+	switch st {
+	case STREAM_NETWORK_FLOWS:
+		err = sm.streamClient.networkFlowsStream.Send(&pb.SendKubernetesNetworkFlowsRequest{
+			Request: &pb.SendKubernetesNetworkFlowsRequest_Keepalive{
+				Keepalive: &pb.Keepalive{},
+			},
+		})
+	case STREAM_RESOURCES:
+		err = sm.streamClient.resourceStream.Send(&pb.SendKubernetesResourcesRequest{
+			Request: &pb.SendKubernetesResourcesRequest_Keepalive{
+				Keepalive: &pb.Keepalive{},
+			},
+		})
+	case STREAM_LOGS:
+		err = sm.streamClient.logStream.Send(&pb.SendLogsRequest{
+			Request: &pb.SendLogsRequest_Keepalive{
+				Keepalive: &pb.Keepalive{},
+			},
+		})
+	default:
+		return fmt.Errorf("unsupported stream type: %s", st)
+	}
+
+	if err != nil {
+		sm.logger.Error("Failed to send keepalive on stream", zap.String("stream", string(st)), zap.Error(err))
+		return err
+	}
+	return nil
 }
