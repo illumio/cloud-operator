@@ -26,7 +26,7 @@ const (
 	STREAM_NETWORK_FLOWS = StreamType("network_flows")
 	STREAM_RESOURCES     = StreamType("resources")
 	STREAM_LOGS          = StreamType("logs")
-	// TODO: what do we call the config string?
+	STREAM_CONFIGURATION = StreamType("configuration")
 )
 
 type streamClient struct {
