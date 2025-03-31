@@ -375,12 +375,12 @@ func manageStream(
 ) {
 	defer close(done)
 
-	lambda := func() error {
+	f := func() error {
 		return connectAndStream(logger, sm)
 	}
 
 	// If a stream goes down, try to reconnect. With exponential backoff
-	lambdaWithBackoff := func() error {
+	funcWithBackoff := func() error {
 		return exponentialBackoff(backoffOpts{
 			InitialBackoff:       1 * time.Second,
 			MaxBackoff:           1 * time.Minute,
@@ -390,14 +390,14 @@ func manageStream(
 			Logger: logger.With(
 				zap.String("name", "connectToStreamWithBackoff"),
 			),
-		}, lambda)
+		}, f)
 	}
 
 	// If reapated attempts to connect fail, that is, the "SevereErrorThreshold"
 	// in the above backoff is triggered, then wait and try again. By setting
 	// ExponentialFactor to 1, we will wait the same amount of time between every
 	// attempt. This is desirable
-	lambdaWithBackoffAndReset := func() error {
+	funcWithBackoffAndReset := func() error {
 		return exponentialBackoff(backoffOpts{
 			InitialBackoff:       10 * time.Minute,
 			MaxBackoff:           10 * time.Second,
@@ -409,10 +409,10 @@ func manageStream(
 			Logger: logger.With(
 				zap.String("name", "connectToStreamWithBackoffAndReset"),
 			),
-		}, lambdaWithBackoff)
+		}, funcWithBackoff)
 	}
 
-	lambdaWithBackoffAndReset()
+	funcWithBackoffAndReset()
 }
 
 // ConnectStreams will continue to reboot and restart the main operations within
