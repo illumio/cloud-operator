@@ -59,7 +59,7 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 	defer s.timer.Stop()
 	opts.Logger.Debug("Making first attempt", zap.Inline(opts))
 
-	for _ = range s.timer.C {
+	for range s.timer.C {
 		err := action()
 
 		if err != nil {
