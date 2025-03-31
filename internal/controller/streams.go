@@ -412,7 +412,11 @@ func manageStream(
 		}, funcWithBackoff)
 	}
 
-	funcWithBackoffAndReset()
+	err := funcWithBackoffAndReset()
+	if err != nil {
+		logger.Error("Failed to reset connectAndStream. Something is very wrong", zap.Error(err))
+		return
+	}
 }
 
 // ConnectStreams will continue to reboot and restart the main operations within
