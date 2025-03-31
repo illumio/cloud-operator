@@ -387,8 +387,9 @@ func manageStream(
 			MaxJitterPct:         0.20,
 			SevereErrorThreshold: 10,
 			ExponentialFactor:    2.0,
-			Name:                 "connectToStreamWithBackoff",
-			logger:               logger,
+			Logger: logger.With(
+				zap.String("name", "connectToStreamWithBackoff"),
+			),
 		}, lambda)
 	}
 
@@ -405,8 +406,9 @@ func manageStream(
 			// Setting ExponentialFactor 1 will cause the backoff timer to stay
 			// constant.
 			ExponentialFactor: 1,
-			Name:              "connectToStreamWithBackoffAndReset",
-			logger:            logger,
+			Logger: logger.With(
+				zap.String("name", "connectToStreamWithBackoffAndReset"),
+			),
 		}, lambdaWithBackoff)
 	}
 

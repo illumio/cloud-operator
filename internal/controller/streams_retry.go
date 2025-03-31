@@ -10,17 +10,17 @@ import (
 )
 
 type backoffOpts struct {
-	Name                 string
 	InitialBackoff       time.Duration
 	MaxBackoff           time.Duration
 	MaxJitterPct         float64
 	SevereErrorThreshold int
 	ExponentialFactor    float64
-	logger               *zap.Logger
+	Logger               *zap.Logger
 }
 
+var _ zapcore.ObjectMarshaler = &backoffOpts{}
+
 func (a backoffOpts) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	enc.AddString("name", a.Name)
 	enc.AddDuration("initial_backoff", a.InitialBackoff)
 	enc.AddDuration("max_backoff", a.MaxBackoff)
 	enc.AddFloat64("exponential_factor", a.ExponentialFactor)
