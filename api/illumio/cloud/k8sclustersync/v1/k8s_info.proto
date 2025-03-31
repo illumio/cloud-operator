@@ -146,8 +146,12 @@ message FalcoFlow {
   IP layer3 = 1;
   // Proto contains protocol used
   Layer4 layer4 = 2;
-  // Time when flow occurred.
-  string time = 3;
+
+  oneof ts {
+    // time contains the unparsed timestamp string received from Falco; parse it and set timestamp instead
+    string time = 3 [deprecated = true];
+    google.protobuf.Timestamp timestamp = 4;
+  }
 }
 
 // A flow received from Cilium Hubble Relay using the Observer service's GetFlows RPC.
