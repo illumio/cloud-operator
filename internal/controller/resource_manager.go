@@ -118,10 +118,15 @@ func getErrFromWatchEvent(event watch.Event) error {
 // and watch" strategy.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
 func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiGroup string, watchOptions metav1.ListOptions) error {
+	logger := r.logger.With(
+		zap.String("api_group", apiGroup),
+		zap.String("resource", resource),
+	)
+
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
-		r.logger.Error("Error setting up watch on resource", zap.Error(err))
+		logger.Error("Error setting up watch on resource", zap.Error(err))
 		return err
 	}
 
@@ -129,10 +134,8 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 	for {
 		select {
 		case <-ctx.Done():
-			r.logger.Debug("Disconnected from CloudSecure",
+			logger.Debug("Disconnected from CloudSecure",
 				zap.String("reason", "context cancelled"),
-				zap.String("api_group", apiGroup),
-				zap.String("resource", resource),
 			)
 			return ctx.Err()
 
@@ -141,33 +144,33 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			switch event.Type {
 			case watch.Error:
 				err := getErrFromWatchEvent(event)
-				r.logger.Error("Watcher event has returned an error", zap.Error(err))
+				logger.Error("Watcher event has returned an error", zap.Error(err))
 				return err
 			case watch.Bookmark:
 				continue
 			case watch.Added, watch.Modified, watch.Deleted:
 			default:
-				r.logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
+				logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
 				continue
 			}
 
 			// Type gymnastics: turn the watch.Event into a 'KubernetesObjectData'
 			convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
 			if err != nil {
-				r.logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
+				logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
 				return err
 			}
 			resource := event.Object.GetObjectKind().GroupVersionKind().Kind
-			metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, *convertedData, r.clientset, resource)
+			metadataObj, err := convertMetaObjectToMetadata(logger, ctx, *convertedData, r.clientset, resource)
 			if err != nil {
-				r.logger.Error("Cannot convert object metadata", zap.Error(err))
+				logger.Error("Cannot convert object metadata", zap.Error(err))
 				return err
 			}
 
 			// Helper function: type gymnastics + send the KubernetesObjectData out on the wire
 			err = streamMutationObjectData(r.streamManager, metadataObj, event.Type)
 			if err != nil {
-				r.logger.Error("Cannot send resource mutation", zap.Error(err))
+				logger.Error("Cannot send resource mutation", zap.Error(err))
 				return err
 			}
 		}
