@@ -59,37 +59,37 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 	defer s.timer.Stop()
 	opts.Logger.Debug("Making first attempt", zap.Inline(opts))
 
-	for {
-		select {
-		case <-s.timer.C:
-			err := action()
+	for _ = range s.timer.C {
+		err := action()
 
-			if err != nil {
-				s.HappyPathResetBackoff()
-				continue
-			}
-
-			// Give up after failing more than SevereErrorThreshold times
-			givingUp := s.consecutiveFailures >= opts.SevereErrorThreshold
-			lg := opts.Logger.Debug
-			if givingUp {
-				lg = opts.Logger.Error
-			}
-			lg("Error in backoff function",
-				zap.Bool("severe_failure", givingUp),
-				zap.Int("consecutive_failures", s.consecutiveFailures),
-				zap.Error(err),
-			)
-
-			if !givingUp {
-				s.AddBackoff(1)
-				continue
-			}
-
-			s.UnhappyPathResetBackoff()
-			return fmt.Errorf("failed %d times", s.consecutiveFailures)
+		if err != nil {
+			s.HappyPathResetBackoff()
+			continue
 		}
+
+		// Give up after failing more than SevereErrorThreshold times
+		givingUp := s.consecutiveFailures >= opts.SevereErrorThreshold
+		lg := opts.Logger.Debug
+		if givingUp {
+			lg = opts.Logger.Error
+		}
+		lg("Error in backoff function",
+			zap.Bool("severe_failure", givingUp),
+			zap.Int("consecutive_failures", s.consecutiveFailures),
+			zap.Error(err),
+		)
+
+		if !givingUp {
+			s.AddBackoff(1)
+			continue
+		}
+
+		s.UnhappyPathResetBackoff()
+		return fmt.Errorf("failed %d times", s.consecutiveFailures)
 	}
+
+	// unreachable
+	return fmt.Errorf("broke out of backoff loop")
 }
 
 func (s *state) AddBackoff(count int) {
