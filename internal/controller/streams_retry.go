@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"golang.org/x/exp/constraints"
 )
 
@@ -16,6 +17,16 @@ type backoffOpts struct {
 	SevereErrorThreshold int
 	ExponentialFactor    float64
 	logger               *zap.Logger
+}
+
+func (a backoffOpts) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("name", a.Name)
+	enc.AddDuration("initial_backoff", a.InitialBackoff)
+	enc.AddDuration("max_backoff", a.MaxBackoff)
+	enc.AddFloat64("exponential_factor", a.ExponentialFactor)
+	enc.AddFloat64("max_jitter_pct", a.MaxJitterPct)
+	enc.AddInt("severe_error_threshold", a.SevereErrorThreshold)
+	return nil
 }
 
 type Action func() error
@@ -45,7 +56,7 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 		opts:                opts,
 	}
 	defer s.timer.Stop()
-	opts.logger.Info("Starting backoff", zap.String("name", opts.Name), zap.Any("opts", opts))
+	opts.logger.Debug("Making first attempt", zap.Inline(opts))
 
 	for {
 		select {
