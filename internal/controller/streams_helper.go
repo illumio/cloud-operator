@@ -136,15 +136,21 @@ func sendKeepalive(sm *streamManager, st StreamType) error {
 	switch st {
 	case STREAM_NETWORK_FLOWS:
 		err = sm.streamClient.networkFlowsStream.Send(&pb.SendKubernetesNetworkFlowsRequest{
-			Request: &pb.SendKubernetesNetworkFlowsRequest_Keepalive{},
+			Request: &pb.SendKubernetesNetworkFlowsRequest_Keepalive{
+				Keepalive: &pb.Keepalive{},
+			},
 		})
 	case STREAM_RESOURCES:
 		err = sm.streamClient.resourceStream.Send(&pb.SendKubernetesResourcesRequest{
-			Request: &pb.SendKubernetesResourcesRequest_Keepalive{},
+			Request: &pb.SendKubernetesResourcesRequest_Keepalive{
+				Keepalive: &pb.Keepalive{},
+			},
 		})
 	case STREAM_LOGS:
 		err = sm.streamClient.logStream.Send(&pb.SendLogsRequest{
-			Request: &pb.SendLogsRequest_Keepalive{},
+			Request: &pb.SendLogsRequest_Keepalive{
+				Keepalive: &pb.Keepalive{},
+			},
 		})
 	default:
 		return fmt.Errorf("unsupported stream type: %s", st)
