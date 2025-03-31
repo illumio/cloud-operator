@@ -388,7 +388,7 @@ func manageStream(
 			SevereErrorThreshold: 10,
 			ExponentialFactor:    2.0,
 			Logger: logger.With(
-				zap.String("name", "connectToStreamWithBackoff"),
+				zap.String("name", "retry_connect_and_stream"),
 			),
 		}, f)
 	}
@@ -407,7 +407,7 @@ func manageStream(
 			// constant.
 			ExponentialFactor: 1,
 			Logger: logger.With(
-				zap.String("name", "connectToStreamWithBackoffAndReset"),
+				zap.String("name", "reset_retry_connect_and_stream"),
 			),
 		}, funcWithBackoff)
 	}

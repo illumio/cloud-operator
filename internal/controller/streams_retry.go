@@ -52,11 +52,12 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 	s := state{
 		backoff:             opts.InitialBackoff,
 		consecutiveFailures: 0,
-		timer:               time.NewTimer(0),
-		opts:                opts,
+		// Don't wait before the first attempt to execute the action.
+		timer: time.NewTimer(0),
+		opts:  opts,
 	}
 	defer s.timer.Stop()
-	opts.logger.Debug("Making first attempt", zap.Inline(opts))
+	opts.Logger.Debug("Making first attempt", zap.Inline(opts))
 
 	for {
 		select {
@@ -70,12 +71,11 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 
 			// Give up after failing more than SevereErrorThreshold times
 			givingUp := s.consecutiveFailures >= opts.SevereErrorThreshold
-			lg := opts.logger.Debug
+			lg := opts.Logger.Debug
 			if givingUp {
-				lg = opts.logger.Error
+				lg = opts.Logger.Error
 			}
 			lg("Error in backoff function",
-				zap.String("name", opts.Name),
 				zap.Bool("severe_failure", givingUp),
 				zap.Int("consecutive_failures", s.consecutiveFailures),
 				zap.Error(err),
@@ -87,7 +87,7 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 			}
 
 			s.UnhappyPathResetBackoff()
-			return fmt.Errorf("%s has failed %d times", opts.Name, s.consecutiveFailures)
+			return fmt.Errorf("failed %d times", s.consecutiveFailures)
 		}
 	}
 }
@@ -97,7 +97,7 @@ func (s *state) AddBackoff(count int) {
 		s.consecutiveFailures++
 
 		sleep := clamp(s.opts.InitialBackoff, jitterTime(s.backoff, s.opts.MaxJitterPct), s.opts.MaxBackoff)
-		s.opts.logger.Debug("Backing off", zap.String("name", s.opts.Name), zap.Duration("sleep", sleep), zap.Int("consecutive_failures", s.consecutiveFailures))
+		s.opts.Logger.Debug("Backing off", zap.Duration("sleep", sleep), zap.Int("consecutive_failures", s.consecutiveFailures))
 		s.timer.Reset(sleep)
 		nextBackoff := time.Duration(float64(s.backoff) * s.opts.ExponentialFactor)
 		s.backoff = min(nextBackoff, s.opts.MaxBackoff)
@@ -105,12 +105,12 @@ func (s *state) AddBackoff(count int) {
 }
 
 func (s *state) HappyPathResetBackoff() {
-	s.opts.logger.Debug("Resetting backoff timer because of success. No need to wait so long when things are well", zap.String("name", s.opts.Name))
+	s.opts.Logger.Debug("Resetting backoff timer because of success. No need to wait so long when things are well")
 	s.resetBackoff()
 }
 
 func (s *state) UnhappyPathResetBackoff() {
-	s.opts.logger.Debug("Resetting backoff timer because of severe error", zap.String("name", s.opts.Name))
+	s.opts.Logger.Debug("Resetting backoff timer because of severe error")
 	s.resetBackoff()
 }
 
