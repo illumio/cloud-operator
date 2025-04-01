@@ -559,8 +559,11 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				failureReason = "Log stream closed"
 			}
 			authConContextCancel()
-			logger.Warn("One or more streams have been closed; restarting all streams", zap.String("reason", failureReason))
 		}
+		logger.Warn("One or more streams have been closed; closing and reopening the connection to CloudSecure",
+			zap.String("failureReason", failureReason),
+			zap.Int("attempt", attempt),
+		)
 	}
 }
 
