@@ -5,7 +5,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/rand"
 	"net"
 	"net/http"
@@ -16,7 +15,6 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 )
@@ -27,7 +25,7 @@ type streamClient struct {
 	client                    pb.KubernetesInfoServiceClient
 	disableNetworkFlowsCilium bool
 	falcoEventChan            chan string
-	cniStatus                 pb.CniPluginStatus
+	flowCollector             pb.FlowCollector
 	logStream                 pb.KubernetesInfoService_SendLogsClient
 	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient
@@ -516,33 +514,16 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			ciliumFlowCollector := sm.findHubbleRelay(ctx, sm.streamClient.ciliumNamespace)
 			if ciliumFlowCollector == nil {
 				sm.streamClient.disableNetworkFlowsCilium = true
+				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_FALCO
 			} else {
 				sm.streamClient.disableNetworkFlowsCilium = false
+				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_CILIUM
 			}
-			falcoPresent := sm.isFalcoInstalled(ctx)
-			switch {
-			case ciliumFlowCollector != nil && falcoPresent:
-				streamClient.cniStatus = pb.CniPluginStatus_CNI_PLUGIN_STATUS_BOTH_PRESENT
-			case ciliumFlowCollector != nil:
-				streamClient.cniStatus = pb.CniPluginStatus_CNI_PLUGIN_STATUS_CILIUM_PRESENT
-			case falcoPresent:
-				streamClient.cniStatus = pb.CniPluginStatus_CNI_PLUGIN_STATUS_FALCO_PRESENT
-			default:
-				streamClient.cniStatus = pb.CniPluginStatus_CNI_PLUGIN_STATUS_NONE_FOUND
-				// Log cloudOperatorNoCNIPlugin
-				logEntry := &pb.LogEntry{
-					JsonMessage: "cloud-operator no CNI plugin found",
-				}
-				err := bufferedGrpcSyncer.client.Send(&pb.SendLogsRequest{
-					Request: &pb.SendLogsRequest_LogEntry{LogEntry: logEntry},
-				})
-				if err != nil {
-					logger.Warn("Failed to send cloudOperatorNoCNIPlugin log entry", zap.Error(err))
-				} else {
-					logger.Info("Emitted cloudOperatorNoCNIPlugin log entry")
-				}
+			// If neither is available
+			if sm.streamClient.flowCollector != pb.FlowCollector_FLOW_COLLECTOR_CILIUM &&
+				sm.streamClient.flowCollector != pb.FlowCollector_FLOW_COLLECTOR_FALCO {
+				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_DISABLED
 			}
-
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
 			falcoDone := make(chan struct{})
@@ -579,41 +560,8 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			}
 			authConContextCancel()
 			logger.Warn("One or more streams have been closed; restarting all streams", zap.String("reason", failureReason))
-			if attempt > 1 && bufferedGrpcSyncer.client != nil {
-				err := bufferedGrpcSyncer.client.Send(&pb.SendLogsRequest{
-					Request: &pb.SendLogsRequest_LogEntry{
-						LogEntry: &pb.LogEntry{
-							JsonMessage: fmt.Sprintf("cloud-operator connected successfully after %d retries", attempt-1),
-						},
-					},
-				})
-				if err != nil {
-					logger.Warn("Failed to send cloudOperatorConnectedAfterRetries log entry", zap.Error(err))
-				} else {
-					logger.Info("Emitted cloudOperatorConnectedAfterRetries audit log entry", zap.Int("retry_count", attempt-1))
-				}
-			}
 		}
 	}
-	logger.Info("cloud-operator restarting")
-}
-
-// isFalcoInstalled checks if the Falco namespace exists in the Kubernetes cluster.
-// Returns true if the Falco namespace is found, otherwise returns false.
-func (sm *streamManager) isFalcoInstalled(ctx context.Context) bool {
-	clientset, err := NewClientSet()
-	if err != nil {
-		sm.logger.Error("Failed to create clientset to check Falco installation", zap.Error(err))
-		return false
-	}
-
-	_, err = clientset.CoreV1().Namespaces().Get(ctx, "falco", metav1.GetOptions{})
-	if err != nil {
-		sm.logger.Warn("Falco namespace not found, assuming Falco is not installed")
-		return false
-	}
-
-	return true
 }
 
 // NewAuthenticatedConnection gets a valid token and creats a connection to CloudSecure.

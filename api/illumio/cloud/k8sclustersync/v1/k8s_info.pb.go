@@ -26,63 +26,59 @@ const (
 )
 
 // Enum for CniPluginStatus that defines possible states of the CNI plugin.
-type CniPluginStatus int32
+type FlowCollector int32
 
 const (
 	// Default value. This value is unused and should not be set.
-	CniPluginStatus_CNI_PLUGIN_STATUS_UNSPECIFIED CniPluginStatus = 0
-	// Indicates that the Cilium CNI plugin is present.
-	CniPluginStatus_CNI_PLUGIN_STATUS_CILIUM_PRESENT CniPluginStatus = 1
-	// Indicates that the Falco CNI plugin is present.
-	CniPluginStatus_CNI_PLUGIN_STATUS_FALCO_PRESENT CniPluginStatus = 2
-	// Indicates that both Cilium and Falco CNI plugins are present.
-	CniPluginStatus_CNI_PLUGIN_STATUS_BOTH_PRESENT CniPluginStatus = 3
-	// Indicates that no CNI plugin was found.
-	CniPluginStatus_CNI_PLUGIN_STATUS_NONE_FOUND CniPluginStatus = 4
+	FlowCollector_FLOW_COLLECTOR_UNSPECIFIED FlowCollector = 0
+	// Indicates that no suitable network flow collection mechanism is available in the k8s cluster.
+	FlowCollector_FLOW_COLLECTOR_DISABLED FlowCollector = 1
+	// Indicates that the Cilium CNI plugin is deployed with Hubble Relay and is used for collecting network flows.
+	FlowCollector_FLOW_COLLECTOR_CILIUM FlowCollector = 2
+	// Indicates that Falco is deployed and configured for collecting network flows.
+	FlowCollector_FLOW_COLLECTOR_FALCO FlowCollector = 3
 )
 
-// Enum value maps for CniPluginStatus.
+// Enum value maps for FlowCollector.
 var (
-	CniPluginStatus_name = map[int32]string{
-		0: "CNI_PLUGIN_STATUS_UNSPECIFIED",
-		1: "CNI_PLUGIN_STATUS_CILIUM_PRESENT",
-		2: "CNI_PLUGIN_STATUS_FALCO_PRESENT",
-		3: "CNI_PLUGIN_STATUS_BOTH_PRESENT",
-		4: "CNI_PLUGIN_STATUS_NONE_FOUND",
+	FlowCollector_name = map[int32]string{
+		0: "FLOW_COLLECTOR_UNSPECIFIED",
+		1: "FLOW_COLLECTOR_DISABLED",
+		2: "FLOW_COLLECTOR_CILIUM",
+		3: "FLOW_COLLECTOR_FALCO",
 	}
-	CniPluginStatus_value = map[string]int32{
-		"CNI_PLUGIN_STATUS_UNSPECIFIED":    0,
-		"CNI_PLUGIN_STATUS_CILIUM_PRESENT": 1,
-		"CNI_PLUGIN_STATUS_FALCO_PRESENT":  2,
-		"CNI_PLUGIN_STATUS_BOTH_PRESENT":   3,
-		"CNI_PLUGIN_STATUS_NONE_FOUND":     4,
+	FlowCollector_value = map[string]int32{
+		"FLOW_COLLECTOR_UNSPECIFIED": 0,
+		"FLOW_COLLECTOR_DISABLED":    1,
+		"FLOW_COLLECTOR_CILIUM":      2,
+		"FLOW_COLLECTOR_FALCO":       3,
 	}
 )
 
-func (x CniPluginStatus) Enum() *CniPluginStatus {
-	p := new(CniPluginStatus)
+func (x FlowCollector) Enum() *FlowCollector {
+	p := new(FlowCollector)
 	*p = x
 	return p
 }
 
-func (x CniPluginStatus) String() string {
+func (x FlowCollector) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (CniPluginStatus) Descriptor() protoreflect.EnumDescriptor {
+func (FlowCollector) Descriptor() protoreflect.EnumDescriptor {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[0].Descriptor()
 }
 
-func (CniPluginStatus) Type() protoreflect.EnumType {
+func (FlowCollector) Type() protoreflect.EnumType {
 	return &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[0]
 }
 
-func (x CniPluginStatus) Number() protoreflect.EnumNumber {
+func (x FlowCollector) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use CniPluginStatus.Descriptor instead.
-func (CniPluginStatus) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use FlowCollector.Descriptor instead.
+func (FlowCollector) EnumDescriptor() ([]byte, []int) {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{0}
 }
 
@@ -770,10 +766,10 @@ type KubernetesClusterMetadata struct {
 	// Version of the operator. This version is following the Semver 2.0.0 format, e.g. "1.2.0".
 	// https://semver.org/spec/v2.0.0.html
 	OperatorVersion string `protobuf:"bytes,3,opt,name=operator_version,json=operatorVersion,proto3" json:"operator_version,omitempty"`
-	// CniPluginStatus represents the status of the CNI plugin
-	CniPluginStatus CniPluginStatus `protobuf:"varint,4,opt,name=cni_plugin_status,json=cniPluginStatus,proto3,enum=illumio.cloud.k8sclustersync.v1.CniPluginStatus" json:"cni_plugin_status,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// The network flow collection mechanism configured in the operator's cluster
+	FlowCollector FlowCollector `protobuf:"varint,4,opt,name=flow_collector,json=flowCollector,proto3,enum=illumio.cloud.k8sclustersync.v1.FlowCollector" json:"flow_collector,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *KubernetesClusterMetadata) Reset() {
@@ -827,11 +823,11 @@ func (x *KubernetesClusterMetadata) GetOperatorVersion() string {
 	return ""
 }
 
-func (x *KubernetesClusterMetadata) GetCniPluginStatus() CniPluginStatus {
+func (x *KubernetesClusterMetadata) GetFlowCollector() FlowCollector {
 	if x != nil {
-		return x.CniPluginStatus
+		return x.FlowCollector
 	}
-	return CniPluginStatus_CNI_PLUGIN_STATUS_UNSPECIFIED
+	return FlowCollector_FLOW_COLLECTOR_UNSPECIFIED
 }
 
 // Message sent by the operator in a KubernetesResources request stream.
@@ -2695,12 +2691,12 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"controller\x12\x12\n" +
 	"\x04kind\x18\x04 \x01(\tR\x04kind\x12\x12\n" +
 	"\x04name\x18\x05 \x01(\tR\x04name\x12\x10\n" +
-	"\x03uid\x18\x06 \x01(\tR\x03uid\"\xe5\x01\n" +
+	"\x03uid\x18\x06 \x01(\tR\x03uid\"\xde\x01\n" +
 	"\x19KubernetesClusterMetadata\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\tR\x03uid\x12-\n" +
 	"\x12kubernetes_version\x18\x02 \x01(\tR\x11kubernetesVersion\x12)\n" +
-	"\x10operator_version\x18\x03 \x01(\tR\x0foperatorVersion\x12\\\n" +
-	"\x11cni_plugin_status\x18\x04 \x01(\x0e20.illumio.cloud.k8sclustersync.v1.CniPluginStatusR\x0fcniPluginStatus\"\xf9\x03\n" +
+	"\x10operator_version\x18\x03 \x01(\tR\x0foperatorVersion\x12U\n" +
+	"\x0eflow_collector\x18\x04 \x01(\x0e2..illumio.cloud.k8sclustersync.v1.FlowCollectorR\rflowCollector\"\xf9\x03\n" +
 	"\x1eSendKubernetesResourcesRequest\x12g\n" +
 	"\x10cluster_metadata\x18\x01 \x01(\v2:.illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadataH\x00R\x0fclusterMetadata\x12\\\n" +
 	"\rresource_data\x18\x02 \x01(\v25.illumio.cloud.k8sclustersync.v1.KubernetesObjectDataH\x00R\fresourceData\x12\x83\x01\n" +
@@ -2815,13 +2811,12 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x10SendLogsResponse\x12R\n" +
 	"\rset_log_level\x18\x01 \x01(\v2,.illumio.cloud.k8sclustersync.v1.SetLogLevelH\x00R\vsetLogLevelB\n" +
 	"\n" +
-	"\bresponse*\xc5\x01\n" +
-	"\x0fCniPluginStatus\x12!\n" +
-	"\x1dCNI_PLUGIN_STATUS_UNSPECIFIED\x10\x00\x12$\n" +
-	" CNI_PLUGIN_STATUS_CILIUM_PRESENT\x10\x01\x12#\n" +
-	"\x1fCNI_PLUGIN_STATUS_FALCO_PRESENT\x10\x02\x12\"\n" +
-	"\x1eCNI_PLUGIN_STATUS_BOTH_PRESENT\x10\x03\x12 \n" +
-	"\x1cCNI_PLUGIN_STATUS_NONE_FOUND\x10\x04*\x8c\x01\n" +
+	"\bresponse*\x81\x01\n" +
+	"\rFlowCollector\x12\x1e\n" +
+	"\x1aFLOW_COLLECTOR_UNSPECIFIED\x10\x00\x12\x1b\n" +
+	"\x17FLOW_COLLECTOR_DISABLED\x10\x01\x12\x19\n" +
+	"\x15FLOW_COLLECTOR_CILIUM\x10\x02\x12\x18\n" +
+	"\x14FLOW_COLLECTOR_FALCO\x10\x03*\x8c\x01\n" +
 	"\x10TrafficDirection\x12;\n" +
 	"7TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19TRAFFIC_DIRECTION_INGRESS\x10\x01\x12\x1c\n" +
@@ -2866,7 +2861,7 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP() []byte {
 var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
 var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_goTypes = []any{
-	(CniPluginStatus)(0),                       // 0: illumio.cloud.k8sclustersync.v1.CniPluginStatus
+	(FlowCollector)(0),                         // 0: illumio.cloud.k8sclustersync.v1.FlowCollector
 	(TrafficDirection)(0),                      // 1: illumio.cloud.k8sclustersync.v1.TrafficDirection
 	(Verdict)(0),                               // 2: illumio.cloud.k8sclustersync.v1.Verdict
 	(IPVersion)(0),                             // 3: illumio.cloud.k8sclustersync.v1.IPVersion
@@ -2916,7 +2911,7 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	7,  // 5: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.node:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNodeData
 	6,  // 6: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.service:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesServiceData
 	37, // 7: illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ports:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ServicePort
-	0,  // 8: illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadata.cni_plugin_status:type_name -> illumio.cloud.k8sclustersync.v1.CniPluginStatus
+	0,  // 8: illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadata.flow_collector:type_name -> illumio.cloud.k8sclustersync.v1.FlowCollector
 	10, // 9: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.cluster_metadata:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadata
 	5,  // 10: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.resource_data:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
 	12, // 11: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.resource_snapshot_complete:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesResourceSnapshotComplete
