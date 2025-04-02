@@ -69,9 +69,12 @@ kind delete cluster
 ```
 
 ## Release Checklist
-
-TBD
-
-1. Create a [new GitHub release](https://github.com/illumio/cloud-operator/releases) from that commit. Summarize the changes in this release.
+1. Choose a version number for the new release. Follow [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html) format `vX.Y.Z`, e.g. `v1.2.3`. If releasing a beta version of cloud-operator, add suffix `-beta`.
+2. Verify the last runs of all tests are green on `main`
+3. Verify that any API changes in `k8s_info.proto` are compatible with CloudSecure's services in production. Beta releases are not subject to this rule, as `-beta` releases are not shown as the latest version to pull on CloudSecure.
+4. Push a new tag off the main branch using `git tag`.
+5. Create a [new GitHub release](https://github.com/illumio/cloud-operator/releases) from that commit. Summarize the changes in this release.
+6. Post release, verify that all release Github Actions ran successfully.
+7. Follow [the release checklist of the `terraform-illumio-cloudsecure` Terraform module](https://github.com/illumio/terraform-illumio-cloudsecure/blob/main/.github/CONTRIBUTING.md#release-checklist) to update the cloud-operator version in the `k8s_cluster` sub-module's input variables and examples.
 
 TBD
