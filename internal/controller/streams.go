@@ -30,8 +30,6 @@ const (
 	STREAM_CONFIGURATION = StreamType("configuration")
 )
 
-type StreamType string
-
 type streamClient struct {
 	ciliumNamespace           string
 	conn                      *grpc.ClientConn
