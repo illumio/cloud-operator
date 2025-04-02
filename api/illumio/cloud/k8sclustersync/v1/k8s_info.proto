@@ -9,6 +9,25 @@ import "google/protobuf/wrappers.proto";
 
 option go_package = "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1";
 
+// Application-level keepalives. While gRPC already has an HTTP-level keepalive
+// mechanism, we have seen deployments where the server lives behind an ingress.
+// The gRPC system-level keepalive (represented by the `-`s in the diagram)
+// terminates at the ingress, and thus doesn't work end-to-end. This is solved
+// with an application level keepalive (represented by the `=`s in the diagram)
+//
+// +----------------+       +---------+          +--------+
+// |                +------>+         +          +        |
+// | cloud-operator +       + ingress +          + server |
+// |                +======>+         +=========>+        |
+// +----------------+       +---------+          +--------+
+//
+// Keepalives are important to us, because when the server restarts, the
+// connection may be closed between the Ingress and the server - but not between
+// the cloud-operator and the Ingress. Application-level keepalives will
+// re-establish connections to the server faster than if we wait for reasons to
+// send data over the channel
+message Keepalive {}
+
 // Metadata associated with a Kubernetes resource.
 // https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta
 message KubernetesObjectData {
@@ -102,6 +121,8 @@ message KubernetesClusterMetadata {
 message SendKubernetesResourcesRequest {
   // Send any of these "request" messages that can contain any of the documented types.
   oneof request {
+    Keepalive keepalive = 5;
+
     // Metadata about the cluster and operator.
     KubernetesClusterMetadata cluster_metadata = 1;
     // Metadata about a Kubernetes resource in the cluster.
@@ -146,8 +167,12 @@ message FalcoFlow {
   IP layer3 = 1;
   // Proto contains protocol used
   Layer4 layer4 = 2;
-  // Time when flow occurred.
-  string time = 3;
+
+  oneof ts {
+    // time contains the unparsed timestamp string received from Falco; parse it and set timestamp instead
+    string time = 3 [deprecated = true];
+    google.protobuf.Timestamp timestamp = 4;
+  }
 }
 
 // A flow received from Cilium Hubble Relay using the Observer service's GetFlows RPC.
@@ -322,6 +347,8 @@ message Policy {
 // Flow exported by the CNI plugin in the cluster.
 message SendKubernetesNetworkFlowsRequest {
   oneof request {
+    Keepalive keepalive = 3;
+
     CiliumFlow cilium_flow = 1;
     FalcoFlow falco_flow = 2;
   }
@@ -353,6 +380,8 @@ message LogEntry {
 // Message to encapsulate a request to send logs.
 message SendLogsRequest {
   oneof request {
+    Keepalive keepalive = 2;
+
     // A single log entry to be sent.
     LogEntry log_entry = 1;
   }
