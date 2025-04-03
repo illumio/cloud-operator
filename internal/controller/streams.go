@@ -576,11 +576,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				sm.streamClient.disableNetworkFlowsCilium = false
 				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_CILIUM
 			}
-			// If neither is available
-			if sm.streamClient.flowCollector != pb.FlowCollector_FLOW_COLLECTOR_CILIUM &&
-				sm.streamClient.flowCollector != pb.FlowCollector_FLOW_COLLECTOR_FALCO {
-				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_DISABLED
-			}
+
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
 			var ciliumDone, falcoDone chan struct{}
