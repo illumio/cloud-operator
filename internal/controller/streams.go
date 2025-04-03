@@ -37,6 +37,7 @@ type streamClient struct {
 	disableNetworkFlowsCilium bool
 	falcoEventChan            chan string
 	flowCollector             pb.FlowCollector
+	flowCollectorWG           sync.WaitGroup
 	logStream                 pb.KubernetesInfoService_SendLogsClient
 	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient
@@ -561,7 +562,10 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				ciliumNamespace:           envMap.CiliumNamespace,
 				disableNetworkFlowsCilium: false,
 				falcoEventChan:            falcoEventChan,
+				flowCollector:             pb.FlowCollector_FLOW_COLLECTOR_UNSPECIFIED,
 			}
+			// Initialize the WaitGroup with a count of 1.
+			streamClient.flowCollectorWG.Add(1)
 
 			sm := &streamManager{
 				streamClient:       streamClient,
@@ -581,6 +585,16 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				sm.streamClient.flowCollector != pb.FlowCollector_FLOW_COLLECTOR_FALCO {
 				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_DISABLED
 			}
+			// Wait for the flow collector decision
+			sm.streamClient.flowCollectorWG.Done()
+			// Send the cluster metadata (it will block internally until the decision is done).
+			if err := sendClusterMetadata(ctx, sm); err != nil {
+				logger.Error("Failed to send cluster metadata", zap.Error(err))
+				failureReason = "Failed to send cluster metadata"
+				authConContextCancel()
+				break
+			}
+
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
 			var ciliumDone, falcoDone chan struct{}

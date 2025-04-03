@@ -94,6 +94,9 @@ func streamMutationObjectData(sm *streamManager, metadata *pb.KubernetesObjectDa
 
 // sendClusterMetadata sends a message to indicate current cluster metadata
 func sendClusterMetadata(ctx context.Context, sm *streamManager) error {
+	// Wait until the flow collector decision is complete.
+	sm.streamClient.flowCollectorWG.Wait()
+
 	clusterUid, err := GetClusterID(ctx, sm.logger)
 	if err != nil {
 		sm.logger.Error("Error getting cluster id", zap.Error(err))
