@@ -25,7 +25,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Enum for CniPluginStatus that defines possible states of the CNI plugin.
+// Network flow collection mechanism configured in the operator.
 type FlowCollector int32
 
 const (

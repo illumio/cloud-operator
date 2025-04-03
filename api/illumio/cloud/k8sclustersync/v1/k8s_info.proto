@@ -114,7 +114,7 @@ message KubernetesClusterMetadata {
   FlowCollector flow_collector = 4;
 }
 
-// Enum for CniPluginStatus that defines possible states of the CNI plugin.
+// Network flow collection mechanism configured in the operator.
 enum FlowCollector {
   // Default value. This value is unused and should not be set.
   FLOW_COLLECTOR_UNSPECIFIED = 0;
