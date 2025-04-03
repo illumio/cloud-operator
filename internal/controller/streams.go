@@ -334,6 +334,7 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager, K
 		if err != nil {
 			logger.Error("Failed to send keepalives", zap.Error(err))
 		}
+		ciliumCancel()
 	}()
 
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, sm.streamClient.ciliumNamespace)
@@ -367,6 +368,7 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager, Ke
 		if err != nil {
 			logger.Error("Failed to send keepalives", zap.Error(err))
 		}
+		falcoCancel()
 	}()
 
 	err = sm.StreamFalcoNetworkFlows(falcoCtx)
@@ -397,6 +399,7 @@ func connectAndStreamResources(logger *zap.Logger, sm *streamManager, KeepaliveP
 		if err != nil {
 			logger.Error("Failed to send keepalives", zap.Error(err))
 		}
+		resourceCancel()
 	}()
 
 	err = sm.StreamResources(resourceCtx, resourceCancel)
@@ -427,6 +430,7 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager, KeepalivePeriod
 		if err != nil {
 			logger.Error("Failed to send keepalives", zap.Error(err))
 		}
+		logCancel()
 	}()
 
 	err = sm.StreamLogs(logCtx)
