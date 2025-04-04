@@ -58,10 +58,10 @@ func (b *BufferedGrpcWriteSyncer) Close() error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	b.flush()
-	//close the channel if not already closed
+	// Close the channel if not already closed.
 	select {
 	case <-b.done:
-		//Already closed; do nothing
+		// Already closed; do nothing
 		return nil
 	default:
 	}
