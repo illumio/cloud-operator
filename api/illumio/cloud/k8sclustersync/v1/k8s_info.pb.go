@@ -2631,7 +2631,6 @@ type GetConfigurationUpdatesRequest_Keepalive struct {
 func (*GetConfigurationUpdatesRequest_Keepalive) isGetConfigurationUpdatesRequest_Request() {}
 
 // Message to encapsulate the response for configuration update requests.
-// CloudSecure sends a update_configuration immediately upon stream establishment, then every time the configuration is updated.
 type GetConfigurationUpdatesResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Response:
@@ -2693,7 +2692,7 @@ type isGetConfigurationUpdatesResponse_Response interface {
 }
 
 type GetConfigurationUpdatesResponse_UpdateConfiguration struct {
-	// update the desired configuration for the operator.
+	// Updates the operator's configuration.
 	UpdateConfiguration *GetConfigurationUpdatesResponse_Configuration `protobuf:"bytes,1,opt,name=update_configuration,json=updateConfiguration,proto3,oneof"`
 }
 
@@ -2772,11 +2771,10 @@ func (x *KubernetesServiceData_ServicePort) GetLoadBalancerPorts() []string {
 	return nil
 }
 
-// Send any of these "response" messages that can contain any of the documented types.
 type GetConfigurationUpdatesResponse_Configuration struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// the operator's log level.
-	LogLevel      LogLevel `protobuf:"varint,1,opt,name=log_level,json=logLevel,proto3,enum=illumio.cloud.k8sclustersync.v1.LogLevel" json:"log_level,omitempty"` // Additional configuration fields will be added here.
+	// The operator's log level.
+	LogLevel      LogLevel `protobuf:"varint,1,opt,name=log_level,json=logLevel,proto3,enum=illumio.cloud.k8sclustersync.v1.LogLevel" json:"log_level,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
