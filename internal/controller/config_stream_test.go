@@ -109,13 +109,12 @@ func (suite *ConfigStreamTestSuite) TestLogLevelUpdate() {
 
 	sm := &streamManager{
 		bufferedGrpcSyncer: suite.grpcSyncer,
-		logger:             suite.mockLogger,
 		streamClient: &streamClient{
 			configStream: suite.mockClient,
 		},
 	}
 
-	err := sm.StreamConfigurationUpdates(context.TODO())
+	err := sm.StreamConfigurationUpdates(context.TODO(), suite.mockLogger)
 	suite.NoError(err)
 
 	// Verify that log level was updated
@@ -132,13 +131,12 @@ func (suite *ConfigStreamTestSuite) TestStreamEOF() {
 
 	sm := &streamManager{
 		bufferedGrpcSyncer: suite.grpcSyncer,
-		logger:             suite.mockLogger,
 		streamClient: &streamClient{
 			configStream: suite.mockClient,
 		},
 	}
 
-	err := sm.StreamConfigurationUpdates(context.TODO())
+	err := sm.StreamConfigurationUpdates(context.TODO(), suite.mockLogger)
 	suite.NoError(err)
 
 	// Ensure the function exited cleanly
@@ -152,13 +150,12 @@ func (suite *ConfigStreamTestSuite) TestStreamError() {
 
 	sm := &streamManager{
 		bufferedGrpcSyncer: suite.grpcSyncer,
-		logger:             suite.mockLogger,
 		streamClient: &streamClient{
 			configStream: suite.mockClient,
 		},
 	}
 
-	err := sm.StreamConfigurationUpdates(context.TODO())
+	err := sm.StreamConfigurationUpdates(context.TODO(), suite.mockLogger)
 
 	// Ensure function returned an error
 	suite.Error(err, "Expected ListenToConfigurationStream to return an error on unexpected EOF")
@@ -180,13 +177,12 @@ func (suite *ConfigStreamTestSuite) TestUnknownConfigurationUpdate() {
 
 	sm := &streamManager{
 		bufferedGrpcSyncer: suite.grpcSyncer,
-		logger:             suite.mockLogger,
 		streamClient: &streamClient{
 			configStream: suite.mockClient,
 		},
 	}
 
-	err := sm.StreamConfigurationUpdates(context.TODO())
+	err := sm.StreamConfigurationUpdates(context.TODO(), suite.mockLogger)
 	suite.NoError(err)
 
 	// Ensure all expectations were met
