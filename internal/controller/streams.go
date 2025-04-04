@@ -217,6 +217,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, cancel context.Can
 // StreamLogs handles the log stream.
 func (sm *streamManager) StreamLogs(ctx context.Context) error {
 	errCh := make(chan error, 1)
+	defer close(errCh)
 
 	go func() {
 		for {
@@ -248,6 +249,7 @@ func (sm *streamManager) StreamLogs(ctx context.Context) error {
 // StreamConfigurationUpdates streams configuration updates and applies them dynamically.
 func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context) error {
 	errCh := make(chan error, 1)
+	defer close(errCh)
 
 	go func() {
 		for {
