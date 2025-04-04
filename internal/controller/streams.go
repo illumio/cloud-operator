@@ -5,6 +5,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"io"
 	"math"
 	"math/rand"
 	"net"
@@ -218,7 +219,61 @@ func (sm *streamManager) StreamLogs(ctx context.Context) error {
 	errCh := make(chan error, 1)
 
 	go func() {
-		errCh <- sm.bufferedGrpcSyncer.ListenToLogStream()
+		for {
+			_, err := sm.streamClient.logStream.Recv()
+			if err == io.EOF {
+				sm.logger.Info("Server closed the SendLogs stream")
+				errCh <- nil
+				return
+			}
+			if err != nil {
+				sm.logger.Error("Stream terminated", zap.Error(err))
+				errCh <- err
+				return
+			}
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-errCh:
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// StreamConfigurationUpdates streams configuration updates and applies them dynamically.
+func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context) error {
+	errCh := make(chan error, 1)
+
+	go func() {
+		for {
+			resp, err := sm.streamClient.configStream.Recv()
+			if err == io.EOF {
+				sm.logger.Info("Server closed the GetConfigurationUpdates stream")
+				errCh <- nil
+				return
+			}
+			if err != nil {
+				sm.logger.Error("Stream terminated", zap.Error(err))
+				errCh <- err
+				return
+			}
+
+			// Process the configuration update based on its type.
+			switch update := resp.Response.(type) {
+			case *pb.GetConfigurationUpdatesResponse_UpdateConfiguration:
+				sm.logger.Info("Received configuration update",
+					zap.Stringer("log_level", update.UpdateConfiguration.LogLevel),
+				)
+				sm.bufferedGrpcSyncer.updateLogLevel(update.UpdateConfiguration.LogLevel)
+			default:
+				sm.logger.Warn("Received unknown configuration update", zap.Any("response", resp))
+			}
+		}
 	}()
 
 	select {
@@ -419,12 +474,12 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager, KeepalivePeriod
 	logCtx, logCancel := context.WithCancel(context.Background())
 	defer logCancel()
 
-	SendLogsStream, err := sm.streamClient.client.SendLogs(logCtx)
+	sendLogsStream, err := sm.streamClient.client.SendLogs(logCtx)
 	if err != nil {
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
 	}
-	sm.streamClient.logStream = SendLogsStream
+	sm.streamClient.logStream = sendLogsStream
 	sm.bufferedGrpcSyncer.UpdateClient(sm.streamClient.logStream, sm.streamClient.conn)
 
 	go func() {
@@ -464,9 +519,7 @@ func connectAndStreamConfigurationUpdates(logger *zap.Logger, sm *streamManager,
 		configCancel()
 	}()
 
-	// Listen to the configuration update stream.
-	// ListenToConfigurationStream is implemented in config_streams.go.
-	err = ListenToConfigurationStream(getConfigurationUpdatesStream, sm.bufferedGrpcSyncer)
+	err = sm.StreamConfigurationUpdates(configCtx)
 	if err != nil {
 		logger.Error("Configuration update stream encountered an error", zap.Error(err))
 		return err
@@ -614,6 +667,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			logDone := make(chan struct{})
 			var ciliumDone, falcoDone chan struct{}
 			configDone := make(chan struct{})
+
 			sm.bufferedGrpcSyncer.done = logDone
 
 			go manageStream(logger, connectAndStreamResources, sm, resourceDone, envMap.KeepalivePeriods.KubernetesResources)
