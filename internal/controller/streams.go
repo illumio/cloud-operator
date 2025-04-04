@@ -259,7 +259,6 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, ciliumNam
 			}
 		}
 	}
-	return nil
 }
 
 // StreamFalcoNetworkFlows handles the falco network flow stream.
