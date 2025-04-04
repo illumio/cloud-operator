@@ -115,6 +115,7 @@ func sendClusterMetadata(ctx context.Context, sm *streamManager) error {
 				Uid:               clusterUid,
 				KubernetesVersion: kubernetesVersion.String(),
 				OperatorVersion:   version.Version(),
+				FlowCollector:     sm.streamClient.flowCollector,
 			},
 		},
 	}
