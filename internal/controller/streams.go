@@ -377,7 +377,7 @@ func (sm *streamManager) StreamKeepalives(
 // connectAndStreamCiliumNetworkFlows creates networkFlowsStream client and
 // begins the streaming of network flows. Also starts a goroutine to send
 // keepalives at the configured period
-func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager, KeepalivePeriod time.Duration) error {
+func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager, keepalivePeriod time.Duration) error {
 	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
 	defer ciliumCancel()
 
@@ -389,7 +389,7 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager, K
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
 
 	go func() {
-		err := sm.StreamKeepalives(ciliumCtx, KeepalivePeriod, STREAM_NETWORK_FLOWS)
+		err := sm.StreamKeepalives(ciliumCtx, keepalivePeriod, STREAM_NETWORK_FLOWS)
 		if err != nil {
 			logger.Error("Failed to send keepalives", zap.Error(err))
 		}
@@ -411,7 +411,7 @@ func connectAndStreamCiliumNetworkFlows(logger *zap.Logger, sm *streamManager, K
 // connectAndStreamFalcoNetworkFlows creates networkFlowsStream client and
 // begins the streaming of network flows. Also starts a goroutine to send
 // keepalives at the configured period
-func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager, KeepalivePeriod time.Duration) error {
+func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager, keepalivePeriod time.Duration) error {
 	falcoCtx, falcoCancel := context.WithCancel(context.Background())
 	defer falcoCancel()
 
@@ -423,7 +423,7 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager, Ke
 	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
 
 	go func() {
-		err := sm.StreamKeepalives(falcoCtx, KeepalivePeriod, STREAM_NETWORK_FLOWS)
+		err := sm.StreamKeepalives(falcoCtx, keepalivePeriod, STREAM_NETWORK_FLOWS)
 		if err != nil {
 			logger.Error("Failed to send keepalives", zap.Error(err))
 		}
@@ -442,7 +442,7 @@ func connectAndStreamFalcoNetworkFlows(logger *zap.Logger, sm *streamManager, Ke
 // connectAndStreamResources creates resourceStream client and begins the
 // streaming of resources. Also starts a goroutine to send keepalives at the
 // configured period
-func connectAndStreamResources(logger *zap.Logger, sm *streamManager, KeepalivePeriod time.Duration) error {
+func connectAndStreamResources(logger *zap.Logger, sm *streamManager, keepalivePeriod time.Duration) error {
 	resourceCtx, resourceCancel := context.WithCancel(context.Background())
 	defer resourceCancel()
 
@@ -454,7 +454,7 @@ func connectAndStreamResources(logger *zap.Logger, sm *streamManager, KeepaliveP
 	sm.streamClient.resourceStream = sendKubernetesResourcesStream
 
 	go func() {
-		err := sm.StreamKeepalives(resourceCtx, KeepalivePeriod, STREAM_RESOURCES)
+		err := sm.StreamKeepalives(resourceCtx, keepalivePeriod, STREAM_RESOURCES)
 		if err != nil {
 			logger.Error("Failed to send keepalives", zap.Error(err))
 		}
@@ -472,7 +472,7 @@ func connectAndStreamResources(logger *zap.Logger, sm *streamManager, KeepaliveP
 
 // connectAndStreamLogs creates sendLogs client and begins the streaming of
 // logs. Also starts a goroutine to send keepalives at the configured period
-func connectAndStreamLogs(logger *zap.Logger, sm *streamManager, KeepalivePeriod time.Duration) error {
+func connectAndStreamLogs(logger *zap.Logger, sm *streamManager, keepalivePeriod time.Duration) error {
 	logCtx, logCancel := context.WithCancel(context.Background())
 	defer logCancel()
 
@@ -485,7 +485,7 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager, KeepalivePeriod
 	sm.bufferedGrpcSyncer.UpdateClient(sm.streamClient.logStream, sm.streamClient.conn)
 
 	go func() {
-		err := sm.StreamKeepalives(logCtx, KeepalivePeriod, STREAM_LOGS)
+		err := sm.StreamKeepalives(logCtx, keepalivePeriod, STREAM_LOGS)
 		if err != nil {
 			logger.Error("Failed to send keepalives", zap.Error(err))
 		}
@@ -502,7 +502,7 @@ func connectAndStreamLogs(logger *zap.Logger, sm *streamManager, KeepalivePeriod
 }
 
 // connectAndStreamConfigurationUpdates creates a configuration update stream client and listens for configuration changes.
-func connectAndStreamConfigurationUpdates(logger *zap.Logger, sm *streamManager, KeepalivePeriod time.Duration) error {
+func connectAndStreamConfigurationUpdates(logger *zap.Logger, sm *streamManager, keepalivePeriod time.Duration) error {
 	configCtx, configCancel := context.WithCancel(context.Background())
 	defer configCancel()
 
@@ -514,7 +514,7 @@ func connectAndStreamConfigurationUpdates(logger *zap.Logger, sm *streamManager,
 	sm.streamClient.configStream = getConfigurationUpdatesStream
 
 	go func() {
-		err := sm.StreamKeepalives(configCtx, KeepalivePeriod, STREAM_CONFIGURATION)
+		err := sm.StreamKeepalives(configCtx, keepalivePeriod, STREAM_CONFIGURATION)
 		if err != nil {
 			logger.Error("Failed to send keepalives", zap.Error(err))
 		}
@@ -535,12 +535,12 @@ func manageStream(
 	connectAndStream func(*zap.Logger, *streamManager, time.Duration) error,
 	sm *streamManager,
 	done chan struct{},
-	KeepalivePeriod time.Duration,
+	keepalivePeriod time.Duration,
 ) {
 	defer close(done)
 
 	f := func() error {
-		return connectAndStream(logger, sm, KeepalivePeriod)
+		return connectAndStream(logger, sm, keepalivePeriod)
 	}
 
 	// If a stream goes down, try to reconnect. With exponential backoff
