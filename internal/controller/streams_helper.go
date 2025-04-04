@@ -12,8 +12,8 @@ import (
 )
 
 // Helper function to send a request to the resource stream
-func sendToResourceStream(logger *zap.Logger, stream pb.KubernetesInfoService_SendKubernetesResourcesClient, request *pb.SendKubernetesResourcesRequest) error {
-	if err := stream.Send(request); err != nil {
+func (sm *streamManager) sendToResourceStream(logger *zap.Logger, request *pb.SendKubernetesResourcesRequest) error {
+	if err := sm.streamClient.resourceStream.Send(request); err != nil {
 		logger.Error("Failed to send request", zap.Stringer("request", request), zap.Error(err))
 		return err
 	}
@@ -22,17 +22,17 @@ func sendToResourceStream(logger *zap.Logger, stream pb.KubernetesInfoService_Se
 
 // sendObjectData sends a KubernetesObjectData to CloudSecure into the given stream.
 // Its used for the intial boot up of the operator so that is can stream everything currently in the cluster.
-func sendObjectData(sm *streamManager, metadata *pb.KubernetesObjectData) error {
+func (sm *streamManager) sendObjectData(logger *zap.Logger, metadata *pb.KubernetesObjectData) error {
 	request := &pb.SendKubernetesResourcesRequest{
 		Request: &pb.SendKubernetesResourcesRequest_ResourceData{
 			ResourceData: metadata,
 		},
 	}
-	return sendToResourceStream(sm.logger, sm.streamClient.resourceStream, request)
+	return sm.sendToResourceStream(logger, request)
 }
 
 // sendNetworkFlowRequest sends a network flow to the networkFlowsStream
-func sendNetworkFlowRequest(sm *streamManager, flow interface{}) error {
+func (sm *streamManager) sendNetworkFlowRequest(logger *zap.Logger, flow interface{}) error {
 	var request *pb.SendKubernetesNetworkFlowsRequest
 
 	switch f := flow.(type) {
@@ -52,7 +52,7 @@ func sendNetworkFlowRequest(sm *streamManager, flow interface{}) error {
 		return fmt.Errorf("unsupported flow type: %T", flow)
 	}
 	if err := sm.streamClient.networkFlowsStream.Send(request); err != nil {
-		sm.logger.Error("Failed to send network flow", zap.Error(err))
+		logger.Error("Failed to send network flow", zap.Error(err))
 		return err
 	}
 	return nil
@@ -62,7 +62,7 @@ func sendNetworkFlowRequest(sm *streamManager, flow interface{}) error {
 // wire. It "upgrades" a KubernetesObjectData into a KubernetesResourceMutation
 // (which can be sent over the wire). It needs to use information from the
 // watch.EventType to accomplish this
-func streamMutationObjectData(sm *streamManager, metadata *pb.KubernetesObjectData, eventType watch.EventType) error {
+func (sm *streamManager) streamMutationObjectData(logger *zap.Logger, metadata *pb.KubernetesObjectData, eventType watch.EventType) error {
 	var mutation *pb.KubernetesResourceMutation
 	switch eventType {
 	case watch.Added:
@@ -89,24 +89,24 @@ func streamMutationObjectData(sm *streamManager, metadata *pb.KubernetesObjectDa
 			KubernetesResourceMutation: mutation,
 		},
 	}
-	return sendToResourceStream(sm.logger, sm.streamClient.resourceStream, request)
+	return sm.sendToResourceStream(logger, request)
 }
 
 // sendClusterMetadata sends a message to indicate current cluster metadata
-func sendClusterMetadata(ctx context.Context, sm *streamManager) error {
-	clusterUid, err := GetClusterID(ctx, sm.logger)
+func (sm *streamManager) sendClusterMetadata(ctx context.Context, logger *zap.Logger) error {
+	clusterUid, err := GetClusterID(ctx, logger)
 	if err != nil {
-		sm.logger.Error("Error getting cluster id", zap.Error(err))
+		logger.Error("Error getting cluster id", zap.Error(err))
 		return err
 	}
 	clientset, err := NewClientSet()
 	if err != nil {
-		sm.logger.Error("Error creating clientset", zap.Error(err))
+		logger.Error("Error creating clientset", zap.Error(err))
 		return err
 	}
 	kubernetesVersion, err := clientset.Discovery().ServerVersion()
 	if err != nil {
-		sm.logger.Error("Error getting Kubernetes version", zap.Error(err))
+		logger.Error("Error getting Kubernetes version", zap.Error(err))
 		return err
 	}
 	request := &pb.SendKubernetesResourcesRequest{
@@ -118,19 +118,19 @@ func sendClusterMetadata(ctx context.Context, sm *streamManager) error {
 			},
 		},
 	}
-	return sendToResourceStream(sm.logger, sm.streamClient.resourceStream, request)
+	return sm.sendToResourceStream(logger, request)
 }
 
 // sendResourceSnapshotComplete sends a message to indicate that the initial inventory snapshot has been completely streamed into the given stream.
-func sendResourceSnapshotComplete(sm *streamManager) error {
+func (sm *streamManager) sendResourceSnapshotComplete(logger *zap.Logger) error {
 	request := &pb.SendKubernetesResourcesRequest{
 		Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{},
 	}
-	return sendToResourceStream(sm.logger, sm.streamClient.resourceStream, request)
+	return sm.sendToResourceStream(logger, request)
 }
 
 // sendKeepalive accepts a stream type & sends a keepalive ping on that stream
-func sendKeepalive(sm *streamManager, st StreamType) error {
+func (sm *streamManager) sendKeepalive(logger *zap.Logger, st StreamType) error {
 	var err error
 
 	switch st {
@@ -152,12 +152,18 @@ func sendKeepalive(sm *streamManager, st StreamType) error {
 				Keepalive: &pb.Keepalive{},
 			},
 		})
+	case STREAM_CONFIGURATION:
+		err = sm.streamClient.configStream.Send(&pb.GetConfigurationUpdatesRequest{
+			Request: &pb.GetConfigurationUpdatesRequest_Keepalive{
+				Keepalive: &pb.Keepalive{},
+			},
+		})
 	default:
 		return fmt.Errorf("unsupported stream type: %s", st)
 	}
 
 	if err != nil {
-		sm.logger.Error("Failed to send keepalive on stream", zap.String("stream", string(st)), zap.Error(err))
+		logger.Error("Failed to send keepalive on stream", zap.Error(err))
 		return err
 	}
 	return nil
