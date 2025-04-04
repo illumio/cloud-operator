@@ -3,7 +3,6 @@ suite: test cloud-operator values
 templates:
   - cloud-operator-deployment.yaml
 tests:
-
   # Test for environment variables
   - it: should set the correct environment variables
     set:
@@ -62,6 +61,12 @@ tests:
           value: "STREAM_KEEPALIVE_PERIOD_LOGS"
       - equal:
           path: spec.template.spec.containers[0].env[8].value
+          value: "10s"
+      - equal:
+          path: spec.template.spec.containers[0].env[9].name
+          value: "STREAM_KEEPALIVE_PERIOD_CONFIGURATION"
+      - equal:
+          path: spec.template.spec.containers[0].env[9].value
           value: "10s"
 
   # Test for replicaCount value
