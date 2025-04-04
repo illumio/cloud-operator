@@ -35,7 +35,6 @@ type streamClient struct {
 	conn                      *grpc.ClientConn
 	client                    pb.KubernetesInfoServiceClient
 	disableNetworkFlowsCilium bool
-	networkFlowWg             sync.WaitGroup
 	falcoEventChan            chan string
 	logStream                 pb.KubernetesInfoService_SendLogsClient
 	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient

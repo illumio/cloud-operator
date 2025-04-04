@@ -200,7 +200,6 @@ func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
 			b.logger.Error("Stream terminated", zap.Error(err))
 			return err
 		}
-
 	}
 }
 
