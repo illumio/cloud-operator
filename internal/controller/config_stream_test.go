@@ -107,7 +107,15 @@ func (suite *ConfigStreamTestSuite) TestLogLevelUpdate() {
 	suite.mockClient.On("Recv").Return(update, nil).Once()
 	suite.mockClient.On("Recv").Return(nil, io.EOF).Once() // Properly terminate the stream
 
-	err := ListenToConfigurationStream(suite.mockClient, suite.grpcSyncer)
+	sm := &streamManager{
+		bufferedGrpcSyncer: suite.grpcSyncer,
+		logger:             suite.mockLogger,
+		streamClient: &streamClient{
+			configStream: suite.mockClient,
+		},
+	}
+
+	err := sm.StreamConfigurationUpdates(context.TODO())
 	suite.NoError(err)
 
 	// Verify that log level was updated
@@ -122,7 +130,15 @@ func (suite *ConfigStreamTestSuite) TestStreamEOF() {
 	// Mock EOF response
 	suite.mockClient.On("Recv").Return(nil, io.EOF).Once()
 
-	err := ListenToConfigurationStream(suite.mockClient, suite.grpcSyncer)
+	sm := &streamManager{
+		bufferedGrpcSyncer: suite.grpcSyncer,
+		logger:             suite.mockLogger,
+		streamClient: &streamClient{
+			configStream: suite.mockClient,
+		},
+	}
+
+	err := sm.StreamConfigurationUpdates(context.TODO())
 	suite.NoError(err)
 
 	// Ensure the function exited cleanly
@@ -134,7 +150,15 @@ func (suite *ConfigStreamTestSuite) TestStreamError() {
 	// Mock an unexpected stream error
 	suite.mockClient.On("Recv").Return(nil, io.ErrUnexpectedEOF).Once()
 
-	err := ListenToConfigurationStream(suite.mockClient, suite.grpcSyncer)
+	sm := &streamManager{
+		bufferedGrpcSyncer: suite.grpcSyncer,
+		logger:             suite.mockLogger,
+		streamClient: &streamClient{
+			configStream: suite.mockClient,
+		},
+	}
+
+	err := sm.StreamConfigurationUpdates(context.TODO())
 
 	// Ensure function returned an error
 	suite.Error(err, "Expected ListenToConfigurationStream to return an error on unexpected EOF")
@@ -154,7 +178,15 @@ func (suite *ConfigStreamTestSuite) TestUnknownConfigurationUpdate() {
 	suite.mockClient.On("Recv").Return(unknownUpdate, nil).Once()
 	suite.mockClient.On("Recv").Return(nil, io.EOF).Once() // Properly terminate the stream
 
-	err := ListenToConfigurationStream(suite.mockClient, suite.grpcSyncer)
+	sm := &streamManager{
+		bufferedGrpcSyncer: suite.grpcSyncer,
+		logger:             suite.mockLogger,
+		streamClient: &streamClient{
+			configStream: suite.mockClient,
+		},
+	}
+
+	err := sm.StreamConfigurationUpdates(context.TODO())
 	suite.NoError(err)
 
 	// Ensure all expectations were met
