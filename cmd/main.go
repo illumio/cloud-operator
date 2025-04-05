@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -97,15 +96,12 @@ func main() {
 		zap.String("token_endpoint", envConfig.TokenEndpoint),
 		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
 	)
-	gopsDirectory := os.Getenv("GOPS_CONFIG_DIR")
-	if gopsDirectory == "" {
-		logger.Info("WARNING: GOPS_CONFIG_DIR environment variable is not set.")
-	}
 
-	// Start the gops agent and listen on a specific address and port
-	if err := agent.Listen(agent.Options{ConfigDir: gopsDirectory}); err != nil {
+	// Start the gops agent
+	if err := agent.Listen(agent.Options{}); err != nil {
 		logger.Error("Failed to start gops agent", zap.Error(err))
 	}
+
 	http.HandleFunc("/healthz", newHealthHandler(controller.ServerIsHealthy))
 	healthChecker := &http.Server{Addr: ":8080"}
 
