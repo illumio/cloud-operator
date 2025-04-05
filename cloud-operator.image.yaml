@@ -1,3 +1,4 @@
 image:
   repository: "host.docker.internal:5000/operator"
   tag: "latest"
+  pullPolicy: Always
