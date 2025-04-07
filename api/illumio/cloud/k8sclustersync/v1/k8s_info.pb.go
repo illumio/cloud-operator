@@ -2592,66 +2592,16 @@ func (*SendLogsRequest_Keepalive) isSendLogsRequest_Request() {}
 
 func (*SendLogsRequest_LogEntry) isSendLogsRequest_Request() {}
 
-// Message to encapsulate setting the log level.
-type SetLogLevel struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// The log level to be set in the operator.
-	Level         LogLevel `protobuf:"varint,1,opt,name=level,proto3,enum=illumio.cloud.k8sclustersync.v1.LogLevel" json:"level,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SetLogLevel) Reset() {
-	*x = SetLogLevel{}
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[29]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SetLogLevel) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SetLogLevel) ProtoMessage() {}
-
-func (x *SetLogLevel) ProtoReflect() protoreflect.Message {
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[29]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SetLogLevel.ProtoReflect.Descriptor instead.
-func (*SetLogLevel) Descriptor() ([]byte, []int) {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{29}
-}
-
-func (x *SetLogLevel) GetLevel() LogLevel {
-	if x != nil {
-		return x.Level
-	}
-	return LogLevel_LOG_LEVEL_UNSPECIFIED
-}
-
 // Message to encapsulate the response for sending logs.
 type SendLogsResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Response:
-	//
-	//	*SendLogsResponse_SetLogLevel
-	Response      isSendLogsResponse_Response `protobuf_oneof:"response"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SendLogsResponse) Reset() {
 	*x = SendLogsResponse{}
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[30]
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2663,7 +2613,7 @@ func (x *SendLogsResponse) String() string {
 func (*SendLogsResponse) ProtoMessage() {}
 
 func (x *SendLogsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[30]
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2676,35 +2626,144 @@ func (x *SendLogsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendLogsResponse.ProtoReflect.Descriptor instead.
 func (*SendLogsResponse) Descriptor() ([]byte, []int) {
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{29}
+}
+
+// Message to encapsulate a request to send configuration updates.
+type GetConfigurationUpdatesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Request:
+	//
+	//	*GetConfigurationUpdatesRequest_Keepalive
+	Request       isGetConfigurationUpdatesRequest_Request `protobuf_oneof:"request"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetConfigurationUpdatesRequest) Reset() {
+	*x = GetConfigurationUpdatesRequest{}
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConfigurationUpdatesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConfigurationUpdatesRequest) ProtoMessage() {}
+
+func (x *GetConfigurationUpdatesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConfigurationUpdatesRequest.ProtoReflect.Descriptor instead.
+func (*GetConfigurationUpdatesRequest) Descriptor() ([]byte, []int) {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{30}
 }
 
-func (x *SendLogsResponse) GetResponse() isSendLogsResponse_Response {
+func (x *GetConfigurationUpdatesRequest) GetRequest() isGetConfigurationUpdatesRequest_Request {
+	if x != nil {
+		return x.Request
+	}
+	return nil
+}
+
+func (x *GetConfigurationUpdatesRequest) GetKeepalive() *Keepalive {
+	if x != nil {
+		if x, ok := x.Request.(*GetConfigurationUpdatesRequest_Keepalive); ok {
+			return x.Keepalive
+		}
+	}
+	return nil
+}
+
+type isGetConfigurationUpdatesRequest_Request interface {
+	isGetConfigurationUpdatesRequest_Request()
+}
+
+type GetConfigurationUpdatesRequest_Keepalive struct {
+	Keepalive *Keepalive `protobuf:"bytes,1,opt,name=keepalive,proto3,oneof"`
+}
+
+func (*GetConfigurationUpdatesRequest_Keepalive) isGetConfigurationUpdatesRequest_Request() {}
+
+// Message to encapsulate the response for configuration update requests.
+type GetConfigurationUpdatesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Response:
+	//
+	//	*GetConfigurationUpdatesResponse_UpdateConfiguration
+	Response      isGetConfigurationUpdatesResponse_Response `protobuf_oneof:"response"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetConfigurationUpdatesResponse) Reset() {
+	*x = GetConfigurationUpdatesResponse{}
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConfigurationUpdatesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConfigurationUpdatesResponse) ProtoMessage() {}
+
+func (x *GetConfigurationUpdatesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConfigurationUpdatesResponse.ProtoReflect.Descriptor instead.
+func (*GetConfigurationUpdatesResponse) Descriptor() ([]byte, []int) {
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *GetConfigurationUpdatesResponse) GetResponse() isGetConfigurationUpdatesResponse_Response {
 	if x != nil {
 		return x.Response
 	}
 	return nil
 }
 
-func (x *SendLogsResponse) GetSetLogLevel() *SetLogLevel {
+func (x *GetConfigurationUpdatesResponse) GetUpdateConfiguration() *GetConfigurationUpdatesResponse_Configuration {
 	if x != nil {
-		if x, ok := x.Response.(*SendLogsResponse_SetLogLevel); ok {
-			return x.SetLogLevel
+		if x, ok := x.Response.(*GetConfigurationUpdatesResponse_UpdateConfiguration); ok {
+			return x.UpdateConfiguration
 		}
 	}
 	return nil
 }
 
-type isSendLogsResponse_Response interface {
-	isSendLogsResponse_Response()
+type isGetConfigurationUpdatesResponse_Response interface {
+	isGetConfigurationUpdatesResponse_Response()
 }
 
-type SendLogsResponse_SetLogLevel struct {
-	// set_log_level sets the operator's log level to the given level.
-	SetLogLevel *SetLogLevel `protobuf:"bytes,1,opt,name=set_log_level,json=setLogLevel,proto3,oneof"`
+type GetConfigurationUpdatesResponse_UpdateConfiguration struct {
+	// Updates the operator's configuration.
+	UpdateConfiguration *GetConfigurationUpdatesResponse_Configuration `protobuf:"bytes,1,opt,name=update_configuration,json=updateConfiguration,proto3,oneof"`
 }
 
-func (*SendLogsResponse_SetLogLevel) isSendLogsResponse_Response() {}
+func (*GetConfigurationUpdatesResponse_UpdateConfiguration) isGetConfigurationUpdatesResponse_Response() {
+}
 
 type KubernetesServiceData_ServicePort struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -2722,7 +2781,7 @@ type KubernetesServiceData_ServicePort struct {
 
 func (x *KubernetesServiceData_ServicePort) Reset() {
 	*x = KubernetesServiceData_ServicePort{}
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[33]
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2734,7 +2793,7 @@ func (x *KubernetesServiceData_ServicePort) String() string {
 func (*KubernetesServiceData_ServicePort) ProtoMessage() {}
 
 func (x *KubernetesServiceData_ServicePort) ProtoReflect() protoreflect.Message {
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[33]
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2776,6 +2835,51 @@ func (x *KubernetesServiceData_ServicePort) GetLoadBalancerPorts() []string {
 		return x.LoadBalancerPorts
 	}
 	return nil
+}
+
+type GetConfigurationUpdatesResponse_Configuration struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The operator's log level.
+	LogLevel      LogLevel `protobuf:"varint,1,opt,name=log_level,json=logLevel,proto3,enum=illumio.cloud.k8sclustersync.v1.LogLevel" json:"log_level,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetConfigurationUpdatesResponse_Configuration) Reset() {
+	*x = GetConfigurationUpdatesResponse_Configuration{}
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConfigurationUpdatesResponse_Configuration) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConfigurationUpdatesResponse_Configuration) ProtoMessage() {}
+
+func (x *GetConfigurationUpdatesResponse_Configuration) ProtoReflect() protoreflect.Message {
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConfigurationUpdatesResponse_Configuration.ProtoReflect.Descriptor instead.
+func (*GetConfigurationUpdatesResponse_Configuration) Descriptor() ([]byte, []int) {
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{31, 0}
+}
+
+func (x *GetConfigurationUpdatesResponse_Configuration) GetLogLevel() LogLevel {
+	if x != nil {
+		return x.LogLevel
+	}
+	return LogLevel_LOG_LEVEL_UNSPECIFIED
 }
 
 var File_illumio_cloud_k8sclustersync_v1_k8s_info_proto protoreflect.FileDescriptor
@@ -2953,11 +3057,15 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x0fSendLogsRequest\x12J\n" +
 	"\tkeepalive\x18\x02 \x01(\v2*.illumio.cloud.k8sclustersync.v1.KeepaliveH\x00R\tkeepalive\x12H\n" +
 	"\tlog_entry\x18\x01 \x01(\v2).illumio.cloud.k8sclustersync.v1.LogEntryH\x00R\blogEntryB\t\n" +
-	"\arequest\"N\n" +
-	"\vSetLogLevel\x12?\n" +
-	"\x05level\x18\x01 \x01(\x0e2).illumio.cloud.k8sclustersync.v1.LogLevelR\x05level\"r\n" +
-	"\x10SendLogsResponse\x12R\n" +
-	"\rset_log_level\x18\x01 \x01(\v2,.illumio.cloud.k8sclustersync.v1.SetLogLevelH\x00R\vsetLogLevelB\n" +
+	"\arequest\"\x12\n" +
+	"\x10SendLogsResponse\"w\n" +
+	"\x1eGetConfigurationUpdatesRequest\x12J\n" +
+	"\tkeepalive\x18\x01 \x01(\v2*.illumio.cloud.k8sclustersync.v1.KeepaliveH\x00R\tkeepaliveB\t\n" +
+	"\arequest\"\x8c\x02\n" +
+	"\x1fGetConfigurationUpdatesResponse\x12\x83\x01\n" +
+	"\x14update_configuration\x18\x01 \x01(\v2N.illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.ConfigurationH\x00R\x13updateConfiguration\x1aW\n" +
+	"\rConfiguration\x12F\n" +
+	"\tlog_level\x18\x01 \x01(\x0e2).illumio.cloud.k8sclustersync.v1.LogLevelR\blogLevelB\n" +
 	"\n" +
 	"\bresponse*\x81\x01\n" +
 	"\rFlowCollector\x12\x1e\n" +
@@ -2987,11 +3095,12 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x0fLOG_LEVEL_DEBUG\x10\x01\x12\x12\n" +
 	"\x0eLOG_LEVEL_INFO\x10\x02\x12\x12\n" +
 	"\x0eLOG_LEVEL_WARN\x10\x03\x12\x13\n" +
-	"\x0fLOG_LEVEL_ERROR\x10\x042\xdb\x03\n" +
+	"\x0fLOG_LEVEL_ERROR\x10\x042\xfe\x04\n" +
 	"\x15KubernetesInfoService\x12\xa0\x01\n" +
 	"\x17SendKubernetesResources\x12?.illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest\x1a@.illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesResponse(\x010\x01\x12\xa9\x01\n" +
 	"\x1aSendKubernetesNetworkFlows\x12B.illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest\x1aC.illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsResponse(\x010\x01\x12s\n" +
-	"\bSendLogs\x120.illumio.cloud.k8sclustersync.v1.SendLogsRequest\x1a1.illumio.cloud.k8sclustersync.v1.SendLogsResponse(\x010\x01B\xac\x02\n" +
+	"\bSendLogs\x120.illumio.cloud.k8sclustersync.v1.SendLogsRequest\x1a1.illumio.cloud.k8sclustersync.v1.SendLogsResponse(\x010\x01\x12\xa0\x01\n" +
+	"\x17GetConfigurationUpdates\x12?.illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesRequest\x1a@.illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse(\x010\x01B\xac\x02\n" +
 	"#com.illumio.cloud.k8sclustersync.v1B\fK8sInfoProtoP\x01ZXgithub.com/illumio/cloudsecure-operator/illumio/cloud/k8sclustersync/v1;k8sclustersyncv1\xa2\x02\x03ICK\xaa\x02\x1fIllumio.Cloud.K8sclustersync.V1\xca\x02\x1fIllumio\\Cloud\\K8sclustersync\\V1\xe2\x02+Illumio\\Cloud\\K8sclustersync\\V1\\GPBMetadata\xea\x02\"Illumio::Cloud::K8sclustersync::V1b\x06proto3"
 
 var (
@@ -3007,7 +3116,7 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP() []byte {
 }
 
 var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
+var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
 var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_goTypes = []any{
 	(FlowCollector)(0),                         // 0: illumio.cloud.k8sclustersync.v1.FlowCollector
 	(TrafficDirection)(0),                      // 1: illumio.cloud.k8sclustersync.v1.TrafficDirection
@@ -3043,23 +3152,25 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_goTypes = []any{
 	(*SendKubernetesNetworkFlowsResponse)(nil), // 31: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsResponse
 	(*LogEntry)(nil),                           // 32: illumio.cloud.k8sclustersync.v1.LogEntry
 	(*SendLogsRequest)(nil),                    // 33: illumio.cloud.k8sclustersync.v1.SendLogsRequest
-	(*SetLogLevel)(nil),                        // 34: illumio.cloud.k8sclustersync.v1.SetLogLevel
-	(*SendLogsResponse)(nil),                   // 35: illumio.cloud.k8sclustersync.v1.SendLogsResponse
-	nil,                                        // 36: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.AnnotationsEntry
-	nil,                                        // 37: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.LabelsEntry
-	(*KubernetesServiceData_ServicePort)(nil),  // 38: illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ServicePort
-	(*timestamppb.Timestamp)(nil),              // 39: google.protobuf.Timestamp
-	(*wrapperspb.BoolValue)(nil),               // 40: google.protobuf.BoolValue
+	(*SendLogsResponse)(nil),                   // 34: illumio.cloud.k8sclustersync.v1.SendLogsResponse
+	(*GetConfigurationUpdatesRequest)(nil),     // 35: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesRequest
+	(*GetConfigurationUpdatesResponse)(nil),    // 36: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse
+	nil,                                        // 37: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.AnnotationsEntry
+	nil,                                        // 38: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.LabelsEntry
+	(*KubernetesServiceData_ServicePort)(nil),  // 39: illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ServicePort
+	(*GetConfigurationUpdatesResponse_Configuration)(nil), // 40: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration
+	(*timestamppb.Timestamp)(nil),                         // 41: google.protobuf.Timestamp
+	(*wrapperspb.BoolValue)(nil),                          // 42: google.protobuf.BoolValue
 }
 var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
-	36, // 0: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.annotations:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData.AnnotationsEntry
-	39, // 1: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.creation_timestamp:type_name -> google.protobuf.Timestamp
-	37, // 2: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.labels:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData.LabelsEntry
+	37, // 0: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.annotations:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData.AnnotationsEntry
+	41, // 1: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.creation_timestamp:type_name -> google.protobuf.Timestamp
+	38, // 2: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.labels:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData.LabelsEntry
 	10, // 3: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.owner_references:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesOwnerReference
 	9,  // 4: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.pod:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesPodData
 	8,  // 5: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.node:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNodeData
 	7,  // 6: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.service:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesServiceData
-	38, // 7: illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ports:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ServicePort
+	39, // 7: illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ports:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ServicePort
 	0,  // 8: illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadata.flow_collector:type_name -> illumio.cloud.k8sclustersync.v1.FlowCollector
 	5,  // 9: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
 	11, // 10: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.cluster_metadata:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadata
@@ -3071,13 +3182,13 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	6,  // 16: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation.delete_resource:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
 	19, // 17: illumio.cloud.k8sclustersync.v1.FalcoFlow.layer3:type_name -> illumio.cloud.k8sclustersync.v1.IP
 	20, // 18: illumio.cloud.k8sclustersync.v1.FalcoFlow.layer4:type_name -> illumio.cloud.k8sclustersync.v1.Layer4
-	39, // 19: illumio.cloud.k8sclustersync.v1.FalcoFlow.timestamp:type_name -> google.protobuf.Timestamp
-	39, // 20: illumio.cloud.k8sclustersync.v1.CiliumFlow.time:type_name -> google.protobuf.Timestamp
+	41, // 19: illumio.cloud.k8sclustersync.v1.FalcoFlow.timestamp:type_name -> google.protobuf.Timestamp
+	41, // 20: illumio.cloud.k8sclustersync.v1.CiliumFlow.time:type_name -> google.protobuf.Timestamp
 	1,  // 21: illumio.cloud.k8sclustersync.v1.CiliumFlow.traffic_direction:type_name -> illumio.cloud.k8sclustersync.v1.TrafficDirection
 	2,  // 22: illumio.cloud.k8sclustersync.v1.CiliumFlow.verdict:type_name -> illumio.cloud.k8sclustersync.v1.Verdict
 	19, // 23: illumio.cloud.k8sclustersync.v1.CiliumFlow.layer3:type_name -> illumio.cloud.k8sclustersync.v1.IP
 	20, // 24: illumio.cloud.k8sclustersync.v1.CiliumFlow.layer4:type_name -> illumio.cloud.k8sclustersync.v1.Layer4
-	40, // 25: illumio.cloud.k8sclustersync.v1.CiliumFlow.is_reply:type_name -> google.protobuf.BoolValue
+	42, // 25: illumio.cloud.k8sclustersync.v1.CiliumFlow.is_reply:type_name -> google.protobuf.BoolValue
 	27, // 26: illumio.cloud.k8sclustersync.v1.CiliumFlow.source_endpoint:type_name -> illumio.cloud.k8sclustersync.v1.Endpoint
 	27, // 27: illumio.cloud.k8sclustersync.v1.CiliumFlow.destination_endpoint:type_name -> illumio.cloud.k8sclustersync.v1.Endpoint
 	18, // 28: illumio.cloud.k8sclustersync.v1.CiliumFlow.destination_service:type_name -> illumio.cloud.k8sclustersync.v1.Service
@@ -3098,19 +3209,22 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	16, // 43: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.falco_flow:type_name -> illumio.cloud.k8sclustersync.v1.FalcoFlow
 	5,  // 44: illumio.cloud.k8sclustersync.v1.SendLogsRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
 	32, // 45: illumio.cloud.k8sclustersync.v1.SendLogsRequest.log_entry:type_name -> illumio.cloud.k8sclustersync.v1.LogEntry
-	4,  // 46: illumio.cloud.k8sclustersync.v1.SetLogLevel.level:type_name -> illumio.cloud.k8sclustersync.v1.LogLevel
-	34, // 47: illumio.cloud.k8sclustersync.v1.SendLogsResponse.set_log_level:type_name -> illumio.cloud.k8sclustersync.v1.SetLogLevel
-	12, // 48: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest
-	30, // 49: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest
-	33, // 50: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:input_type -> illumio.cloud.k8sclustersync.v1.SendLogsRequest
-	14, // 51: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesResponse
-	31, // 52: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsResponse
-	35, // 53: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:output_type -> illumio.cloud.k8sclustersync.v1.SendLogsResponse
-	51, // [51:54] is the sub-list for method output_type
-	48, // [48:51] is the sub-list for method input_type
-	48, // [48:48] is the sub-list for extension type_name
-	48, // [48:48] is the sub-list for extension extendee
-	0,  // [0:48] is the sub-list for field type_name
+	5,  // 46: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
+	40, // 47: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.update_configuration:type_name -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration
+	4,  // 48: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration.log_level:type_name -> illumio.cloud.k8sclustersync.v1.LogLevel
+	12, // 49: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest
+	30, // 50: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest
+	33, // 51: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:input_type -> illumio.cloud.k8sclustersync.v1.SendLogsRequest
+	35, // 52: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.GetConfigurationUpdates:input_type -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesRequest
+	14, // 53: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesResponse
+	31, // 54: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsResponse
+	34, // 55: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:output_type -> illumio.cloud.k8sclustersync.v1.SendLogsResponse
+	36, // 56: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.GetConfigurationUpdates:output_type -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse
+	53, // [53:57] is the sub-list for method output_type
+	49, // [49:53] is the sub-list for method input_type
+	49, // [49:49] is the sub-list for extension type_name
+	49, // [49:49] is the sub-list for extension extendee
+	0,  // [0:49] is the sub-list for field type_name
 }
 
 func init() { file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() }
@@ -3158,16 +3272,19 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() {
 		(*SendLogsRequest_LogEntry)(nil),
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[30].OneofWrappers = []any{
-		(*SendLogsResponse_SetLogLevel)(nil),
+		(*GetConfigurationUpdatesRequest_Keepalive)(nil),
 	}
-	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[33].OneofWrappers = []any{}
+	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[31].OneofWrappers = []any{
+		(*GetConfigurationUpdatesResponse_UpdateConfiguration)(nil),
+	}
+	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[34].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc), len(file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   34,
+			NumMessages:   36,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

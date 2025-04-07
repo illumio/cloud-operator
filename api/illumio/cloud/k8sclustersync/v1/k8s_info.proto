@@ -401,17 +401,30 @@ message SendLogsRequest {
   }
 }
 
-// Message to encapsulate setting the log level.
-message SetLogLevel {
-  // The log level to be set in the operator.
-  LogLevel level = 1;
+// Message to encapsulate the response for sending logs.
+message SendLogsResponse {}
+
+// Message to encapsulate a request to send configuration updates.
+message GetConfigurationUpdatesRequest {
+  oneof request {
+    Keepalive keepalive = 1;
+  }
 }
 
-// Message to encapsulate the response for sending logs.
-message SendLogsResponse {
+// Message to encapsulate the response for configuration update requests.
+message GetConfigurationUpdatesResponse {
+  message Configuration {
+    // The operator's log level.
+    LogLevel log_level = 1;
+
+    // Additional configuration fields will be added here.
+  }
+
   oneof response {
-    // set_log_level sets the operator's log level to the given level.
-    SetLogLevel set_log_level = 1;
+    // Updates the operator's configuration.
+    Configuration update_configuration = 1;
+
+    // Additional configuration messages will be added here.
   }
 }
 
@@ -423,4 +436,6 @@ service KubernetesInfoService {
   rpc SendKubernetesNetworkFlows(stream SendKubernetesNetworkFlowsRequest) returns (stream SendKubernetesNetworkFlowsResponse);
   // Continuously syncs logs from operator and cluster.
   rpc SendLogs(stream SendLogsRequest) returns (stream SendLogsResponse);
+  // Continuously receives configuration updates from CloudSecure.
+  rpc GetConfigurationUpdates(stream GetConfigurationUpdatesRequest) returns (stream GetConfigurationUpdatesResponse);
 }
