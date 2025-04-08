@@ -109,7 +109,6 @@ func convertMetaObjectToMetadata(logger *zap.Logger, ctx context.Context, obj me
 			return objMetadata, nil
 		}
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Service{Service: convertedServiceData}
-
 	}
 	return objMetadata, nil
 }
@@ -271,20 +270,20 @@ func getProviderIdNodeSpec(ctx context.Context, clientset *kubernetes.Clientset,
 }
 
 // getPodIPAddresses uses a pod name and namespace to grab the hostIP addresses within the podStatus
-func getPodIPAddresses(ctx context.Context, podName string, clientset *kubernetes.Clientset, namespace string) ([]v1.HostIP, error) {
+func getPodIPAddresses(ctx context.Context, podName string, clientset *kubernetes.Clientset, namespace string) ([]v1.PodIP, error) {
 	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
 		// Could be that the pod no longer exists
-		return []v1.HostIP{}, nil
+		return []v1.PodIP{}, nil
 	}
-	if pod.Status.HostIPs != nil {
-		return pod.Status.HostIPs, nil
+	if pod.Status.PodIPs != nil {
+		return pod.Status.PodIPs, nil
 	}
-	return []v1.HostIP{}, nil
+	return []v1.PodIP{}, nil
 }
 
 // convertHostIPsToStrings converts a slice of v1.HostIP to a slice of strings
-func convertHostIPsToStrings(hostIPs []v1.HostIP) []string {
+func convertHostIPsToStrings(hostIPs []v1.PodIP) []string {
 	stringIPs := make([]string, len(hostIPs))
 	for i, hostIP := range hostIPs {
 		stringIPs[i] = hostIP.IP
