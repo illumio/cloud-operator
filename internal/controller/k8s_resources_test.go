@@ -335,23 +335,23 @@ func TestConvertToProtoTimestamp(t *testing.T) {
 	assert.Equal(t, expected, result)
 }
 
-func TestConvertHostIPsToStrings(t *testing.T) {
+func TestConvertPodIPsToStrings(t *testing.T) {
 	tests := map[string]struct {
-		hostIPs     []v1.HostIP
+		podIPs      []v1.PodIP
 		expectedIPs []string
 	}{
 		"empty slice": {
-			hostIPs:     []v1.HostIP{},
+			podIPs:      []v1.PodIP{},
 			expectedIPs: []string{},
 		},
 		"single IP": {
-			hostIPs: []v1.HostIP{
+			podIPs: []v1.PodIP{
 				{IP: "192.168.1.1"},
 			},
 			expectedIPs: []string{"192.168.1.1"},
 		},
 		"multiple IPs": {
-			hostIPs: []v1.HostIP{
+			podIPs: []v1.PodIP{
 				{IP: "192.168.1.1"},
 				{IP: "192.168.1.2"},
 				{IP: "192.168.1.3"},
@@ -359,7 +359,7 @@ func TestConvertHostIPsToStrings(t *testing.T) {
 			expectedIPs: []string{"192.168.1.1", "192.168.1.2", "192.168.1.3"},
 		},
 		"IPs with different formats": {
-			hostIPs: []v1.HostIP{
+			podIPs: []v1.PodIP{
 				{IP: "192.168.1.1"},
 				{IP: "fe80::1ff:fe23:4567:890a"},
 				{IP: "10.0.0.1"},
@@ -369,7 +369,7 @@ func TestConvertHostIPsToStrings(t *testing.T) {
 	}
 
 	for name, tt := range tests {
-		result := convertHostIPsToStrings(tt.hostIPs)
+		result := convertPodIPsToStrings(tt.podIPs)
 		assert.Equal(t, tt.expectedIPs, result, "test failed: %s", name)
 	}
 }
