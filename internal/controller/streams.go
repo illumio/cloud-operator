@@ -37,7 +37,6 @@ type streamClient struct {
 	client                    pb.KubernetesInfoServiceClient
 	disableNetworkFlowsCilium bool
 	falcoEventChan            chan string
-	flowCollector             pb.FlowCollector
 	logStream                 pb.KubernetesInfoService_SendLogsClient
 	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient
@@ -660,10 +659,8 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
 			if ciliumFlowCollector == nil {
 				sm.streamClient.disableNetworkFlowsCilium = true
-				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_FALCO
 			} else {
 				sm.streamClient.disableNetworkFlowsCilium = false
-				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_CILIUM
 			}
 
 			resourceDone := make(chan struct{})
@@ -732,6 +729,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			}
 			authConContextCancel()
 		}
+
 		logger.Warn("One or more streams have been closed; closing and reopening the connection to CloudSecure",
 			zap.String("failureReason", failureReason),
 			zap.Int("attempt", attempt),

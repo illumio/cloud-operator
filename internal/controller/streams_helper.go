@@ -115,7 +115,6 @@ func (sm *streamManager) sendClusterMetadata(ctx context.Context, logger *zap.Lo
 				Uid:               clusterUid,
 				KubernetesVersion: kubernetesVersion.String(),
 				OperatorVersion:   version.Version(),
-				FlowCollector:     sm.streamClient.flowCollector,
 			},
 		},
 	}
