@@ -69,4 +69,3 @@ env:
     kubernetes_resources: "10s"
     kubernetes_network_flows: "10s"
     logs: "10s"
-    configuration: "10s"
