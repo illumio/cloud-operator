@@ -4,6 +4,7 @@ package controller
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -91,6 +92,7 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 			b.lostLogEntriesErr = err
 			return
 		}
+
 		if err := b.sendLogEntry(lostLogsMessage); err != nil {
 			b.lostLogEntriesErr = err
 			return
@@ -183,6 +185,28 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 	b.conn = conn
 	b.flush()
 	b.mutex.Unlock()
+}
+
+// ListenToLogStream waits for responses from the server and updates the log level
+// based on the contents of responses.
+func (b *BufferedGrpcWriteSyncer) ListenToLogStream() error {
+	for {
+		res, err := b.client.Recv()
+		if err == io.EOF {
+			// The client has closed the stream
+			b.logger.Info("Server closed the SendLogs stream")
+			return nil
+		}
+		if err != nil {
+			b.logger.Error("Stream terminated", zap.Error(err))
+			return err
+		}
+		switch res.Response.(type) {
+		case *pb.SendLogsResponse_SetLogLevel:
+			newLevel := res.GetSetLogLevel().Level
+			b.updateLogLevel(newLevel)
+		}
+	}
 }
 
 // updateLogLevel sets the logger's log level based on the response from the server.
