@@ -38,7 +38,7 @@ type ResourceManager struct {
 func (r *ResourceManager) DynamicListAndWatchResources(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, allResourcesSnapshotted *sync.WaitGroup, snapshotCompleted *sync.WaitGroup) {
 	defer cancel()
 
-	resourceListVersion, err := r.DynamicListResources(ctx, r.logger, resource, apiGroup)
+	resourceListVersion, err := r.DynamicListResources(ctx, resource, apiGroup)
 	if err != nil {
 		allResourcesSnapshotted.Done()
 		r.logger.Error("Unable to list resources", zap.Error(err))
@@ -68,19 +68,19 @@ func (r *ResourceManager) DynamicListAndWatchResources(ctx context.Context, canc
 }
 
 // DynamicListResources lists a specifed resource dynamically and sends down the current gRPC stream.
-func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.Logger, resource string, apiGroup string) (string, error) {
+func (r *ResourceManager) DynamicListResources(ctx context.Context, resource string, apiGroup string) (string, error) {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	objs, resourceListVersion, resourceK8sKind, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
 		return "", err
 	}
 	for _, obj := range objs {
-		metadataObj, err := convertMetaObjectToMetadata(logger, ctx, obj, r.clientset, resourceK8sKind)
+		metadataObj, err := convertMetaObjectToMetadata(r.logger, ctx, obj, r.clientset, resourceK8sKind)
 		if err != nil {
 			r.logger.Error("Cannot convert object metadata", zap.Error(err))
 			return "", err
 		}
-		err = r.streamManager.sendObjectData(logger, metadataObj)
+		err = sendObjectData(r.streamManager, metadataObj)
 		if err != nil {
 			r.logger.Error("Cannot send object metadata", zap.Error(err))
 			return "", err
@@ -167,7 +167,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 			}
 
 			// Helper function: type gymnastics + send the KubernetesObjectData out on the wire
-			err = r.streamManager.streamMutationObjectData(logger, metadataObj, event.Type)
+			err = streamMutationObjectData(r.streamManager, metadataObj, event.Type)
 			if err != nil {
 				logger.Error("Cannot send resource mutation", zap.Error(err))
 				return err
