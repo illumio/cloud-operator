@@ -1,4 +1,4 @@
-ARG VARIANT=1.23-bookworm
+ARG VARIANT=1.24.1-bookworm
 FROM mcr.microsoft.com/vscode/devcontainers/go:${VARIANT}
 
 ARG BUF_VERSION=v1.30.0
