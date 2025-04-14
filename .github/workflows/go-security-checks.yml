@@ -35,7 +35,7 @@ jobs:
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.60.2
+          version: v1.64.2
 
       - name: Run golangci-lint
         run: golangci-lint run ./... --timeout 10m
