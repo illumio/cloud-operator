@@ -37,6 +37,7 @@ const (
 	defaultStreamKeepalivePeriodKubernetesResources    = "10s"
 	defaultStreamKeepalivePeriodKubernetesNetworkFlows = "10s"
 	defaultStreamKeepalivePeriodLogs                   = "10s"
+	defaultStreamKeepalivePeriodConfiguration          = "10s"
 )
 
 // newHealthHandler returns an HTTP HandlerFunc that checks the health of the server by calling the given function and returns a status code accordingly
@@ -80,6 +81,7 @@ func main() {
 	bindEnv(logger, "stream_keepalive_period_kubernetes_resources", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES")
 	bindEnv(logger, "stream_keepalive_period_kubernetes_network_flows", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS")
 	bindEnv(logger, "stream_keepalive_period_logs", "STREAM_KEEPALIVE_PERIOD_LOGS")
+	bindEnv(logger, "stream_keepalive_period_configuration", "STREAM_KEEPALIVE_PERIOD_CONFIGURATION")
 
 	// Set default values
 	viper.SetDefault("cluster_creds", "clustercreds")
@@ -90,6 +92,7 @@ func main() {
 	viper.SetDefault("stream_keepalive_period_kubernetes_resources", defaultStreamKeepalivePeriodKubernetesResources)
 	viper.SetDefault("stream_keepalive_period_kubernetes_network_flows", defaultStreamKeepalivePeriodKubernetesNetworkFlows)
 	viper.SetDefault("stream_keepalive_period_logs", defaultStreamKeepalivePeriodLogs)
+	viper.SetDefault("stream_keepalive_period_configuration", defaultStreamKeepalivePeriodConfiguration)
 
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),
@@ -103,6 +106,7 @@ func main() {
 			KubernetesResources:    viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
 			KubernetesNetworkFlows: viper.GetDuration("stream_keepalive_period_kubernetes_network_flows"),
 			Logs:                   viper.GetDuration("stream_keepalive_period_logs"),
+			Configuration:          viper.GetDuration("stream_keepalive_period_configuration"),
 		},
 	}
 
@@ -116,6 +120,7 @@ func main() {
 		zap.Duration("stream_keepalive_period_kubernetes_resources", envConfig.KeepalivePeriods.KubernetesResources),
 		zap.Duration("stream_keepalive_period_kubernetes_network_flows", envConfig.KeepalivePeriods.KubernetesNetworkFlows),
 		zap.Duration("stream_keepalive_period_logs", envConfig.KeepalivePeriods.Logs),
+		zap.Duration("stream_keepalive_period_configuration", envConfig.KeepalivePeriods.Configuration),
 	)
 
 	// Start the gops agent and listen on a specific address and port
