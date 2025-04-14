@@ -15,7 +15,6 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -86,7 +85,7 @@ func (authn *Authenticator) DoesK8sSecretExist(ctx context.Context, secretName s
 	return err == nil
 }
 
-// WriteK8sSecret takes an OnboardResponse and writes it to a locally kept secret.
+// WriteK8sSecret updates the data in an existing Kubernetes Secret without overwriting annotations or labels.
 func (authn *Authenticator) WriteK8sSecret(ctx context.Context, keyData OnboardResponse, ClusterCreds string) error {
 	clientset, err := NewClientSet()
 	if err != nil {
@@ -94,20 +93,23 @@ func (authn *Authenticator) WriteK8sSecret(ctx context.Context, keyData OnboardR
 		return err
 	}
 
-	secretData := map[string][]byte{
+	namespace := "illumio-cloud" // TODO: Make this configurable
+
+	// Fetch the existing Secret to preserve metadata
+	existingSecret, err := clientset.CoreV1().Secrets(namespace).Get(ctx, ClusterCreds, metav1.GetOptions{})
+	if err != nil {
+		authn.Logger.Error("Failed to get existing secret", zap.Error(err))
+		return err
+	}
+
+	// Update only the Secret data
+	existingSecret.Data = map[string][]byte{
 		string(ONBOARDING_CLIENT_ID):     []byte(keyData.ClusterClientId),
 		string(ONBOARDING_CLIENT_SECRET): []byte(keyData.ClusterClientSecret),
 	}
-	namespace := "illumio-cloud" // Will be made configurable.
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      ClusterCreds,
-			Namespace: namespace,
-		},
-		Data: secretData,
-	}
 
-	_, err = clientset.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
+	// Apply the update
+	_, err = clientset.CoreV1().Secrets(namespace).Update(ctx, existingSecret, metav1.UpdateOptions{})
 	if err != nil {
 		authn.Logger.Error("Failed to update secret", zap.Error(err))
 		return err
