@@ -74,7 +74,7 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 			continue
 		}
 
-		// Let's say we fail 7 times, then succeed for 45 minutes minutes before
+		// Let's say we fail 7 times, then succeed for 45 minutes before
 		// failing again. Sometimes this 45 minute period of good behavior should be
 		// considered a success, even though the function didn't return "no error".
 		//
