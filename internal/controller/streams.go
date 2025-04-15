@@ -556,6 +556,7 @@ func (sm *streamManager) manageStream(
 			Logger: logger.With(
 				zap.String("state", "retry_connect_and_stream"),
 			),
+			ActionTimeToConsiderSuccess: 15 * time.Minute,
 		}, f)
 	}
 
@@ -575,6 +576,7 @@ func (sm *streamManager) manageStream(
 			Logger: logger.With(
 				zap.String("state", "reset_retry_connect_and_stream"),
 			),
+			ActionTimeToConsiderSuccess: 30 * time.Minute,
 		}, funcWithBackoff)
 	}
 
