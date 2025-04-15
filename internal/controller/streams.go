@@ -134,6 +134,7 @@ func ServerIsHealthy() bool {
 
 // StreamResources handles the resource stream.
 func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger, cancel context.CancelFunc) error {
+	defer cancel()
 	defer func() {
 		dd.processingResources = false
 	}()
