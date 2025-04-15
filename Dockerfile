@@ -25,7 +25,7 @@ RUN CGO_ENABLED=0 go build -ldflags="-X 'github.com/illumio/cloud-operator/inter
 RUN CGO_ENABLED=0 go install github.com/google/gops@latest
 
 # Use distroless as minimal base image to package the manager binary
-FROM gcr.io/distroless/static:debug-nonroot
+FROM gcr.io/distroless/static:nonroot
 
 # Copy binaries
 WORKDIR /
