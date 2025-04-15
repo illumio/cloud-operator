@@ -86,3 +86,11 @@ spec:
                   fieldPath: metadata.namespace
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: gops-volume
+              mountPath: /var/run/gops
+      volumes:
+        - name: gops-volume
+          emptyDir:
+            medium: Memory
+            sizeLimit: 10Mi 
