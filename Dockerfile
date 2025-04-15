@@ -19,10 +19,10 @@ COPY internal/version/ internal/version/
 COPY api/ api/
 
 # Build the Go binary
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-X 'github.com/illumio/cloud-operator/internal/version.version=${VERSION}'" -a -o manager cmd/main.go
+RUN CGO_ENABLED=0 go build -ldflags="-X 'github.com/illumio/cloud-operator/internal/version.version=${VERSION}'" -a -o manager cmd/main.go
 
 # Install gops for troubleshooting
-RUN go install github.com/google/gops@latest
+RUN CGO_ENABLED=0 go install github.com/google/gops@latest
 
 # Use distroless as minimal base image to package the manager binary
 FROM gcr.io/distroless/static:debug-nonroot
