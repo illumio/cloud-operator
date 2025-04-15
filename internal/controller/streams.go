@@ -321,8 +321,14 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 // StreamFalcoNetworkFlows handles the falco network flow stream.
 func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *zap.Logger) error {
 	for {
-		falcoFlow := <-sm.streamClient.falcoEventChan
-		if filterIllumioTraffic(falcoFlow) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case falcoFlow := <-sm.streamClient.falcoEventChan:
+			if !filterIllumioTraffic(falcoFlow) {
+				continue
+			}
+
 			// Extract the relevant part of the output string
 			match := reIllumioTraffic.FindStringSubmatch(falcoFlow)
 			if len(match) < 2 {
@@ -344,8 +350,6 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				logger.Error("Failed to send Falco flow", zap.Error(err))
 				return err
 			}
-		} else {
-			continue
 		}
 	}
 }
