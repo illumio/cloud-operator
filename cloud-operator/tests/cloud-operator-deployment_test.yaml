@@ -68,6 +68,9 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[9].value
           value: "10s"
+      - equal:
+          path: spec.template.spec.containers[0].env[10].name
+          value: "POD_NAMESPACE"
 
   # Test for replicaCount value
   - it: should set the correct number of replicas
