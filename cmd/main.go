@@ -112,6 +112,7 @@ func main() {
 		},
 		PodNamespace: viper.GetString("pod_namspace"),
 	}
+
 	logger.Info("Starting application",
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
 		zap.String("cilium_namespace", envConfig.CiliumNamespace),
