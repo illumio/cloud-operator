@@ -30,7 +30,7 @@ FROM gcr.io/distroless/static:debug-nonroot
 # Copy binaries
 WORKDIR /
 COPY --from=builder /workspace/manager .
-COPY --from=builder /go/bin/gops .
+COPY --from=builder /go/bin/gops /sbin/gops
 
 USER 65532:65532
 
