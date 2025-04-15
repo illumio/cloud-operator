@@ -78,5 +78,9 @@ spec:
               value: "{{ .Values.env.streamKeepalivePeriods.kubernetes_network_flows }}"
             - name: STREAM_KEEPALIVE_PERIOD_LOGS
               value: "{{ .Values.env.streamKeepalivePeriods.logs }}"
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

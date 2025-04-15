@@ -80,6 +80,7 @@ func main() {
 	bindEnv(logger, "stream_keepalive_period_kubernetes_resources", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES")
 	bindEnv(logger, "stream_keepalive_period_kubernetes_network_flows", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS")
 	bindEnv(logger, "stream_keepalive_period_logs", "STREAM_KEEPALIVE_PERIOD_LOGS")
+	bindEnv(logger, "pod_namspace", "POD_NAMESPACE")
 
 	// Set default values
 	viper.SetDefault("cluster_creds", "clustercreds")
@@ -90,6 +91,7 @@ func main() {
 	viper.SetDefault("stream_keepalive_period_kubernetes_resources", defaultStreamKeepalivePeriodKubernetesResources)
 	viper.SetDefault("stream_keepalive_period_kubernetes_network_flows", defaultStreamKeepalivePeriodKubernetesNetworkFlows)
 	viper.SetDefault("stream_keepalive_period_logs", defaultStreamKeepalivePeriodLogs)
+	viper.SetDefault("pod_namspace", "illumio-cloud")
 
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),
@@ -104,6 +106,7 @@ func main() {
 			KubernetesNetworkFlows: viper.GetDuration("stream_keepalive_period_kubernetes_network_flows"),
 			Logs:                   viper.GetDuration("stream_keepalive_period_logs"),
 		},
+		PodNamespace: viper.GetString("pod_namspace"),
 	}
 
 	logger.Info("Starting application",
@@ -116,6 +119,7 @@ func main() {
 		zap.Duration("stream_keepalive_period_kubernetes_resources", envConfig.KeepalivePeriods.KubernetesResources),
 		zap.Duration("stream_keepalive_period_kubernetes_network_flows", envConfig.KeepalivePeriods.KubernetesNetworkFlows),
 		zap.Duration("stream_keepalive_period_logs", envConfig.KeepalivePeriods.Logs),
+		zap.String("pod_namespace", envConfig.PodNamespace),
 	)
 
 	// Start the gops agent and listen on a specific address and port

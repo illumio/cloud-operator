@@ -76,6 +76,8 @@ type EnvironmentConfig struct {
 	TlsSkipVerify bool
 	// KeepalivePeriods specifies the period (minus jitter) between two keepalives sent on each stream
 	KeepalivePeriods KeepalivePeriods
+	// PodNamespace is the namespace where the cloud-operator is deployed
+	PodNamespace string
 }
 
 var resourceAPIGroupMap = map[string]string{
@@ -622,7 +624,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 func NewAuthenticatedConnection(ctx context.Context, logger *zap.Logger, envMap EnvironmentConfig) (*grpc.ClientConn, pb.KubernetesInfoServiceClient, error) {
 	authn := Authenticator{Logger: logger}
 
-	clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+	clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds, envMap.PodNamespace)
 	if errors.Is(err, ErrCredentialNotFoundInK8sSecret) {
 		logger.Debug("Secret is not populated yet", zap.Error(err))
 	} else if err != nil {
@@ -642,7 +644,7 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.Logger, envMap 
 			logger.Error("Failed to register cluster", zap.Error(err))
 			return nil, nil, err
 		}
-		err = authn.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
+		err = authn.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds, envMap.PodNamespace)
 		if err != nil {
 			logger.Error("Failed to write secret to Kubernetes", zap.Error(err))
 		}
@@ -654,7 +656,7 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.Logger, envMap 
 		maxRetries := 5
 		waitDuration := 1 * time.Second
 		for i := 0; i < maxRetries; i++ {
-			clientID, clientSecret, err = authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+			clientID, clientSecret, err = authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds, envMap.PodNamespace)
 			if errors.Is(err, ErrCredentialNotFoundInK8sSecret) {
 				logger.Debug("Secret is not populated yet", zap.Error(err))
 			}

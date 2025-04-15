@@ -47,7 +47,7 @@ func (authn *Authenticator) GetOnboardingCredentials(ctx context.Context, client
 }
 
 // ReadK8sSecret takes a secretName and reads the file.
-func (authn *Authenticator) ReadCredentialsK8sSecrets(ctx context.Context, secretName string) (string, string, error) {
+func (authn *Authenticator) ReadCredentialsK8sSecrets(ctx context.Context, secretName string, podNamespace string) (string, string, error) {
 	// Create a new clientset
 	clientset, err := NewClientSet()
 	if err != nil {
@@ -56,7 +56,7 @@ func (authn *Authenticator) ReadCredentialsK8sSecrets(ctx context.Context, secre
 	}
 
 	// Get the secret
-	secret, err := clientset.CoreV1().Secrets("illumio-cloud").Get(ctx, secretName, metav1.GetOptions{})
+	secret, err := clientset.CoreV1().Secrets(podNamespace).Get(ctx, secretName, metav1.GetOptions{})
 	if err != nil {
 		authn.Logger.Error("Failed to get secret", zap.Error(err))
 		return "", "", err
@@ -74,29 +74,27 @@ func (authn *Authenticator) ReadCredentialsK8sSecrets(ctx context.Context, secre
 	return clientID, clientSecret, nil
 }
 
-func (authn *Authenticator) DoesK8sSecretExist(ctx context.Context, secretName string) bool {
+func (authn *Authenticator) DoesK8sSecretExist(ctx context.Context, secretName string, podNamespace string) bool {
 	clientset, err := NewClientSet()
 	if err != nil {
 		authn.Logger.Error("Failed to create clientSet", zap.Error(err))
 	}
 
-	// Get the secret -> illumio-cloud will need to be configurable
-	_, err = clientset.CoreV1().Secrets("illumio-cloud").Get(ctx, secretName, metav1.GetOptions{})
+	_, err = clientset.CoreV1().Secrets(podNamespace).Get(ctx, secretName, metav1.GetOptions{})
 	return err == nil
 }
 
 // WriteK8sSecret updates the data in an existing Kubernetes Secret without overwriting annotations or labels.
-func (authn *Authenticator) WriteK8sSecret(ctx context.Context, keyData OnboardResponse, ClusterCreds string) error {
+func (authn *Authenticator) WriteK8sSecret(ctx context.Context, keyData OnboardResponse, ClusterCreds string, podNamespace string) error {
 	clientset, err := NewClientSet()
 	if err != nil {
 		authn.Logger.Error("Failed to create clientSet", zap.Error(err))
 		return err
 	}
 
-	namespace := "illumio-cloud" // TODO: Make this configurable
-
+	secretsClient := clientset.CoreV1().Secrets(podNamespace)
 	// Fetch the existing Secret to preserve metadata
-	existingSecret, err := clientset.CoreV1().Secrets(namespace).Get(ctx, ClusterCreds, metav1.GetOptions{})
+	existingSecret, err := secretsClient.Get(ctx, ClusterCreds, metav1.GetOptions{})
 	if err != nil {
 		authn.Logger.Error("Failed to get existing secret", zap.Error(err))
 		return err
@@ -109,7 +107,7 @@ func (authn *Authenticator) WriteK8sSecret(ctx context.Context, keyData OnboardR
 	}
 
 	// Apply the update
-	_, err = clientset.CoreV1().Secrets(namespace).Update(ctx, existingSecret, metav1.UpdateOptions{})
+	_, err = secretsClient.Update(ctx, existingSecret, metav1.UpdateOptions{})
 	if err != nil {
 		authn.Logger.Error("Failed to update secret", zap.Error(err))
 		return err
