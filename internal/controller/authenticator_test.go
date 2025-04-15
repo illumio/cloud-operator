@@ -139,7 +139,7 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 				}
 			}
 
-			clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, tt.secretName)
+			clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, tt.secretName, "illumio-cloud")
 			if tt.expectedError {
 				assert.Error(suite.T(), err)
 				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
@@ -215,7 +215,7 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 				}
 			}
 
-			err := authn.WriteK8sSecret(ctx, tt.onboardResponse, tt.secretName)
+			err := authn.WriteK8sSecret(ctx, tt.onboardResponse, tt.secretName, "illumio-cloud")
 			if tt.expectedError {
 				assert.Error(suite.T(), err)
 				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
@@ -289,7 +289,7 @@ func (suite *ControllerTestSuite) TestDoesK8sSecretExist() {
 				Logger: suite.logger,
 			}
 
-			exists := sm.DoesK8sSecretExist(ctx, tt.secretName)
+			exists := sm.DoesK8sSecretExist(ctx, tt.secretName, "illumio-cloud")
 			assert.Equal(suite.T(), tt.expectedExist, exists)
 		})
 	}
