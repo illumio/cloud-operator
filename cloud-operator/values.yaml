@@ -5,7 +5,7 @@ replicaCount: 1
 priorityClassName: ""
 image:
   repository: "ghcr.io/illumio/cloud-operator"
-  tag: "pr-137"
+  tag: "0.0.1"
   pullPolicy: IfNotPresent
 
 serviceAccount:
