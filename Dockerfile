@@ -27,13 +27,15 @@ RUN go install github.com/google/gops@latest
 # Use distroless as minimal base image to package the manager binary
 FROM gcr.io/distroless/static:debug-nonroot
 
-# Set up gops configuration and copy binaries
-ENV GOPS_CONFIG_DIR="/var/run/gops"
+# Copy binaries
 WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=builder /go/bin/gops /bin/gops
 
 USER 65532:65532
+
+# Configure gops
+ENV GOPS_CONFIG_DIR="/var/run/gops"
 
 # Set the entrypoint for your app
 ENTRYPOINT ["/manager"]
