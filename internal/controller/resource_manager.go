@@ -30,9 +30,9 @@ type ResourceManager struct {
 
 // TODO: Make a struct with the ClientSet as a field, and convertMetaObjectToMetadata, getPodIPAddresses, getProviderIdNodeSpec should be methods of that struct.
 
-// ListCurrentK8sWorkloads lists the current state of a specified Kubernetes resource
+// ListK8sResources lists the current state of a specified Kubernetes resource
 // using the dynamic client, and returns its latest resourceVersion.
-func (r *ResourceManager) ListCurrentK8sWorkloads(ctx context.Context, resource string, apiGroup string) (string, error) {
+func (r *ResourceManager) ListK8sResources(ctx context.Context, resource string, apiGroup string) (string, error) {
 	resourceVersion, err := r.DynamicListResources(ctx, r.logger, resource, apiGroup)
 	if err != nil {
 		r.logger.Error("Failed to list resource", zap.String("resource", resource), zap.Error(err))
@@ -41,9 +41,9 @@ func (r *ResourceManager) ListCurrentK8sWorkloads(ctx context.Context, resource 
 	return resourceVersion, nil
 }
 
-// WatchK8sWorkloads initiates a watch stream for the specified Kubernetes resource starting from the given resourceVersion.
+// WatchK8sResources initiates a watch stream for the specified Kubernetes resource starting from the given resourceVersion.
 // This function blocks until the watch ends or the context is canceled.
-func (r *ResourceManager) WatchK8sWorkloads(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, resourceVersion string) {
+func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, resourceVersion string) {
 	defer cancel()
 
 	// Here intiatate the watch event

@@ -199,7 +199,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		// Add jitter between list resources
 		jitter := time.Duration(rand.Intn(1000)+1000) * time.Millisecond // 1-2 s
 		time.Sleep(jitter)
-		resourceVersion, err := resourceLister.ListCurrentK8sWorkloads(ctx, resource, apiGroup)
+		resourceVersion, err := resourceLister.ListK8sResources(ctx, resource, apiGroup)
 		if err != nil {
 			logger.Error("Unable to list resource", zap.String("resource", resource), zap.Error(err))
 			return err
@@ -208,6 +208,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 	}
 
 	err = sm.sendResourceSnapshotComplete(logger)
+	logger.Info("cloud-operator has succesfully ingested and sent a snapshot of k8s cluster")
 
 	for resource, apiGroup := range resourceAPIGroupMap {
 		version, ok := resourceVersions[resource]
@@ -220,7 +221,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 			// Add jitter between watcher startups
 			jitter := time.Duration(rand.Intn(1000)+1000) * time.Millisecond // 1-2 s
 			time.Sleep(jitter)
-			resourceLister.WatchK8sWorkloads(ctx, cancel, resource, apiGroup, version)
+			resourceLister.WatchK8sResources(ctx, cancel, resource, apiGroup, version)
 		}(resource, apiGroup, version)
 	}
 
