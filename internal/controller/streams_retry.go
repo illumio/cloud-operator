@@ -70,7 +70,7 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 	for range s.timer.C {
 		err := action()
 
-		if err != nil {
+		if err == nil {
 			s.HappyPathResetBackoff()
 			continue
 		}
