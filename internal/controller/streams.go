@@ -53,6 +53,7 @@ type deadlockDetector struct {
 type streamManager struct {
 	bufferedGrpcSyncer *BufferedGrpcWriteSyncer
 	streamClient       *streamClient
+	aggregationCache   map[string]int
 }
 
 type KeepalivePeriods struct {
@@ -654,10 +655,12 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				disableNetworkFlowsCilium: false,
 				falcoEventChan:            falcoEventChan,
 			}
+			hashmap := make(map[string]int, 100)
 
 			sm := &streamManager{
 				streamClient:       streamClient,
 				bufferedGrpcSyncer: bufferedGrpcSyncer,
+				aggregationCache:   hashmap,
 			}
 			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
 			if ciliumFlowCollector == nil {
