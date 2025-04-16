@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
@@ -31,39 +30,31 @@ type ResourceManager struct {
 
 // TODO: Make a struct with the ClientSet as a field, and convertMetaObjectToMetadata, getPodIPAddresses, getProviderIdNodeSpec should be methods of that struct.
 
-// DynamicListAndWatchResources lists and watches the specified resource
-// dynamically, managing context cancellation and synchronization with wait
-// groups. As long as we are able to watch and stream, we will never return from
-// this function
-func (r *ResourceManager) DynamicListAndWatchResources(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, allResourcesSnapshotted *sync.WaitGroup, snapshotCompleted *sync.WaitGroup) {
+func (r *ResourceManager) ListCurrentK8sWorkloads(ctx context.Context, resource string, apiGroup string) (string, error) {
+	resourceVersion, err := r.DynamicListResources(ctx, r.logger, resource, apiGroup)
+	if err != nil {
+		r.logger.Error("Failed to list resource", zap.String("resource", resource), zap.Error(err))
+		return "", err
+	}
+	return resourceVersion, nil
+}
+
+func (r *ResourceManager) WatchK8sWorkloads(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, resourceVersion string) {
 	defer cancel()
 
-	resourceListVersion, err := r.DynamicListResources(ctx, r.logger, resource, apiGroup)
-	if err != nil {
-		allResourcesSnapshotted.Done()
-		r.logger.Error("Unable to list resources", zap.Error(err))
-		return
-	}
-	allResourcesSnapshotted.Done()
-	snapshotCompleted.Wait()
-
-	// Here intiatate the watch event
 	watchOptions := metav1.ListOptions{
 		Watch:           true,
-		ResourceVersion: resourceListVersion,
+		ResourceVersion: resourceVersion,
 	}
 
-	// Prevent us from overwhelming K8 api
 	limiter := rate.NewLimiter(1, 5)
-	err = limiter.Wait(ctx)
-	if err != nil {
-		r.logger.Error("Cannot wait using rate limiter", zap.Error(err))
+	if err := limiter.Wait(ctx); err != nil {
+		r.logger.Error("Rate limiter wait failed", zap.Error(err))
 		return
 	}
 
-	err = r.watchEvents(ctx, resource, apiGroup, watchOptions)
-	if err != nil {
-		return
+	if err := r.watchEvents(ctx, resource, apiGroup, watchOptions); err != nil {
+		r.logger.Error("Watch failed", zap.String("resource", resource), zap.Error(err))
 	}
 }
 
@@ -71,6 +62,9 @@ func (r *ResourceManager) DynamicListAndWatchResources(ctx context.Context, canc
 func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.Logger, resource string, apiGroup string) (string, error) {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	objs, resourceListVersion, resourceK8sKind, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
+	r.logger.Info("resource type:")
+	r.logger.Info(resource)
+	fmt.Println(len(objs))
 	if err != nil {
 		return "", err
 	}
