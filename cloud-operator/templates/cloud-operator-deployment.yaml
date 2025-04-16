@@ -97,4 +97,4 @@ spec:
         - name: gops-volume
           emptyDir:
             medium: Memory
-            sizeLimit: 10Mi 
+            sizeLimit: 10Mi
