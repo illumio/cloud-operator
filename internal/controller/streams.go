@@ -554,7 +554,7 @@ func (sm *streamManager) manageStream(
 			SevereErrorThreshold: 10,
 			ExponentialFactor:    2.0,
 			Logger: logger.With(
-				zap.String("state", "retry_connect_and_stream"),
+				zap.String("name", "retry_connect_and_stream"),
 			),
 			ActionTimeToConsiderSuccess: 15 * time.Minute,
 		}, f)
@@ -574,7 +574,7 @@ func (sm *streamManager) manageStream(
 			// constant.
 			ExponentialFactor: 1,
 			Logger: logger.With(
-				zap.String("state", "reset_retry_connect_and_stream"),
+				zap.String("name", "reset_retry_connect_and_stream"),
 			),
 			ActionTimeToConsiderSuccess: 30 * time.Minute,
 		}, funcWithBackoff)
