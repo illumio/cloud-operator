@@ -128,7 +128,7 @@ func init() {
 func ServerIsHealthy() bool {
 	dd.mutex.RLock()
 	defer dd.mutex.RUnlock()
-	if dd.processingResources && time.Since(dd.timeStarted) > 5*time.Hour {
+	if dd.processingResources && time.Since(dd.timeStarted) > 5*time.Minute {
 		return false
 	}
 	return true
@@ -196,29 +196,29 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 
 	resourceVersions := make(map[string]string)
 	for resource, apiGroup := range resourceAPIGroupMap {
-		// Add jitter between watcher startups (1s)
-		jitter := time.Duration(rand.Intn(1000)) * time.Millisecond // 0–999 ms
+		// Add jitter between list resources
+		jitter := time.Duration(rand.Intn(1000)+1000) * time.Millisecond // 1-2 s
 		time.Sleep(jitter)
 		resourceVersion, err := resourceLister.ListCurrentK8sWorkloads(ctx, resource, apiGroup)
 		if err != nil {
 			logger.Error("Unable to list resource", zap.String("resource", resource), zap.Error(err))
-			continue // or handle differently
+			return err
 		}
 		resourceVersions[resource] = resourceVersion
 	}
 
 	err = sm.sendResourceSnapshotComplete(logger)
-	logger.Info("I HAVE SENT SNAPSHOT TO CLOUDSECURE")
 
 	for resource, apiGroup := range resourceAPIGroupMap {
 		version, ok := resourceVersions[resource]
 		if !ok {
 			logger.Warn("Skipping watch: missing resourceVersion", zap.String("resource", resource))
-			continue
+			return err
 		}
 
 		go func(resource, apiGroup, version string) {
-			jitter := time.Duration(rand.Intn(1000)) * time.Millisecond // 0–999 ms
+			// Add jitter between watcher startups
+			jitter := time.Duration(rand.Intn(1000)+1000) * time.Millisecond // 1-2 s
 			time.Sleep(jitter)
 			resourceLister.WatchK8sWorkloads(ctx, cancel, resource, apiGroup, version)
 		}(resource, apiGroup, version)
@@ -692,7 +692,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
 			var ciliumDone, falcoDone chan struct{}
-			// configDone := make(chan struct{})
+			configDone := make(chan struct{})
 
 			sm.bufferedGrpcSyncer.done = logDone
 
@@ -710,12 +710,12 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				envMap.KeepalivePeriods.Logs,
 			)
 
-			// go sm.manageStream(
-			// 	logger.With(zap.String("stream", "GetConfigurationUpdates")),
-			// 	sm.connectAndStreamConfigurationUpdates,
-			// 	configDone,
-			// 	envMap.KeepalivePeriods.Configuration,
-			// )
+			go sm.manageStream(
+				logger.With(zap.String("stream", "GetConfigurationUpdates")),
+				sm.connectAndStreamConfigurationUpdates,
+				configDone,
+				envMap.KeepalivePeriods.Configuration,
+			)
 
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
@@ -750,8 +750,8 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				failureReason = "Resource stream closed"
 			case <-logDone:
 				failureReason = "Log stream closed"
-				// case <-configDone:
-				// 	failureReason = "Configuration update stream closed"
+			case <-configDone:
+				failureReason = "Configuration update stream closed"
 			}
 			authConContextCancel()
 		}
