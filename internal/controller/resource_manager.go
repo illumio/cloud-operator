@@ -26,6 +26,8 @@ type ResourceManager struct {
 	dynamicClient dynamic.Interface
 	// streamManager abstracts logic related to starting, using, and managing streams.
 	streamManager *streamManager
+	// limiter prevents concurrent watcher events from overwhelming k8s api server.
+	limiter *rate.Limiter
 }
 
 // TODO: Make a struct with the ClientSet as a field, and convertMetaObjectToMetadata, getPodIPAddresses, getProviderIdNodeSpec should be methods of that struct.
@@ -41,8 +43,7 @@ func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.
 		ResourceVersion: resourceVersion,
 	}
 
-	limiter := rate.NewLimiter(1, 5)
-	err := limiter.Wait(ctx)
+	err := r.limiter.Wait(ctx)
 	if err != nil {
 		r.logger.Error("Cannot wait using rate limiter", zap.Error(err))
 		return

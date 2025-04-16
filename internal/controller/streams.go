@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -192,6 +193,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		logger:        logger,
 		dynamicClient: dynamicClient,
 		streamManager: sm,
+		limiter:       rate.NewLimiter(1, 5),
 	}
 	err = sm.sendClusterMetadata(ctx, logger)
 	if err != nil {
