@@ -62,6 +62,12 @@ type KeepalivePeriods struct {
 	Configuration          time.Duration
 }
 
+type watcherInfo struct {
+	resource        string
+	apiGroup        string
+	resourceVersion string
+}
+
 type EnvironmentConfig struct {
 	// Namspace of Cilium.
 	CiliumNamespace string
@@ -177,7 +183,6 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 			delete(resourceAPIGroupMap, resource)
 		}
 	}
-
 	dd.mutex.Lock()
 	dd.timeStarted = time.Now()
 	dd.processingResources = true
@@ -193,46 +198,48 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		logger.Error("Failed to send cluster metadata", zap.Error(err))
 		return err
 	}
+	var allWatchInfos []watcherInfo
 
-	resourceVersions := make(map[string]string)
+	// PHASE 1: List all resources
 	for resource, apiGroup := range resourceAPIGroupMap {
-		// Add jitter between list resources
-		jitter := time.Duration(rand.Intn(1000)+1000) * time.Millisecond // 1-2 s
-		time.Sleep(jitter)
-		resourceVersion, err := resourceLister.ListK8sResources(ctx, resource, apiGroup)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		resourceVersion, err := resourceLister.DynamicListResources(ctx, resourceLister.logger, resource, apiGroup)
 		if err != nil {
-			logger.Error("Unable to list resource", zap.String("resource", resource), zap.Error(err))
+			resourceLister.logger.Error("Failed to list resource", zap.String("resource", resource), zap.Error(err))
 			return err
 		}
-		resourceVersions[resource] = resourceVersion
+
+		allWatchInfos = append(allWatchInfos, watcherInfo{
+			resource:        resource,
+			apiGroup:        apiGroup,
+			resourceVersion: resourceVersion,
+		})
 	}
 
+	// PHASE 2: Send snapshot complete
 	err = sm.sendResourceSnapshotComplete(logger)
-	logger.Info("cloud-operator has succesfully ingested and sent a snapshot of k8s cluster")
+	if err != nil {
+		resourceLister.logger.Error("Failed to send snapshot complete", zap.Error(err))
+		return err
+	}
+	logger.Info("cloud-operator has successfully ingested and sent a snapshot of k8s cluster")
 
-	for resource, apiGroup := range resourceAPIGroupMap {
-		version, ok := resourceVersions[resource]
-		if !ok {
-			logger.Warn("Skipping watch: missing resourceVersion", zap.String("resource", resource))
-			return err
-		}
-
-		go func(resource, apiGroup, version string) {
-			// Add jitter between watcher startups
-			jitter := time.Duration(rand.Intn(1000)+1000) * time.Millisecond // 1-2 s
-			time.Sleep(jitter)
-			resourceLister.WatchK8sResources(ctx, cancel, resource, apiGroup, version)
-		}(resource, apiGroup, version)
+	// PHASE 3: Start watchers concurrently
+	for _, info := range allWatchInfos {
+		go func(info watcherInfo) {
+			resourceLister.WatchK8sResources(ctx, cancel, info.resource, info.apiGroup, info.resourceVersion)
+		}(info)
 	}
 
 	dd.timeStarted = time.Now()
 	dd.mutex.Lock()
 	dd.processingResources = false
 	dd.mutex.Unlock()
-	if err != nil {
-		logger.Error("Failed to send resource snapshot complete", zap.Error(err))
-		return err
-	}
 
 	<-ctx.Done()
 	return ctx.Err()
