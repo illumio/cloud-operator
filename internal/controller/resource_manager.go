@@ -52,13 +52,15 @@ func (r *ResourceManager) WatchK8sWorkloads(ctx context.Context, cancel context.
 	}
 
 	limiter := rate.NewLimiter(1, 5)
-	if err := limiter.Wait(ctx); err != nil {
-		r.logger.Error("Rate limiter wait failed", zap.Error(err))
+	err := limiter.Wait(ctx)
+	if err != nil {
+		r.logger.Error("Cannot wait using rate limiter", zap.Error(err))
 		return
 	}
 
 	if err := r.watchEvents(ctx, resource, apiGroup, watchOptions); err != nil {
-		r.logger.Error("Watch failed", zap.String("resource", resource), zap.Error(err))
+		r.logger.Error("Watch failed", zap.String("resource", resource), zap.Error(err))\
+		return
 	}
 }
 
@@ -66,7 +68,6 @@ func (r *ResourceManager) WatchK8sWorkloads(ctx context.Context, cancel context.
 func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.Logger, resource string, apiGroup string) (string, error) {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
 	objs, resourceListVersion, resourceK8sKind, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
-
 	if err != nil {
 		return "", err
 	}
