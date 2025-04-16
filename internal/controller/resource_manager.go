@@ -58,8 +58,9 @@ func (r *ResourceManager) WatchK8sWorkloads(ctx context.Context, cancel context.
 		return
 	}
 
-	if err := r.watchEvents(ctx, resource, apiGroup, watchOptions); err != nil {
-		r.logger.Error("Watch failed", zap.String("resource", resource), zap.Error(err))\
+	err = r.watchEvents(ctx, resource, apiGroup, watchOptions)
+	if err != nil {
+		r.logger.Error("Watch failed", zap.String("resource", resource), zap.Error(err))
 		return
 	}
 }
