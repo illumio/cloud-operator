@@ -46,11 +46,13 @@ func (r *ResourceManager) ListCurrentK8sWorkloads(ctx context.Context, resource 
 func (r *ResourceManager) WatchK8sWorkloads(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, resourceVersion string) {
 	defer cancel()
 
+	// Here intiatate the watch event
 	watchOptions := metav1.ListOptions{
 		Watch:           true,
 		ResourceVersion: resourceVersion,
 	}
 
+	// Prevent us from overwhelming K8 api
 	limiter := rate.NewLimiter(1, 5)
 	err := limiter.Wait(ctx)
 	if err != nil {
