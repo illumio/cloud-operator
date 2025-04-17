@@ -192,7 +192,6 @@ func TestSendNetworkFlowRequest(t *testing.T) {
 		assert.Equal(t, expected, mockStream.lastRequest)
 	})
 }
-
 func TestStreamMutationObjectData(t *testing.T) {
 	logger := zap.NewNop()
 	mockStream := &mockResourceStream{}
