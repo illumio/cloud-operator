@@ -79,6 +79,8 @@ type EnvironmentConfig struct {
 	TlsSkipVerify bool
 	// KeepalivePeriods specifies the period (minus jitter) between two keepalives sent on each stream
 	KeepalivePeriods KeepalivePeriods
+	// PodNamespace is the namespace where the cloud-operator is deployed
+	PodNamespace string
 }
 
 var resourceAPIGroupMap = map[string]string{
@@ -134,6 +136,7 @@ func ServerIsHealthy() bool {
 
 // StreamResources handles the resource stream.
 func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger, cancel context.CancelFunc) error {
+	defer cancel()
 	defer func() {
 		dd.processingResources = false
 	}()
@@ -321,8 +324,14 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 // StreamFalcoNetworkFlows handles the falco network flow stream.
 func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *zap.Logger) error {
 	for {
-		falcoFlow := <-sm.streamClient.falcoEventChan
-		if filterIllumioTraffic(falcoFlow) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case falcoFlow := <-sm.streamClient.falcoEventChan:
+			if !filterIllumioTraffic(falcoFlow) {
+				continue
+			}
+
 			// Extract the relevant part of the output string
 			match := reIllumioTraffic.FindStringSubmatch(falcoFlow)
 			if len(match) < 2 {
@@ -344,8 +353,6 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				logger.Error("Failed to send Falco flow", zap.Error(err))
 				return err
 			}
-		} else {
-			continue
 		}
 	}
 }
@@ -552,7 +559,7 @@ func (sm *streamManager) manageStream(
 			SevereErrorThreshold: 10,
 			ExponentialFactor:    2.0,
 			Logger: logger.With(
-				zap.String("state", "retry_connect_and_stream"),
+				zap.String("name", "retry_connect_and_stream"),
 			),
 		}, f)
 	}
@@ -571,7 +578,7 @@ func (sm *streamManager) manageStream(
 			// constant.
 			ExponentialFactor: 1,
 			Logger: logger.With(
-				zap.String("state", "reset_retry_connect_and_stream"),
+				zap.String("name", "reset_retry_connect_and_stream"),
 			),
 		}, funcWithBackoff)
 	}
@@ -743,7 +750,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 func NewAuthenticatedConnection(ctx context.Context, logger *zap.Logger, envMap EnvironmentConfig) (*grpc.ClientConn, pb.KubernetesInfoServiceClient, error) {
 	authn := Authenticator{Logger: logger}
 
-	clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+	clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds, envMap.PodNamespace)
 	if errors.Is(err, ErrCredentialNotFoundInK8sSecret) {
 		logger.Debug("Secret is not populated yet", zap.Error(err))
 	} else if err != nil {
@@ -763,7 +770,7 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.Logger, envMap 
 			logger.Error("Failed to register cluster", zap.Error(err))
 			return nil, nil, err
 		}
-		err = authn.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds)
+		err = authn.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds, envMap.PodNamespace)
 		if err != nil {
 			logger.Error("Failed to write secret to Kubernetes", zap.Error(err))
 		}
@@ -775,7 +782,7 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.Logger, envMap 
 		maxRetries := 5
 		waitDuration := 1 * time.Second
 		for i := 0; i < maxRetries; i++ {
-			clientID, clientSecret, err = authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds)
+			clientID, clientSecret, err = authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds, envMap.PodNamespace)
 			if errors.Is(err, ErrCredentialNotFoundInK8sSecret) {
 				logger.Debug("Secret is not populated yet", zap.Error(err))
 			}

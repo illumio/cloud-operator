@@ -80,5 +80,17 @@ spec:
               value: "{{ .Values.env.streamKeepalivePeriods.logs }}"
             - name: STREAM_KEEPALIVE_PERIOD_CONFIGURATION
               value: "{{ .Values.env.streamKeepalivePeriods.configuration }}"
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: gops-volume
+              mountPath: /var/run/gops
+      volumes:
+        - name: gops-volume
+          emptyDir:
+            medium: Memory
+            sizeLimit: 10Mi 

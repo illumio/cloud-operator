@@ -31,6 +31,15 @@ func (a backoffOpts) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 
 type Action func() error
 
+// clamp is a utility function. It ensures that val is between minimum, maximum.
+//
+// Examples:
+//
+//	clamp(1, 2, 3) // returns 2
+//	clamp(1, 0, 3) // returns 1
+//	clamp(1, 4, 3) // returns 3
+//
+// It is a more semantic way to spell a composition of max/min
 func clamp[T constraints.Ordered](minimum, val, maximum T) T {
 	if val < minimum {
 		return minimum
@@ -57,12 +66,11 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 		opts:  opts,
 	}
 	defer s.timer.Stop()
-	opts.Logger.Debug("Making first attempt", zap.Inline(opts))
 
 	for range s.timer.C {
 		err := action()
 
-		if err != nil {
+		if err == nil {
 			s.HappyPathResetBackoff()
 			continue
 		}
