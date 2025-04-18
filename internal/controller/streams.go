@@ -6,15 +6,18 @@ import (
 	"context"
 	"errors"
 	"io"
+	"maps"
 	"math"
 	"math/rand"
 	"net"
 	"net/http"
 	"regexp"
+	"slices"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -64,6 +67,12 @@ type KeepalivePeriods struct {
 	Logs                   time.Duration
 	KubernetesResources    time.Duration
 	Configuration          time.Duration
+}
+
+type watcherInfo struct {
+	resource        string
+	apiGroup        string
+	resourceVersion string
 }
 
 type EnvironmentConfig struct {
@@ -149,8 +158,6 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		logger.Error("Error getting in-cluster config", zap.Error(err))
 		return err
 	}
-	var allResourcesSnapshotted sync.WaitGroup
-	var snapshotCompleted sync.WaitGroup
 	// Create a dynamic client
 	dynamicClient, err := dynamic.NewForConfig(clusterConfig)
 	if err != nil {
@@ -184,8 +191,6 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 			delete(resourceAPIGroupMap, resource)
 		}
 	}
-
-	snapshotCompleted.Add(1)
 	dd.mutex.Lock()
 	dd.timeStarted = time.Now()
 	dd.processingResources = true
@@ -195,27 +200,55 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		logger:        logger,
 		dynamicClient: dynamicClient,
 		streamManager: sm,
+		limiter:       rate.NewLimiter(1, 5),
 	}
 	err = sm.sendClusterMetadata(ctx, logger)
 	if err != nil {
 		logger.Error("Failed to send cluster metadata", zap.Error(err))
 		return err
 	}
-	for resource, apiGroup := range resourceAPIGroupMap {
-		allResourcesSnapshotted.Add(1)
-		go resourceLister.DynamicListAndWatchResources(ctx, cancel, resource, apiGroup, &allResourcesSnapshotted, &snapshotCompleted)
+	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
+
+	// PHASE 1: List all resources in deterministic order
+	for _, resource := range slices.Sorted(maps.Keys(resourceAPIGroupMap)) {
+		apiGroup := resourceAPIGroupMap[resource]
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		resourceVersion, err := resourceLister.DynamicListResources(ctx, resourceLister.logger, resource, apiGroup)
+		if err != nil {
+			resourceLister.logger.Error("Failed to list resource", zap.String("resource", resource), zap.Error(err))
+			return err
+		}
+
+		allWatchInfos = append(allWatchInfos, watcherInfo{
+			resource:        resource,
+			apiGroup:        apiGroup,
+			resourceVersion: resourceVersion,
+		})
 	}
-	allResourcesSnapshotted.Wait()
+
+	// PHASE 2: Send snapshot complete
 	err = sm.sendResourceSnapshotComplete(logger)
-	dd.timeStarted = time.Now()
+	if err != nil {
+		resourceLister.logger.Error("Failed to send snapshot complete", zap.Error(err))
+		return err
+	}
+	logger.Info("Successfully sent resource snapshot")
+
+	// PHASE 3: Start watchers concurrently
+	for _, info := range allWatchInfos {
+		go func(info watcherInfo) {
+			resourceLister.WatchK8sResources(ctx, cancel, info.resource, info.apiGroup, info.resourceVersion)
+		}(info)
+	}
+
 	dd.mutex.Lock()
 	dd.processingResources = false
 	dd.mutex.Unlock()
-	if err != nil {
-		logger.Error("Failed to send resource snapshot complete", zap.Error(err))
-		return err
-	}
-	snapshotCompleted.Done()
 
 	<-ctx.Done()
 	return ctx.Err()
