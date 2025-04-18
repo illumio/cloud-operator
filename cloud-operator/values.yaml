@@ -70,3 +70,6 @@ env:
     kubernetes_network_flows: "10s"
     logs: "10s"
     configuration: "10s"
+  streamSuccessPeriods:
+    connect: "1h"
+    auth: "2h"

@@ -72,6 +72,19 @@ tests:
           path: spec.template.spec.containers[0].env[10].name
           value: "POD_NAMESPACE"
 
+      - equal:
+          path: spec.template.spec.containers[0].env[11].name
+          value: "STREAM_SUCCESS_PERIOD_CONNECT"
+      - equal:
+          path: spec.template.spec.containers[0].env[11].value
+          value: "1h"
+      - equal:
+          path: spec.template.spec.containers[0].env[12].name
+          value: "STREAM_SUCCESS_PERIOD_AUTH"
+      - equal:
+          path: spec.template.spec.containers[0].env[12].value
+          value: "2h"
+
   # Test for replicaCount value
   - it: should set the correct number of replicas
     set:

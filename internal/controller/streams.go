@@ -68,6 +68,11 @@ type KeepalivePeriods struct {
 	Configuration          time.Duration
 }
 
+type StreamSuccessPeriod struct {
+	Connect time.Duration
+	Auth    time.Duration
+}
+
 type watcherInfo struct {
 	resource        string
 	apiGroup        string
@@ -93,6 +98,9 @@ type EnvironmentConfig struct {
 	KeepalivePeriods KeepalivePeriods
 	// PodNamespace is the namespace where the cloud-operator is deployed
 	PodNamespace string
+	// How long must a stream be in a state for our exponentialBackoff function to
+	// consider it a success.
+	StreamSuccessPeriod StreamSuccessPeriod
 }
 
 var resourceAPIGroupMap = map[string]string{
@@ -576,6 +584,7 @@ func (sm *streamManager) manageStream(
 	connectAndStream func(*zap.Logger, time.Duration) error,
 	done chan struct{},
 	keepalivePeriod time.Duration,
+	streamSuccessPeriod StreamSuccessPeriod,
 ) {
 	defer close(done)
 
@@ -594,6 +603,7 @@ func (sm *streamManager) manageStream(
 			Logger: logger.With(
 				zap.String("name", "retry_connect_and_stream"),
 			),
+			ActionTimeToConsiderSuccess: streamSuccessPeriod.Connect,
 		}, f)
 	}
 
@@ -613,6 +623,7 @@ func (sm *streamManager) manageStream(
 			Logger: logger.With(
 				zap.String("name", "reset_retry_connect_and_stream"),
 			),
+			ActionTimeToConsiderSuccess: streamSuccessPeriod.Auth,
 		}, funcWithBackoff)
 	}
 
@@ -724,6 +735,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				sm.connectAndStreamResources,
 				resourceDone,
 				envMap.KeepalivePeriods.KubernetesResources,
+				envMap.StreamSuccessPeriod,
 			)
 
 			go sm.manageStream(
@@ -731,6 +743,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				sm.connectAndStreamLogs,
 				logDone,
 				envMap.KeepalivePeriods.Logs,
+				envMap.StreamSuccessPeriod,
 			)
 
 			go sm.manageStream(
@@ -738,6 +751,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				sm.connectAndStreamConfigurationUpdates,
 				configDone,
 				envMap.KeepalivePeriods.Configuration,
+				envMap.StreamSuccessPeriod,
 			)
 
 			// Only start network flows stream if not disabled
@@ -748,6 +762,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					sm.connectAndStreamCiliumNetworkFlows,
 					ciliumDone,
 					envMap.KeepalivePeriods.KubernetesNetworkFlows,
+					envMap.StreamSuccessPeriod,
 				)
 			}
 
@@ -758,6 +773,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					sm.connectAndStreamFalcoNetworkFlows,
 					falcoDone,
 					envMap.KeepalivePeriods.KubernetesNetworkFlows,
+					envMap.StreamSuccessPeriod,
 				)
 			}
 

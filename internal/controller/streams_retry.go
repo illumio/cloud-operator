@@ -16,6 +16,12 @@ type backoffOpts struct {
 	SevereErrorThreshold int
 	ExponentialFactor    float64
 	Logger               *zap.Logger
+
+	// ActionTimeToConsiderSuccess is used in the case that the happy-path of our
+	// function is blocking forever. A function like this may have issues that
+	// require exponentialBackoff but should be considered recovered after
+	// the action runs for ActionTimeToConsiderSuccess.
+	ActionTimeToConsiderSuccess time.Duration
 }
 
 var _ zapcore.ObjectMarshaler = &backoffOpts{}
@@ -68,11 +74,25 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 	defer s.timer.Stop()
 
 	for range s.timer.C {
+		startTime := time.Now()
 		err := action()
 
 		if err == nil {
 			s.HappyPathResetBackoff()
 			continue
+		}
+
+		// Let's say we fail 7 times, then succeed for 45 minutes before
+		// failing again. Sometimes this 45 minute period of good behavior should be
+		// considered a success, even though the function didn't return "no error".
+		//
+		// We will reset the consecutiveFailures count back to 0, then we can rely
+		// on the rest of this function (the error that broke out of the action will
+		// cause an AddBackoff)
+		if opts.ActionTimeToConsiderSuccess != 0 {
+			if time.Since(startTime) > opts.ActionTimeToConsiderSuccess {
+				s.LongSuccessResetBackoff()
+			}
 		}
 
 		// Give up after failing more than SevereErrorThreshold times
@@ -114,6 +134,11 @@ func (s *state) AddBackoff(count int) {
 
 func (s *state) HappyPathResetBackoff() {
 	s.opts.Logger.Debug("Resetting backoff timer because of success. No need to wait so long when things are well")
+	s.resetBackoff()
+}
+
+func (s *state) LongSuccessResetBackoff() {
+	s.opts.Logger.Debug("Resetting backoff timer because the system has been in a success state for a long time")
 	s.resetBackoff()
 }
 
