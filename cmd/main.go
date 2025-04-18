@@ -34,10 +34,15 @@ import (
 )
 
 const (
+	defaultPodNamespace = "illumio-cloud"
+
 	defaultStreamKeepalivePeriodKubernetesResources    = "10s"
 	defaultStreamKeepalivePeriodKubernetesNetworkFlows = "10s"
 	defaultStreamKeepalivePeriodLogs                   = "10s"
 	defaultStreamKeepalivePeriodConfiguration          = "10s"
+
+	defaultStreamSuccessPeriodConnect = "1h"
+	defaultStreamSuccessPeriodAuth    = "2h"
 )
 
 // newHealthHandler returns an HTTP HandlerFunc that checks the health of the server by calling the given function and returns a status code accordingly
@@ -81,8 +86,10 @@ func main() {
 	bindEnv(logger, "stream_keepalive_period_kubernetes_resources", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES")
 	bindEnv(logger, "stream_keepalive_period_kubernetes_network_flows", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS")
 	bindEnv(logger, "stream_keepalive_period_logs", "STREAM_KEEPALIVE_PERIOD_LOGS")
-	bindEnv(logger, "pod_namspace", "POD_NAMESPACE")
 	bindEnv(logger, "stream_keepalive_period_configuration", "STREAM_KEEPALIVE_PERIOD_CONFIGURATION")
+	bindEnv(logger, "pod_namespace", "POD_NAMESPACE")
+	bindEnv(logger, "stream_success_period_connect", "STREAM_SUCCESS_PERIOD_CONNECT")
+	bindEnv(logger, "stream_success_period_auth", "STREAM_SUCCESS_PERIOD_AUTH")
 
 	// Set default values
 	viper.SetDefault("cluster_creds", "clustercreds")
@@ -93,8 +100,10 @@ func main() {
 	viper.SetDefault("stream_keepalive_period_kubernetes_resources", defaultStreamKeepalivePeriodKubernetesResources)
 	viper.SetDefault("stream_keepalive_period_kubernetes_network_flows", defaultStreamKeepalivePeriodKubernetesNetworkFlows)
 	viper.SetDefault("stream_keepalive_period_logs", defaultStreamKeepalivePeriodLogs)
-	viper.SetDefault("pod_namspace", "illumio-cloud")
 	viper.SetDefault("stream_keepalive_period_configuration", defaultStreamKeepalivePeriodConfiguration)
+	viper.SetDefault("pod_namespace", defaultPodNamespace)
+	viper.SetDefault("stream_success_period_connect", defaultStreamSuccessPeriodConnect)
+	viper.SetDefault("stream_success_period_auth", defaultStreamSuccessPeriodAuth)
 
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),
@@ -110,7 +119,11 @@ func main() {
 			Logs:                   viper.GetDuration("stream_keepalive_period_logs"),
 			Configuration:          viper.GetDuration("stream_keepalive_period_configuration"),
 		},
-		PodNamespace: viper.GetString("pod_namspace"),
+		PodNamespace: viper.GetString("pod_namespace"),
+		StreamSuccessPeriod: controller.StreamSuccessPeriod{
+			Connect: viper.GetDuration("stream_success_period_connect"),
+			Auth:    viper.GetDuration("stream_success_period_auth"),
+		},
 	}
 
 	logger.Info("Starting application",
@@ -123,8 +136,10 @@ func main() {
 		zap.Duration("stream_keepalive_period_kubernetes_resources", envConfig.KeepalivePeriods.KubernetesResources),
 		zap.Duration("stream_keepalive_period_kubernetes_network_flows", envConfig.KeepalivePeriods.KubernetesNetworkFlows),
 		zap.Duration("stream_keepalive_period_logs", envConfig.KeepalivePeriods.Logs),
-		zap.String("pod_namespace", envConfig.PodNamespace),
 		zap.Duration("stream_keepalive_period_configuration", envConfig.KeepalivePeriods.Configuration),
+		zap.String("pod_namespace", envConfig.PodNamespace),
+		zap.Duration("stream_success_period_connect", envConfig.StreamSuccessPeriod.Connect),
+		zap.Duration("stream_success_period_auth", envConfig.StreamSuccessPeriod.Auth),
 	)
 
 	// Start the gops agent
