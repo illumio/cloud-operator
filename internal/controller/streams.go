@@ -324,6 +324,7 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 	}
 }
 
+// StreamFalcoNetworkFlows handles the falco network flow stream.
 func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *zap.Logger) error {
 	go sm.cacheManagerIndefinitely(ctx, logger)
 	for {

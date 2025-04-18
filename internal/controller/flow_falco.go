@@ -114,6 +114,7 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 			Timestamp: info.Timestamp,
 		},
 	}
+
 	return flow, nil
 
 }

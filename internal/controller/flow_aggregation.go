@@ -12,17 +12,17 @@ import (
 
 type FlowKey struct {
 	// Timestamp is the time the network event occured.
-	Timestamp int64 `json:"time"`
+	Timestamp int64
 	// SrcIP is the source IP address involved in the network event.
-	SrcIP string `json:"srcip"`
+	SrcIP string
 	// DstIP is the destination IP address involved in the network event.
-	DstIP string `json:"dstip"`
+	DstIP string
 	// SrcPort is the source port number involved in the network event.
-	SrcPort int `json:"srcport"`
+	SrcPort int
 	// DstPort is the destination port number involved in the network event.
-	DstPort int `json:"dstport"`
+	DstPort int
 	// Proto is the protocol used in the network event (e.g., TCP, UDP).
-	Proto string `json:"proto"`
+	Proto string
 	// SourceEndpoint contains k8s metadata for source endpoint
 	SourceEndpoint string
 	// DestinationEndpoint contains k8s metadata for destination endpoint
