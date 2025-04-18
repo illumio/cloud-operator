@@ -19,16 +19,20 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 
+	observer "github.com/cilium/cilium/api/v1/observer"
+
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 type StreamType string
 
 const (
-	STREAM_NETWORK_FLOWS = StreamType("network_flows")
-	STREAM_RESOURCES     = StreamType("resources")
-	STREAM_LOGS          = StreamType("logs")
-	STREAM_CONFIGURATION = StreamType("configuration")
+	STREAM_NETWORK_FLOWS        = StreamType("network_flows")
+	STREAM_NETWORK_FLOWS_CILIUM = StreamType("network_flows_cilium")
+	STREAM_NETWORK_FLOWS_FALCO  = StreamType("network_flows_falco")
+	STREAM_RESOURCES            = StreamType("resources")
+	STREAM_LOGS                 = StreamType("logs")
+	STREAM_CONFIGURATION        = StreamType("configuration")
 )
 
 type streamClient struct {
@@ -107,7 +111,6 @@ var resourceAPIGroupMap = map[string]string{
 }
 
 var dd = &deadlockDetector{}
-var ErrStopRetries = errors.New("stop retries")
 var ErrFalcoEventIsNotFlow = errors.New("ignoring falco event, not a network flow")
 var ErrFalcoIncompleteL3Flow = errors.New("ignoring incomplete falco l3 network flow")
 var ErrFalcoIncompleteL4Flow = errors.New("ignoring incomplete falco l4 network flow")
@@ -140,6 +143,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 	defer func() {
 		dd.processingResources = false
 	}()
+	logger = logger.With(zap.String("stream", string(STREAM_RESOURCES)))
 	clusterConfig, err := rest.InClusterConfig()
 	if err != nil {
 		logger.Error("Error getting in-cluster config", zap.Error(err))
@@ -221,6 +225,8 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 func (sm *streamManager) StreamLogs(ctx context.Context, cancel context.CancelFunc, logger *zap.Logger) error {
 	defer cancel()
 
+	lg := logger.With(zap.String("stream", string(STREAM_LOGS)))
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -228,11 +234,11 @@ func (sm *streamManager) StreamLogs(ctx context.Context, cancel context.CancelFu
 		default:
 			_, err := sm.streamClient.logStream.Recv()
 			if err == io.EOF {
-				logger.Info("Server closed the SendLogs stream")
+				lg.Info("Server closed the SendLogs stream")
 				return nil
 			}
 			if err != nil {
-				logger.Error("Stream terminated", zap.Error(err))
+				lg.Error("Stream terminated", zap.Error(err))
 				return err
 			}
 		}
@@ -243,6 +249,8 @@ func (sm *streamManager) StreamLogs(ctx context.Context, cancel context.CancelFu
 func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, cancel context.CancelFunc, logger *zap.Logger) error {
 	defer cancel()
 
+	lg := logger.With(zap.String("stream", string(STREAM_CONFIGURATION)))
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -250,15 +258,15 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, cancel 
 		default:
 			cfgUpdate, err := sm.streamClient.configStream.Recv()
 			if err == io.EOF {
-				logger.Info("Server closed the GetConfigurationUpdates stream")
+				lg.Info("Server closed the GetConfigurationUpdates stream")
 				return nil
 			}
 			if err != nil {
-				logger.Error("Stream terminated", zap.Error(err))
+				lg.Error("Stream terminated", zap.Error(err))
 				return err
 			}
 
-			sm.handleConfigurationUpdate(logger, cfgUpdate)
+			sm.handleConfigurationUpdate(lg, cfgUpdate)
 		}
 	}
 }
@@ -290,23 +298,49 @@ func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger
 func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, cancel context.CancelFunc, logger *zap.Logger, ciliumNamespace string) error {
 	defer cancel()
 
+	lg := logger.With(zap.String("stream", string(STREAM_NETWORK_FLOWS_CILIUM)))
+
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
-	ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, ciliumNamespace)
+	ciliumFlowCollector := sm.findHubbleRelay(ctx, lg, ciliumNamespace)
 	if ciliumFlowCollector == nil {
-		logger.Info("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector")
-		return errors.New("hubble relay cannot be found")
+		lg.Info("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector")
+		return ErrHubbleNotFound
 	}
+
+	stream, err := ciliumFlowCollector.client.GetFlows(ctx, &observer.GetFlowsRequest{
+		Number: ciliumHubbleRelayMaxFlowCount,
+		Follow: true,
+	})
+	if err != nil {
+		ciliumFlowCollector.logger.Error("Error getting network flows", zap.Error(err))
+		sm.streamClient.disableNetworkFlowsCilium = true
+		return err
+	}
+	defer func() {
+		err = stream.CloseSend()
+		if err != nil {
+			ciliumFlowCollector.logger.Error("Error closing observerClient stream", zap.Error(err))
+		}
+	}()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			// TODO: This is wrong. Need to make this better (while keeping the code
-			// parallel)
-			err := ciliumFlowCollector.exportCiliumFlows(ctx, sm)
+			flow, err := stream.Recv()
 			if err != nil {
-				logger.Warn("Failed to collect and export flows from Cilium Hubble Relay", zap.Error(err))
+				ciliumFlowCollector.logger.Warn("Failed to get flow log from stream", zap.Error(err))
+				sm.streamClient.disableNetworkFlowsCilium = true
+				return err
+			}
+			ciliumFlow := convertCiliumFlow(flow)
+			if ciliumFlow == nil {
+				continue
+			}
+			err = sm.sendNetworkFlowRequest(ciliumFlowCollector.logger, ciliumFlow)
+			if err != nil {
+				ciliumFlowCollector.logger.Error("Cannot send cilium flow", zap.Error(err))
 				sm.streamClient.disableNetworkFlowsCilium = true
 				return err
 			}
@@ -317,6 +351,8 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, cancel co
 // StreamFalcoNetworkFlows handles the falco network flow stream.
 func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, cancel context.CancelFunc, logger *zap.Logger) error {
 	defer cancel()
+
+	lg := logger.With(zap.String("stream", string(STREAM_NETWORK_FLOWS_FALCO)))
 
 	for {
 		select {
@@ -340,12 +376,12 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, cancel con
 				// If the event has an incomplete L3/L4 layer lets just ignore it.
 				continue
 			} else if err != nil {
-				logger.Error("Failed to parse Falco event into flow", zap.Error(err))
+				lg.Error("Failed to parse Falco event into flow", zap.Error(err))
 				return err
 			}
-			err = sm.sendNetworkFlowRequest(logger, convertedFalcoFlow)
+			err = sm.sendNetworkFlowRequest(lg, convertedFalcoFlow)
 			if err != nil {
-				logger.Error("Failed to send Falco flow", zap.Error(err))
+				lg.Error("Failed to send Falco flow", zap.Error(err))
 				return err
 			}
 		}
@@ -395,15 +431,7 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
 
 	go sm.StreamKeepalives(ciliumCtx, ciliumCancel, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
-
-	err = sm.StreamCiliumNetworkFlows(ciliumCtx, ciliumCancel, logger, sm.streamClient.ciliumNamespace)
-	if err != nil {
-		if errors.Is(err, ErrHubbleNotFound) || errors.Is(err, ErrNoPortsAvailable) {
-			logger.Warn("Disabling Cilium flow collection", zap.Error(err))
-			return ErrStopRetries
-		}
-		return err
-	}
+	go sm.StreamCiliumNetworkFlows(ciliumCtx, ciliumCancel, logger, sm.streamClient.ciliumNamespace)
 
 	<-ciliumCtx.Done()
 	return nil
@@ -423,12 +451,7 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, k
 	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
 
 	go sm.StreamKeepalives(falcoCtx, falcoCancel, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
-
-	err = sm.StreamFalcoNetworkFlows(falcoCtx, falcoCancel, logger)
-	if err != nil {
-		logger.Error("Failed to stream Falco network flows", zap.Error(err))
-		return err
-	}
+	go sm.StreamFalcoNetworkFlows(falcoCtx, falcoCancel, logger)
 
 	<-falcoCtx.Done()
 	return nil
@@ -448,12 +471,7 @@ func (sm *streamManager) connectAndStreamResources(logger *zap.Logger, keepalive
 	sm.streamClient.resourceStream = sendKubernetesResourcesStream
 
 	go sm.StreamKeepalives(resourceCtx, resourceCancel, logger, keepalivePeriod, STREAM_RESOURCES)
-
-	err = sm.StreamResources(resourceCtx, logger, resourceCancel)
-	if err != nil {
-		logger.Error("Failed to bootup and stream resources", zap.Error(err))
-		return err
-	}
+	go sm.StreamResources(resourceCtx, logger, resourceCancel)
 
 	<-resourceCtx.Done()
 	return nil
@@ -473,12 +491,7 @@ func (sm *streamManager) connectAndStreamLogs(logger *zap.Logger, keepalivePerio
 	sm.bufferedGrpcSyncer.UpdateClient(sm.streamClient.logStream, sm.streamClient.conn)
 
 	go sm.StreamKeepalives(logCtx, logCancel, logger, keepalivePeriod, STREAM_LOGS)
-
-	err = sm.StreamLogs(logCtx, logCancel, logger)
-	if err != nil {
-		logger.Error("Failed to bootup and stream logs", zap.Error(err))
-		return err
-	}
+	go sm.StreamLogs(logCtx, logCancel, logger)
 
 	<-logCtx.Done()
 	return nil
@@ -496,12 +509,7 @@ func (sm *streamManager) connectAndStreamConfigurationUpdates(logger *zap.Logger
 	sm.streamClient.configStream = getConfigurationUpdatesStream
 
 	go sm.StreamKeepalives(configCtx, configCancel, logger, keepalivePeriod, STREAM_CONFIGURATION)
-
-	err = sm.StreamConfigurationUpdates(configCtx, configCancel, logger)
-	if err != nil {
-		logger.Error("Configuration update stream encountered an error", zap.Error(err))
-		return err
-	}
+	go sm.StreamConfigurationUpdates(configCtx, configCancel, logger)
 
 	<-configCtx.Done()
 	return nil
