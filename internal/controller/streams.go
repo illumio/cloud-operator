@@ -387,8 +387,6 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				return err
 			}
 			sm.flowChannel <- convertedFalcoFlow
-		} else {
-			continue
 		}
 	}
 }
