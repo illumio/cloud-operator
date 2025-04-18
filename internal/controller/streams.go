@@ -6,11 +6,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"maps"
 	"math"
 	"math/rand"
 	"net"
 	"net/http"
 	"regexp"
+	"slices"
 	"sync"
 	"time"
 
@@ -201,10 +203,11 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		logger.Error("Failed to send cluster metadata", zap.Error(err))
 		return err
 	}
-	var allWatchInfos []watcherInfo
+	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
 
-	// PHASE 1: List all resources
-	for resource, apiGroup := range resourceAPIGroupMap {
+	// PHASE 1: List all resources in deterministic order
+	for _, resource := range slices.Sorted(maps.Keys(resourceAPIGroupMap)) {
+		apiGroup := resourceAPIGroupMap[resource]
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -230,7 +233,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		resourceLister.logger.Error("Failed to send snapshot complete", zap.Error(err))
 		return err
 	}
-	logger.Info("cloud-operator has successfully ingested and sent a snapshot of k8s cluster")
+	logger.Info("Successfully sent resource snapshot")
 
 	// PHASE 3: Start watchers concurrently
 	for _, info := range allWatchInfos {
@@ -239,7 +242,6 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		}(info)
 	}
 
-	dd.timeStarted = time.Now()
 	dd.mutex.Lock()
 	dd.processingResources = false
 	dd.mutex.Unlock()
