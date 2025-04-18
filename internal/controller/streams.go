@@ -3,6 +3,7 @@
 package controller
 
 import (
+	"container/list"
 	"context"
 	"errors"
 	"io"
@@ -53,7 +54,7 @@ type deadlockDetector struct {
 type streamManager struct {
 	bufferedGrpcSyncer *BufferedGrpcWriteSyncer
 	streamClient       *streamClient
-	aggregationCache   map[string]int
+	FlowCache          FlowCache
 }
 
 type KeepalivePeriods struct {
@@ -321,8 +322,8 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 	}
 }
 
-// StreamFalcoNetworkFlows handles the falco network flow stream.
 func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *zap.Logger) error {
+	go sm.cacheManager(ctx)
 	for {
 		falcoFlow := <-sm.streamClient.falcoEventChan
 		if filterIllumioTraffic(falcoFlow) {
@@ -342,9 +343,8 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				logger.Error("Failed to parse Falco event into flow", zap.Error(err))
 				return err
 			}
-			err = sm.sendNetworkFlowRequest(logger, convertedFalcoFlow)
+			err := sm.FlowCache.UniqueFlow(convertedFalcoFlow)
 			if err != nil {
-				logger.Error("Failed to send Falco flow", zap.Error(err))
 				return err
 			}
 		} else {
@@ -655,12 +655,15 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				disableNetworkFlowsCilium: false,
 				falcoEventChan:            falcoEventChan,
 			}
-			hashmap := make(map[string]int, 100)
 
 			sm := &streamManager{
 				streamClient:       streamClient,
 				bufferedGrpcSyncer: bufferedGrpcSyncer,
-				aggregationCache:   hashmap,
+				FiveTupleCache: FiveTupleCache{
+					cache:      make(map[FalcoEvent]*list.Element),
+					queue:      list.New(),
+					bufferSize: 100,
+				},
 			}
 			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
 			if ciliumFlowCollector == nil {
