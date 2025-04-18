@@ -138,7 +138,7 @@ func (s *state) HappyPathResetBackoff() {
 }
 
 func (s *state) LongSuccessResetBackoff() {
-	s.opts.Logger.Debug("Resetting backoff timer because the system has been in a success state for a long time.")
+	s.opts.Logger.Debug("Resetting backoff timer because the system has been in a success state for a long time")
 	s.resetBackoff()
 }
 
