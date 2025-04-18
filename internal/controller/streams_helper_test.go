@@ -12,11 +12,6 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-type mockStreamClient struct {
-	resourceStream     *mockResourceStream
-	networkFlowsStream *mockNetworkFlowsStream
-}
-
 type mockResourceStream struct {
 	grpc.ClientStream
 	lastRequest *pb.SendKubernetesResourcesRequest
