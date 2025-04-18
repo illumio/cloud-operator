@@ -35,27 +35,32 @@ type FlowCache struct {
 	bufferSize int
 }
 
+// cacheManagerIndefinitely manages the flow cache by evicting expired flows based on the active timeout,
+// processing new flows, and resetting the timer for the next expiration.
 func (sm *streamManager) cacheManagerIndefinitely(ctx context.Context, logger *zap.Logger) error {
-	const activeTimeout = 20 * time.Second
+	const activeTimeout = 20 * time.Second // Define the active timeout period for flows. TODO: make configurable
 
+	// Create a new timer to trigger every activeTimeout duration.
 	timer := time.NewTimer(activeTimeout)
 	defer timer.Stop()
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-ctx.Done(): // If the context is canceled, exit the loop and return the error.
 			return ctx.Err()
 
 		case <-timer.C:
 			now := time.Now().UTC()
-			expiredCutoff := now.Add(-activeTimeout)
+			expiredCutoff := now.Add(-activeTimeout) // Determine the cutoff time for expired flows.
 
+			// Iterate through the flow cache queue to evict expired flows.
 			for sm.FlowCache.queue.Len() > 0 {
 				frontElem := sm.FlowCache.queue.Front()
 				var flowTimestamp time.Time
 				var flowKey FlowKey
 				var err error
 
+				// Check the type of flow and get the flow timestamp and flow key.
 				switch f := frontElem.Value.(type) {
 				case *pb.FalcoFlow:
 					flowTimestamp = f.GetTimestamp().AsTime()
@@ -66,21 +71,23 @@ func (sm *streamManager) cacheManagerIndefinitely(ctx context.Context, logger *z
 				default:
 					break
 				}
-
 				if err != nil {
 					return err
 				}
 
+				// If the flow is not expired (timestamp is newer than the cutoff), stop evicting.
 				if flowTimestamp.After(expiredCutoff) {
-					break // stop removing, rest are too new
+					break
 				}
 
+				// Evict the expired flow by removing it from the cache and queue.
 				sm.FlowCache.queue.Remove(frontElem)
 				delete(sm.FlowCache.cache, flowKey)
+
 				sm.sendNetworkFlowRequest(logger, frontElem.Value)
 			}
 
-			// Reset timer for next expiration
+			// Reset the timer to expire based on the next flow's timestamp.
 			if front := sm.FlowCache.queue.Front(); front != nil {
 				switch f := front.Value.(type) {
 				case *pb.FalcoFlow:
@@ -91,6 +98,7 @@ func (sm *streamManager) cacheManagerIndefinitely(ctx context.Context, logger *z
 					timer.Reset(activeTimeout)
 				}
 			} else {
+				// If there are no flows left, reset the timer to the default activeTimeout period.
 				timer.Reset(activeTimeout)
 			}
 
@@ -100,15 +108,18 @@ func (sm *streamManager) cacheManagerIndefinitely(ctx context.Context, logger *z
 				return err
 			}
 
+			// If the flow already exists in the cache, skip adding it again.
 			if _, found := sm.FlowCache.cache[flowKey]; found {
 				continue
 			}
 
-			// Evict oldest if full
+			// If the cache is full, evict the oldest flow to make room for the new flow.
+			// I think bufferSize should be renamed to maxBufferSize or something.
 			if sm.FlowCache.queue.Len() >= sm.FlowCache.bufferSize {
 				oldestElem := sm.FlowCache.queue.Front()
 				sm.FlowCache.queue.Remove(oldestElem)
 
+				// Process the evicted flow.
 				switch old := oldestElem.Value.(type) {
 				case *pb.FalcoFlow, *pb.CiliumFlow:
 					oldKey, err := sm.createFlowKey(old)
@@ -119,10 +130,11 @@ func (sm *streamManager) cacheManagerIndefinitely(ctx context.Context, logger *z
 				}
 			}
 
-			elem := sm.FlowCache.queue.PushBack(flow)
-			sm.FlowCache.cache[flowKey] = elem
+			// Add the new flow to the cache and queue.
+			flowElem := sm.FlowCache.queue.PushBack(flow)
+			sm.FlowCache.cache[flowKey] = flowElem
 
-			// Reset timer based on flow timestamp
+			// Reset the timer based on the new flow's timestamp.
 			switch f := flow.(type) {
 			case *pb.FalcoFlow:
 				resetTimer(timer, f.GetTimestamp().AsTime(), activeTimeout)
@@ -135,9 +147,10 @@ func (sm *streamManager) cacheManagerIndefinitely(ctx context.Context, logger *z
 
 func resetTimer(timer *time.Timer, timestamp time.Time, timeout time.Duration) {
 	delay := timestamp.Add(timeout).Sub(time.Now())
-	if delay <= 0 {
-		delay = time.Second // fallback to a short delay
-	}
+	// Not sure if I need this
+	// if delay <= 0 {
+	// 	delay = time.Second
+	// }
 	timer.Reset(delay)
 }
 
