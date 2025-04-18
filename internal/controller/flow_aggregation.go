@@ -1,3 +1,5 @@
+// Copyright 2025 Illumio, Inc. All Rights Reserved.
+
 package controller
 
 import (
