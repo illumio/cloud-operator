@@ -33,7 +33,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-  
+
       - name: Build and push Docker image
         id: build-and-push
         uses: docker/build-push-action@v6
@@ -45,6 +45,6 @@ jobs:
             VERSION=${{ github.ref_name }}
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-  
+
       - name: Sign the images with GitHub OIDC Token
         run: cosign sign --yes ghcr.io/${{ github.repository }}:${{ github.ref_name }}
