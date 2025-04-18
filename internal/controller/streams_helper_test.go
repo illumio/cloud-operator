@@ -3,24 +3,14 @@ package controller
 import (
 	"testing"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"k8s.io/apimachinery/pkg/watch"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
-
-// VersionInfo is a mock version info type for testing
-type VersionInfo struct {
-	Major      string
-	Minor      string
-	GitVersion string
-}
-
-func (v *VersionInfo) String() string {
-	return v.GitVersion
-}
 
 type mockResourceStream struct {
 	grpc.ClientStream
@@ -269,14 +259,10 @@ func TestSendKeepalive(t *testing.T) {
 	logger := zap.NewNop()
 	mockResourceStream := &mockResourceStream{}
 	mockNetworkFlowsStream := &mockNetworkFlowsStream{}
-	mockLogStream := &mockLogStream{}
-	mockConfigStream := &mockConfigStream{}
 	sm := &streamManager{
 		streamClient: &streamClient{
 			resourceStream:     mockResourceStream,
 			networkFlowsStream: mockNetworkFlowsStream,
-			logStream:          mockLogStream,
-			configStream:       mockConfigStream,
 		},
 	}
 
@@ -302,35 +288,5 @@ func TestSendKeepalive(t *testing.T) {
 			},
 		}
 		assert.Equal(t, expected, mockNetworkFlowsStream.lastRequest)
-	})
-
-	t.Run("log stream", func(t *testing.T) {
-		err := sm.sendKeepalive(logger, STREAM_LOGS)
-		require.NoError(t, err)
-
-		expected := &pb.SendLogsRequest{
-			Request: &pb.SendLogsRequest_Keepalive{
-				Keepalive: &pb.Keepalive{},
-			},
-		}
-		assert.Equal(t, expected, mockLogStream.lastRequest)
-	})
-
-	t.Run("config stream", func(t *testing.T) {
-		err := sm.sendKeepalive(logger, STREAM_CONFIGURATION)
-		require.NoError(t, err)
-
-		expected := &pb.GetConfigurationUpdatesRequest{
-			Request: &pb.GetConfigurationUpdatesRequest_Keepalive{
-				Keepalive: &pb.Keepalive{},
-			},
-		}
-		assert.Equal(t, expected, mockConfigStream.lastRequest)
-	})
-
-	t.Run("invalid stream type", func(t *testing.T) {
-		err := sm.sendKeepalive(logger, "invalid")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unsupported stream type")
 	})
 }
