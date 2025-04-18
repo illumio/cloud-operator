@@ -26,7 +26,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-  
+
       - name: Build and push Docker image
         id: build-and-push
         uses: docker/build-push-action@v6
@@ -43,7 +43,7 @@ jobs:
         uses: azure/setup-kubectl@v4
         with:
           version: "v1.24.0"
-          
+
       - name: Install Minikube
         run: |
           curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
@@ -52,7 +52,7 @@ jobs:
       - name: Start Minikube
         run: |
           minikube start --driver=docker
-  
+
       - name: Wait for Minikube to be ready
         run: |
           minikube kubectl -- get nodes
@@ -64,7 +64,7 @@ jobs:
 
       - name: Package Helm chart
         run: |
-            helm package cloud-operator && kubectl create ns illumio-cloud 
+            helm package cloud-operator && kubectl create ns illumio-cloud
 
       - name: Install Helm chart and Deploy Operator
         env:
@@ -82,7 +82,7 @@ jobs:
             --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET
 
       - name: Wait for Kubernetes Pod to be Ready
-        run: |  
+        run: |
           # Give minikube time to pull image and install operator before trying to check for app label
           sleep 5s
           kubectl wait --for=condition=ready pod -l app=cloud-operator -n illumio-cloud --timeout=300s
@@ -106,4 +106,3 @@ jobs:
           # Give time for cluster to onboard completely
           sleep 10s
           go test -v ./integration-testing/...
-        

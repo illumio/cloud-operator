@@ -46,7 +46,7 @@ jobs:
         uses: azure/setup-kubectl@v4
         with:
           version: "v1.24.0"
-      
+
       - name: Install Minikube
         run: |
           curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
@@ -55,7 +55,7 @@ jobs:
       - name: Start Minikube
         run: |
           minikube start --driver=docker
-  
+
       - name: Wait for Minikube to be ready
         run: |
           minikube kubectl -- get nodes
@@ -67,10 +67,10 @@ jobs:
 
       - name: Package Helm chart
         run: |
-            helm package cloud-operator && kubectl create ns illumio-cloud 
-      
+            helm package cloud-operator && kubectl create ns illumio-cloud
+
       - name: Install Integration Test Dependencies
-        run: | 
+        run: |
             cd ./fakeserver && go mod tidy && go mod download
 
       - name: Install Helm chart and Deploy Operator
@@ -92,11 +92,11 @@ jobs:
             --set env.onboardingEndpoint=$ONBOARDING_ENDPOINT \
             --set env.tokenEndpoint=$TOKEN_ENDPOINT \
             --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
-      
+
       - name:  Run Integration Tests
         run: |
          # Run your test against the fake server
-          kubectl wait --for=condition=ready pod -l app=cloud-operator -n illumio-cloud --timeout=300s && go test -v ./fakeserver/... 
+          kubectl wait --for=condition=ready pod -l app=cloud-operator -n illumio-cloud --timeout=300s && go test -v ./fakeserver/...
 
       - name: Fetch Kubernetes Pod logs
         run: |
