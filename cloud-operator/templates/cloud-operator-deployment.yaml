@@ -84,6 +84,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: STREAM_SUCCESS_PERIOD_CONNECT
+              value: "{{ .Values.env.streamSuccessPeriods.connect }}"
+            - name: STREAM_SUCCESS_PERIOD_AUTH
+              value: "{{ .Values.env.streamSuccessPeriods.auth }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
