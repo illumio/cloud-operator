@@ -3,6 +3,7 @@
 package controller
 
 import (
+	"container/list"
 	"context"
 	"errors"
 	"io"
@@ -56,6 +57,8 @@ type deadlockDetector struct {
 type streamManager struct {
 	bufferedGrpcSyncer *BufferedGrpcWriteSyncer
 	streamClient       *streamClient
+	FlowCache          FlowCache
+	flowChannel        chan interface{}
 }
 
 type KeepalivePeriods struct {
@@ -345,6 +348,7 @@ func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger
 
 // StreamCiliumNetworkFlows handles the cilium network flow stream.
 func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *zap.Logger, ciliumNamespace string) error {
+	go sm.cacheManagerIndefinitely(ctx, logger)
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, ciliumNamespace)
 	if ciliumFlowCollector == nil {
@@ -364,6 +368,7 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 
 // StreamFalcoNetworkFlows handles the falco network flow stream.
 func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *zap.Logger) error {
+	go sm.cacheManagerIndefinitely(ctx, logger)
 	for {
 		select {
 		case <-ctx.Done():
@@ -389,11 +394,7 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				logger.Error("Failed to parse Falco event into flow", zap.Error(err))
 				return err
 			}
-			err = sm.sendNetworkFlowRequest(logger, convertedFalcoFlow)
-			if err != nil {
-				logger.Error("Failed to send Falco flow", zap.Error(err))
-				return err
-			}
+			sm.flowChannel <- convertedFalcoFlow
 		}
 	}
 }
@@ -436,7 +437,6 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 		return err
 	}
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
-
 	go func() {
 		err := sm.StreamKeepalives(ciliumCtx, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
 		if err != nil {
@@ -707,6 +707,12 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			sm := &streamManager{
 				streamClient:       streamClient,
 				bufferedGrpcSyncer: bufferedGrpcSyncer,
+				FlowCache: FlowCache{
+					cache:      make(map[FlowKey]*list.Element),
+					queue:      list.New(),
+					bufferSize: 100,
+				},
+				flowChannel: make(chan interface{}, int(100)),
 			}
 			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
 			if ciliumFlowCollector == nil {
