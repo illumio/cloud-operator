@@ -7,6 +7,7 @@ import (
 	"time"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"go.uber.org/zap"
 )
 
 type FlowKey struct {
@@ -34,90 +35,111 @@ type FlowCache struct {
 	bufferSize int
 }
 
-func (sm *streamManager) cacheManagerIndefinitely(ctx context.Context) error {
+func (sm *streamManager) cacheManagerIndefinitely(ctx context.Context, logger *zap.Logger) error {
 	const activeTimeout = 20 * time.Second
 
 	timer := time.NewTimer(activeTimeout)
 	defer timer.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 
 		case <-timer.C:
-			expiredCutoff := time.Now().UTC().Add(-activeTimeout)
+			now := time.Now().UTC()
+			expiredCutoff := now.Add(-activeTimeout)
 
 			for sm.FlowCache.queue.Len() > 0 {
 				frontElem := sm.FlowCache.queue.Front()
+				var flowTimestamp time.Time
+				var flowKey FlowKey
+				var err error
+
 				switch f := frontElem.Value.(type) {
 				case *pb.FalcoFlow:
-					flowTimestamp := f.GetTimestamp().AsTime()
-					if flowTimestamp.After(expiredCutoff) {
-						break // remaining are not expired
-					}
-					sm.FlowCache.queue.Remove(frontElem)
-					flowKey, err := sm.createFlowKey(f)
-					delete(sm.FlowCache.cache, flowKey)
-					sm.sendNetworkFlowRequest(f)
+					flowTimestamp = f.GetTimestamp().AsTime()
+					flowKey, err = sm.createFlowKey(f)
 				case *pb.CiliumFlow:
-					return convertCiliumFlowToFlowKey(f), nil
+					flowTimestamp = f.GetTime().AsTime()
+					flowKey, err = sm.createFlowKey(f)
+				default:
+					break
+				}
+
+				if err != nil {
+					return err
+				}
+
+				if flowTimestamp.After(expiredCutoff) {
+					break // stop removing, rest are too new
+				}
+
+				sm.FlowCache.queue.Remove(frontElem)
+				delete(sm.FlowCache.cache, flowKey)
+				sm.sendNetworkFlowRequest(logger, frontElem.Value)
+			}
+
+			// Reset timer for next expiration
+			if front := sm.FlowCache.queue.Front(); front != nil {
+				switch f := front.Value.(type) {
+				case *pb.FalcoFlow:
+					resetTimer(timer, f.GetTimestamp().AsTime(), activeTimeout)
+				case *pb.CiliumFlow:
+					resetTimer(timer, f.GetTime().AsTime(), activeTimeout)
+				default:
+					timer.Reset(activeTimeout)
+				}
+			} else {
+				timer.Reset(activeTimeout)
+			}
+
+		case flow := <-sm.flowChannel:
+			flowKey, err := sm.createFlowKey(flow)
+			if err != nil {
+				return err
+			}
+
+			if _, found := sm.FlowCache.cache[flowKey]; found {
+				continue
+			}
+
+			// Evict oldest if full
+			if sm.FlowCache.queue.Len() >= sm.FlowCache.bufferSize {
+				oldestElem := sm.FlowCache.queue.Front()
+				sm.FlowCache.queue.Remove(oldestElem)
+
+				switch old := oldestElem.Value.(type) {
+				case *pb.FalcoFlow, *pb.CiliumFlow:
+					oldKey, err := sm.createFlowKey(old)
+					if err == nil {
+						delete(sm.FlowCache.cache, oldKey)
+						sm.sendNetworkFlowRequest(logger, old)
+					}
 				}
 			}
 
-		}
+			elem := sm.FlowCache.queue.PushBack(flow)
+			sm.FlowCache.cache[flowKey] = elem
 
+			// Reset timer based on flow timestamp
+			switch f := flow.(type) {
+			case *pb.FalcoFlow:
+				resetTimer(timer, f.GetTimestamp().AsTime(), activeTimeout)
+			case *pb.CiliumFlow:
+				resetTimer(timer, f.GetTime().AsTime(), activeTimeout)
+			}
+		}
 	}
 }
 
-// func (f *FlowCache) AddFlow(flow interface{}) {
-// 	now := time.Now().UTC()
-// 	newFlow := &Flow{
-// 		FlowKey:   key,
-// 		Timestamp: now,
-// 		RawFlow:   flow,
-// 	}
-
-// 	if existingElem, found := fc.cache[key]; found {
-// 		existingFlow := existingElem.Value.(*Flow)
-// 		aggregate(existingFlow, newFlow)
-// 		return
-// 	}
-
-// 	// Evict if over capacity
-// 	if fc.queue.Len() >= fc.bufferSize {
-// 		frontElem := fc.queue.Front()
-// 		oldest := frontElem.Value.(*Flow)
-// 		fc.queue.Remove(frontElem)
-// 		delete(fc.cache, oldest.FlowKey)
-// 		send(oldest)
-// 	}
-
-// 	// Insert at back of queue
-// 	elem := fc.queue.PushBack(newFlow)
-// 	fc.cache[key] = elem
-// }
-
-// // ConvertTimestamp converts a timestamppb.Timestamp to int64
-// func ConvertTimestamp(ts *timestamppb.Timestamp) int64 {
-// 	return ts.AsTime().Unix()
-// }
-
-// func EvictExpiredFlows() {
-// 	expiredCutoff := time.Now().UTC().Add(-20 * time.Second)
-
-// 	for fc.queue.Len() > 0 {
-// 		frontElem := fc.queue.Front()
-// 		flow := frontElem.Value.(*Flow)
-
-// 		if flow.Timestamp.After(expiredCutoff) {
-// 			break // remaining are not expired
-// 		}
-
-// 		fc.queue.Remove(frontElem)
-// 		delete(fc.cache, flow.FlowKey)
-// 		send(flow)
-// 	}
-// }
+func resetTimer(timer *time.Timer, timestamp time.Time, timeout time.Duration) {
+	delay := timestamp.Add(timeout).Sub(time.Now())
+	if delay <= 0 {
+		delay = time.Second // fallback to a short delay
+	}
+	timer.Reset(delay)
+}
 
 func (sm *streamManager) createFlowKey(flow interface{}) (FlowKey, error) {
 	switch f := flow.(type) {
