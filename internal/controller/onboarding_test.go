@@ -141,7 +141,10 @@ func (suite *ControllerTestSuite) TestOnboard() {
 			clientSecret: "test-client-secret",
 			serverHandler: func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				w.Write([]byte("invalid json"))
+				_, err := w.Write([]byte("invalid json"))
+				if err != nil {
+					suite.T().Fatal("Failed to write response in invalid-json-response test: " + err.Error())
+				}
 			},
 			requestURL:     "http://example.com",
 			expectedError:  true,
