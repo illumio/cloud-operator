@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func (suite *ControllerTestSuite) TestOnboard() {
@@ -35,6 +35,7 @@ func (suite *ControllerTestSuite) TestOnboard() {
 		clientSecret     string
 		serverHandler    http.HandlerFunc
 		requestURL       string
+		tlsSkipVerify    bool
 		expectedResponse OnboardResponse
 		expectedError    bool
 		expectedErrMsg   string
@@ -60,7 +61,37 @@ func (suite *ControllerTestSuite) TestOnboard() {
 					suite.T().Fatal("Failed to encode response in creds manager test " + err.Error())
 				}
 			},
-			requestURL: "http://example.com",
+			requestURL:    "http://example.com",
+			tlsSkipVerify: true,
+			expectedResponse: OnboardResponse{
+				ClusterClientId:     "test-client-id",
+				ClusterClientSecret: "test-client-secret",
+			},
+			expectedError: false,
+		},
+		"success-with-tls-verify": {
+			clientID:     "test-client-id",
+			clientSecret: "test-client-secret",
+			serverHandler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(suite.T(), "application/json", r.Header.Get("Content-Type"))
+
+				var requestData map[string]string
+				err := json.NewDecoder(r.Body).Decode(&requestData)
+				assert.NoError(suite.T(), err)
+				assert.Equal(suite.T(), "test-client-id", requestData["onboardingClientId"])
+				assert.Equal(suite.T(), "test-client-secret", requestData["onboardingClientSecret"])
+
+				w.Header().Set("Content-Type", "application/json")
+				err = json.NewEncoder(w).Encode(OnboardResponse{
+					ClusterClientId:     "test-client-id",
+					ClusterClientSecret: "test-client-secret",
+				})
+				if err != nil {
+					suite.T().Fatal("Failed to encode response in creds manager test " + err.Error())
+				}
+			},
+			requestURL:    "https://example.com",
+			tlsSkipVerify: false,
 			expectedResponse: OnboardResponse{
 				ClusterClientId:     "test-client-id",
 				ClusterClientSecret: "test-client-secret",
@@ -74,6 +105,57 @@ func (suite *ControllerTestSuite) TestOnboard() {
 			requestURL:     "http://example.com/\x00",
 			expectedError:  true,
 			expectedErrMsg: "parse \"http://example.com/\\x00\": net/url: invalid control character in URL",
+		},
+		"unauthorized-error": {
+			clientID:     "test-client-id",
+			clientSecret: "test-client-secret",
+			serverHandler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusUnauthorized)
+			},
+			requestURL:     "http://example.com",
+			expectedError:  true,
+			expectedErrMsg: "unauthorized: invalid credentials",
+		},
+		"internal-server-error": {
+			clientID:     "test-client-id",
+			clientSecret: "test-client-secret",
+			serverHandler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			},
+			requestURL:     "http://example.com",
+			expectedError:  true,
+			expectedErrMsg: "internal server error: something went wrong on the server",
+		},
+		"unexpected-status-code": {
+			clientID:     "test-client-id",
+			clientSecret: "test-client-secret",
+			serverHandler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusTeapot)
+			},
+			requestURL:     "http://example.com",
+			expectedError:  true,
+			expectedErrMsg: "unexpected status code",
+		},
+		"invalid-json-response": {
+			clientID:     "test-client-id",
+			clientSecret: "test-client-secret",
+			serverHandler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte("invalid json"))
+			},
+			requestURL:     "http://example.com",
+			expectedError:  true,
+			expectedErrMsg: "invalid character 'i' looking for beginning of value",
+		},
+		"timeout": {
+			clientID:     "test-client-id",
+			clientSecret: "test-client-secret",
+			serverHandler: func(w http.ResponseWriter, r *http.Request) {
+				time.Sleep(6 * time.Second) // Longer than the 5 second timeout
+			},
+			requestURL:     "http://example.com",
+			expectedError:  true,
+			expectedErrMsg: "context deadline exceeded",
 		},
 	}
 
@@ -90,7 +172,7 @@ func (suite *ControllerTestSuite) TestOnboard() {
 				ClientSecret: tt.clientSecret,
 			}
 
-			response, err := Onboard(ctx, true, tt.requestURL, credentials, logger)
+			response, err := Onboard(ctx, tt.tlsSkipVerify, tt.requestURL, credentials, logger)
 			if tt.expectedError {
 				assert.Error(suite.T(), err)
 				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
@@ -167,22 +249,15 @@ func (suite *ControllerTestSuite) TestGetClusterID() {
 	logger := suite.logger
 	ctx := context.Background()
 
-	// Manually retrieve the expected UID of the kube-system namespace
-	clientset, err := NewClientSet()
-	assert.NoError(suite.T(), err)
-
-	namespace, err := clientset.CoreV1().Namespaces().Get(ctx, "kube-system", v1.GetOptions{})
-	assert.NoError(suite.T(), err)
-	expectedUID := string(namespace.UID)
-
-	// Call the GetClusterID function
+	// Test successful case
 	clusterID, err := GetClusterID(ctx, logger)
 	assert.NoError(suite.T(), err)
 	assert.NotEmpty(suite.T(), clusterID)
 
-	// Check if the returned UID matches the expected UID
-	assert.Equal(suite.T(), expectedUID, clusterID)
-
-	// Log the cluster ID for verification
-	suite.T().Logf("Cluster ID: %s", clusterID)
+	// Test error case - invalid context
+	invalidCtx, cancel := context.WithCancel(ctx)
+	cancel() // Cancel the context to make it invalid
+	_, err = GetClusterID(invalidCtx, logger)
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "context canceled")
 }

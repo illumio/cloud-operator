@@ -1,16 +1,67 @@
 package controller
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/kubernetes"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"k8s.io/client-go/discovery"
 )
+
+// VersionInfo is a mock version info type for testing
+type VersionInfo struct {
+	Major      string
+	Minor      string
+	GitVersion string
+}
+
+func (v *VersionInfo) String() string {
+	return v.GitVersion
+}
+
+// Mock Kubernetes interface for testing
+type mockKubernetesInterface struct {
+	kubernetes.Interface
+	discoveryError error
+	namespaceError error
+}
+
+func (m *mockKubernetesInterface) Discovery() discovery.DiscoveryInterface {
+	return &mockDiscoveryInterface{
+		error: m.discoveryError,
+	}
+}
+
+type mockDiscoveryInterface struct {
+	discovery.DiscoveryInterface
+	error error
+}
+
+func (m *mockDiscoveryInterface) ServerVersion() (*version.Info, error) {
+	if m.error != nil {
+		return nil, m.error
+	}
+	return &version.Info{
+		Major:      "1",
+		Minor:      "24",
+		GitVersion: "v1.24.0",
+	}, nil
+}
+
+type mockStreamClient struct {
+	resourceStream     *mockResourceStream
+	networkFlowsStream *mockNetworkFlowsStream
+	logStream          *mockLogStream
+	configStream       *mockConfigStream
+}
 
 type mockResourceStream struct {
 	grpc.ClientStream
@@ -46,6 +97,69 @@ func (m *mockNetworkFlowsStream) Recv() (*pb.SendKubernetesNetworkFlowsResponse,
 
 func (m *mockNetworkFlowsStream) CloseSend() error {
 	return nil
+}
+
+type mockLogStream struct {
+	grpc.ClientStream
+	lastRequest *pb.SendLogsRequest
+}
+
+func (m *mockLogStream) Send(req *pb.SendLogsRequest) error {
+	m.lastRequest = req
+	return nil
+}
+
+func (m *mockLogStream) Recv() (*pb.SendLogsResponse, error) {
+	return &pb.SendLogsResponse{}, nil
+}
+
+func (m *mockLogStream) CloseSend() error {
+	return nil
+}
+
+type mockConfigStream struct {
+	grpc.ClientStream
+	lastRequest *pb.GetConfigurationUpdatesRequest
+}
+
+func (m *mockConfigStream) Send(req *pb.GetConfigurationUpdatesRequest) error {
+	m.lastRequest = req
+	return nil
+}
+
+func (m *mockConfigStream) Recv() (*pb.GetConfigurationUpdatesResponse, error) {
+	return &pb.GetConfigurationUpdatesResponse{}, nil
+}
+
+func (m *mockConfigStream) CloseSend() error {
+	return nil
+}
+
+type mockSendKubernetesResourcesClient struct {
+	grpc.ClientStream
+	lastRequest *pb.SendKubernetesResourcesRequest
+}
+
+func (m *mockSendKubernetesResourcesClient) Send(req *pb.SendKubernetesResourcesRequest) error {
+	m.lastRequest = req
+	return nil
+}
+
+func (m *mockSendKubernetesResourcesClient) Recv() (*pb.SendKubernetesResourcesResponse, error) {
+	return &pb.SendKubernetesResourcesResponse{}, nil
+}
+
+func (m *mockSendKubernetesResourcesClient) CloseSend() error {
+	return nil
+}
+
+// Mock KubernetesInfoServiceClient for testing
+type mockKubernetesInfoServiceClient struct {
+	sendKubernetesResourcesClient *mockSendKubernetesResourcesClient
+}
+
+func (m *mockKubernetesInfoServiceClient) SendKubernetesResources(ctx context.Context, opts ...grpc.CallOption) (pb.KubernetesInfoService_SendKubernetesResourcesClient, error) {
+	return m.sendKubernetesResourcesClient, nil
 }
 
 func TestSendToResourceStream(t *testing.T) {
@@ -149,6 +263,7 @@ func TestSendNetworkFlowRequest(t *testing.T) {
 		assert.Equal(t, expected, mockStream.lastRequest)
 	})
 }
+
 func TestStreamMutationObjectData(t *testing.T) {
 	logger := zap.NewNop()
 	mockStream := &mockResourceStream{}
@@ -222,10 +337,14 @@ func TestSendKeepalive(t *testing.T) {
 	logger := zap.NewNop()
 	mockResourceStream := &mockResourceStream{}
 	mockNetworkFlowsStream := &mockNetworkFlowsStream{}
+	mockLogStream := &mockLogStream{}
+	mockConfigStream := &mockConfigStream{}
 	sm := &streamManager{
 		streamClient: &streamClient{
 			resourceStream:     mockResourceStream,
 			networkFlowsStream: mockNetworkFlowsStream,
+			logStream:          mockLogStream,
+			configStream:       mockConfigStream,
 		},
 	}
 
@@ -251,5 +370,35 @@ func TestSendKeepalive(t *testing.T) {
 			},
 		}
 		assert.Equal(t, expected, mockNetworkFlowsStream.lastRequest)
+	})
+
+	t.Run("log stream", func(t *testing.T) {
+		err := sm.sendKeepalive(logger, STREAM_LOGS)
+		require.NoError(t, err)
+
+		expected := &pb.SendLogsRequest{
+			Request: &pb.SendLogsRequest_Keepalive{
+				Keepalive: &pb.Keepalive{},
+			},
+		}
+		assert.Equal(t, expected, mockLogStream.lastRequest)
+	})
+
+	t.Run("config stream", func(t *testing.T) {
+		err := sm.sendKeepalive(logger, STREAM_CONFIGURATION)
+		require.NoError(t, err)
+
+		expected := &pb.GetConfigurationUpdatesRequest{
+			Request: &pb.GetConfigurationUpdatesRequest_Keepalive{
+				Keepalive: &pb.Keepalive{},
+			},
+		}
+		assert.Equal(t, expected, mockConfigStream.lastRequest)
+	})
+
+	t.Run("invalid stream type", func(t *testing.T) {
+		err := sm.sendKeepalive(logger, "invalid")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported stream type")
 	})
 }
