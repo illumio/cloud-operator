@@ -94,11 +94,6 @@ func (m *mockConfigStream) CloseSend() error {
 	return nil
 }
 
-type mockSendKubernetesResourcesClient struct {
-	grpc.ClientStream
-	lastRequest *pb.SendKubernetesResourcesRequest
-}
-
 func TestSendToResourceStream(t *testing.T) {
 	logger := zap.NewNop()
 	mockStream := &mockResourceStream{}
