@@ -48,42 +48,6 @@ func (m *mockNetworkFlowsStream) CloseSend() error {
 	return nil
 }
 
-type mockLogStream struct {
-	grpc.ClientStream
-	lastRequest *pb.SendLogsRequest
-}
-
-func (m *mockLogStream) Send(req *pb.SendLogsRequest) error {
-	m.lastRequest = req
-	return nil
-}
-
-func (m *mockLogStream) Recv() (*pb.SendLogsResponse, error) {
-	return &pb.SendLogsResponse{}, nil
-}
-
-func (m *mockLogStream) CloseSend() error {
-	return nil
-}
-
-type mockConfigStream struct {
-	grpc.ClientStream
-	lastRequest *pb.GetConfigurationUpdatesRequest
-}
-
-func (m *mockConfigStream) Send(req *pb.GetConfigurationUpdatesRequest) error {
-	m.lastRequest = req
-	return nil
-}
-
-func (m *mockConfigStream) Recv() (*pb.GetConfigurationUpdatesResponse, error) {
-	return &pb.GetConfigurationUpdatesResponse{}, nil
-}
-
-func (m *mockConfigStream) CloseSend() error {
-	return nil
-}
-
 func TestSendToResourceStream(t *testing.T) {
 	logger := zap.NewNop()
 	mockStream := &mockResourceStream{}
