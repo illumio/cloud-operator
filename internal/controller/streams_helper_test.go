@@ -1,19 +1,14 @@
 package controller
 
 import (
-	"context"
 	"testing"
 
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/kubernetes"
-
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"k8s.io/client-go/discovery"
 )
 
 // VersionInfo is a mock version info type for testing
@@ -25,42 +20,6 @@ type VersionInfo struct {
 
 func (v *VersionInfo) String() string {
 	return v.GitVersion
-}
-
-// Mock Kubernetes interface for testing
-type mockKubernetesInterface struct {
-	kubernetes.Interface
-	discoveryError error
-	namespaceError error
-}
-
-func (m *mockKubernetesInterface) Discovery() discovery.DiscoveryInterface {
-	return &mockDiscoveryInterface{
-		error: m.discoveryError,
-	}
-}
-
-type mockDiscoveryInterface struct {
-	discovery.DiscoveryInterface
-	error error
-}
-
-func (m *mockDiscoveryInterface) ServerVersion() (*version.Info, error) {
-	if m.error != nil {
-		return nil, m.error
-	}
-	return &version.Info{
-		Major:      "1",
-		Minor:      "24",
-		GitVersion: "v1.24.0",
-	}, nil
-}
-
-type mockStreamClient struct {
-	resourceStream     *mockResourceStream
-	networkFlowsStream *mockNetworkFlowsStream
-	logStream          *mockLogStream
-	configStream       *mockConfigStream
 }
 
 type mockResourceStream struct {
@@ -138,28 +97,6 @@ func (m *mockConfigStream) CloseSend() error {
 type mockSendKubernetesResourcesClient struct {
 	grpc.ClientStream
 	lastRequest *pb.SendKubernetesResourcesRequest
-}
-
-func (m *mockSendKubernetesResourcesClient) Send(req *pb.SendKubernetesResourcesRequest) error {
-	m.lastRequest = req
-	return nil
-}
-
-func (m *mockSendKubernetesResourcesClient) Recv() (*pb.SendKubernetesResourcesResponse, error) {
-	return &pb.SendKubernetesResourcesResponse{}, nil
-}
-
-func (m *mockSendKubernetesResourcesClient) CloseSend() error {
-	return nil
-}
-
-// Mock KubernetesInfoServiceClient for testing
-type mockKubernetesInfoServiceClient struct {
-	sendKubernetesResourcesClient *mockSendKubernetesResourcesClient
-}
-
-func (m *mockKubernetesInfoServiceClient) SendKubernetesResources(ctx context.Context, opts ...grpc.CallOption) (pb.KubernetesInfoService_SendKubernetesResourcesClient, error) {
-	return m.sendKubernetesResourcesClient, nil
 }
 
 func TestSendToResourceStream(t *testing.T) {
