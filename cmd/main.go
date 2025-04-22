@@ -24,10 +24,15 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 
+	"github.com/go-logr/zapr"
 	"github.com/google/gops/agent"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
+	"k8s.io/klog/v2"
 
 	controller "github.com/illumio/cloud-operator/internal/controller"
 	//+kubebuilder:scaffold:imports
@@ -72,6 +77,24 @@ func main() {
 	bufferedGrpcSyncer := controller.NewBufferedGrpcWriteSyncer()
 	logger := controller.NewProductionGRPCLogger(bufferedGrpcSyncer)
 	defer logger.Sync() //nolint:errcheck
+
+	// Convert zap.Logger to logr.Logger
+	logrLogger := zapr.NewLogger(logger)
+
+	// Set logrLogger as the global logger for klog
+	klog.SetLoggerWithOptions(logrLogger)
+
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		klog.Error(err, "Failed to load in-cluster config")
+		return
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		klog.Error(err, "Failed to create clientset")
+		return
+	}
 
 	viper.AutomaticEnv()
 
@@ -142,7 +165,18 @@ func main() {
 		zap.Duration("stream_success_period_auth", envConfig.StreamSuccessPeriod.Auth),
 	)
 
-	// Start the gops agent
+	// List pods from default namespace
+	pods, err := clientset.CoreV1().Pods("illumio-cloud").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		klog.Error(err, "Failed to list pods")
+		return
+	}
+
+	for _, pod := range pods.Items {
+		klog.Info("Pod found ", "name ", pod.Name)
+	}
+
+	// Start the gops agent and listen on a specific address and port
 	if err := agent.Listen(agent.Options{}); err != nil {
 		logger.Error("Failed to start gops agent", zap.Error(err))
 	}
