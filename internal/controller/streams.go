@@ -722,7 +722,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				FlowCache: NewFlowCache(
 					20*time.Second, // TODO: Make the active timeout configurable.
 					1000,           // TODO: Make the maxFlows capacity configurable.
-					make(chan Flow, 10),
+					make(chan Flow, 100),
 				),
 			}
 			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
