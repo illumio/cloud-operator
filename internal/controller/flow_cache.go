@@ -5,45 +5,99 @@ package controller
 import (
 	"container/list"
 	"context"
-	"fmt"
+	"errors"
+	"io"
 	"time"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 )
 
-type FlowKey struct {
+type FlowKey interface {
 	// Timestamp is the time the network event occured.
-	Timestamp int64
+	Timestamp() int64
 	// SrcIP is the source IP address involved in the network event.
-	SrcIP string
+	SrcIP() string
 	// DstIP is the destination IP address involved in the network event.
-	DstIP string
+	DstIP() string
 	// SrcPort is the source port number involved in the network event.
-	SrcPort int
+	SrcPort() int
 	// DstPort is the destination port number involved in the network event.
-	DstPort int
+	DstPort() int
 	// Proto is the protocol used in the network event (e.g., TCP, UDP).
-	Proto string
+	Proto() string
 	// SourceEndpoint contains k8s metadata for source endpoint
-	SourceEndpoint string
+	SourceEndpoint() string
 	// DestinationEndpoint contains k8s metadata for destination endpoint
-	DestinationEndpoint string
+	DestinationEndpoint() string
 }
 
+type Flow struct {
+	Key       FlowKey
+	Timestamp time.Time
+	rawFlow   any
+}
+
+// FlowCache caches flows to be exported.
+// Evicts flows from the cache to be send to the collector for any of the following reasons:
+// - lack of resources: the cache has reached the maximum capacity configured in maxFlows
+// - active timeout: the flow has been cache longer than the configured activeTimeout
+// See https://www.rfc-editor.org/rfc/rfc5102.html#section-5.11.3 for the definition of those reasons.
 type FlowCache struct {
-	cache      map[FlowKey]*list.Element
-	queue      *list.List
-	bufferSize int
+	// cache is the set of aggregated flows indexed by their flow keys.
+	cache map[FlowKey]Flow
+	// queue is the list of cached flows contained in cache, ordered by Timestamp.
+	queue *list.List
+	// activeTimeout is the maximum duration any flow remains in the cache.
+	activeTimeout time.Duration
+	// maxFlows is the maximum number of flows cached at any time.
+	maxFlows int
+	// inFlows contains flows to be aggregated and cached.
+	inFlows chan Flow
+	// outFlows contains flows that have been evicted from the cache.
+	outFlows chan Flow
+}
+
+var _ io.Closer = &FlowCache{}
+
+func NewFlowCache(
+	activeTimeout time.Duration,
+	maxFlows int,
+	outFlows chan Flow,
+) *FlowCache {
+	return &FlowCache{
+		cache:         make(map[FlowKey]Flow, maxFlows),
+		queue:         list.New(),
+		activeTimeout: activeTimeout,
+		maxFlows:      maxFlows,
+		inFlows:       make(chan Flow, 1),
+		outFlows:      outFlows,
+	}
+}
+
+// Close closes this flow cache's channels.
+// This method must be called exactly once on every FlowCache after use.
+func (c *FlowCache) Close() error {
+	close(c.inFlows)
+	close(c.outFlows)
+	return nil
+}
+
+// CacheFlow aggregates and caches the given flow.
+func (c *FlowCache) CacheFlow(ctx context.Context, flow Flow) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case c.inFlows <- flow:
+		return nil
+	}
 }
 
 // cacheManagerIndefinitely manages the flow cache by evicting expired flows based on the active timeout,
 // processing new flows, and resetting the timer for the next expiration.
-func (sm *streamManager) cacheManagerIndefinitely(ctx context.Context, logger *zap.Logger) error {
-	const activeTimeout = 20 * time.Second // Define the active timeout period for flows. TODO: make configurable
-
+func (c *FlowCache) Run(ctx context.Context, logger *zap.Logger) error {
 	// Create a new timer to trigger every activeTimeout duration.
-	timer := time.NewTimer(activeTimeout)
+	timer := time.NewTimer(c.activeTimeout)
 	defer timer.Stop()
 
 	for {
@@ -53,95 +107,77 @@ func (sm *streamManager) cacheManagerIndefinitely(ctx context.Context, logger *z
 
 		case <-timer.C:
 			now := time.Now().UTC()
-			expiredCutoff := now.Add(-activeTimeout) // Determine the cutoff time for expired flows.
+			activeTimeoutCutoff := now.Sub(time.Now().Add(c.activeTimeout)) // Determine the cutoff time for expired flows.
 
 			// Iterate through the flow cache queue to evict expired flows.
-			for sm.FlowCache.queue.Len() > 0 {
-				frontElem := sm.FlowCache.queue.Front()
+			for c.queue.Len() > 0 {
+				frontElem := c.queue.Front()
 				var flowTimestamp time.Time
 				var flowKey FlowKey
-				var err error
-
 				// Check the type of flow and get the flow timestamp and flow key.
 				switch f := frontElem.Value.(type) {
 				case *pb.FalcoFlow:
 					flowTimestamp = f.GetTimestamp().AsTime()
-					flowKey, err = sm.createFlowKey(f)
 				case *pb.CiliumFlow:
 					flowTimestamp = f.GetTime().AsTime()
-					flowKey, err = sm.createFlowKey(f)
 				default:
-					break
-				}
-				if err != nil {
-					return err
+					return errors.New("Non supported flow.")
 				}
 
 				// If the flow is not expired (timestamp is newer than the cutoff), stop evicting.
-				if flowTimestamp.After(expiredCutoff) {
+				if flowTimestamp.After(time.Now().Add(activeTimeoutCutoff)) {
 					break
 				}
 
 				// Evict the expired flow by removing it from the cache and queue.
-				sm.FlowCache.queue.Remove(frontElem)
-				delete(sm.FlowCache.cache, flowKey)
-
-				sm.sendNetworkFlowRequest(logger, frontElem.Value)
+				c.queue.Remove(frontElem)
+				delete(c.cache, flowKey)
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case c.outFlows <- frontElem.Value.(Flow):
+				}
 			}
 
 			// Reset the timer to expire based on the next flow's timestamp.
-			if front := sm.FlowCache.queue.Front(); front != nil {
+			if front := c.queue.Front(); front != nil {
 				switch f := front.Value.(type) {
 				case *pb.FalcoFlow:
-					resetTimer(timer, f.GetTimestamp().AsTime(), activeTimeout)
+					resetTimer(timer, f.GetTimestamp().AsTime(), c.activeTimeout)
 				case *pb.CiliumFlow:
-					resetTimer(timer, f.GetTime().AsTime(), activeTimeout)
+					resetTimer(timer, f.GetTime().AsTime(), c.activeTimeout)
 				default:
-					timer.Reset(activeTimeout)
+					return errors.New("Non supported flow.")
 				}
-			} else {
-				// If there are no flows left, reset the timer to the default activeTimeout period.
-				timer.Reset(activeTimeout)
 			}
-
-		case flow := <-sm.flowChannel:
-			flowKey, err := sm.createFlowKey(flow)
-			if err != nil {
-				return err
-			}
-
+		case flow := <-c.inFlows:
 			// If the flow already exists in the cache, skip adding it again.
-			if _, found := sm.FlowCache.cache[flowKey]; found {
+			if _, found := c.cache[flow.Key]; found {
 				continue
 			}
 
 			// If the cache is full, evict the oldest flow to make room for the new flow.
-			// I think bufferSize should be renamed to maxBufferSize or something.
-			if sm.FlowCache.queue.Len() >= sm.FlowCache.bufferSize {
-				oldestElem := sm.FlowCache.queue.Front()
-				sm.FlowCache.queue.Remove(oldestElem)
-
-				// Process the evicted flow.
-				switch old := oldestElem.Value.(type) {
-				case *pb.FalcoFlow, *pb.CiliumFlow:
-					oldKey, err := sm.createFlowKey(old)
-					if err == nil {
-						delete(sm.FlowCache.cache, oldKey)
-						sm.sendNetworkFlowRequest(logger, old)
-					}
+			if len(c.cache) >= c.maxFlows {
+				oldestFlow := c.queue.Front()
+				c.queue.Remove(oldestFlow)
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case c.outFlows <- oldestFlow.Value.(Flow):
 				}
 			}
 
 			// Add the new flow to the cache and queue.
-			flowElem := sm.FlowCache.queue.PushBack(flow)
-			sm.FlowCache.cache[flowKey] = flowElem
+			c.queue.PushBack(flow)
+			c.cache[flow.Key] = flow
 
-			// Reset the timer based on the new flow's timestamp.
-			switch f := flow.(type) {
+			oldestFlow := c.queue.Front().Value.(Flow)
+			// Reset the timer based on the oldest flow's timestamp (queue is ordered so the front element is oldest).
+			switch f := oldestFlow.rawFlow.(type) {
 			case *pb.FalcoFlow:
-				resetTimer(timer, f.GetTimestamp().AsTime(), activeTimeout)
+				resetTimer(timer, f.GetTimestamp().AsTime(), c.activeTimeout)
 			case *pb.CiliumFlow:
-				resetTimer(timer, f.GetTime().AsTime(), activeTimeout)
+				resetTimer(timer, f.GetTime().AsTime(), c.activeTimeout)
 			}
 		}
 	}
@@ -149,28 +185,22 @@ func (sm *streamManager) cacheManagerIndefinitely(ctx context.Context, logger *z
 
 func resetTimer(timer *time.Timer, timestamp time.Time, timeout time.Duration) {
 	delay := timestamp.Add(timeout).Sub(time.Now())
-	// Not sure if I need this
-	// if delay <= 0 {
-	// 	delay = time.Second
-	// }
 	timer.Reset(delay)
 }
 
-func (sm *streamManager) createFlowKey(flow interface{}) (FlowKey, error) {
+func (c *FlowCache) createFlowKey(flow interface{}) (FlowKey, error) {
 	switch f := flow.(type) {
 	case *pb.FalcoFlow:
 		return convertFalcoFlowToFlowKey(f), nil
 	case *pb.CiliumFlow:
 		return convertCiliumFlowToFlowKey(f), nil
-
-	default:
-		return FlowKey{}, fmt.Errorf("unsupported flow type: %T", flow)
 	}
+	return nil, nil
 }
 
 func convertCiliumFlowToFlowKey(flow *pb.CiliumFlow) FlowKey {
 	if flow == nil || flow.Layer3 == nil || flow.Layer4 == nil {
-		return FlowKey{}
+		return FlowKeyCilium{}
 	}
 
 	var (
@@ -207,21 +237,21 @@ func convertCiliumFlowToFlowKey(flow *pb.CiliumFlow) FlowKey {
 		proto = "UNKNOWN"
 	}
 
-	return FlowKey{
-		Timestamp:           timestamp,
-		SrcIP:               flow.Layer3.GetSource(),
-		DstIP:               flow.Layer3.GetDestination(),
-		SrcPort:             srcPort,
-		DstPort:             dstPort,
-		Proto:               proto,
-		SourceEndpoint:      flow.SourceEndpoint.GetPodName(),
-		DestinationEndpoint: flow.DestinationEndpoint.GetPodName(),
+	return FlowKeyCilium{
+		Ts:                 timestamp,
+		SourceIP:           flow.Layer3.GetSource(),
+		DestinationIP:      flow.Layer3.GetDestination(),
+		SourcePort:         srcPort,
+		DestinationPort:    dstPort,
+		Protocol:           proto,
+		SourceK8sMeta:      flow.SourceEndpoint.GetPodName(),
+		DestinationK8sMeta: flow.DestinationEndpoint.GetPodName(),
 	}
 }
 
 func convertFalcoFlowToFlowKey(flow *pb.FalcoFlow) FlowKey {
 	if flow == nil {
-		return FlowKey{}
+		return FlowKeyFalco{}
 	}
 
 	srcIP := flow.GetLayer3().GetSource()
@@ -259,12 +289,12 @@ func convertFalcoFlowToFlowKey(flow *pb.FalcoFlow) FlowKey {
 		proto = "UNKNOWN"
 	}
 
-	return FlowKey{
-		Timestamp: timestamp,
-		SrcIP:     srcIP,
-		DstIP:     dstIP,
-		SrcPort:   srcPort,
-		DstPort:   dstPort,
-		Proto:     proto,
+	return FlowKeyFalco{
+		Ts:              timestamp,
+		SourceIP:        srcIP,
+		DestinationIP:   dstIP,
+		SourcePort:      srcPort,
+		DestinationPort: dstPort,
+		Protocol:        proto,
 	}
 }

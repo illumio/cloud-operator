@@ -3,7 +3,6 @@
 package controller
 
 import (
-	"container/list"
 	"context"
 	"errors"
 	"io"
@@ -57,8 +56,7 @@ type deadlockDetector struct {
 type streamManager struct {
 	bufferedGrpcSyncer *BufferedGrpcWriteSyncer
 	streamClient       *streamClient
-	FlowCache          FlowCache
-	flowChannel        chan interface{}
+	FlowCache          *FlowCache
 }
 
 type KeepalivePeriods struct {
@@ -336,6 +334,18 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 	return nil
 }
 
+func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *zap.Logger) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case flow := <-sm.FlowCache.outFlows:
+			sm.sendNetworkFlowRequest(logger, flow)
+		}
+
+	}
+}
+
 // findHubbleRelay returns a *CiliumFlowCollector if hubble relay is found in the given namespace
 func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger, ciliumNamespace string) *CiliumFlowCollector {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
@@ -348,7 +358,6 @@ func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger
 
 // StreamCiliumNetworkFlows handles the cilium network flow stream.
 func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *zap.Logger, ciliumNamespace string) error {
-	go sm.cacheManagerIndefinitely(ctx, logger)
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, ciliumNamespace)
 	if ciliumFlowCollector == nil {
@@ -368,7 +377,6 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 
 // StreamFalcoNetworkFlows handles the falco network flow stream.
 func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *zap.Logger) error {
-	go sm.cacheManagerIndefinitely(ctx, logger)
 	for {
 		select {
 		case <-ctx.Done():
@@ -394,7 +402,11 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				logger.Error("Failed to parse Falco event into flow", zap.Error(err))
 				return err
 			}
-			sm.flowChannel <- convertedFalcoFlow
+			flowKey, err := sm.FlowCache.createFlowKey(convertedFalcoFlow)
+			if err != nil {
+				return err
+			}
+			sm.FlowCache.CacheFlow(ctx, Flow{Timestamp: convertedFalcoFlow.GetTimestamp().AsTime(), Key: flowKey, rawFlow: convertedFalcoFlow})
 		}
 	}
 }
@@ -707,12 +719,11 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			sm := &streamManager{
 				streamClient:       streamClient,
 				bufferedGrpcSyncer: bufferedGrpcSyncer,
-				FlowCache: FlowCache{
-					cache:      make(map[FlowKey]*list.Element),
-					queue:      list.New(),
-					bufferSize: 100,
-				},
-				flowChannel: make(chan interface{}, int(100)),
+				FlowCache: NewFlowCache(
+					20*time.Second, // TODO: Make the active timeout configurable.
+					1000,           // TODO: Make the maxFlows capacity configurable.
+					make(chan Flow, 10),
+				),
 			}
 			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
 			if ciliumFlowCollector == nil {
@@ -776,6 +787,8 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					envMap.StreamSuccessPeriod,
 				)
 			}
+
+			go sm.startFlowCacheOutReader(ctx, logger)
 
 			// Block until one of the streams fail. Then we will jump to the top of
 			// this loop & try again: authenticate and open the streams.
