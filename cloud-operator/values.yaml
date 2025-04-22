@@ -4,12 +4,9 @@ defaultNamespace: "illumio-cloud"
 replicaCount: 1
 priorityClassName: ""
 image:
-  repository: "aaronnguyenillumio/operator"
-  tag: "latest"
-  pullPolicy: Always
-
-imagePullSecrets:
- - name: regcred
+  repository: "ghcr.io/illumio/cloud-operator"
+  tag: "0.0.1"
+  pullPolicy: IfNotPresent
 
 serviceAccount:
   create: true
@@ -32,8 +29,8 @@ clusterCredsSecret:
   forceSecretCreation: true
 
 onboardingSecret:
-  clientId: "e86b7c0d-7f83-47d1-b8e9-91057de2e67c"
-  clientSecret: "7879cec5378eeb8143ec4b0079ca200018293f2315489036d4111abcd9a3e42b"
+  clientId: ""
+  clientSecret: ""
 
 falco:
   enabled: false
@@ -66,8 +63,8 @@ falco:
 
 env:
   tlsSkipVerify: false
-  onboardingEndpoint: "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard"
-  tokenEndpoint: "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate"
+  onboardingEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
+  tokenEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
   streamKeepalivePeriods:
     kubernetes_resources: "10s"
     kubernetes_network_flows: "10s"
