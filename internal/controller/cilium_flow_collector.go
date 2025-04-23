@@ -23,17 +23,6 @@ type CiliumFlowCollector struct {
 	client observer.ObserverClient
 }
 
-type FlowKeyCilium struct {
-	Ts                 int64
-	SourceIP           string
-	DestinationIP      string
-	SourcePort         int
-	DestinationPort    int
-	Protocol           string
-	SourceK8sMeta      string
-	DestinationK8sMeta string
-}
-
 const (
 	ciliumHubbleRelayMaxFlowCount uint64 = 100
 	ciliumHubbleRelayServiceName  string = "hubble-relay"
@@ -43,15 +32,6 @@ var (
 	ErrHubbleNotFound   = errors.New("hubble Relay service not found; disabling Cilium flow collection")
 	ErrNoPortsAvailable = errors.New("hubble Relay service has no ports; disabling Cilium flow collection")
 )
-
-func (f FlowKeyCilium) Timestamp() int64            { return f.Ts }
-func (f FlowKeyCilium) SrcIP() string               { return f.SourceIP }
-func (f FlowKeyCilium) DstIP() string               { return f.DestinationIP }
-func (f FlowKeyCilium) SrcPort() int                { return f.SourcePort }
-func (f FlowKeyCilium) DstPort() int                { return f.DestinationPort }
-func (f FlowKeyCilium) Proto() string               { return f.Protocol }
-func (f FlowKeyCilium) SourceEndpoint() string      { return f.SourceK8sMeta }
-func (f FlowKeyCilium) DestinationEndpoint() string { return f.DestinationK8sMeta }
 
 // discoverCiliumHubbleRelayAddress uses a kubernetes clientset in order to discover the address of the hubble-relay service within kube-system.
 func discoverCiliumHubbleRelayAddress(ctx context.Context, ciliumNamespace string, clientset kubernetes.Interface) (string, error) {
@@ -207,11 +187,10 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 		if ciliumFlow == nil {
 			continue
 		}
-		flowKey, err := sm.FlowCache.createFlowKey(ciliumFlow)
 		if err != nil {
 			return err
 		}
-		sm.FlowCache.CacheFlow(ctx, Flow{Timestamp: ciliumFlow.Time.AsTime(), Key: flowKey, rawFlow: ciliumFlow})
+		sm.FlowCache.CacheFlow(ctx, ciliumFlow)
 	}
 }
 

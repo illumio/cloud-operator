@@ -30,27 +30,6 @@ type FalcoEvent struct {
 	IpVersion string `json:"prototype"`
 }
 
-type FlowKeyFalco struct {
-	Ts                 int64
-	SourceIP           string
-	DestinationIP      string
-	SourcePort         int
-	DestinationPort    int
-	Protocol           string
-	SourceK8sMeta      string
-	DestinationK8sMeta string
-}
-
-// Methods required by FlowKey interface
-func (f FlowKeyFalco) Timestamp() int64            { return f.Ts }
-func (f FlowKeyFalco) SrcIP() string               { return f.SourceIP }
-func (f FlowKeyFalco) DstIP() string               { return f.DestinationIP }
-func (f FlowKeyFalco) SrcPort() int                { return f.SourcePort }
-func (f FlowKeyFalco) DstPort() int                { return f.DestinationPort }
-func (f FlowKeyFalco) Proto() string               { return f.Protocol }
-func (f FlowKeyFalco) SourceEndpoint() string      { return "" }
-func (f FlowKeyFalco) DestinationEndpoint() string { return "" }
-
 // falcoTimestampFormat  is the format of timestamp strings received from Falco
 const falcoTimestampFormat = "2006-01-02T15:04:05.999999999-0700"
 

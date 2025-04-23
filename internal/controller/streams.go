@@ -402,11 +402,10 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				logger.Error("Failed to parse Falco event into flow", zap.Error(err))
 				return err
 			}
-			flowKey, err := sm.FlowCache.createFlowKey(convertedFalcoFlow)
 			if err != nil {
 				return err
 			}
-			sm.FlowCache.CacheFlow(ctx, Flow{Timestamp: convertedFalcoFlow.GetTimestamp().AsTime(), Key: flowKey, rawFlow: convertedFalcoFlow})
+			sm.FlowCache.CacheFlow(ctx, convertedFalcoFlow)
 		}
 	}
 }
