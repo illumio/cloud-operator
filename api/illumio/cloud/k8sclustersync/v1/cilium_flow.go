@@ -52,6 +52,17 @@ func (flow *CiliumFlow) Key() any {
 	default:
 		proto = "UNKNOWN"
 	}
+	if flow.IsReply.Value {
+		return CiliumFlowKey{
+			SourceIP:           flow.Layer3.GetDestination(),
+			DestinationIP:      flow.Layer3.GetSource(),
+			SourcePort:         dstPort,
+			DestinationPort:    srcPort,
+			Protocol:           proto,
+			SourceK8sMeta:      flow.DestinationEndpoint.GetPodName(),
+			DestinationK8sMeta: flow.SourceEndpoint.GetPodName(),
+		}
+	}
 
 	return CiliumFlowKey{
 		SourceIP:           flow.Layer3.GetSource(),

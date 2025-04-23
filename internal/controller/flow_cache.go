@@ -6,6 +6,7 @@ import (
 	"container/list"
 	"context"
 	"io"
+	"strconv"
 	"time"
 
 	"go.uber.org/zap"
@@ -71,6 +72,8 @@ func (c *FlowCache) CacheFlow(ctx context.Context, flow pb.Flow) error {
 // Run manages the flow cache by evicting expired flows based on the active timeout,
 // processing new flows, and resetting the timer for the next expiration.
 func (c *FlowCache) Run(ctx context.Context, logger *zap.Logger) error {
+	skippedFlows := 0
+	processedFlows := 0
 	timer := time.NewTimer(c.activeTimeout)
 	defer timer.Stop()
 	for {
@@ -88,6 +91,7 @@ func (c *FlowCache) Run(ctx context.Context, logger *zap.Logger) error {
 
 		case flow := <-c.inFlows:
 			if c.shouldSkipFlow(flow) {
+				skippedFlows++
 				continue
 			}
 
@@ -99,6 +103,9 @@ func (c *FlowCache) Run(ctx context.Context, logger *zap.Logger) error {
 
 			c.addFlowToCache(flow)
 			c.resetTimerForNextExpiration(timer)
+			processedFlows++
+			logger.Info("skipped flows: " + strconv.Itoa(skippedFlows))
+			logger.Info("total flows: " + strconv.Itoa(processedFlows))
 		}
 	}
 }
