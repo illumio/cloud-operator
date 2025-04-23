@@ -187,9 +187,6 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 		if ciliumFlow == nil {
 			continue
 		}
-		if err != nil {
-			return err
-		}
 		sm.FlowCache.CacheFlow(ctx, ciliumFlow)
 	}
 }

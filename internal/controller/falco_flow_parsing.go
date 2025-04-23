@@ -185,7 +185,7 @@ func createLayer4Message(proto string, srcPort, dstPort uint32, ipVersion string
 				Protocol: &pb.Layer4_Icmpv4{
 					Icmpv4: &pb.ICMPv4{},
 				},
-			}, nil
+		}, nil
 		} else if ipVersion == "ipv6" {
 			return &pb.Layer4{
 				Protocol: &pb.Layer4_Icmpv6{

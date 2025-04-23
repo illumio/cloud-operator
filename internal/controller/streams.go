@@ -402,9 +402,6 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				logger.Error("Failed to parse Falco event into flow", zap.Error(err))
 				return err
 			}
-			if err != nil {
-				return err
-			}
 			sm.FlowCache.CacheFlow(ctx, convertedFalcoFlow)
 		}
 	}
@@ -721,7 +718,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				FlowCache: NewFlowCache(
 					20*time.Second, // TODO: Make the active timeout configurable.
 					1000,           // TODO: Make the maxFlows capacity configurable.
-					make(chan Flow, 100),
+					make(chan pb.Flow, 100),
 				),
 			}
 			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
