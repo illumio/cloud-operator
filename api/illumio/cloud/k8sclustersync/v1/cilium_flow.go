@@ -25,52 +25,44 @@ func (flow *CiliumFlow) Key() any {
 		return nil
 	}
 
-	var (
-		srcPort int
-		dstPort int
-		proto   string
-	)
-
+	key := CiliumFlowKey{
+		SourceIP:           flow.Layer3.GetSource(),
+		DestinationIP:      flow.Layer3.GetDestination(),
+		SourceK8sMeta:      flow.SourceEndpoint.GetPodName(),
+		DestinationK8sMeta: flow.DestinationEndpoint.GetPodName(),
+	}
 	// Ports + Protocol
 	switch l4 := flow.GetLayer4().GetProtocol().(type) {
 	case *Layer4_Tcp:
-		srcPort = int(l4.Tcp.GetSourcePort())
-		dstPort = int(l4.Tcp.GetDestinationPort())
-		proto = "TCP"
+		key.SourcePort = int(l4.Tcp.GetSourcePort())
+		key.DestinationPort = int(l4.Tcp.GetDestinationPort())
+		key.Protocol = "TCP"
 	case *Layer4_Udp:
-		srcPort = int(l4.Udp.GetSourcePort())
-		dstPort = int(l4.Udp.GetDestinationPort())
-		proto = "UDP"
+		key.SourcePort = int(l4.Udp.GetSourcePort())
+		key.DestinationPort = int(l4.Udp.GetDestinationPort())
+		key.Protocol = "UDP"
 	case *Layer4_Sctp:
-		srcPort = int(l4.Sctp.GetSourcePort())
-		dstPort = int(l4.Sctp.GetDestinationPort())
-		proto = "SCTP"
+		key.SourcePort = int(l4.Sctp.GetSourcePort())
+		key.DestinationPort = int(l4.Sctp.GetDestinationPort())
+		key.Protocol = "SCTP"
 	case *Layer4_Icmpv4:
-		proto = "ICMPv4"
+		key.Protocol = "ICMPv4"
 	case *Layer4_Icmpv6:
-		proto = "ICMPv6"
+		key.Protocol = "ICMPv6"
 	default:
-		proto = "UNKNOWN"
+		key.Protocol = "UNKNOWN"
 	}
+
 	if flow.IsReply.Value {
 		return CiliumFlowKey{
 			SourceIP:           flow.Layer3.GetDestination(),
 			DestinationIP:      flow.Layer3.GetSource(),
-			SourcePort:         dstPort,
-			DestinationPort:    srcPort,
-			Protocol:           proto,
+			SourcePort:         key.DestinationPort,
+			DestinationPort:    key.SourcePort,
+			Protocol:           key.Protocol,
 			SourceK8sMeta:      flow.DestinationEndpoint.GetPodName(),
 			DestinationK8sMeta: flow.SourceEndpoint.GetPodName(),
 		}
 	}
-
-	return CiliumFlowKey{
-		SourceIP:           flow.Layer3.GetSource(),
-		DestinationIP:      flow.Layer3.GetDestination(),
-		SourcePort:         srcPort,
-		DestinationPort:    dstPort,
-		Protocol:           proto,
-		SourceK8sMeta:      flow.SourceEndpoint.GetPodName(),
-		DestinationK8sMeta: flow.DestinationEndpoint.GetPodName(),
-	}
+	return key
 }

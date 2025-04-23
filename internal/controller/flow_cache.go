@@ -141,10 +141,7 @@ func (c *FlowCache) shouldSkipFlow(flow pb.Flow) bool {
 
 // shouldEvictOldest checks if cache size has reached its limit.
 func (c *FlowCache) shouldEvictOldest() bool {
-	if len(c.cache) >= c.maxFlows {
-		return true
-	}
-	return false
+	return len(c.cache) >= c.maxFlows
 }
 
 // evictOldestFlow removes the oldest flow from cache and sends it out.
