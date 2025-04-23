@@ -334,13 +334,17 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 	return nil
 }
 
-func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *zap.Logger) error {
+func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, cancel context.CancelFunc, logger *zap.Logger) error {
+	defer cancel()
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case flow := <-sm.FlowCache.outFlows:
-			sm.sendNetworkFlowRequest(logger, flow)
+			err := sm.sendNetworkFlowRequest(logger, flow)
+			if err != nil {
+				return err
+			}
 		}
 
 	}
@@ -402,7 +406,11 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				logger.Error("Failed to parse Falco event into flow", zap.Error(err))
 				return err
 			}
-			sm.FlowCache.CacheFlow(ctx, convertedFalcoFlow)
+			err = sm.FlowCache.CacheFlow(ctx, convertedFalcoFlow)
+			if err != nil {
+				logger.Info("Failed to send flow to cache", zap.Error(err))
+				return err
+			}
 		}
 	}
 }
@@ -784,8 +792,8 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					envMap.StreamSuccessPeriod,
 				)
 			}
-
-			go sm.startFlowCacheOutReader(ctx, logger)
+			flowCacheReaderContext, flowCacheReaderContextCancel := context.WithCancel(ctx)
+			go sm.startFlowCacheOutReader(flowCacheReaderContext, flowCacheReaderContextCancel, logger)
 
 			// Block until one of the streams fail. Then we will jump to the top of
 			// this loop & try again: authenticate and open the streams.

@@ -187,7 +187,11 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 		if ciliumFlow == nil {
 			continue
 		}
-		sm.FlowCache.CacheFlow(ctx, ciliumFlow)
+		err = sm.FlowCache.CacheFlow(ctx, ciliumFlow)
+		if err != nil {
+			fm.logger.Info("Failed to send flow to cache", zap.Error(err))
+			return err
+		}
 	}
 }
 
