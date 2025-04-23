@@ -54,7 +54,7 @@ func (flow *FalcoFlow) Key() any {
 		proto = "UNKNOWN"
 	}
 
-	return &FalcoFlowKey{
+	return FalcoFlowKey{
 		SourceIP:        srcIP,
 		DestinationIP:   dstIP,
 		SourcePort:      srcPort,

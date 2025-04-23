@@ -68,74 +68,109 @@ func (c *FlowCache) CacheFlow(ctx context.Context, flow pb.Flow) error {
 	}
 }
 
-// cacheManagerIndefinitely manages the flow cache by evicting expired flows based on the active timeout,
+// Run manages the flow cache by evicting expired flows based on the active timeout,
 // processing new flows, and resetting the timer for the next expiration.
 func (c *FlowCache) Run(ctx context.Context, logger *zap.Logger) error {
-	// Create a new timer to trigger every activeTimeout duration.
 	timer := time.NewTimer(c.activeTimeout)
 	defer timer.Stop()
-
 	for {
 		select {
-		case <-ctx.Done(): // If the context is canceled, exit the loop and return the error.
+		case <-ctx.Done():
 			return ctx.Err()
 
 		case <-timer.C:
-			now := time.Now().UTC()
-			activeTimeoutCutoff := now.Sub(time.Now().Add(c.activeTimeout)) // Determine the cutoff time for expired flows.
+			c.evictExpiredFlows(ctx)
 
-			// Iterate through the flow cache queue to evict expired flows.
-			for c.queue.Len() > 0 {
-				frontElem := c.queue.Front()
-				flow := frontElem.Value.(pb.Flow)
-				flowTimestamp := flow.StartTimestamp()
-				flowKey := flow.Key()
-				// If the flow is not expired (timestamp is newer than the cutoff), stop evicting.
-				if flowTimestamp.After(time.Now().Add(activeTimeoutCutoff)) {
-					break
-				}
-
-				// Evict the expired flow by removing it from the cache and queue.
-				c.queue.Remove(frontElem)
-				delete(c.cache, flowKey)
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case c.outFlows <- flow:
-				}
-			}
-
-			// Reset the timer to expire based on the next flow's timestamp.
+			// Reset timer based on the next soon-to-expire flow
 			if front := c.queue.Front(); front != nil {
 				resetTimer(timer, front.Value.(pb.Flow).StartTimestamp(), c.activeTimeout)
 			}
+
 		case flow := <-c.inFlows:
-			// If the flow already exists in the cache, skip adding it again.
-			if _, found := c.cache[flow.Key()]; found {
+			if c.shouldSkipFlow(flow) {
 				continue
 			}
 
-			// If the cache is full, evict the oldest flow to make room for the new flow.
-			if len(c.cache) >= c.maxFlows {
-				oldestFlow := c.queue.Front()
-				c.queue.Remove(oldestFlow)
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case c.outFlows <- oldestFlow.Value.(pb.Flow):
+			if c.shouldEvictOldest() {
+				if err := c.evictOldestFlow(ctx); err != nil {
+					return err
 				}
 			}
 
-			// Add the new flow to the cache and queue.
-			c.queue.PushBack(flow)
-			c.cache[flow.Key()] = flow
-			oldestFlow := c.queue.Front().Value.(pb.Flow)
-			// Reset the timer based on the oldest flow's timestamp (queue is ordered so the front element is oldest).
-			resetTimer(timer, oldestFlow.StartTimestamp(), c.activeTimeout)
+			c.addFlowToCache(flow)
+			c.resetTimerForNextExpiration(timer)
 		}
 	}
 }
 
+// evictExpiredFlows removes all flows older than the active timeout from the cache and queue.
+func (c *FlowCache) evictExpiredFlows(ctx context.Context) {
+	now := time.Now().UTC()
+	cutoff := now.Add(-c.activeTimeout)
+
+	for c.queue.Len() > 0 {
+		frontElem := c.queue.Front()
+		flow := frontElem.Value.(pb.Flow)
+		if flow.StartTimestamp().After(cutoff) {
+			break
+		}
+		c.queue.Remove(frontElem)
+		delete(c.cache, flow.Key())
+		select {
+		case <-ctx.Done():
+			return
+		case c.outFlows <- flow:
+		}
+	}
+}
+
+// shouldSkipFlow determines if a flow is already cached and logs if skipped.
+func (c *FlowCache) shouldSkipFlow(flow pb.Flow) bool {
+	if _, exists := c.cache[flow.Key()]; exists {
+		return true
+	}
+	return false
+}
+
+// shouldEvictOldest checks if cache size has reached its limit.
+func (c *FlowCache) shouldEvictOldest() bool {
+	if len(c.cache) >= c.maxFlows {
+		return true
+	}
+	return false
+}
+
+// evictOldestFlow removes the oldest flow from cache and sends it out.
+func (c *FlowCache) evictOldestFlow(ctx context.Context) error {
+	oldest := c.queue.Front()
+	if oldest == nil {
+		return nil
+	}
+	c.queue.Remove(oldest)
+	flow := oldest.Value.(pb.Flow)
+	delete(c.cache, flow.Key())
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case c.outFlows <- flow:
+	}
+	return nil
+}
+
+// addFlowToCache adds a new flow to both the map and queue.
+func (c *FlowCache) addFlowToCache(flow pb.Flow) {
+	c.queue.PushBack(flow)
+	c.cache[flow.Key()] = flow
+}
+
+// resetTimerForNextExpiration resets the eviction timer based on the oldest flow's expiration time.
+func (c *FlowCache) resetTimerForNextExpiration(timer *time.Timer) {
+	if oldest := c.queue.Front(); oldest != nil {
+		resetTimer(timer, oldest.Value.(pb.Flow).StartTimestamp(), c.activeTimeout)
+	}
+}
+
+// resetTimer recalculates and sets the timer delay for the next flow to expire.
 func resetTimer(timer *time.Timer, timestamp time.Time, timeout time.Duration) {
 	delay := time.Until(timestamp.Add(timeout))
 	timer.Reset(delay)

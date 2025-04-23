@@ -335,11 +335,13 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 }
 
 func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *zap.Logger) error {
+	logger.Info("START FLOW CACHEOUT READER")
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case flow := <-sm.FlowCache.outFlows:
+			logger.Info("sending flows")
 			sm.sendNetworkFlowRequest(logger, flow)
 		}
 
@@ -760,6 +762,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				envMap.KeepalivePeriods.Configuration,
 				envMap.StreamSuccessPeriod,
 			)
+			go sm.FlowCache.Run(ctx, logger)
 
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
