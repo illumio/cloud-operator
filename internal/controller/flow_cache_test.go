@@ -171,8 +171,7 @@ func TestFlowCache_EvictOldestFlow(t *testing.T) {
 
 func TestFlowCache_Run(t *testing.T) {
 	outFlows := make(chan pb.Flow, 10)
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
+	logger, _ := zap.NewDevelopment()
 
 	c := NewFlowCache(10*time.Second, 100, outFlows)
 	ctx, cancel := context.WithCancel(context.Background())

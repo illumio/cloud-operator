@@ -334,8 +334,7 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 	return nil
 }
 
-func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, cancel context.CancelFunc, logger *zap.Logger) error {
-	defer cancel()
+func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *zap.Logger) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -408,7 +407,7 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 			}
 			err = sm.FlowCache.CacheFlow(ctx, convertedFalcoFlow)
 			if err != nil {
-				logger.Info("Failed to send flow to cache", zap.Error(err))
+				logger.Error("Failed to cache flow", zap.Error(err))
 				return err
 			}
 		}
@@ -768,7 +767,15 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				envMap.KeepalivePeriods.Configuration,
 				envMap.StreamSuccessPeriod,
 			)
-			go sm.FlowCache.Run(ctx, logger)
+
+			go func() {
+				ctxFlowCacheRun, ctxCancelFlowCacheRun := context.WithCancel(ctx)
+				err := sm.FlowCache.Run(ctxFlowCacheRun, logger)
+				if err != nil {
+					logger.Info("Failed to execute flow caching and eviction", zap.Error(err))
+				}
+				ctxCancelFlowCacheRun()
+			}()
 
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
@@ -792,8 +799,14 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					envMap.StreamSuccessPeriod,
 				)
 			}
-			flowCacheReaderContext, flowCacheReaderContextCancel := context.WithCancel(ctx)
-			go sm.startFlowCacheOutReader(flowCacheReaderContext, flowCacheReaderContextCancel, logger)
+			go func() {
+				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(ctx)
+				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger)
+				if err != nil {
+					logger.Info("Failed to send network flow from cache", zap.Error(err))
+				}
+				ctxCancelFlowCacheOutReader()
+			}()
 
 			// Block until one of the streams fail. Then we will jump to the top of
 			// this loop & try again: authenticate and open the streams.
