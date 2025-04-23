@@ -7,8 +7,9 @@ import (
 var _ Flow = &FalcoFlow{}
 
 type FalcoFlowKey struct {
-	SourceIP      string
-	DestinationIP string
+	SourceIP        string
+	DestinationIP   string
+	SourcePort      int
 	DestinationPort int
 	Protocol        string
 }
@@ -27,18 +28,22 @@ func (flow *FalcoFlow) Key() any {
 	dstIP := flow.GetLayer3().GetDestination()
 
 	var (
+		srcPort int
 		dstPort int
 		proto   string
 	)
 
 	switch l4 := flow.GetLayer4().GetProtocol().(type) {
 	case *Layer4_Tcp:
+		srcPort = int(l4.Tcp.GetSourcePort())
 		dstPort = int(l4.Tcp.GetDestinationPort())
 		proto = "TCP"
 	case *Layer4_Udp:
+		srcPort = int(l4.Udp.GetSourcePort())
 		dstPort = int(l4.Udp.GetDestinationPort())
 		proto = "UDP"
 	case *Layer4_Sctp:
+		srcPort = int(l4.Sctp.GetSourcePort())
 		dstPort = int(l4.Sctp.GetDestinationPort())
 		proto = "SCTP"
 	case *Layer4_Icmpv4:
@@ -50,8 +55,9 @@ func (flow *FalcoFlow) Key() any {
 	}
 
 	return FalcoFlowKey{
-		SourceIP:      srcIP,
-		DestinationIP: dstIP,
+		SourceIP:        srcIP,
+		DestinationIP:   dstIP,
+		SourcePort:      srcPort,
 		DestinationPort: dstPort,
 		Protocol:        proto,
 	}
