@@ -335,13 +335,11 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 }
 
 func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *zap.Logger) error {
-	logger.Info("START FLOW CACHEOUT READER")
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case flow := <-sm.FlowCache.outFlows:
-			logger.Info("sending flows")
 			sm.sendNetworkFlowRequest(logger, flow)
 		}
 
