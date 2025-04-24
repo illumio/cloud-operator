@@ -12,8 +12,8 @@ type CiliumFlowKey struct {
 	SourcePort         int
 	DestinationPort    int
 	Protocol           string
-	SourceK8sMeta      string
-	DestinationK8sMeta string
+	SourceK8sMeta      uint32
+	DestinationK8sMeta uint32
 }
 
 func (flow *CiliumFlow) StartTimestamp() time.Time {
@@ -28,8 +28,8 @@ func (flow *CiliumFlow) Key() any {
 	key := CiliumFlowKey{
 		SourceIP:           flow.Layer3.GetSource(),
 		DestinationIP:      flow.Layer3.GetDestination(),
-		SourceK8sMeta:      flow.SourceEndpoint.GetPodName(),
-		DestinationK8sMeta: flow.DestinationEndpoint.GetPodName(),
+		SourceK8sMeta:      flow.SourceEndpoint.GetUid(),
+		DestinationK8sMeta: flow.DestinationEndpoint.GetUid(),
 	}
 	// Ports + Protocol
 	switch l4 := flow.GetLayer4().GetProtocol().(type) {
@@ -54,14 +54,14 @@ func (flow *CiliumFlow) Key() any {
 	}
 
 	if flow.GetIsReply().GetValue() {
-		return CiliumFlowKey{
-			SourceIP:           flow.Layer3.GetDestination(),
-			DestinationIP:      flow.Layer3.GetSource(),
+		key = CiliumFlowKey{
+			SourceIP:           key.DestinationIP,
+			DestinationIP:      key.SourceIP,
 			SourcePort:         key.DestinationPort,
 			DestinationPort:    key.SourcePort,
 			Protocol:           key.Protocol,
-			SourceK8sMeta:      flow.DestinationEndpoint.GetPodName(),
-			DestinationK8sMeta: flow.SourceEndpoint.GetPodName(),
+			SourceK8sMeta:      key.DestinationK8sMeta,
+			DestinationK8sMeta: key.SourceK8sMeta,
 		}
 	}
 	return key
