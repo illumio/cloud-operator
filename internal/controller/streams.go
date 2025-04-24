@@ -56,6 +56,7 @@ type deadlockDetector struct {
 type streamManager struct {
 	bufferedGrpcSyncer *BufferedGrpcWriteSyncer
 	streamClient       *streamClient
+	FlowCache          *FlowCache
 }
 
 type KeepalivePeriods struct {
@@ -333,6 +334,21 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 	return nil
 }
 
+func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *zap.Logger) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case flow := <-sm.FlowCache.outFlows:
+			err := sm.sendNetworkFlowRequest(logger, flow)
+			if err != nil {
+				return err
+			}
+		}
+
+	}
+}
+
 // findHubbleRelay returns a *CiliumFlowCollector if hubble relay is found in the given namespace
 func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger, ciliumNamespace string) *CiliumFlowCollector {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
@@ -389,9 +405,9 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				logger.Error("Failed to parse Falco event into flow", zap.Error(err))
 				return err
 			}
-			err = sm.sendNetworkFlowRequest(logger, convertedFalcoFlow)
+			err = sm.FlowCache.CacheFlow(ctx, convertedFalcoFlow)
 			if err != nil {
-				logger.Error("Failed to send Falco flow", zap.Error(err))
+				logger.Error("Failed to cache flow", zap.Error(err))
 				return err
 			}
 		}
@@ -436,7 +452,6 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 		return err
 	}
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
-
 	go func() {
 		err := sm.StreamKeepalives(ciliumCtx, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
 		if err != nil {
@@ -707,6 +722,11 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			sm := &streamManager{
 				streamClient:       streamClient,
 				bufferedGrpcSyncer: bufferedGrpcSyncer,
+				FlowCache: NewFlowCache(
+					20*time.Second, // TODO: Make the active timeout configurable.
+					1000,           // TODO: Make the maxFlows capacity configurable.
+					make(chan pb.Flow, 100),
+				),
 			}
 			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
 			if ciliumFlowCollector == nil {
@@ -748,6 +768,15 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				envMap.StreamSuccessPeriod,
 			)
 
+			go func() {
+				ctxFlowCacheRun, ctxCancelFlowCacheRun := context.WithCancel(ctx)
+				err := sm.FlowCache.Run(ctxFlowCacheRun, logger)
+				if err != nil {
+					logger.Info("Failed to execute flow caching and eviction", zap.Error(err))
+				}
+				ctxCancelFlowCacheRun()
+			}()
+
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
@@ -770,6 +799,14 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					envMap.StreamSuccessPeriod,
 				)
 			}
+			go func() {
+				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(ctx)
+				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger)
+				if err != nil {
+					logger.Info("Failed to send network flow from cache", zap.Error(err))
+				}
+				ctxCancelFlowCacheOutReader()
+			}()
 
 			// Block until one of the streams fail. Then we will jump to the top of
 			// this loop & try again: authenticate and open the streams.
