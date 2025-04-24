@@ -19,7 +19,9 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -101,28 +103,31 @@ type EnvironmentConfig struct {
 	StreamSuccessPeriod StreamSuccessPeriod
 }
 
-var resourceAPIGroupMap = map[string]string{
-	"cronjobs":                  "batch",
-	"customresourcedefinitions": "apiextensions.k8s.io",
-	"daemonsets":                "apps",
-	"deployments":               "apps",
-	"endpoints":                 "",
-	"gateways":                  "gateway.networking.k8s.io",
-	"gatewayclasses":            "gateway.networking.k8s.io",
-	"httproutes":                "gateway.networking.k8s.io",
-	"ingresses":                 "networking.k8s.io",
-	"ingressclasses":            "networking.k8s.io",
-	"jobs":                      "batch",
-	"namespaces":                "",
-	"networkpolicies":           "networking.k8s.io",
-	"nodes":                     "",
-	"pods":                      "",
-	"replicasets":               "apps",
-	"replicationcontrollers":    "",
-	"serviceaccounts":           "",
-	"services":                  "",
-	"statefulsets":              "apps",
+// Add or delete the resource
+var resources = []string{
+	"cronjobs",
+	"customresourcedefinitions",
+	"daemonsets",
+	"deployments",
+	"endpoints",
+	"gateways",
+	"gatewayclasses",
+	"httproutes",
+	"ingresses",
+	"ingressclasses",
+	"jobs",
+	"namespaces",
+	"networkpolicies",
+	"nodes",
+	"pods",
+	"replicasets",
+	"replicationcontrollers",
+	"serviceaccounts",
+	"services",
+	"statefulsets",
 }
+
+var resourceAPIGroupMap = make(map[string]string)
 
 var dd = &deadlockDetector{}
 var ErrStopRetries = errors.New("stop retries")
@@ -150,6 +155,46 @@ func ServerIsHealthy() bool {
 		return false
 	}
 	return true
+}
+
+func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset *kubernetes.Clientset, logger *zap.Logger) (map[string]string, error) {
+	// Map to store resource-to-API group mapping
+	resourceAPIGroupMap := make(map[string]string)
+
+	// Convert input resources list to a map for quick lookups
+	resourceSet := make(map[string]struct{})
+	for _, resource := range resources {
+		resourceSet[resource] = struct{}{}
+	}
+
+	// Create a discovery client for fetching API groups and resources
+	discoveryClient := discovery.NewDiscoveryClient(clientset.RESTClient())
+	apiGroups, err := discoveryClient.ServerGroups()
+	if err != nil {
+		logger.Error("Error fetching API groups", zap.Error(err))
+		return resourceAPIGroupMap, err
+	}
+
+	// Iterate over all API groups and versions
+	for _, group := range apiGroups.Groups {
+		for _, version := range group.Versions {
+			resourceList, err := discoveryClient.ServerResourcesForGroupVersion(version.GroupVersion)
+			if err != nil {
+				logger.Error("Error fetching resources for groupVersion", zap.Error(err))
+				return resourceAPIGroupMap, err
+			}
+
+			// Map resources to their API groups
+			for _, resource := range resourceList.APIResources {
+				if _, exists := resourceSet[resource.Name]; exists {
+					groupName := group.Name
+					resourceAPIGroupMap[resource.Name] = groupName
+				}
+			}
+		}
+	}
+
+	return resourceAPIGroupMap, nil
 }
 
 // StreamResources handles the resource stream.
