@@ -6,7 +6,6 @@ import (
 	"container/list"
 	"context"
 	"io"
-	"strconv"
 	"time"
 
 	"go.uber.org/zap"
