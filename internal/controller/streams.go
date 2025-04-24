@@ -220,27 +220,14 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		logger.Error("Failed to create clientset", zap.Error(err))
 		return err
 	}
-	apiGroups, err := clientset.Discovery().ServerGroups()
+
+	//This builds resourceAPIGroupMap from Kubernetes API
+	resourceAPIGroupMap, err = sm.buildResourceApiGroupMap(resources, clientset, logger)
 	if err != nil {
-		logger.Error("Failed to discover API groups", zap.Error(err))
-	}
-	foundGatewayAPIGroup := false
-
-	// Check if the "gateway.networking.k8s.io" API group is not available, if it is not delete those resources and groups
-	for _, group := range apiGroups.Groups {
-		if group.Name == "gateway.networking.k8s.io" {
-			foundGatewayAPIGroup = true
-			break
-		}
+		logger.Error("Failed to build resource api group map", zap.Error(err))
+		return err
 	}
 
-	// If the "gateway.networking.k8s.io" API group is not found, remove the resources
-	if !foundGatewayAPIGroup {
-		gatewayResources := []string{"gateways", "gatewayclasses", "httproutes"}
-		for _, resource := range gatewayResources {
-			delete(resourceAPIGroupMap, resource)
-		}
-	}
 	dd.mutex.Lock()
 	dd.timeStarted = time.Now()
 	dd.processingResources = true
