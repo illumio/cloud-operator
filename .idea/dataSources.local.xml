@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="dataSourceStorageLocal" created-in="GO-251.23774.430">
+    <data-source name="postgres@localhost" uuid="837da0a8-0be9-4586-9b81-4b365d3a148a">
+      <database-info product="" version="" jdbc-version="" driver-name="" driver-version="" dbms="POSTGRES" />
+      <secret-storage>master_key</secret-storage>
+      <user-name>pavan</user-name>
+      <schema-mapping />
+    </data-source>
+    <data-source name="postgres@localhost [2]" uuid="20769af4-6a5c-4f1d-81cc-a486e86476a4">
+      <database-info product="" version="" jdbc-version="" driver-name="" driver-version="" dbms="POSTGRES" />
+      <secret-storage>master_key</secret-storage>
+      <user-name>pavan</user-name>
+      <schema-mapping />
+    </data-source>
+  </component>
+</project>

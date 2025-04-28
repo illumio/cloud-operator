@@ -1,0 +1,78 @@
+Index: internal/controller/grpc_logger_test.go
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>package controller\n\nimport (\n\t\"context\"\n\t\"errors\"\n\t\"fmt\"\n\t\"testing\"\n\t\"time\"\n\n\tpb \"github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1\"\n\t\"github.com/stretchr/testify/mock\"\n\t\"github.com/stretchr/testify/suite\"\n\t\"go.uber.org/zap\"\n\t\"go.uber.org/zap/zapcore\"\n\t\"google.golang.org/grpc/connectivity\"\n\t\"google.golang.org/grpc/metadata\"\n)\n\n// MockSendLogsClient mocks the SendLogsClient gRPC interface\ntype MockSendLogsClient struct {\n\tmock.Mock\n}\n\nfunc (m *MockSendLogsClient) Send(req *pb.SendLogsRequest) error {\n\targs := m.Called(req)\n\treturn args.Error(0)\n}\n\nfunc (m *MockSendLogsClient) Recv() (*pb.SendLogsResponse, error) {\n\targs := m.Called()\n\tif resp, ok := args.Get(0).(*pb.SendLogsResponse); ok {\n\t\treturn resp, args.Error(1)\n\t}\n\treturn nil, args.Error(1)\n}\n\nfunc (m *MockSendLogsClient) CloseSend() error {\n\targs := m.Called()\n\treturn args.Error(0)\n}\n\nfunc (m *MockSendLogsClient) Context() context.Context {\n\treturn context.Background()\n}\n\nfunc (m *MockSendLogsClient) Header() (metadata.MD, error) {\n\targs := m.Called()\n\tif header, ok := args.Get(0).(metadata.MD); ok {\n\t\treturn header, args.Error(1)\n\t}\n\treturn nil, args.Error(1)\n}\n\nfunc (m *MockSendLogsClient) Trailer() metadata.MD {\n\targs := m.Called()\n\tif trailer, ok := args.Get(0).(metadata.MD); ok {\n\t\treturn trailer\n\t}\n\treturn nil\n}\n\nfunc (m *MockSendLogsClient) SendMsg(msg interface{}) error {\n\targs := m.Called(msg)\n\treturn args.Error(0)\n}\n\nfunc (m *MockSendLogsClient) RecvMsg(msg interface{}) error {\n\targs := m.Called(msg)\n\treturn args.Error(0)\n}\n\n// MockClientConn mocks ClientConnInterface\ntype MockClientConn struct {\n\tmock.Mock\n}\n\nfunc (m *MockClientConn) GetState() connectivity.State {\n\targs := m.Called()\n\treturn args.Get(0).(connectivity.State)\n}\n\nfunc (m *MockClientConn) Close() error {\n\targs := m.Called()\n\treturn args.Error(0)\n}\n\n// BufferedGrpcWriteSyncerTestSuite is a test suite for BufferedGrpcWriteSyncer\ntype BufferedGrpcWriteSyncerTestSuite struct {\n\tsuite.Suite\n\tgrpcSyncer *BufferedGrpcWriteSyncer\n\tmockClient *MockSendLogsClient\n\tmockConn   *MockClientConn\n}\n\n// TestBufferedGrpcWriteSyncerTestSuite runs the test suite\nfunc TestBufferedGrpcWriteSyncerTestSuite(t *testing.T) {\n\tsuite.Run(t, new(BufferedGrpcWriteSyncerTestSuite))\n}\n\nfunc (suite *BufferedGrpcWriteSyncerTestSuite) SetupTest() {\n\tmockClient := &MockSendLogsClient{}\n\tmockConn := &MockClientConn{}\n\tencoderConfig := zap.NewProductionEncoderConfig()\n\tencoder := zapcore.NewJSONEncoder(encoderConfig)\n\n\tsuite.mockClient = mockClient\n\tsuite.mockConn = mockConn\n\tsuite.grpcSyncer = &BufferedGrpcWriteSyncer{\n\t\tclient:   mockClient,\n\t\tconn:     mockConn,\n\t\tbuffer:   make([]string, 0, logMaxBufferSize),\n\t\tdone:     make(chan struct{}),\n\t\tlogger:   zap.NewNop(), // Use a no-op logger for simplicity\n\t\tlogLevel: zap.NewAtomicLevel(),\n\t\tencoder:  encoder,\n\t}\n\n\tmockConn.On(\"GetState\").Return(connectivity.Ready)\n\tmockConn.On(\"Close\").Return(nil)\n}\n\n// TestSendLogEntry tests the sendLogEntry method to ensure proper formatting and encoding\nfunc (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLogEntry() {\n\tts, err := time.Parse(time.RFC3339, \"2025-02-28T11:56:05Z\")\n\tsuite.NoError(err)\n\n\tentry := zapcore.Entry{\n\t\tLevel: zapcore.InfoLevel,\n\t\tTime:  ts,\n\t\t// Message contains the entry's whole structured context already serialized.\n\t\t// gRPC logger requires that this is serialized into a JSON object.\n\t\tMessage: \"The Message\",\n\t}\n\n\tfields := []zap.Field{\n\t\tzap.String(\"field1\", \"a string\"),\n\t\tzap.Int(\"field2\", 10),\n\t}\n\n\tjsonMessage, err := encodeLogEntry(suite.grpcSyncer.encoder, entry, fields)\n\tsuite.NoError(err)\n\n\texpectedLogEntry := &pb.LogEntry{\n\t\tJsonMessage: `{\"level\":\"info\",\"ts\":1740743765,\"msg\":\"The Message\",\"field1\":\"a string\",\"field2\":10}`,\n\t}\n\n\tsuite.mockClient.On(\"Send\", &pb.SendLogsRequest{\n\t\tRequest: &pb.SendLogsRequest_LogEntry{\n\t\t\tLogEntry: expectedLogEntry,\n\t\t},\n\t}).Return(nil).Once()\n\n\terr = suite.grpcSyncer.sendLogEntry(jsonMessage)\n\tsuite.NoError(err)\n\tsuite.mockClient.AssertExpectations(suite.T())\n}\n\n// mockZapClock mocks zapcore.Clock to always return the same time for \"now\".\ntype mockZapClock struct {\n\tnow time.Time\n}\n\nvar _ zapcore.Clock = &mockZapClock{}\n\nfunc (c *mockZapClock) Now() time.Time {\n\treturn c.now\n}\n\nfunc (c *mockZapClock) NewTicker(duration time.Duration) *time.Ticker {\n\treturn time.NewTicker(duration)\n}\n\n// TestZapCoreWrapper tests the gRPC logger end-to-end.\nfunc (suite *BufferedGrpcWriteSyncerTestSuite) TestZapCoreWrapper() {\n\tts, err := time.Parse(time.RFC3339, \"2025-02-28T11:56:05Z\")\n\tsuite.NoError(err)\n\n\tmockClock := &mockZapClock{\n\t\tnow: ts,\n\t}\n\n\t// Disable logging the caller and mock the clock to make the test deterministic\n\tlogger := NewGRPCLogger(suite.grpcSyncer, false, mockClock)\n\n\texpectedLogEntry := &pb.LogEntry{\n\t\tJsonMessage: `{\"level\":\"info\",\"ts\":\"2025-02-28T11:56:05Z\",\"msg\":\"The Message\",\"field1\":\"a string\",\"field2\":10,\"error\":\"some error\"}`,\n\t}\n\n\tsuite.mockClient.On(\"Send\", &pb.SendLogsRequest{\n\t\tRequest: &pb.SendLogsRequest_LogEntry{\n\t\t\tLogEntry: expectedLogEntry,\n\t\t},\n\t}).Return(nil).Once()\n\n\tlogger = logger.With(\n\t\tzap.String(\"field1\", \"a string\"),\n\t)\n\n\tlogger.Info(\"The Message\",\n\t\tzap.Int(\"field2\", 10),\n\t\tzap.Error(errors.New(\"some error\")),\n\t)\n\n\tsuite.mockClient.AssertExpectations(suite.T())\n}\n\n// TestWriteBuffering tests the gRPC logger's buffering when the connection is not established.\nfunc (suite *BufferedGrpcWriteSyncerTestSuite) TestWriteBuffering() {\n\tts, err := time.Parse(time.RFC3339, \"2025-02-28T11:56:05Z\")\n\tsuite.NoError(err)\n\n\tmockClock := &mockZapClock{\n\t\tnow: ts,\n\t}\n\n\t// Disable logging the caller and mock the clock to make the test deterministic\n\tlogger := NewGRPCLogger(suite.grpcSyncer, false, mockClock)\n\n\t// Equivalent to a disconnection\n\tsuite.grpcSyncer.conn = nil\n\n\texpectedLostLogEntriesCount := 0\n\n\tfor i := 0; i < logMaxBufferSize+10; i += 1 {\n\t\tsuite.Run(fmt.Sprintf(\"Message %d\", i), func() {\n\t\t\tlogger.Info(\"The Message\",\n\t\t\t\tzap.Int(\"num\", i),\n\t\t\t)\n\n\t\t\tif i < logMaxBufferSize {\n\t\t\t\texpectedJsonMessage := fmt.Sprintf(`{\"level\":\"info\",\"ts\":\"2025-02-28T11:56:05Z\",\"msg\":\"The Message\",\"num\":%d}`, i)\n\t\t\t\tsuite.Equal(i+1, len(suite.grpcSyncer.buffer))\n\t\t\t\tsuite.Equal(expectedJsonMessage, suite.grpcSyncer.buffer[i])\n\t\t\t} else {\n\t\t\t\tsuite.Equal(logMaxBufferSize, len(suite.grpcSyncer.buffer))\n\t\t\t\texpectedLostLogEntriesCount += 1\n\t\t\t\tsuite.Equal(expectedLostLogEntriesCount, suite.grpcSyncer.lostLogEntriesCount)\n\t\t\t}\n\t\t})\n\t}\n}\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/internal/controller/grpc_logger_test.go b/internal/controller/grpc_logger_test.go
+--- a/internal/controller/grpc_logger_test.go	(revision ab4c80425441fcb55dc97b7e4c7749686105cfca)
++++ b/internal/controller/grpc_logger_test.go	(date 1741285841424)
+@@ -119,40 +119,40 @@
+ 	mockConn.On("Close").Return(nil)
+ }
+ 
+-// TestSendLogEntry tests the sendLogEntry method to ensure proper formatting and encoding
+-func (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLogEntry() {
+-	ts, err := time.Parse(time.RFC3339, "2025-02-28T11:56:05Z")
+-	suite.NoError(err)
+-
+-	entry := zapcore.Entry{
+-		Level: zapcore.InfoLevel,
+-		Time:  ts,
+-		// Message contains the entry's whole structured context already serialized.
+-		// gRPC logger requires that this is serialized into a JSON object.
+-		Message: "The Message",
+-	}
+-
+-	fields := []zap.Field{
+-		zap.String("field1", "a string"),
+-		zap.Int("field2", 10),
+-	}
+-
+-	jsonMessage, err := encodeLogEntry(suite.grpcSyncer.encoder, entry, fields)
+-	suite.NoError(err)
+-
+-	expectedLogEntry := &pb.LogEntry{
+-		JsonMessage: `{"level":"info","ts":1740743765,"msg":"The Message","field1":"a string","field2":10}`,
+-	}
++// TestBufferFlushOnReconnect ensures buffered logs are sent after reconnection.
++func (suite *BufferedGrpcWriteSyncerTestSuite) TestBufferFlushOnReconnect() {
++	expectedMessage := `{"level":"info","ts":1740743765,"msg":"Buffered log entry"}`
++	suite.grpcSyncer.buffer = append(suite.grpcSyncer.buffer, expectedMessage)
+ 
+ 	suite.mockClient.On("Send", &pb.SendLogsRequest{
+ 		Request: &pb.SendLogsRequest_LogEntry{
+-			LogEntry: expectedLogEntry,
++			LogEntry: &pb.LogEntry{
++				JsonMessage: expectedMessage,
++			},
+ 		},
+ 	}).Return(nil).Once()
+ 
+-	err = suite.grpcSyncer.sendLogEntry(jsonMessage)
+-	suite.NoError(err)
++	suite.grpcSyncer.flush()
++
+ 	suite.mockClient.AssertExpectations(suite.T())
++	suite.Empty(suite.grpcSyncer.buffer, "Buffer should be empty after flushing")
++}
++
++// TestUpdateLogLevel verifies that log levels are correctly updated.
++func (suite *BufferedGrpcWriteSyncerTestSuite) TestUpdateLogLevel() {
++	logLevels := map[pb.LogLevel]zapcore.Level{
++		pb.LogLevel_LOG_LEVEL_DEBUG: zapcore.DebugLevel,
++		pb.LogLevel_LOG_LEVEL_INFO:  zapcore.InfoLevel,
++		pb.LogLevel_LOG_LEVEL_WARN:  zapcore.WarnLevel,
++		pb.LogLevel_LOG_LEVEL_ERROR: zapcore.ErrorLevel,
++	}
++
++	for grpcLevel, expectedZapLevel := range logLevels {
++		suite.Run(fmt.Sprintf("Set log level %v", grpcLevel), func() {
++			suite.grpcSyncer.updateLogLevel(grpcLevel)
++			suite.Equal(expectedZapLevel, suite.grpcSyncer.logLevel.Level())
++		})
++	}
+ }
+ 
+ // mockZapClock mocks zapcore.Clock to always return the same time for "now".
