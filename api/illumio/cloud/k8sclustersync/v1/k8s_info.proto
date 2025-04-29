@@ -178,7 +178,7 @@ message KubernetesResourceMutation {
 }
 
 // A flow received from Falco using custom rules
-message StandardFow {
+message StandardFlow {
   // layer3 IP layer, source, destination and ip_version
   IP layer3 = 1;
   // Proto contains protocol used
@@ -366,7 +366,7 @@ message SendKubernetesNetworkFlowsRequest {
     Keepalive keepalive = 3;
 
     CiliumFlow cilium_flow = 1;
-    StandardFow standard_flow = 2;
+    StandardFlow standard_flow = 2;
   }
 }
 
