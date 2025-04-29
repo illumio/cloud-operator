@@ -94,6 +94,15 @@ helm install illumio --namespace illumio-cloud oci://ghcr.io/illumio/charts/clou
 
 ## Proxy Configuration
 
+### Configuring the Proxy
+
+1. Set the `HTTPS_PROXY` environment variable to the URL of your proxy server. For example:
+   ```bash
+   export HTTPS_PROXY=http://proxy.example.com:8080
+   ```
+
+2. Ensure that the proxy server is accessible from the environment where the Cloud Operator is running.
+
 ### Behavior
 
 - **HTTP Requests**:

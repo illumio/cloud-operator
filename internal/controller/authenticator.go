@@ -165,6 +165,14 @@ func SetUpOAuthConnection(
 	}
 	tokenSource := GetTokenSource(contextWithTimeout, oauthConfig, tlsConfig)
 
+	// Log proxy settings
+	proxyEnv := os.Getenv("HTTPS_PROXY")
+	if proxyEnv != "" {
+		logger.Info("[Proxy Set] HTTPS_PROXY is set", zap.String("proxy", proxyEnv))
+	} else {
+		logger.Info("[Proxy Unset] HTTPS_PROXY is not set")
+	}
+
 	token, err := tokenSource.Token()
 	if err != nil {
 		logger.Error("Error retrieving a valid token", zap.Error(err))
@@ -188,12 +196,14 @@ func SetUpOAuthConnection(
 	proxyDialer := func(ctx context.Context, addr string) (net.Conn, error) {
 		proxyURL, err := http.ProxyFromEnvironment(&http.Request{URL: &url.URL{Host: addr}})
 		if err != nil || proxyURL == nil {
+			logger.Warn("[Proxy Failure] No valid proxy found or error occurred", zap.Error(err))
 			return net.Dial("tcp", addr)
 		}
+		logger.Info("[Proxy Success] Using proxy", zap.String("proxy", proxyURL.String()))
 		return proxy.Dial(ctx, "tcp", addr)
 	}
 
-	conn, err := grpc.NewClient(
+	conn, err := grpc.Dial(
 		aud,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(oauth.TokenSource{TokenSource: tokenSource}),
