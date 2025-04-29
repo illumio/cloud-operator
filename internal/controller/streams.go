@@ -189,8 +189,7 @@ func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset 
 			// Map resources to their API groups
 			for _, resource := range resourceList.APIResources {
 				if _, exists := resourceSet[resource.Name]; exists {
-					groupName := group.Name
-					resourceAPIGroupMap[resource.Name] = groupName
+					resourceAPIGroupMap[resource.Name] = group.Name
 				}
 			}
 		}
