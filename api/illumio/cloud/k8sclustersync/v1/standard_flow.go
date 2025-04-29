@@ -4,9 +4,9 @@ import (
 	"time"
 )
 
-var _ Flow = &FalcoFlow{}
+var _ Flow = &StandardFlow{}
 
-type FalcoFlowKey struct {
+type StandardFlowKey struct {
 	SourceIP        string
 	DestinationIP   string
 	SourcePort      int
@@ -14,16 +14,16 @@ type FalcoFlowKey struct {
 	Protocol        string
 }
 
-func (flow *FalcoFlow) StartTimestamp() time.Time {
+func (flow *StandardFlow) StartTimestamp() time.Time {
 	return flow.GetTimestamp().AsTime()
 }
 
-func (flow *FalcoFlow) Key() any {
+func (flow *StandardFlow) Key() any {
 	if flow == nil {
 		return nil
 
 	}
-	key := FalcoFlowKey{
+	key := StandardFlowKey{
 		SourceIP:      flow.GetLayer3().GetSource(),
 		DestinationIP: flow.GetLayer3().GetDestination(),
 	}

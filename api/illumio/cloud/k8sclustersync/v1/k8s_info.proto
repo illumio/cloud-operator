@@ -124,6 +124,8 @@ enum FlowCollector {
   FLOW_COLLECTOR_CILIUM = 2;
   // Indicates that Falco is deployed and configured for collecting network flows.
   FLOW_COLLECTOR_FALCO = 3;
+  // Indicates that OVN is deployed and configured for collecting network flows.
+  FLOW_COLLECTOR_OVN = 4;
 }
 
 // Message sent by the operator in a KubernetesResources request stream.
@@ -176,7 +178,7 @@ message KubernetesResourceMutation {
 }
 
 // A flow received from Falco using custom rules
-message FalcoFlow {
+message StandardFow {
   // layer3 IP layer, source, destination and ip_version
   IP layer3 = 1;
   // Proto contains protocol used
@@ -364,7 +366,7 @@ message SendKubernetesNetworkFlowsRequest {
     Keepalive keepalive = 3;
 
     CiliumFlow cilium_flow = 1;
-    FalcoFlow falco_flow = 2;
+    StandardFow standard_flow = 2;
   }
 }
 

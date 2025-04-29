@@ -36,10 +36,10 @@ func (sm *streamManager) sendNetworkFlowRequest(logger *zap.Logger, flow interfa
 	var request *pb.SendKubernetesNetworkFlowsRequest
 
 	switch f := flow.(type) {
-	case *pb.FalcoFlow:
+	case *pb.StandardFlow:
 		request = &pb.SendKubernetesNetworkFlowsRequest{
-			Request: &pb.SendKubernetesNetworkFlowsRequest_FalcoFlow{
-				FalcoFlow: f,
+			Request: &pb.SendKubernetesNetworkFlowsRequest_StandardFlow{
+				StandardFlow: f,
 			},
 		}
 	case *pb.CiliumFlow:

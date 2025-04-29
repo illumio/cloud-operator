@@ -89,6 +89,7 @@ func main() {
 	bindEnv(logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
 	bindEnv(logger, "onboarding_client_secret", "ONBOARDING_CLIENT_SECRET")
 	bindEnv(logger, "onboarding_endpoint", "ONBOARDING_ENDPOINT")
+	bindEnv(logger, "ipfix_collector_port", "IPFIX_COLLECTOR_PORT")
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
 	bindEnv(logger, "stream_keepalive_period_kubernetes_resources", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES")
@@ -103,6 +104,7 @@ func main() {
 	viper.SetDefault("cluster_creds", "clustercreds")
 	viper.SetDefault("cilium_namespace", "kube-system")
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
+	viper.SetDefault("ipfix_collector_port", "4739")
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("tls_skip_verify", false)
 	viper.SetDefault("stream_keepalive_period_kubernetes_resources", defaultStreamKeepalivePeriodKubernetesResources)
@@ -119,6 +121,7 @@ func main() {
 		OnboardingClientId:     viper.GetString("onboarding_client_id"),
 		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
 		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
+		IpfixCollectorPort:     viper.GetString("ipfix_collector_port"),
 		TokenEndpoint:          viper.GetString("token_endpoint"),
 		TlsSkipVerify:          viper.GetBool("tls_skip_verify"),
 		KeepalivePeriods: controller.KeepalivePeriods{
@@ -139,6 +142,7 @@ func main() {
 		zap.String("cilium_namespace", envConfig.CiliumNamespace),
 		zap.String("onboarding_client_id", envConfig.OnboardingClientId),
 		zap.String("onboarding_endpoint", envConfig.OnboardingEndpoint),
+		zap.String("ipfix_collector_port", envConfig.IpfixCollectorPort),
 		zap.String("token_endpoint", envConfig.TokenEndpoint),
 		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
 		zap.Duration("stream_keepalive_period_kubernetes_resources", envConfig.KeepalivePeriods.KubernetesResources),
