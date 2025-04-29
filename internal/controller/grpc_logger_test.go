@@ -298,7 +298,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestFlushSuccess() {
 		).MatchString(req.Request.(*pb.SendLogsRequest_LogEntry).LogEntry.JsonMessage):
 			return true
 
-		// Send buffered messages 1 and 2
+		// Send all buffered messages
 		case regexp.MustCompile(
 			`^{"level":"info","msg":"Buffered log entry [12345]"}$`,
 		).MatchString(req.Request.(*pb.SendLogsRequest_LogEntry).LogEntry.JsonMessage):
