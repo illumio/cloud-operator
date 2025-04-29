@@ -40,12 +40,17 @@ func (sm *streamManager) startOVNIPFIXCollector(ctx context.Context, logger *zap
 		// Allocate a buffer to hold incoming UDP packets. The size is set to 65535 bytes, which is the maximum size of a UDP packet.
 		buf := make([]byte, 65535)
 		for {
-			n, _, err := listener.ReadFrom(buf)
-			if err != nil {
-				logger.Error("Failed to read from OVN listener", zap.Error(err))
-				return err
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+				n, _, err := listener.ReadFrom(buf)
+				if err != nil {
+					logger.Error("Failed to read from OVN listener", zap.Error(err))
+					return err
+				}
+				sm.streamClient.ovnEventChan <- buf[:n]
 			}
-			sm.streamClient.ovnEventChan <- buf[:n]
 		}
 	}
 }
@@ -61,8 +66,8 @@ func (sm *streamManager) processOVNFlow(ctx context.Context, logger *zap.Logger)
 				logger.Error("Packet too short to contain a template ID")
 				continue
 			}
-			templateID := uint16(packet[0])<<8 | uint16(packet[1])
-
+			templateID := binary.BigEndian.Uint16(packet[:2])
+			
 			logger.Info("Processing packet with template", zap.Uint16("templateID", templateID), zap.Int16("template", int16(templateID)))
 
 			// Process the packet based on the template (this is a placeholder for actual processing logic)
