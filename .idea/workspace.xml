@@ -5,8 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="db19fda4-107b-4ed7-a246-e1f4760fdbbc" name="Changes" comment="added the test file for the streams retry">
-      <change beforePath="$PROJECT_DIR$/internal/controller/resource_manager_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/controller/resource_manager_test.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/internal/controller/testhelper/set_up_test_cluster.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/controller/testhelper/set_up_test_cluster.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <list id="ce8b60af-8125-4a82-989e-6517f04a49b3" name="Changes by ganesh.talla" comment="" />
     <option name="SHOW_DIALOG" value="false" />
@@ -21,7 +20,7 @@
       </list>
     </option>
   </component>
-  <component name="GOROOT" url="file://$USER_HOME$/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.1.darwin-arm64" />
+  <component name="GOROOT" url="file://$USER_HOME$/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.2.darwin-arm64" />
   <component name="Git.Merge.Settings">
     <option name="BRANCH" value="origin/main" />
   </component>
@@ -40,7 +39,7 @@
         <entry key="$PROJECT_DIR$" value="k8s_related_events_auditservice" />
       </map>
     </option>
-    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/cloud-operator" />
     <option name="ROOT_SYNC" value="DONT_SYNC" />
     <option name="UPDATE_TYPE" value="REBASE" />
   </component>
@@ -167,7 +166,7 @@
     &quot;RunOnceActivity.go.migrated.go.modules.settings&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.go.modules.go.list.on.any.changes.was.set&quot;: &quot;true&quot;,
     &quot;devcontainer.show.open.project.notification&quot;: &quot;false&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;#183 on test-coverage-cloud-operator&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;#183 on main&quot;,
     &quot;go.import.settings.migrated&quot;: &quot;true&quot;,
     &quot;go.sdk.automatically.set&quot;: &quot;true&quot;,
     &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
