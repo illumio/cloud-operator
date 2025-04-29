@@ -323,7 +323,9 @@ func (suite *ControllerTestSuite) TestHTTPProxySupport() {
 	// Start a mock proxy server
 	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Proxy used"))
+		if _, err := w.Write([]byte("Proxy used")); err != nil {
+			suite.T().Errorf("Failed to write response: %v", err)
+		}
 	}))
 	defer proxyServer.Close()
 
@@ -334,7 +336,9 @@ func (suite *ControllerTestSuite) TestHTTPProxySupport() {
 	// Use a mock target server
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Target server reached"))
+		if _, err := w.Write([]byte("Target server reached")); err != nil {
+			suite.T().Errorf("Failed to write response: %v", err)
+		}
 	}))
 	defer targetServer.Close()
 
