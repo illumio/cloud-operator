@@ -92,6 +92,44 @@ helm install illumio --namespace illumio-cloud oci://ghcr.io/illumio/charts/clou
  --values ./fakeserver/cloud-operator.fakeserver.yaml,./cloud-operator.image.yaml
 `
 
+## Proxy Configuration
+
+The Cloud Operator supports routing all HTTP and gRPC requests through an HTTP proxy by setting the `HTTPS_PROXY` environment variable.
+
+### Configuring the Proxy
+
+1. Set the `HTTPS_PROXY` environment variable to the URL of your proxy server. For example:
+   ```bash
+   export HTTPS_PROXY=http://proxy.example.com:8080
+   ```
+
+2. Ensure that the proxy server is accessible from the environment where the Cloud Operator is running.
+
+### Behavior
+
+- **HTTP Requests**:
+  - All HTTP requests made by the Cloud Operator will respect the `HTTPS_PROXY` environment variable.
+  - The `http.ProxyFromEnvironment` function is used to determine the proxy settings.
+
+- **gRPC Requests**:
+  - All gRPC requests will also respect the `HTTPS_PROXY` environment variable.
+  - A custom dialer is implemented to route gRPC traffic through the proxy.
+
+### Testing Proxy Configuration
+
+To verify that the proxy configuration is working:
+1. Run the unit tests for HTTP and gRPC proxy support:
+   ```bash
+   go test -timeout 30s -run ^TestHTTPProxySupport$ ./internal/controller
+   go test -timeout 30s -run ^TestGRPCProxySupport$ ./internal/controller
+   ```
+2. Ensure that the tests pass successfully.
+
+### Notes
+
+- If the `HTTPS_PROXY` environment variable is not set, requests will bypass the proxy and connect directly to the target server.
+- Ensure that the proxy server supports both HTTP and gRPC traffic if both types of requests are used.
+
 ## License
 
 Copyright 2024 Illumio, Inc. All Rights Reserved.

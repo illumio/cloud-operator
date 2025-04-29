@@ -4,6 +4,12 @@ package controller
 
 import (
 	"context"
+	"crypto/tls"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
 
@@ -311,4 +317,89 @@ func (suite *ControllerTestSuite) TestParseToken() {
 	// Test invalid token
 	_, err = ParseToken("invalid-token")
 	assert.Error(suite.T(), err)
+}
+
+func (suite *ControllerTestSuite) TestHTTPProxySupport() {
+	// Start a mock proxy server
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Proxy used"))
+	}))
+	defer proxyServer.Close()
+
+	// Set the HTTPS_PROXY environment variable to the mock proxy
+	os.Setenv("HTTPS_PROXY", proxyServer.URL)
+	defer os.Unsetenv("HTTPS_PROXY")
+
+	// Use a mock target server
+	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Target server reached"))
+	}))
+	defer targetServer.Close()
+
+	tlsConfig := &tls.Config{InsecureSkipVerify: true}
+	proxyURL, _ := url.Parse(proxyServer.URL)
+	transport := &http.Transport{
+		TLSClientConfig: tlsConfig,
+		Proxy:           http.ProxyURL(proxyURL), // Explicitly set the proxy
+	}
+	client := &http.Client{Transport: transport}
+
+	// Log the proxy URL and environment variable for debugging
+	fmt.Println("Proxy URL:", proxyServer.URL)
+	fmt.Println("HTTPS_PROXY Env:", os.Getenv("HTTPS_PROXY"))
+
+	req, err := http.NewRequest("GET", targetServer.URL, nil)
+	assert.NoError(suite.T(), err)
+
+	resp, err := client.Do(req)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+
+	// Log the response body for debugging
+	body, _ := io.ReadAll(resp.Body)
+	fmt.Println("Response Body:", string(body))
+
+	// Verify that the response came from the proxy
+	assert.Equal(suite.T(), "Proxy used", string(body))
+}
+
+func (suite *ControllerTestSuite) TestGRPCProxySupport() {
+	// Start a mock proxy server that returns a 403 Forbidden response
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("Proxy server received request:", r.Method, r.URL.String())
+		http.Error(w, "Access Denied", http.StatusForbidden)
+	}))
+	defer proxyServer.Close()
+
+	// Set the HTTPS_PROXY environment variable to the mock proxy
+	os.Setenv("HTTPS_PROXY", proxyServer.URL)
+	defer os.Unsetenv("HTTPS_PROXY")
+
+	// Log the proxy URL for debugging
+	fmt.Println("Proxy URL set to:", proxyServer.URL)
+
+	// Attempt to set up an OAuth connection using the authenticator
+	ctx := context.Background()
+	conn, err := SetUpOAuthConnection(
+		ctx,
+		suite.logger,
+		"https://example.com/token",
+		true, // Skip TLS verification for testing
+		"test-client-id",
+		"test-client-secret",
+	)
+
+	// Ensure the connection object is closed if initialized
+	if conn != nil {
+		defer conn.Close()
+	}
+
+	// Assert that an error is returned due to the proxy
+	if err == nil {
+		fmt.Println("No error returned from SetUpOAuthConnection")
+		suite.T().Fatal("Expected an error due to proxy failure, but got nil")
+	}
+	assert.Contains(suite.T(), err.Error(), "Access Denied", "Error message should indicate a proxy failure")
 }

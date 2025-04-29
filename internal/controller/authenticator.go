@@ -6,7 +6,9 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -20,6 +22,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 
+	"golang.org/x/net/proxy"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"
@@ -181,11 +184,21 @@ func SetUpOAuthConnection(
 	}
 	tokenSource = GetTokenSource(ctx, oauthConfig, tlsConfig)
 	creds := credentials.NewTLS(tlsConfig)
+
+	proxyDialer := func(ctx context.Context, addr string) (net.Conn, error) {
+		proxyURL, err := http.ProxyFromEnvironment(&http.Request{URL: &url.URL{Host: addr}})
+		if err != nil || proxyURL == nil {
+			return net.Dial("tcp", addr)
+		}
+		return proxy.Dial(ctx, "tcp", addr)
+	}
+
 	conn, err := grpc.NewClient(
 		aud,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(oauth.TokenSource{TokenSource: tokenSource}),
 		grpc.WithKeepaliveParams(kacp),
+		grpc.WithContextDialer(proxyDialer),
 	)
 	if err != nil {
 		return nil, err
@@ -206,6 +219,7 @@ func GetTokenSource(ctx context.Context, config clientcredentials.Config, tlsCon
 	return config.TokenSource(context.WithValue(ctx, oauth2.HTTPClient, &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: tlsConfig,
+			Proxy:           http.ProxyFromEnvironment,
 		},
 	}))
 }

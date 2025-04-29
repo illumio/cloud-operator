@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,7 +46,24 @@ func (suite *ControllerTestSuite) SetupSuite() {
 func (suite *ControllerTestSuite) TearDownSuite() {
 	err := testhelper.TearDownTestCluster()
 	if err != nil {
-		suite.T().Fatal("Failed to delete test cluster " + err.Error())
+		suite.T().Log("Failed to delete test cluster on first attempt: " + err.Error())
+
+		// Retry deletion
+		err = testhelper.TearDownTestCluster()
+		if err != nil {
+			suite.T().Fatal("Failed to delete test cluster after retry: " + err.Error())
+		}
+	}
+
+	// Verify cluster deletion
+	cmd := exec.Command("kind", "get", "clusters")
+	output, err := cmd.Output()
+	if err != nil {
+		suite.T().Fatal("Failed to verify cluster deletion: " + err.Error())
+	}
+
+	if strings.Contains(string(output), "my-test-cluster") {
+		suite.T().Fatal("Cluster 'my-test-cluster' still exists after deletion")
 	}
 }
 
