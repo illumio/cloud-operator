@@ -1,0 +1,5 @@
+# Testing enum validation for image.pullPolicy
+image:
+  repository: test
+  tag: latest
+  pullPolicy: Sometimes  # Invalid value, should be one of: Always, IfNotPresent, Never

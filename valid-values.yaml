@@ -1,0 +1,14 @@
+# Valid values file for testing schema validation
+falco:
+  enabled: true
+  namespace: falco-test
+replicaCount: 2
+image:
+  repository: test
+  tag: latest
+  pullPolicy: IfNotPresent
+serviceAccount:
+  create: true
+  name: test-sa
+  annotations: {}
+  automount: true
