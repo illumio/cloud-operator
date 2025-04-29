@@ -157,6 +157,8 @@ func ServerIsHealthy() bool {
 	return true
 }
 
+// buildResourceApiGroupMap creates a mapping between Kubernetes resources and their corresponding API groups.
+// It uses the discovery client to fetch all available API groups and resources, then maps the requested resources to their API groups.
 func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset *kubernetes.Clientset, logger *zap.Logger) (map[string]string, error) {
 	// Map to store resource-to-API group mapping
 	resourceAPIGroupMap := make(map[string]string)
