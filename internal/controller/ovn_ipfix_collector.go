@@ -21,17 +21,7 @@ func (sm *streamManager) isOVNDeployed() bool {
 		return false
 	}
 	_, err = clientset.CoreV1().Namespaces().Get(context.TODO(), "ovn-kubernetes", metav1.GetOptions{})
-	if err != nil {
-		return false
-	}
-	return true
-}
-
-// Define hard-coded templates
-var templates = map[uint16]string{
-	1: "Template1", // Example template ID 1
-	2: "Template2", // Example template ID 2
-	// Add more templates as needed
+	return err == nil
 }
 
 func (sm *streamManager) startOVNIPFIXCollector(ctx context.Context, logger *zap.Logger) error {
