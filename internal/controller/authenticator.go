@@ -203,7 +203,7 @@ func SetUpOAuthConnection(
 		return proxy.Dial(ctx, "tcp", addr)
 	}
 
-	conn, err := grpc.Dial(
+	conn, err := grpc.NewClient(
 		aud,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(oauth.TokenSource{TokenSource: tokenSource}),
