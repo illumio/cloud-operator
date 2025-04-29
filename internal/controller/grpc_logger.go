@@ -107,10 +107,13 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 		sentMessageCount += 1
 	}
 
-	// Only unbuffer the messages that could be sent and preserve the rest for the next flush()
-	newBufferLen := len(b.buffer) - sentMessageCount
-	copy(b.buffer, b.buffer[sentMessageCount:])
-	b.buffer = b.buffer[:newBufferLen]
+	// Only un-buffer the messages that were sent
+	// and keep the remaining messages buffered for the next flush()
+	if sentMessageCount > 0 {
+		newBufferLen := len(b.buffer) - sentMessageCount
+		copy(b.buffer, b.buffer[sentMessageCount:])
+		b.buffer = b.buffer[:newBufferLen]
+	}
 }
 
 // run flushes the buffer at the configured interval until Stop is called.
