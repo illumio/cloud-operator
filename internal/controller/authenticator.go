@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/illumio/cloud-operator/internal/utils"
 	"go.uber.org/zap"
 	"golang.org/x/net/proxy"
 	"golang.org/x/oauth2"
@@ -118,7 +119,7 @@ func (authn *Authenticator) WriteK8sSecret(ctx context.Context, keyData OnboardR
 	return nil
 }
 
-// NewClientSet returns a new Kubernetes clientset based on the execution environment.
+// Update NewClientSet to use the helper function
 func NewClientSet() (*kubernetes.Clientset, error) {
 	var clusterConfig *rest.Config
 	var err error
@@ -136,6 +137,9 @@ func NewClientSet() (*kubernetes.Clientset, error) {
 		return nil, err
 	}
 
+	// Use the helper function to configure the proxy
+	clusterConfig.Proxy = utils.ConfigureProxy(zap.L())
+
 	return kubernetes.NewForConfig(clusterConfig)
 }
 
@@ -145,7 +149,7 @@ func IsRunningInCluster() bool {
 	return os.Getenv("KUBERNETES_SERVICE_HOST") != ""
 }
 
-// SetUpOAuthConnection establishes a gRPC connection using OAuth credentials and logging the process.
+// Update SetUpOAuthConnection to use the helper function
 func SetUpOAuthConnection(
 	ctx context.Context,
 	logger *zap.Logger,
@@ -194,7 +198,11 @@ func SetUpOAuthConnection(
 	creds := credentials.NewTLS(tlsConfig)
 
 	proxyDialer := func(ctx context.Context, addr string) (net.Conn, error) {
-		proxyURL, err := http.ProxyFromEnvironment(&http.Request{URL: &url.URL{Host: addr}})
+		proxyFunc := utils.ConfigureProxy(logger)
+		if proxyFunc == nil {
+			return net.Dial("tcp", addr)
+		}
+		proxyURL, err := proxyFunc(&http.Request{URL: &url.URL{Host: addr}})
 		if err != nil {
 			logger.Warn("Invalid HTTPS proxy configured; ignoring proxy settings", zap.Error(err))
 			return net.Dial("tcp", addr)
@@ -202,7 +210,12 @@ func SetUpOAuthConnection(
 		if proxyURL == nil { // No proxy configured
 			return net.Dial("tcp", addr)
 		}
-		return proxy.Dial(ctx, "tcp", addr)
+		conn, err := proxy.Dial(ctx, "tcp", addr)
+		if err != nil {
+			logger.Error("Failed to connect via proxy; falling back to direct connection", zap.Error(err))
+			return net.Dial("tcp", addr)
+		}
+		return conn, nil
 	}
 
 	conn, err := grpc.NewClient(

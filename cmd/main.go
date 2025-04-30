@@ -84,7 +84,7 @@ func main() {
 	klog.SetLoggerWithOptions(logrLogger)
 
 	// Set the gRPC logger to use the zapgrpc logger
-	grpcLogger := zapgrpc.NewLogger(logger)
+	grpcLogger := zapgrpc.NewLogger(logger.WithOptions(zap.AddCallerSkip(3)))
 	grpclog.SetLoggerV2(grpcLogger)
 
 	viper.AutomaticEnv()
