@@ -31,8 +31,9 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/klog/v2"
 
-	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	controller "github.com/illumio/cloud-operator/internal/controller"
+	"go.uber.org/zap/zapgrpc"
+	grpclog "google.golang.org/grpc/grpclog"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -82,8 +83,9 @@ func main() {
 	// Set logrLogger as the global logger for klog
 	klog.SetLoggerWithOptions(logrLogger)
 
-	// Set the gRPC logger to use the zap logger
-	grpc_zap.ReplaceGrpcLoggerV2(logger)
+	// Set the gRPC logger to use the zapgrpc logger
+	grpcLogger := zapgrpc.NewLogger(logger)
+	grpclog.SetLoggerV2(grpcLogger)
 
 	viper.AutomaticEnv()
 
