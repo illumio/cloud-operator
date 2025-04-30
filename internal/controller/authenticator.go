@@ -136,8 +136,7 @@ func NewClientSet() (*kubernetes.Clientset, error) {
 		return nil, err
 	}
 
-	// Use the helper function to configure the proxy
-	clusterConfig.Proxy = configureProxy(zap.L())
+	clusterConfig.Proxy = http.ProxyURL(nil)
 
 	return kubernetes.NewForConfig(clusterConfig)
 }
