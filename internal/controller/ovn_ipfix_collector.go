@@ -67,7 +67,7 @@ func (sm *streamManager) processOVNFlow(ctx context.Context, logger *zap.Logger)
 				continue
 			}
 			templateID := binary.BigEndian.Uint16(packet[:2])
-			
+
 			logger.Info("Processing packet with template", zap.Uint16("templateID", templateID), zap.Int16("template", int16(templateID)))
 
 			// Process the packet based on the template (this is a placeholder for actual processing logic)
