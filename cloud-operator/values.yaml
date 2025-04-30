@@ -73,3 +73,6 @@ env:
   streamSuccessPeriods:
     connect: "1h"
     auth: "2h"
+
+# Proxy configuration
+httpsProxy: ""
