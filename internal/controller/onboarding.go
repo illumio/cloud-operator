@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/illumio/cloud-operator/internal/utils"
 	"go.uber.org/zap"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -30,7 +29,7 @@ func Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string,
 	}
 	transport := &http.Transport{
 		TLSClientConfig: tlsConfig,
-		Proxy:           utils.ConfigureProxy(logger),
+		Proxy:           configureProxy(logger),
 	}
 	client := &http.Client{
 		Transport: transport,

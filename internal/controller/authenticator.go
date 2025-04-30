@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/illumio/cloud-operator/internal/utils"
 	"go.uber.org/zap"
 	"golang.org/x/net/proxy"
 	"golang.org/x/oauth2"
@@ -138,7 +137,7 @@ func NewClientSet() (*kubernetes.Clientset, error) {
 	}
 
 	// Use the helper function to configure the proxy
-	clusterConfig.Proxy = utils.ConfigureProxy(zap.L())
+	clusterConfig.Proxy = configureProxy(zap.L())
 
 	return kubernetes.NewForConfig(clusterConfig)
 }
@@ -198,7 +197,7 @@ func SetUpOAuthConnection(
 	creds := credentials.NewTLS(tlsConfig)
 
 	proxyDialer := func(ctx context.Context, addr string) (net.Conn, error) {
-		proxyFunc := utils.ConfigureProxy(logger)
+		proxyFunc := configureProxy(logger)
 		if proxyFunc == nil {
 			return net.Dial("tcp", addr)
 		}
