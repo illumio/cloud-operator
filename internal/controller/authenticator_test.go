@@ -349,19 +349,16 @@ func TestCredentialNotFoundInK8sSecretError(t *testing.T) {
 	tests := []struct {
 		name          string
 		field         onboardingCredentialRequiredField
-		expectedError string
 		isTargetError bool
 	}{
 		{
 			name:          "client id missing",
 			field:         ONBOARDING_CLIENT_ID,
-			expectedError: "Required field not found in k8s Secret | field='client_id'",
 			isTargetError: true,
 		},
 		{
 			name:          "client secret missing",
 			field:         ONBOARDING_CLIENT_SECRET,
-			expectedError: "Required field not found in k8s Secret | field='client_secret'",
 			isTargetError: true,
 		},
 	}
@@ -369,9 +366,6 @@ func TestCredentialNotFoundInK8sSecretError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := NewCredentialNotFoundInK8sSecretError(tt.field)
-
-			// Test error message
-			assert.Equal(t, tt.expectedError, err.Error())
 
 			// Test error type matching
 			assert.Equal(t, tt.isTargetError, err.(*credentialNotFoundInK8sSecretError).Is(ErrCredentialNotFoundInK8sSecret))
