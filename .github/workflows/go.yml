@@ -24,15 +24,5 @@ jobs:
     - name: Install dependencies
       run: go mod tidy
 
-    - name: Debug Proxy Environment Variables
-      run: env | grep -i proxy
-
-    - name: Unset Proxy Variables for Tests
-      run: |
-        unset HTTPS_PROXY
-        unset HTTP_PROXY
-
     - name: Run tests
-      env:
-        NO_PROXY: "localhost,127.0.0.1"
       run: go test -v ./internal/controller/...
