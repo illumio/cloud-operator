@@ -1,0 +1,43 @@
+name: Update Helm Values Schema
+
+on:
+  push:
+    paths:
+      - 'cloud-operator/values.yaml'
+  pull_request:
+    paths:
+      - 'cloud-operator/values.yaml'
+  workflow_dispatch:
+
+jobs:
+  update-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4.2.0
+        with:
+          version: "v3.16.4"
+
+      - name: Generate schema
+        uses: losisin/helm-values-schema-json-action@v1
+        with:
+          path: cloud-operator
+          values-file: values.yaml
+          schema-file: values.schema.json
+
+      - name: Check for changes
+        id: git-check
+        run: |
+          git diff --exit-code cloud-operator/values.schema.json || echo "changes=true" >> $GITHUB_OUTPUT
+
+      - name: Commit changes
+        if: steps.git-check.outputs.changes == 'true' && github.event_name != 'pull_request'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add cloud-operator/values.schema.json
+          git commit -m "Update values schema [skip ci]"
+          git push

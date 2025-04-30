@@ -70,7 +70,8 @@
               "type": "string",
               "description": "Memory limit"
             }
-          }
+          },
+          "required": ["cpu", "memory"]
         },
         "requests": {
           "type": "object",
@@ -83,9 +84,11 @@
               "type": "string",
               "description": "Memory request"
             }
-          }
+          },
+          "required": ["cpu", "memory"]
         }
-      }
+      },
+      "required": ["limits", "requests"]
     },
     "clusterCredsSecret": {
       "type": "object",
@@ -106,7 +109,8 @@
           "type": "boolean",
           "description": "Whether to force secret creation"
         }
-      }
+      },
+      "required": ["clientId", "clientSecret"]
     },
     "onboardingSecret": {
       "type": "object",
@@ -119,7 +123,8 @@
           "type": "string",
           "description": "Client secret for onboarding"
         }
-      }
+      },
+      "required": ["clientId", "clientSecret"]
     },
     "falco": {
       "type": "object",
@@ -156,7 +161,8 @@
                   "type": "boolean",
                   "description": "Whether to allow insecure HTTP connections"
                 }
-              }
+              },
+              "required": ["enabled", "url"]
             },
             "json_output": {
               "type": "boolean",
@@ -174,14 +180,15 @@
               "type": "boolean",
               "description": "Whether to buffer outputs"
             }
-          }
+          },
+          "required": ["http_output", "json_output"]
         },
         "customRules": {
           "type": "object",
           "description": "Custom rules for Falco"
         }
       },
-      "required": ["enabled"]
+      "required": ["enabled", "namespace", "falco"]
     },
     "env": {
       "type": "object",
@@ -206,7 +213,9 @@
           "type": "object",
           "description": "Periods for stream success"
         }
-      }
+      },
+      "required": ["onboardingEndpoint", "tokenEndpoint"]
     }
-  }
+  },
+  "required": ["defaultNamespace", "replicaCount", "image", "serviceAccount", "resources", "falco", "env"]
 }
