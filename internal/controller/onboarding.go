@@ -35,7 +35,6 @@ func Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string,
 		Transport: transport,
 		Timeout:   5 * time.Second,
 	}
-	// Define the URL to which the POST request will be made
 
 	// Create the data to be sent in the POST request
 	data := map[string]string{

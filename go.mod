@@ -5,7 +5,6 @@ go 1.24.2
 require (
 	github.com/cilium/cilium v1.17.3
 	github.com/go-logr/zapr v1.3.0
-	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
 	golang.org/x/oauth2 v0.29.0

@@ -15,6 +15,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v4"
 	"go.uber.org/zap"
+	"golang.org/x/net/proxy"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 	"k8s.io/client-go/kubernetes"
@@ -22,7 +23,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 
-	"golang.org/x/net/proxy"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"
