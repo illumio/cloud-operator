@@ -77,17 +77,17 @@ jobs:
         run: echo "Skipping Kubernetes version not supported by Minikube."
 
       - name: Start Minikube with pre-release Kubernetes
-        if: steps.dry_run.outputs.supported == 'false'
+        if: steps.dry_run.outputs.supported == 'true'
         run: |
           minikube start --kubernetes-version=${{ steps.get_k8s_version.outputs.k8s_version }} --driver=docker
 
       - name: Wait for Minikube to be ready
-        if: steps.dry_run.outputs.supported == 'false'
+        if: steps.dry_run.outputs.supported == 'true'
         run: |
           minikube kubectl -- get nodes
 
       - name: Set up Helm
-        if: steps.dry_run.outputs.supported == 'false'
+        if: steps.dry_run.outputs.supported == 'true'
         uses: azure/setup-helm@v4.2.0
         with:
             version: "v3.16.4"
