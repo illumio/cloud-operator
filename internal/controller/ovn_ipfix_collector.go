@@ -25,7 +25,13 @@ func (sm *streamManager) isOVNDeployed() bool {
 }
 
 func (sm *streamManager) startOVNIPFIXCollector(ctx context.Context, logger *zap.Logger) error {
-	go sm.processOVNFlow(ctx, logger)
+	go func() {
+		ctxProcessOVNFlow, cancelProcessOVNFlow := context.WithCancel(ctx)
+		defer cancelProcessOVNFlow()
+		if err := sm.processOVNFlow(ctxProcessOVNFlow, logger); err != nil {
+			logger.Error("Error in processOVNFlow", zap.Error(err))
+		}
+	}()
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
