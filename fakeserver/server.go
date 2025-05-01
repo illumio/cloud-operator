@@ -192,7 +192,6 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 }
 
 func (fs *FakeServer) start() error {
-	fmt.Println("Starting FakeServer") // Temporary print statement
 	logger = fs.logger
 	logger.Info("Starting FakeServer", zap.String("address", fs.address), zap.String("httpAddress", fs.httpAddress), zap.String("token", fs.token))
 	var err error
@@ -200,16 +199,13 @@ func (fs *FakeServer) start() error {
 	// Start gRPC server
 	fs.listener, err = net.Listen("tcp", fs.address)
 	if err != nil {
-		fmt.Println("Failed to start gRPC listener") // Temporary print statement
 		logger.Error("Failed to start gRPC listener", zap.String("address", fs.address), zap.Error(err))
 		return err
 	}
-	fmt.Println("gRPC listener started") // Temporary print statement
 	logger.Info("gRPC listener started", zap.String("address", fs.listener.Addr().String()))
 
 	creds, err := generateSelfSignedCert()
 	if err != nil {
-		fmt.Println("Failed to generate self-signed certificate") // Temporary print statement
 		logger.Error("Failed to generate self-signed certificate", zap.Error(err))
 		return err
 	}
@@ -220,7 +216,6 @@ func (fs *FakeServer) start() error {
 	pb.RegisterKubernetesInfoServiceServer(fs.server, &server{})
 
 	go func() {
-		fmt.Println("Starting gRPC server") // Temporary print statement
 		logger.Info("Starting gRPC server", zap.String("address", fs.address))
 		if err := fs.server.Serve(fs.listener); err != nil {
 			fs.logger.Fatal("Failed to start gRPC server", zap.Error(err))
