@@ -29,8 +29,8 @@ clusterCredsSecret:
   forceSecretCreation: true
 
 onboardingSecret:
-  clientId: "f73eba32-638b-47f8-b92f-e4852b8cf7fb"
-  clientSecret: "aad5a9fd902347a5c6f421bcca01bc2f7c6bc89fdb7b9b7510e240d7faee285b"
+  clientId: ""
+  clientSecret: ""
 
 falco:
   enabled: false
@@ -63,8 +63,8 @@ falco:
 
 env:
   tlsSkipVerify: false
-  onboardingEndpoint: "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard"
-  tokenEndpoint: "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate"
+  onboardingEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
+  tokenEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
   streamKeepalivePeriods:
     kubernetes_resources: "10s"
     kubernetes_network_flows: "10s"
