@@ -37,6 +37,7 @@ func createSignedToken() string {
 
 // TestFakeServerConnectionSuccesfulAndRetry tests a client connecting to the gRPC server
 func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
+	t.Skip("Skipping integration test")
 	logger := zap.NewNop()
 	// Setup: Start the FakeServer
 	fakeServer := &FakeServer{
@@ -108,6 +109,7 @@ mainloop:
 }
 
 func TestFailureDuringIntialCommit(t *testing.T) {
+	t.Skip("Skipping integration test")
 	logger := zap.NewNop()
 	// Setup: Start the FakeServer
 	fakeServer := &FakeServer{

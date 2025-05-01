@@ -174,10 +174,17 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		md, ok := metadata.FromIncomingContext(ss.Context())
 		if !ok {
+			logger.Error("Metadata not provided")
 			return status.Errorf(codes.Unauthenticated, "Metadata not provided")
 		}
 		tokens := md["authorization"]
 		if len(tokens) == 0 || tokens[0] != fmt.Sprintf("Bearer %s", expectedToken) {
+			logger.Error("Authorization token missing")
+			return status.Errorf(codes.Unauthenticated, "Authorization token missing")
+		}
+		logger.Info("Token received", zap.String("token", tokens[0]))
+		if tokens[0] != fmt.Sprintf("Bearer %s", expectedToken) {
+			logger.Error("Invalid token in request", zap.String("received_token", tokens[0]), zap.String("expected_token", fmt.Sprintf("Bearer %s", expectedToken)))
 			return status.Errorf(codes.Unauthenticated, "Invalid token in request")
 		}
 		return handler(srv, ss)
@@ -185,24 +192,36 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 }
 
 func (fs *FakeServer) start() error {
+	fmt.Println("Starting FakeServer") // Temporary print statement
 	logger = fs.logger
+	logger.Info("Starting FakeServer", zap.String("address", fs.address), zap.String("httpAddress", fs.httpAddress), zap.String("token", fs.token))
 	var err error
+
 	// Start gRPC server
 	fs.listener, err = net.Listen("tcp", fs.address)
 	if err != nil {
+		fmt.Println("Failed to start gRPC listener") // Temporary print statement
+		logger.Error("Failed to start gRPC listener", zap.String("address", fs.address), zap.Error(err))
 		return err
 	}
+	fmt.Println("gRPC listener started") // Temporary print statement
+	logger.Info("gRPC listener started", zap.String("address", fs.listener.Addr().String()))
 
 	creds, err := generateSelfSignedCert()
 	if err != nil {
+		fmt.Println("Failed to generate self-signed certificate") // Temporary print statement
+		logger.Error("Failed to generate self-signed certificate", zap.Error(err))
 		return err
 	}
+
 	credsTLS := credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{creds}, MinVersion: tls.VersionTLS12})
 	serverState = fs.state
 	fs.server = grpc.NewServer(grpc.Creds(credsTLS), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor(fs.token)))
 	pb.RegisterKubernetesInfoServiceServer(fs.server, &server{})
 
 	go func() {
+		fmt.Println("Starting gRPC server") // Temporary print statement
+		logger.Info("Starting gRPC server", zap.String("address", fs.address))
 		if err := fs.server.Serve(fs.listener); err != nil {
 			fs.logger.Fatal("Failed to start gRPC server", zap.Error(err))
 		}
@@ -219,31 +238,75 @@ func (fs *FakeServer) start() error {
 	// Start the OAuth2 HTTP server
 	fs.httpServer, err = startHTTPServer(fs.httpAddress, creds, fs.authService)
 	if err != nil {
+		logger.Error("Failed to start HTTP server", zap.Error(err))
 		return err
 	}
+	logger.Info("HTTP server started", zap.String("httpAddress", fs.httpAddress))
 
+	logger.Info("FakeServer is ready to accept connections")
 	return nil
 }
 
 func (fs *FakeServer) stop() {
+	logger.Info("Stopping FakeServer")
 	defer func() {
-		_ = recover() // Ignore the returned value of recover()
+		if r := recover(); r != nil {
+			logger.Error("Recovered from panic during server shutdown", zap.Any("panic", r))
+		}
 	}()
 
 	// Shutdown gRPC server
-	fs.server.Stop()
-	fs.listener.Close()
+	if fs.server != nil {
+		logger.Info("Stopping gRPC server")
+		fs.server.Stop()
+	} else {
+		logger.Warn("gRPC server was nil during shutdown")
+	}
+
+	if fs.listener != nil {
+		logger.Info("Closing gRPC listener")
+		err := fs.listener.Close()
+		if err != nil {
+			logger.Error("Error closing gRPC listener", zap.Error(err))
+		}
+	} else {
+		logger.Warn("gRPC listener was nil during shutdown")
+	}
 
 	// Shutdown HTTP server (if any)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := fs.httpServer.Shutdown(ctx); err != nil {
-		fs.logger.Fatal("Failed to gracefully shut down HTTP server", zap.Error(err))
+	if fs.httpServer != nil {
+		logger.Info("Shutting down HTTP server")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		err := fs.httpServer.Shutdown(ctx)
+		if err != nil {
+			logger.Error("Failed to gracefully shut down HTTP server", zap.Error(err))
+		}
+	} else {
+		logger.Warn("HTTP server was nil during shutdown")
 	}
-	fs.httpListener.Close()
+
+	if fs.httpListener != nil {
+		logger.Info("Closing HTTP listener")
+		err := fs.httpListener.Close()
+		if err != nil {
+			logger.Error("Error closing HTTP listener", zap.Error(err))
+		}
+	} else {
+		logger.Warn("HTTP listener was nil during shutdown")
+	}
+
 	// Reset HTTP handlers before restarting the server
 	http.DefaultServeMux = http.NewServeMux()
-	close(fs.stopChan)
+
+	if fs.stopChan != nil {
+		logger.Info("Closing stop channel")
+		close(fs.stopChan)
+	} else {
+		logger.Warn("Stop channel was nil during shutdown")
+	}
+
+	logger.Info("FakeServer stopped successfully")
 }
 
 func generateSelfSignedCert() (tls.Certificate, error) {
@@ -286,4 +349,34 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 	}
 
 	return cert, nil
+}
+
+// Stub implementation for GetConfigurationUpdates
+func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConfigurationUpdatesServer) error {
+	logger.Info("GetConfigurationUpdates stream started")
+	for {
+		// Simulate receiving updates (placeholder logic)
+		select {
+		case <-stream.Context().Done():
+			logger.Error("GetConfigurationUpdates stream context canceled", zap.Error(stream.Context().Err()))
+			return stream.Context().Err()
+		case <-time.After(10 * time.Second):
+			logger.Info("Sending keepalive on GetConfigurationUpdates stream")
+			// Placeholder: Send a keepalive or response
+		}
+	}
+}
+
+func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
+	logger.Info("SendKubernetesNetworkFlows stream started")
+	for {
+		select {
+		case <-stream.Context().Done():
+			logger.Error("SendKubernetesNetworkFlows stream context canceled", zap.Error(stream.Context().Err()))
+			return stream.Context().Err()
+		case <-time.After(2 * time.Minute):
+			logger.Info("Sending keepalive on SendKubernetesNetworkFlows stream")
+			// Placeholder: Send a keepalive or response
+		}
+	}
 }
