@@ -1,0 +1,135 @@
+name: Integration Tests with Fakeserver(Latest Kubernetes Version)
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-deploy-onboard-fakeserver:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        id: build-and-push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            VERSION=${{ steps.meta.outputs.tags }}
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.tags }}
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.24.0"
+
+      - name: Get latest available pre-release Kubernetes version
+        id: get_k8s_version
+        run: |
+          LATEST=$(curl -s https://storage.googleapis.com/kubernetes-release/release/latest.txt)
+          echo "Found version: $LATEST"
+          echo "k8s_version=$LATEST" >> $GITHUB_OUTPUT
+
+      - name: Install Minikube
+        run: |
+          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          sudo install minikube-linux-amd64 /usr/local/bin/minikube
+      
+      - name: Check Minikube support for Kubernetes version
+        id: dry_run
+        run: |
+          echo "Checking Minikube support for ${{ steps.get_k8s_version.outputs.k8s_version }}..."
+          if ! minikube start --kubernetes-version=${{ steps.get_k8s_version.outputs.k8s_version }} --driver=docker --dry-run > /dev/null 2>&1; then
+            echo "Minikube does not support this Kubernetes version."
+            echo "supported=false" >> $GITHUB_OUTPUT
+          else
+            echo "Minikube supports this Kubernetes version."
+            echo "supported=true" >> $GITHUB_OUTPUT
+          fi
+          exit 0
+
+      - name: Skip Integration Tests (Unsupported K8s version)
+        if: steps.dry_run.outputs.supported == 'false'
+        run: echo "Skipping Kubernetes version not supported by Minikube."
+
+      - name: Start Minikube with pre-release Kubernetes
+        if: steps.dry_run.outputs.supported == 'false'
+        run: |
+          minikube start --kubernetes-version=${{ steps.get_k8s_version.outputs.k8s_version }} --driver=docker
+
+      - name: Wait for Minikube to be ready
+        if: steps.dry_run.outputs.supported == 'false'
+        run: |
+          minikube kubectl -- get nodes
+
+      - name: Set up Helm
+        if: steps.dry_run.outputs.supported == 'false'
+        uses: azure/setup-helm@v4.2.0
+        with:
+            version: "v3.16.4"
+
+      - name: Package Helm chart
+        if: steps.dry_run.outputs.supported == 'true'
+        run: |
+            helm package cloud-operator && kubectl create ns illumio-cloud
+
+      - name: Install Integration Test Dependencies
+        if: steps.dry_run.outputs.supported == 'true'
+        run: |
+            cd ./fakeserver && go mod tidy && go mod download
+
+      - name: Install Helm chart and Deploy Operator
+        if: steps.dry_run.outputs.supported == 'true'
+        env:
+            ONBOARDING_CLIENT_ID: "client_id_1"
+            ONBOARDING_CLIENT_SECRET: "client_secret_1"
+            TLS_SKIP_VERIFY: true
+            ONBOARDING_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/onboard"
+            TOKEN_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/authenticate"
+        run: |
+            helm upgrade --install illumio cloud-operator-*.tgz \
+            --namespace illumio-cloud \
+            --create-namespace \
+            --set image.repository=ghcr.io/${{ github.repository }} \
+            --set image.tag=${{ steps.meta.outputs.tags }} \
+            --set image.pullPolicy=Always \
+            --set onboardingSecret.clientId=$ONBOARDING_CLIENT_ID \
+            --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET \
+            --set env.onboardingEndpoint=$ONBOARDING_ENDPOINT \
+            --set env.tokenEndpoint=$TOKEN_ENDPOINT \
+            --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
+
+      - name:  Run Integration Tests
+        if: steps.dry_run.outputs.supported == 'true'
+        run: |
+         # Run your test against the fake server
+          kubectl wait --for=condition=ready pod -l app=cloud-operator -n illumio-cloud --timeout=300s && go test -v ./fakeserver/...
+
+      - name: Fetch Kubernetes Pod logs
+        if: steps.dry_run.outputs.supported == 'true'
+        run: |
+          kubectl logs -l app=cloud-operator -n illumio-cloud
