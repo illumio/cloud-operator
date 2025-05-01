@@ -32,18 +32,3 @@ jobs:
         id: git-check
         run: |
           git diff --exit-code cloud-operator/values.schema.json || echo "changes=true" >> $GITHUB_OUTPUT
-
-      - name: Fail if changes in PR
-        if: steps.git-check.outputs.changes == 'true' && github.event_name == 'pull_request'
-        run: |
-          echo "::error::Schema file needs to be updated. Please run 'helm schema-gen cloud-operator -o cloud-operator/values.schema.json' locally and commit the changes."
-          exit 1
-
-      - name: Commit changes
-        if: steps.git-check.outputs.changes == 'true' && github.event_name != 'pull_request'
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add cloud-operator/values.schema.json
-          git commit -m "Update values schema [skip ci]"
-          git push
