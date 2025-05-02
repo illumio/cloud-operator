@@ -45,6 +45,7 @@ func discoverCiliumHubbleRelayAddress(ctx context.Context, ciliumNamespace strin
 	}
 
 	address := fmt.Sprintf("%s:%d", service.Spec.ClusterIP, service.Spec.Ports[0].Port)
+	fmt.Println("Hubble Relay Address", address)
 	return address, nil
 }
 
