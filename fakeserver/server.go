@@ -210,55 +210,58 @@ func tokenAuthStreamInterceptor(expectedToken string, signingKey []byte) grpc.St
 		}
 		tokenStr = strings.TrimPrefix(tokenStr, "Bearer ")
 
-		// Parse and validate the token
-		token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+		// Parse the expected token
+		expectedClaims := &jwt.RegisteredClaims{}
+		_, err := jwt.ParseWithClaims(expectedToken, expectedClaims, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 			}
 			return signingKey, nil
 		})
 		if err != nil {
-			fmt.Printf("Token validation failed: %v\n", err)
-			return status.Errorf(codes.Unauthenticated, "Invalid token")
+			fmt.Printf("Failed to parse expected token: %v\n", err)
+			return status.Errorf(codes.Unauthenticated, "Invalid expected token")
 		}
 
-		// Extract claims and validate
-		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-			fmt.Printf("Token claims: %v\n", claims)
-			if aud, ok := claims["aud"].([]interface{}); ok {
-				if !contains(aud, "192.168.65.254:50051") {
-					fmt.Println("Invalid audience in token")
-					return status.Errorf(codes.Unauthenticated, "Invalid audience")
-				}
-			} else {
-				fmt.Println("Audience claim missing or invalid")
-				return status.Errorf(codes.Unauthenticated, "Invalid audience")
+		// Parse the incoming token
+		incomingClaims := &jwt.RegisteredClaims{}
+		_, err = jwt.ParseWithClaims(tokenStr, incomingClaims, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 			}
-			if sub, ok := claims["sub"].(string); ok {
-				if sub != expectedToken {
-					fmt.Println("Invalid subject in token")
-					return status.Errorf(codes.Unauthenticated, "Invalid subject")
-				}
-			} else {
-				fmt.Println("Subject claim missing or invalid")
-				return status.Errorf(codes.Unauthenticated, "Invalid subject")
-			}
-		} else {
-			fmt.Println("Invalid token claims")
-			return status.Errorf(codes.Unauthenticated, "Invalid token claims")
+			return signingKey, nil
+		})
+		if err != nil {
+			fmt.Printf("Failed to parse incoming token: %v\n", err)
+			return status.Errorf(codes.Unauthenticated, "Invalid incoming token")
 		}
 
+		// Compare 'aud' and 'sub' claims
+		if !compareStringSlices(expectedClaims.Audience, incomingClaims.Audience) {
+			fmt.Println("Audience claims do not match")
+			return status.Errorf(codes.Unauthenticated, "Audience claims do not match")
+		}
+		if expectedClaims.Subject != incomingClaims.Subject {
+			fmt.Println("Subject claims do not match")
+			return status.Errorf(codes.Unauthenticated, "Subject claims do not match")
+		}
+
+		fmt.Println("Token validation successful")
 		return handler(srv, ss)
 	}
 }
 
-func contains(slice []interface{}, item string) bool {
-	for _, v := range slice {
-		if v == item {
-			return true
+// compareStringSlices checks if two string slices are equal.
+func compareStringSlices(slice1, slice2 []string) bool {
+	if len(slice1) != len(slice2) {
+		return false
+	}
+	for i, v := range slice1 {
+		if v != slice2[i] {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 func (fs *FakeServer) start() error {
@@ -282,7 +285,7 @@ func (fs *FakeServer) start() error {
 
 	credsTLS := credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{creds}, MinVersion: tls.VersionTLS12})
 	serverState = fs.state
-	fs.server = grpc.NewServer(grpc.Creds(credsTLS), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor("token1", []byte("token1"))))
+	fs.server = grpc.NewServer(grpc.Creds(credsTLS), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor(fs.token, []byte("secret"))))
 	pb.RegisterKubernetesInfoServiceServer(fs.server, &server{})
 
 	// Handle termination signals for graceful shutdown

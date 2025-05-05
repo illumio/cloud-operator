@@ -18,7 +18,7 @@ func main() {
 		"exp": time.Now().Add(time.Hour * 72).Unix(),
 	})
 	// Just using "secret" for test signing
-	mySigningKey := []byte("token1")
+	mySigningKey := []byte("secret")
 
 	// Sign and get the complete encoded token as a string
 	// nosemgrep: jwt.hardcoded-jwt-key
