@@ -6,13 +6,16 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 	"go.uber.org/zap"
+	"golang.org/x/net/proxy"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 	"k8s.io/client-go/kubernetes"
@@ -179,6 +182,19 @@ func SetUpOAuthConnection(
 		logger.Error("Error pulling audience out of token", zap.Error(err))
 		return nil, err
 	}
+	proxyDialer := func(ctx context.Context, addr string) (net.Conn, error) {
+		proxyFunc := http.ProxyFromEnvironment
+		proxyURL, _ := proxyFunc(&http.Request{URL: &url.URL{Host: addr}})
+		if proxyURL == nil { // No proxy configured
+			return net.Dial("tcp", addr)
+		}
+		conn, err := proxy.Dial(ctx, "tcp", addr)
+		if err != nil {
+			logger.Warn("Failed to connect via proxy; falling back to direct connection", zap.Error(err))
+			return net.Dial("tcp", addr)
+		}
+		return conn, nil
+	}
 	tokenSource = GetTokenSource(ctx, oauthConfig, tlsConfig)
 	creds := credentials.NewTLS(tlsConfig)
 	conn, err := grpc.NewClient(
@@ -186,6 +202,7 @@ func SetUpOAuthConnection(
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(oauth.TokenSource{TokenSource: tokenSource}),
 		grpc.WithKeepaliveParams(kacp),
+		grpc.WithContextDialer(proxyDialer),
 	)
 	if err != nil {
 		return nil, err
