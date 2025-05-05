@@ -407,3 +407,61 @@ func (suite *ControllerTestSuite) TestGRPCProxySupport() {
 	}
 	assert.Contains(suite.T(), err.Error(), "Access Denied", "Error message should indicate a proxy failure")
 }
+func TestGetTLSConfig(t *testing.T) {
+	tests := []struct {
+		name          string
+		skipVerify    bool
+		expectedTLS12 uint16
+	}{
+		{
+			name:          "SkipVerifyTrue",
+			skipVerify:    true,
+			expectedTLS12: tls.VersionTLS12,
+		},
+		{
+			name:          "SkipVerifyFalse",
+			skipVerify:    false,
+			expectedTLS12: tls.VersionTLS12,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tlsConfig := GetTLSConfig(tt.skipVerify)
+
+			// Test that the TLS version is set to 1.2 or higher
+			assert.Equal(t, tt.expectedTLS12, tlsConfig.MinVersion)
+
+			// Test the InsecureSkipVerify field
+			assert.Equal(t, tt.skipVerify, tlsConfig.InsecureSkipVerify)
+		})
+	}
+}
+
+func TestCredentialNotFoundInK8sSecretError(t *testing.T) {
+	tests := []struct {
+		name          string
+		field         onboardingCredentialRequiredField
+		isTargetError bool
+	}{
+		{
+			name:          "client id missing",
+			field:         ONBOARDING_CLIENT_ID,
+			isTargetError: true,
+		},
+		{
+			name:          "client secret missing",
+			field:         ONBOARDING_CLIENT_SECRET,
+			isTargetError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := NewCredentialNotFoundInK8sSecretError(tt.field)
+
+			// Test error type matching
+			assert.Equal(t, tt.isTargetError, err.(*credentialNotFoundInK8sSecretError).Is(ErrCredentialNotFoundInK8sSecret))
+		})
+	}
+}
