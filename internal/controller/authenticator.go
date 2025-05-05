@@ -136,7 +136,7 @@ func NewClientSet() (*kubernetes.Clientset, error) {
 		return nil, err
 	}
 
-	// clusterConfig.Proxy = http.ProxyURL(nil)
+	clusterConfig.Proxy = http.ProxyFromEnvironment
 
 	return kubernetes.NewForConfig(clusterConfig)
 }
