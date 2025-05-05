@@ -19,11 +19,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
-	"github.com/golang-jwt/jwt/v4"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -185,63 +183,16 @@ func logReceivedLogEntry(log *pb.LogEntry, logger *zap.Logger) error {
 	return nil
 }
 
-func tokenAuthStreamInterceptor(expectedToken string, signingKey []byte) grpc.StreamServerInterceptor {
+func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerInterceptor {
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		md, ok := metadata.FromIncomingContext(ss.Context())
 		if !ok {
-			fmt.Println("Metadata not provided")
 			return status.Errorf(codes.Unauthenticated, "Metadata not provided")
 		}
-
 		tokens := md["authorization"]
-		if len(tokens) == 0 {
-			fmt.Println("Authorization token missing")
-			return status.Errorf(codes.Unauthenticated, "Authorization token missing")
+		if len(tokens) == 0 || tokens[0] != fmt.Sprintf("Bearer %s", expectedToken) {
+			return status.Errorf(codes.Unauthenticated, "Invalid token in request")
 		}
-
-		tokenStr := tokens[0]
-		if !strings.HasPrefix(tokenStr, "Bearer ") {
-			fmt.Println("Invalid token format")
-			return status.Errorf(codes.Unauthenticated, "Invalid token format")
-		}
-		tokenStr = strings.TrimPrefix(tokenStr, "Bearer ")
-
-		// Parse the expected token
-		expectedClaims := &jwt.RegisteredClaims{}
-		_, err := jwt.ParseWithClaims(expectedToken, expectedClaims, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-			}
-			return signingKey, nil
-		})
-		if err != nil {
-			fmt.Printf("Failed to parse expected token: %v\n", err)
-			return status.Errorf(codes.Unauthenticated, "Invalid expected token")
-		}
-
-		// Parse the incoming token
-		incomingClaims := &jwt.RegisteredClaims{}
-		_, err = jwt.ParseWithClaims(tokenStr, incomingClaims, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-			}
-			return signingKey, nil
-		})
-		if err != nil {
-			fmt.Printf("Failed to parse incoming token: %v\n", err)
-			return status.Errorf(codes.Unauthenticated, "Invalid incoming token")
-		}
-
-		// Compare 'aud' and 'sub' claims
-		if !compareStringSlices(expectedClaims.Audience, incomingClaims.Audience) {
-			fmt.Println("Audience claims do not match")
-			return status.Errorf(codes.Unauthenticated, "Audience claims do not match")
-		}
-		if expectedClaims.Subject != incomingClaims.Subject {
-			fmt.Println("Subject claims do not match")
-			return status.Errorf(codes.Unauthenticated, "Subject claims do not match")
-		}
-
 		return handler(srv, ss)
 	}
 }
@@ -280,7 +231,7 @@ func (fs *FakeServer) start() error {
 
 	credsTLS := credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{creds}, MinVersion: tls.VersionTLS12})
 	serverState = fs.state
-	fs.server = grpc.NewServer(grpc.Creds(credsTLS), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor(fs.token, []byte("secret"))))
+	fs.server = grpc.NewServer(grpc.Creds(credsTLS), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor(fs.token)))
 	pb.RegisterKubernetesInfoServiceServer(fs.server, &server{})
 
 	// Handle termination signals for graceful shutdown
