@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"crypto/tls"
 	"os"
 	"testing"
 
@@ -311,4 +312,63 @@ func (suite *ControllerTestSuite) TestParseToken() {
 	// Test invalid token
 	_, err = ParseToken("invalid-token")
 	assert.Error(suite.T(), err)
+}
+
+func TestGetTLSConfig(t *testing.T) {
+	tests := []struct {
+		name          string
+		skipVerify    bool
+		expectedTLS12 uint16
+	}{
+		{
+			name:          "SkipVerifyTrue",
+			skipVerify:    true,
+			expectedTLS12: tls.VersionTLS12,
+		},
+		{
+			name:          "SkipVerifyFalse",
+			skipVerify:    false,
+			expectedTLS12: tls.VersionTLS12,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tlsConfig := GetTLSConfig(tt.skipVerify)
+
+			// Test that the TLS version is set to 1.2 or higher
+			assert.Equal(t, tt.expectedTLS12, tlsConfig.MinVersion)
+
+			// Test the InsecureSkipVerify field
+			assert.Equal(t, tt.skipVerify, tlsConfig.InsecureSkipVerify)
+		})
+	}
+}
+
+func TestCredentialNotFoundInK8sSecretError(t *testing.T) {
+	tests := []struct {
+		name          string
+		field         onboardingCredentialRequiredField
+		isTargetError bool
+	}{
+		{
+			name:          "client id missing",
+			field:         ONBOARDING_CLIENT_ID,
+			isTargetError: true,
+		},
+		{
+			name:          "client secret missing",
+			field:         ONBOARDING_CLIENT_SECRET,
+			isTargetError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := NewCredentialNotFoundInK8sSecretError(tt.field)
+
+			// Test error type matching
+			assert.Equal(t, tt.isTargetError, err.(*credentialNotFoundInK8sSecretError).Is(ErrCredentialNotFoundInK8sSecret))
+		})
+	}
 }
