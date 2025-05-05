@@ -223,6 +223,7 @@ func GetTokenSource(ctx context.Context, config clientcredentials.Config, tlsCon
 	return config.TokenSource(context.WithValue(ctx, oauth2.HTTPClient, &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: tlsConfig,
+			Proxy:           http.ProxyFromEnvironment,
 		},
 	}))
 }
