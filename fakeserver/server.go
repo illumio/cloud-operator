@@ -187,17 +187,22 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		md, ok := metadata.FromIncomingContext(ss.Context())
 		if !ok {
-			logger.Error("Metadata not provided")
+			fmt.Println("Metadata not provided")
 			return status.Errorf(codes.Unauthenticated, "Metadata not provided")
 		}
+
+		// Print received metadata for debugging
+		fmt.Printf("Received metadata: %v\n", md)
+
 		tokens := md["authorization"]
-		if len(tokens) == 0 || tokens[0] != fmt.Sprintf("Bearer %s", expectedToken) {
-			logger.Error("Authorization token missing")
+		if len(tokens) == 0 {
+			fmt.Println("Authorization token missing")
 			return status.Errorf(codes.Unauthenticated, "Authorization token missing")
 		}
-		logger.Info("Token received", zap.String("token", tokens[0]))
+
+		fmt.Printf("Token received: %s\n", tokens[0])
 		if tokens[0] != fmt.Sprintf("Bearer %s", expectedToken) {
-			logger.Error("Invalid token in request", zap.String("received_token", tokens[0]), zap.String("expected_token", fmt.Sprintf("Bearer %s", expectedToken)))
+			fmt.Printf("Invalid token in request. Received: %s, Expected: %s\n", tokens[0], fmt.Sprintf("Bearer %s", expectedToken))
 			return status.Errorf(codes.Unauthenticated, "Invalid token in request")
 		}
 		return handler(srv, ss)
@@ -207,23 +212,6 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 func (fs *FakeServer) start() error {
 	logger = fs.logger
 	logger.Info("Starting FakeServer", zap.String("address", fs.address), zap.String("httpAddress", fs.httpAddress), zap.String("token", fs.token))
-
-	// // Use ListenConfig to enable SO_REUSEADDR and SO_REUSEPORT
-	// listenConfig := net.ListenConfig{
-	// 	Control: func(network, address string, c syscall.RawConn) error {
-	// 		var controlErr error
-	// 		err := c.Control(func(fd uintptr) {
-	// 			controlErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
-	// 			if controlErr == nil {
-	// 				controlErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEPORT, 1)
-	// 			}
-	// 		})
-	// 		if err != nil {
-	// 			return err
-	// 		}
-	// 		return controlErr
-	// 	},
-	// }
 
 	// Start gRPC server
 	var err error
@@ -278,9 +266,7 @@ func (fs *FakeServer) start() error {
 func (fs *FakeServer) stop() {
 	logger.Info("Stopping FakeServer")
 	defer func() {
-		if r := recover(); r != nil {
-			logger.Error("Recovered from panic during server shutdown", zap.Any("panic", r))
-		}
+		_ = recover() // Ignore the returned value of recover()
 	}()
 
 	// Shutdown gRPC server
