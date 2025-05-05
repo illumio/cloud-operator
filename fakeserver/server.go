@@ -183,6 +183,45 @@ func logReceivedLogEntry(log *pb.LogEntry, logger *zap.Logger) error {
 	return nil
 }
 
+// Stub implementation for GetConfigurationUpdates
+func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConfigurationUpdatesServer) error {
+	logger.Info("GetConfigurationUpdates stream started")
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		switch req.Request.(type) {
+		case *pb.GetConfigurationUpdatesRequest_Keepalive:
+			logger.Info("Received GetConfigurationUpdates keepalive request")
+		}
+	}
+}
+
+func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
+	logger.Info("SendKubernetesNetworkFlows stream started")
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		switch req.Request.(type) {
+		case *pb.SendKubernetesNetworkFlowsRequest_CiliumFlow:
+			logger.Info("Received CiliumFlow")
+		case *pb.SendKubernetesNetworkFlowsRequest_FalcoFlow:
+			logger.Info("Received FalcoFlow")
+		}
+	}
+}
+
 func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerInterceptor {
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		md, ok := metadata.FromIncomingContext(ss.Context())
@@ -195,19 +234,6 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 		}
 		return handler(srv, ss)
 	}
-}
-
-// compareStringSlices checks if two string slices are equal.
-func compareStringSlices(slice1, slice2 []string) bool {
-	if len(slice1) != len(slice2) {
-		return false
-	}
-	for i, v := range slice1 {
-		if v != slice2[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func (fs *FakeServer) start() error {
@@ -364,45 +390,6 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 	}
 
 	return cert, nil
-}
-
-// Stub implementation for GetConfigurationUpdates
-func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConfigurationUpdatesServer) error {
-	logger.Info("GetConfigurationUpdates stream started")
-	for {
-		req, err := stream.Recv()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-
-		switch req.Request.(type) {
-		case *pb.GetConfigurationUpdatesRequest_Keepalive:
-			logger.Info("Received GetConfigurationUpdates keepalive request")
-		}
-	}
-}
-
-func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
-	logger.Info("SendKubernetesNetworkFlows stream started")
-	for {
-		req, err := stream.Recv()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-
-		switch req.Request.(type) {
-		case *pb.SendKubernetesNetworkFlowsRequest_CiliumFlow:
-			logger.Info("Received CiliumFlow")
-		case *pb.SendKubernetesNetworkFlowsRequest_FalcoFlow:
-			logger.Info("Received FalcoFlow")
-		}
-	}
 }
 
 func (fs *FakeServer) handleSignals() {
