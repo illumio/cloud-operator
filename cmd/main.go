@@ -28,6 +28,8 @@ import (
 	"github.com/google/gops/agent"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapgrpc"
+	"google.golang.org/grpc/grpclog"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/klog/v2"
 
@@ -82,8 +84,8 @@ func main() {
 	klog.SetLoggerWithOptions(logrLogger)
 
 	// // Set the gRPC logger to use the zapgrpc logger
-	// grpcLogger := zapgrpc.NewLogger(logger.WithOptions(zap.AddCallerSkip(3)))
-	// grpclog.SetLoggerV2(grpcLogger)
+	grpcLogger := zapgrpc.NewLogger(logger.WithOptions(zap.AddCallerSkip(3)))
+	grpclog.SetLoggerV2(grpcLogger)
 
 	viper.AutomaticEnv()
 
