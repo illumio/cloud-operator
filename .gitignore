@@ -1,2 +1,4 @@
 *local.yaml
 cloud-operator-*.tgz
+*values.yaml
+*cloud-operator-1.0.0.tgz

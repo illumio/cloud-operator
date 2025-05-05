@@ -118,7 +118,7 @@ func (authn *Authenticator) WriteK8sSecret(ctx context.Context, keyData OnboardR
 	return nil
 }
 
-// Update NewClientSet to use the helper function
+// NewClientSet returns a new Kubernetes clientset based on the execution environment.
 func NewClientSet() (*kubernetes.Clientset, error) {
 	var clusterConfig *rest.Config
 	var err error
@@ -147,7 +147,7 @@ func IsRunningInCluster() bool {
 	return os.Getenv("KUBERNETES_SERVICE_HOST") != ""
 }
 
-// Update SetUpOAuthConnection to use the helper function
+// SetUpOAuthConnection establishes a gRPC connection using OAuth credentials and logging the process.
 func SetUpOAuthConnection(
 	ctx context.Context,
 	logger *zap.Logger,
@@ -196,11 +196,7 @@ func SetUpOAuthConnection(
 	creds := credentials.NewTLS(tlsConfig)
 
 	proxyDialer := func(ctx context.Context, addr string) (net.Conn, error) {
-		proxyFunc := configureProxy(logger)
-		if proxyFunc == nil {
-			return net.Dial("tcp", addr)
-		}
-		proxyURL, err := proxyFunc(&http.Request{URL: &url.URL{Host: addr}})
+		proxyURL, err := http.ProxyFromEnvironment(&http.Request{URL: &url.URL{Host: addr}})
 		if err != nil {
 			logger.Warn("Invalid HTTPS proxy configured; ignoring proxy settings", zap.Error(err))
 			return net.Dial("tcp", addr)
@@ -208,12 +204,7 @@ func SetUpOAuthConnection(
 		if proxyURL == nil { // No proxy configured
 			return net.Dial("tcp", addr)
 		}
-		conn, err := proxy.Dial(ctx, "tcp", addr)
-		if err != nil {
-			logger.Error("Failed to connect via proxy; falling back to direct connection", zap.Error(err))
-			return net.Dial("tcp", addr)
-		}
-		return conn, nil
+		return proxy.Dial(ctx, "tcp", addr)
 	}
 
 	conn, err := grpc.NewClient(

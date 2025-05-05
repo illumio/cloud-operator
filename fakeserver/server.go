@@ -17,6 +17,9 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -153,19 +156,29 @@ func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error 
 }
 
 func logReceivedLogEntry(log *pb.LogEntry, logger *zap.Logger) error {
+	// Decode the JSON-encoded string into a LogEntry struct
 	var logEntry LogEntry = make(map[string]any)
 	if err := json.Unmarshal([]byte(log.JsonMessage), &logEntry); err != nil {
 		logger.Error("Error decoding JSON log message", zap.Error(err))
+		return status.Errorf(codes.Internal, "Internal error")
+	}
+
+	// Check for an empty log entry
+	if len(logEntry) == 0 {
+		logger.Warn("Received empty log entry")
+		return status.Errorf(codes.InvalidArgument, "Empty log entry")
 	}
 
 	level, err := logEntry.Level()
 	if err != nil {
 		logger.Error("Error converting log level", zap.Error(err))
-		return err
+		return status.Errorf(codes.Internal, "Internal error")
 	}
 
 	if ce := logger.Check(level, "Received log entry from cloud-operator"); ce != nil {
-		ce.Write(zap.Object("entry", logEntry))
+		ce.Write(
+			zap.Object("entry", logEntry),
+		)
 	}
 	return nil
 }
@@ -194,9 +207,26 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 func (fs *FakeServer) start() error {
 	logger = fs.logger
 	logger.Info("Starting FakeServer", zap.String("address", fs.address), zap.String("httpAddress", fs.httpAddress), zap.String("token", fs.token))
-	var err error
+
+	// // Use ListenConfig to enable SO_REUSEADDR and SO_REUSEPORT
+	// listenConfig := net.ListenConfig{
+	// 	Control: func(network, address string, c syscall.RawConn) error {
+	// 		var controlErr error
+	// 		err := c.Control(func(fd uintptr) {
+	// 			controlErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+	// 			if controlErr == nil {
+	// 				controlErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEPORT, 1)
+	// 			}
+	// 		})
+	// 		if err != nil {
+	// 			return err
+	// 		}
+	// 		return controlErr
+	// 	},
+	// }
 
 	// Start gRPC server
+	var err error
 	fs.listener, err = net.Listen("tcp", fs.address)
 	if err != nil {
 		logger.Error("Failed to start gRPC listener", zap.String("address", fs.address), zap.Error(err))
@@ -214,6 +244,9 @@ func (fs *FakeServer) start() error {
 	serverState = fs.state
 	fs.server = grpc.NewServer(grpc.Creds(credsTLS), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor(fs.token)))
 	pb.RegisterKubernetesInfoServiceServer(fs.server, &server{})
+
+	// Handle termination signals for graceful shutdown
+	go fs.handleSignals()
 
 	go func() {
 		logger.Info("Starting gRPC server", zap.String("address", fs.address))
@@ -346,32 +379,51 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 	return cert, nil
 }
 
-// Stub implementation for GetConfigurationUpdates
-func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConfigurationUpdatesServer) error {
-	logger.Info("GetConfigurationUpdates stream started")
-	for {
-		// Simulate receiving updates (placeholder logic)
-		select {
-		case <-stream.Context().Done():
-			logger.Error("GetConfigurationUpdates stream context canceled", zap.Error(stream.Context().Err()))
-			return stream.Context().Err()
-		case <-time.After(10 * time.Second):
-			logger.Info("Sending keepalive on GetConfigurationUpdates stream")
-			// Placeholder: Send a keepalive or response
-		}
-	}
-}
+// // Stub implementation for GetConfigurationUpdates
+// func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConfigurationUpdatesServer) error {
+// 	logger.Info("GetConfigurationUpdates stream started")
+// 	for {
+// 		req, err := stream.Recv()
+// 		if err == io.EOF {
+// 			return nil
+// 		}
+// 		if err != nil {
+// 			return err
+// 		}
 
-func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
-	logger.Info("SendKubernetesNetworkFlows stream started")
-	for {
-		select {
-		case <-stream.Context().Done():
-			logger.Error("SendKubernetesNetworkFlows stream context canceled", zap.Error(stream.Context().Err()))
-			return stream.Context().Err()
-		case <-time.After(2 * time.Minute):
-			logger.Info("Sending keepalive on SendKubernetesNetworkFlows stream")
-			// Placeholder: Send a keepalive or response
-		}
-	}
+// 		switch req.Request.(type) {
+// 		case *pb.GetConfigurationUpdatesRequest_Keepalive:
+// 			logger.Info("Received GetConfigurationUpdates keepalive request")
+// 		}
+// 	}
+// }
+
+// func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
+// 	logger.Info("SendKubernetesNetworkFlows stream started")
+// 	for {
+// 		req, err := stream.Recv()
+// 		if err == io.EOF {
+// 			return nil
+// 		}
+// 		if err != nil {
+// 			return err
+// 		}
+
+// 		switch req.Request.(type) {
+// 		case *pb.SendKubernetesNetworkFlowsRequest_CiliumFlow:
+// 			logger.Info("Received CiliumFlow")
+// 		case *pb.SendKubernetesNetworkFlowsRequest_FalcoFlow:
+// 			logger.Info("Received FalcoFlow")
+// 		}
+// 	}
+// }
+
+func (fs *FakeServer) handleSignals() {
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
+
+	<-signalChan
+	logger.Info("Received termination signal, shutting down FakeServer")
+	fs.stop()
+	os.Exit(0)
 }
