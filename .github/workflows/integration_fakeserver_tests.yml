@@ -99,5 +99,6 @@ jobs:
           kubectl wait --for=condition=ready pod -l app=cloud-operator -n illumio-cloud --timeout=300s && go test -v ./fakeserver/...
 
       - name: Fetch Kubernetes Pod logs
+        if: success() || failure()  
         run: |
           kubectl logs -l app=cloud-operator -n illumio-cloud

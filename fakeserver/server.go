@@ -152,6 +152,45 @@ func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error 
 	}
 }
 
+// Stub implementation for GetConfigurationUpdates
+func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConfigurationUpdatesServer) error {
+	logger.Info("GetConfigurationUpdates stream started")
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		switch req.Request.(type) {
+		case *pb.GetConfigurationUpdatesRequest_Keepalive:
+			logger.Info("Received GetConfigurationUpdates keepalive request")
+		}
+	}
+}
+
+func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
+	logger.Info("SendKubernetesNetworkFlows stream started")
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		switch req.Request.(type) {
+		case *pb.SendKubernetesNetworkFlowsRequest_CiliumFlow:
+			logger.Info("Received CiliumFlow")
+		case *pb.SendKubernetesNetworkFlowsRequest_FalcoFlow:
+			logger.Info("Received FalcoFlow")
+		}
+	}
+}
+
 func logReceivedLogEntry(log *pb.LogEntry, logger *zap.Logger) error {
 	var logEntry LogEntry = make(map[string]any)
 	if err := json.Unmarshal([]byte(log.JsonMessage), &logEntry); err != nil {
