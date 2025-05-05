@@ -42,6 +42,7 @@ func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
 	fakeServer := &FakeServer{
 		address:     "0.0.0.0:50051",
 		httpAddress: "0.0.0.0:50053",
+		stopChan:    make(chan struct{}),
 		token:       token,
 		logger:      logger, // Use a no-op logger for testing
 		state:       &ServerState{ConnectionSuccessful: false},
@@ -50,6 +51,9 @@ func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
 	// Start the server
 	err := fakeServer.start()
 	assert.NoError(t, err, "Failed to start the FakeServer")
+
+	logger.Info("Server started")
+	<-fakeServer.stopChan
 
 	// Cleanup: Stop the server after the test
 	defer fakeServer.stop()
@@ -84,6 +88,10 @@ mainloop:
 	// Start the server
 	err = fakeServer.start()
 	assert.NoError(t, err, "Failed to start the FakeServer")
+
+	logger.Info("Server started")
+	<-fakeServer.stopChan
+
 	// Cleanup: Stop the server after the test
 	defer fakeServer.stop()
 
@@ -121,6 +129,9 @@ func TestFailureDuringIntialCommit(t *testing.T) {
 	// Start the server
 	err := fakeServer.start()
 	assert.NoError(t, err, "Failed to start the FakeServer")
+
+	logger.Info("Server started")
+	<-fakeServer.stopChan
 
 	// Cleanup: Stop the server after the test
 	defer fakeServer.stop()
