@@ -66,8 +66,8 @@ falco:
 
 env:
   tlsSkipVerify: true
-  onboardingEndpoint: "localhost:50053/api/v1/k8s_cluster/onboard"
-  tokenEndpoint: "localhost:50053/api/v1/k8s_cluster/authenticate"
+  onboardingEndpoint: "https://host.docker.internal:50053/api/v1/k8s_cluster/onboard"
+  tokenEndpoint: "https://host.docker.internal:50053/api/v1/k8s_cluster/authenticate"
   streamKeepalivePeriods:
     kubernetes_resources: "10s"
     kubernetes_network_flows: "10s"

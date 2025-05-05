@@ -196,7 +196,11 @@ func SetUpOAuthConnection(
 	creds := credentials.NewTLS(tlsConfig)
 
 	proxyDialer := func(ctx context.Context, addr string) (net.Conn, error) {
-		proxyURL, err := http.ProxyFromEnvironment(&http.Request{URL: &url.URL{Host: addr}})
+		proxyFunc := http.ProxyFromEnvironment
+		if proxyFunc == nil {
+			return net.Dial("tcp", addr)
+		}
+		proxyURL, err := proxyFunc(&http.Request{URL: &url.URL{Host: addr}})
 		if err != nil {
 			logger.Warn("Invalid HTTPS proxy configured; ignoring proxy settings", zap.Error(err))
 			return net.Dial("tcp", addr)
@@ -204,7 +208,12 @@ func SetUpOAuthConnection(
 		if proxyURL == nil { // No proxy configured
 			return net.Dial("tcp", addr)
 		}
-		return proxy.Dial(ctx, "tcp", addr)
+		conn, err := proxy.Dial(ctx, "tcp", addr)
+		if err != nil {
+			logger.Warn("Failed to connect via proxy; falling back to direct connection", zap.Error(err))
+			return net.Dial("tcp", addr)
+		}
+		return conn, nil
 	}
 
 	conn, err := grpc.NewClient(

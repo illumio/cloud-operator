@@ -379,44 +379,44 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 	return cert, nil
 }
 
-// // Stub implementation for GetConfigurationUpdates
-// func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConfigurationUpdatesServer) error {
-// 	logger.Info("GetConfigurationUpdates stream started")
-// 	for {
-// 		req, err := stream.Recv()
-// 		if err == io.EOF {
-// 			return nil
-// 		}
-// 		if err != nil {
-// 			return err
-// 		}
+// Stub implementation for GetConfigurationUpdates
+func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConfigurationUpdatesServer) error {
+	logger.Info("GetConfigurationUpdates stream started")
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 
-// 		switch req.Request.(type) {
-// 		case *pb.GetConfigurationUpdatesRequest_Keepalive:
-// 			logger.Info("Received GetConfigurationUpdates keepalive request")
-// 		}
-// 	}
-// }
+		switch req.Request.(type) {
+		case *pb.GetConfigurationUpdatesRequest_Keepalive:
+			logger.Info("Received GetConfigurationUpdates keepalive request")
+		}
+	}
+}
 
-// func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
-// 	logger.Info("SendKubernetesNetworkFlows stream started")
-// 	for {
-// 		req, err := stream.Recv()
-// 		if err == io.EOF {
-// 			return nil
-// 		}
-// 		if err != nil {
-// 			return err
-// 		}
+func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
+	logger.Info("SendKubernetesNetworkFlows stream started")
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 
-// 		switch req.Request.(type) {
-// 		case *pb.SendKubernetesNetworkFlowsRequest_CiliumFlow:
-// 			logger.Info("Received CiliumFlow")
-// 		case *pb.SendKubernetesNetworkFlowsRequest_FalcoFlow:
-// 			logger.Info("Received FalcoFlow")
-// 		}
-// 	}
-// }
+		switch req.Request.(type) {
+		case *pb.SendKubernetesNetworkFlowsRequest_CiliumFlow:
+			logger.Info("Received CiliumFlow")
+		case *pb.SendKubernetesNetworkFlowsRequest_FalcoFlow:
+			logger.Info("Received FalcoFlow")
+		}
+	}
+}
 
 func (fs *FakeServer) handleSignals() {
 	signalChan := make(chan os.Signal, 1)
