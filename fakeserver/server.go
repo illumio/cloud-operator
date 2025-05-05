@@ -19,9 +19,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/golang-jwt/jwt/v4"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -183,7 +185,7 @@ func logReceivedLogEntry(log *pb.LogEntry, logger *zap.Logger) error {
 	return nil
 }
 
-func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerInterceptor {
+func tokenAuthStreamInterceptor(expectedToken string, signingKey []byte) grpc.StreamServerInterceptor {
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		md, ok := metadata.FromIncomingContext(ss.Context())
 		if !ok {
@@ -201,12 +203,62 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 		}
 
 		fmt.Printf("Token received: %s\n", tokens[0])
-		if tokens[0] != fmt.Sprintf("Bearer %s", expectedToken) {
-			fmt.Printf("Invalid token in request. Received: %s, Expected: %s\n", tokens[0], fmt.Sprintf("Bearer %s", expectedToken))
-			return status.Errorf(codes.Unauthenticated, "Invalid token in request")
+		tokenStr := tokens[0]
+		if !strings.HasPrefix(tokenStr, "Bearer ") {
+			fmt.Println("Invalid token format")
+			return status.Errorf(codes.Unauthenticated, "Invalid token format")
 		}
+		tokenStr = strings.TrimPrefix(tokenStr, "Bearer ")
+
+		// Parse and validate the token
+		token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return signingKey, nil
+		})
+		if err != nil {
+			fmt.Printf("Token validation failed: %v\n", err)
+			return status.Errorf(codes.Unauthenticated, "Invalid token")
+		}
+
+		// Extract claims and validate
+		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+			fmt.Printf("Token claims: %v\n", claims)
+			if aud, ok := claims["aud"].([]interface{}); ok {
+				if !contains(aud, "192.168.65.254:50051") {
+					fmt.Println("Invalid audience in token")
+					return status.Errorf(codes.Unauthenticated, "Invalid audience")
+				}
+			} else {
+				fmt.Println("Audience claim missing or invalid")
+				return status.Errorf(codes.Unauthenticated, "Invalid audience")
+			}
+			if sub, ok := claims["sub"].(string); ok {
+				if sub != expectedToken {
+					fmt.Println("Invalid subject in token")
+					return status.Errorf(codes.Unauthenticated, "Invalid subject")
+				}
+			} else {
+				fmt.Println("Subject claim missing or invalid")
+				return status.Errorf(codes.Unauthenticated, "Invalid subject")
+			}
+		} else {
+			fmt.Println("Invalid token claims")
+			return status.Errorf(codes.Unauthenticated, "Invalid token claims")
+		}
+
 		return handler(srv, ss)
 	}
+}
+
+func contains(slice []interface{}, item string) bool {
+	for _, v := range slice {
+		if v == item {
+			return true
+		}
+	}
+	return false
 }
 
 func (fs *FakeServer) start() error {
@@ -230,7 +282,7 @@ func (fs *FakeServer) start() error {
 
 	credsTLS := credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{creds}, MinVersion: tls.VersionTLS12})
 	serverState = fs.state
-	fs.server = grpc.NewServer(grpc.Creds(credsTLS), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor(fs.token)))
+	fs.server = grpc.NewServer(grpc.Creds(credsTLS), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor("token1", []byte("token1"))))
 	pb.RegisterKubernetesInfoServiceServer(fs.server, &server{})
 
 	// Handle termination signals for graceful shutdown
