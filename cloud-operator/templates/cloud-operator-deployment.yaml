@@ -89,7 +89,7 @@ spec:
             - name: STREAM_SUCCESS_PERIOD_AUTH
               value: "{{ .Values.env.streamSuccessPeriods.auth }}"
             - name: HTTPS_PROXY
-              value: "{{ .Values.env.httpsProxy | default "null" }}"
+              value: "{{ .Values.env.httpsProxy | default null }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
