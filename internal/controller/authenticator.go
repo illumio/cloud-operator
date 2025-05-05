@@ -197,14 +197,7 @@ func SetUpOAuthConnection(
 
 	proxyDialer := func(ctx context.Context, addr string) (net.Conn, error) {
 		proxyFunc := http.ProxyFromEnvironment
-		if proxyFunc == nil {
-			return net.Dial("tcp", addr)
-		}
 		proxyURL, err := proxyFunc(&http.Request{URL: &url.URL{Host: addr}})
-		if err != nil {
-			logger.Warn("Invalid HTTPS proxy configured; ignoring proxy settings", zap.Error(err))
-			return net.Dial("tcp", addr)
-		}
 		if proxyURL == nil { // No proxy configured
 			return net.Dial("tcp", addr)
 		}
