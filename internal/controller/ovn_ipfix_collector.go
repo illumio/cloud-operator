@@ -5,11 +5,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/bio-routing/flowhouse/pkg/packet/ipfix"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -49,7 +47,7 @@ func (sm *streamManager) startOVNIPFIXCollector(ctx context.Context, logger *zap
 		logger.Info("Creating custom listener for OVN flows")
 		listener, err := net.ListenPacket("udp", ":4739")
 		if err != nil {
-			logger.Fatal("Failed to listen on OVN port", zap.String("address", sm.streamClient.IpfixCollectorPort), zap.Error(err))
+			logger.Fatal("Failed to listen on OVN port", zap.Error(err))
 		}
 
 		logger.Info("OVN server listening", zap.String("address", sm.streamClient.IpfixCollectorPort))
@@ -82,155 +80,67 @@ func (sm *streamManager) processOVNFlow(ctx context.Context, logger *zap.Logger)
 		case packet := <-sm.streamClient.ovnEventChan:
 			logger.Info("Processing packet from ovnEventChan", zap.Int("packetLength", len(packet)))
 
-			// Decode the packet for debugging
-			decodePacket(packet, logger)
-
 			if len(packet) < 2 {
 				logger.Error("Packet too short to contain a template ID")
 				continue
 			}
 
-			templateID := binary.BigEndian.Uint16(packet[:2])
-			logger.Info("Extracted template ID", zap.Uint16("templateID", templateID))
-
-			if templateID < 256 || templateID > 65535 {
-				logger.Error("Invalid template ID", zap.Uint16("templateID", templateID))
-				continue
-			}
-
-			convertedStandardFlow, err := ParseIPFIXMessageWithTemplate(packet, templateID, logger)
+			packetDecoded, err := ipfix.Decode(packet)
 			if err != nil {
-				logger.Error("Failed to parse IPFIX message", zap.Error(err))
+				logger.Error("Failed to decode IPFIX packet", zap.Error(err))
+				logger.Debug("Raw packet data", zap.String("rawPacket", fmt.Sprintf("%x", packet)))
 				continue
 			}
-			logger.Info("Converted standard flow", zap.Any("flow", convertedStandardFlow))
-			if err := sm.FlowCache.CacheFlow(ctx, convertedStandardFlow); err != nil {
-				logger.Error("Failed to cache flow", zap.Error(err))
-				return err
+
+			ipfix.PrintHeader(packetDecoded)
+			logger.Info("Decoded IPFIX packet", zap.Any("packet", packetDecoded))
+
+			for _, flowSet := range packetDecoded.DataFlowSets() {
+				templateID := flowSet.Header.SetID
+				template, exists := ipfixTemplates[templateID]
+				if !exists {
+					logger.Error("Template not found for SetID", zap.Uint16("templateID", templateID))
+					continue
+				}
+
+				logger.Info("Using template to decode flow records", zap.Uint16("templateID", templateID))
+				records := decodeFlowRecords(flowSet.Records, template, logger)
+				for _, record := range records {
+					logger.Info("Decoded flow record", zap.Any("record", record))
+				}
 			}
-			logger.Info("Successfully cached flow")
 		}
 	}
 }
 
-// ParseIPFIXMessageWithTemplate parses incoming bytes into a single IPFIXFlowRecord using predefined templates.
-func ParseIPFIXMessageWithTemplate(data []byte, templateID uint16, logger *zap.Logger) (*pb.StandardFlow, error) {
-	logger.Info("Parsing IPFIX message", zap.Int("dataLength", len(data)), zap.Uint16("templateID", templateID))
-	template, exists := ipfixTemplates[templateID]
-	if !exists {
-		logger.Error("Unknown template ID", zap.Uint16("templateID", templateID))
-		return nil, fmt.Errorf("unknown template ID: %d", templateID)
-	}
+// decodeFlowRecords decodes raw flow records using the provided template.
+func decodeFlowRecords(records []byte, template Template, logger *zap.Logger) []map[string]interface{} {
+	var decodedRecords []map[string]interface{}
+	offset := 0
 
-	if len(data) < 16 {
-		logger.Error("Data too short to contain IPFIX header", zap.Int("dataLength", len(data)))
-		return nil, fmt.Errorf("data too short to contain IPFIX header")
-	}
-
-	header := IPFIXHeader{
-		Length: binary.BigEndian.Uint16(data[2:4]),
-	}
-
-	if len(data) < int(header.Length) {
-		logger.Error("Data length does not match header length", zap.Int("dataLength", len(data)), zap.Uint16("headerLength", header.Length))
-		return nil, fmt.Errorf("data length (%d) does not match header length (%d)", len(data), header.Length)
-	}
-
-	offset := 16
-	if len(data[offset:]) < 20 {
-		logger.Error("Data too short to contain a flow record", zap.Int("remainingDataLength", len(data[offset:])))
-		return nil, fmt.Errorf("data too short to contain a flow record")
-	}
-
-	logger.Info("Parsing flow record", zap.Int("offset", offset))
-	standardFlow := &pb.StandardFlow{
-		Layer3: &pb.IP{
-			Source:      net.IP(data[offset+template.Fields["SourceIP"] : offset+template.Fields["SourceIP"]+4]).String(),
-			Destination: net.IP(data[offset+template.Fields["DestinationIP"] : offset+template.Fields["DestinationIP"]+4]).String(),
-		},
-		Layer4: &pb.Layer4{},
-		Ts: &pb.StandardFlow_Timestamp{
-			Timestamp: timestamppb.New(time.Unix(int64(binary.BigEndian.Uint32(data[offset+template.Fields["Timestamp"]:offset+template.Fields["Timestamp"]+4])), 0)),
-		},
-	}
-
-	if protocolOffset, exists := template.Fields["Protocol"]; exists && len(data) > offset+protocolOffset {
-		protocol := data[offset+protocolOffset]
-		logger.Info("Detected protocol", zap.Uint8("protocol", protocol))
-		if protocol == 6 {
-			standardFlow.Layer4.Protocol = &pb.Layer4_Tcp{
-				Tcp: &pb.TCP{
-					SourcePort:      uint32(binary.BigEndian.Uint16(data[offset+template.Fields["SourcePort"] : offset+template.Fields["SourcePort"]+2])),
-					DestinationPort: uint32(binary.BigEndian.Uint16(data[offset+template.Fields["DestinationPort"] : offset+template.Fields["DestinationPort"]+2])),
-				},
+	for offset < len(records) {
+		record := make(map[string]interface{})
+		for fieldName, fieldOffset := range template.Fields {
+			fieldEnd := fieldOffset + 4 // Assuming all fields are 4 bytes for simplicity
+			if fieldEnd > len(records) {
+				logger.Error("Field exceeds record length", zap.String("fieldName", fieldName))
+				break
 			}
-		} else if protocol == 17 {
-			standardFlow.Layer4.Protocol = &pb.Layer4_Udp{
-				Udp: &pb.UDP{
-					SourcePort:      uint32(binary.BigEndian.Uint16(data[offset+template.Fields["SourcePort"] : offset+template.Fields["SourcePort"]+2])),
-					DestinationPort: uint32(binary.BigEndian.Uint16(data[offset+template.Fields["DestinationPort"] : offset+template.Fields["DestinationPort"]+2])),
-				},
+
+			// Interpret the field based on its name or type
+			switch fieldName {
+			case "SourceIP", "DestinationIP":
+				record[fieldName] = net.IP(records[fieldOffset:fieldEnd]).String()
+			case "SourcePort", "DestinationPort":
+				record[fieldName] = binary.BigEndian.Uint16(records[fieldOffset:fieldEnd])
+			default:
+				// Default to base64 encoding for unknown fields
+				record[fieldName] = fmt.Sprintf("%x", records[fieldOffset:fieldEnd])
 			}
 		}
-		logger.Info("Parsed flow record successfully")
-		return standardFlow, nil
+		decodedRecords = append(decodedRecords, record)
+		offset += len(template.Fields) * 4 // Assuming fixed field size
 	}
 
-	logger.Error("Protocol field not found in template")
-	return nil, nil
-}
-
-func decodePacket(packet []byte, logger *zap.Logger) {
-	logger.Info("Decoding packet", zap.Int("packetLength", len(packet)))
-
-	// Log raw packet data in hexadecimal format
-	logger.Info("Raw packet data (hex)", zap.String("hex", fmt.Sprintf("%x", packet)))
-
-	if len(packet) < 16 {
-		logger.Error("Packet too short to contain IPFIX header")
-		return
-	}
-
-	// Decode IPFIX header
-	version := binary.BigEndian.Uint16(packet[0:2])
-	length := binary.BigEndian.Uint16(packet[2:4])
-	exportTime := binary.BigEndian.Uint32(packet[4:8])
-	sequenceNumber := binary.BigEndian.Uint32(packet[8:12])
-	observationDomainID := binary.BigEndian.Uint32(packet[12:16])
-
-	logger.Info("IPFIX Header",
-		zap.Uint16("version", version),
-		zap.Uint16("length", length),
-		zap.Uint32("exportTime", exportTime),
-		zap.Uint32("sequenceNumber", sequenceNumber),
-		zap.Uint32("observationDomainID", observationDomainID),
-	)
-
-	// Ensure the packet length matches the header length
-	if len(packet) < int(length) {
-		logger.Error("Packet length does not match header length",
-			zap.Int("packetLength", len(packet)),
-			zap.Uint16("headerLength", length),
-		)
-		return
-	}
-
-	// Decode flow records
-	offset := 16
-	for offset < len(packet) {
-		if len(packet[offset:]) < 4 {
-			logger.Error("Remaining data too short to contain a flow record")
-			break
-		}
-
-		// Example: Extract template ID (first 2 bytes of each record)
-		templateID := binary.BigEndian.Uint16(packet[offset : offset+2])
-		logger.Info("Flow Record",
-			zap.Int("offset", offset),
-			zap.Uint16("templateID", templateID),
-		)
-
-		// Move to the next record (adjust based on your template structure)
-		offset += 4 // Adjust this based on the actual record size
-	}
+	return decodedRecords
 }
