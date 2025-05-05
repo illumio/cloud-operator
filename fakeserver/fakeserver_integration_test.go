@@ -129,7 +129,6 @@ func TestFailureDuringIntialCommit(t *testing.T) {
 	assert.NoError(t, err, "Failed to start the FakeServer")
 
 	logger.Info("Server started")
-	<-fakeServer.stopChan
 
 	// Cleanup: Stop the server after the test
 	defer fakeServer.stop()
