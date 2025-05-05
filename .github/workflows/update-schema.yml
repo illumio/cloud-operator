@@ -9,6 +9,9 @@ on:
       - 'cloud-operator/values.yaml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   update-schema:
     runs-on: ubuntu-latest
@@ -32,3 +35,10 @@ jobs:
         id: git-check
         run: |
           git diff --exit-code cloud-operator/values.schema.json || echo "changes=true" >> $GITHUB_OUTPUT
+
+      - name: Fail if schema needs updating
+        if: steps.git-check.outputs.changes == 'true' && github.event_name == 'pull_request'
+        run: |
+          echo "::error::The values.schema.json file needs to be updated to match changes in values.yaml."
+          echo "::error::Please run 'helm schema-gen values.yaml -o values.schema.json' or similar tool to update the schema."
+          exit 1
