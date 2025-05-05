@@ -193,16 +193,12 @@ func tokenAuthStreamInterceptor(expectedToken string, signingKey []byte) grpc.St
 			return status.Errorf(codes.Unauthenticated, "Metadata not provided")
 		}
 
-		// Print received metadata for debugging
-		fmt.Printf("Received metadata: %v\n", md)
-
 		tokens := md["authorization"]
 		if len(tokens) == 0 {
 			fmt.Println("Authorization token missing")
 			return status.Errorf(codes.Unauthenticated, "Authorization token missing")
 		}
 
-		fmt.Printf("Token received: %s\n", tokens[0])
 		tokenStr := tokens[0]
 		if !strings.HasPrefix(tokenStr, "Bearer ") {
 			fmt.Println("Invalid token format")
@@ -246,7 +242,6 @@ func tokenAuthStreamInterceptor(expectedToken string, signingKey []byte) grpc.St
 			return status.Errorf(codes.Unauthenticated, "Subject claims do not match")
 		}
 
-		fmt.Println("Token validation successful")
 		return handler(srv, ss)
 	}
 }
