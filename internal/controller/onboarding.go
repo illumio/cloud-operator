@@ -64,7 +64,9 @@ func Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string,
 		logger.Error("Unable to send post request", zap.Error(err))
 		return responseData, err
 	}
+	defer resp.Body.Close()
 
+	// Handle response
 	switch resp.StatusCode {
 	case http.StatusOK:
 		// 200 OK - Continue processing the response
