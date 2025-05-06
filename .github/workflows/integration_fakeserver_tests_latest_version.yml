@@ -58,7 +58,7 @@ jobs:
         run: |
           curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
           sudo install minikube-linux-amd64 /usr/local/bin/minikube
-      
+
       - name: Check Minikube support for Kubernetes version
         id: dry_run
         run: |
@@ -126,7 +126,7 @@ jobs:
       - name:  Run Integration Tests
         if: steps.dry_run.outputs.supported == 'true'
         run: |
-         # Run your test against the fake server
+          # Run your test against the fake server
           kubectl wait --for=condition=ready pod -l app=cloud-operator -n illumio-cloud --timeout=300s && go test -v ./fakeserver/...
 
       - name: Fetch Kubernetes Pod logs
