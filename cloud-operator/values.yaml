@@ -62,7 +62,7 @@ falco:
         priority: WARNING
 
 env:
-  tlsSkipVerify: false
+  tlsSkipVerify: "false"
   onboardingEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
   tokenEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
   streamKeepalivePeriods:

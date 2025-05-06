@@ -6,7 +6,7 @@ tests:
   # Test for environment variables
   - it: should set the correct environment variables
     set:
-      env.tlsSkipVerify: true
+      env.tlsSkipVerify: "true"
     asserts:
       - equal:
           path: spec.template.spec.containers[0].env[0].name

@@ -194,7 +194,7 @@
       "type": "object",
       "properties": {
         "tlsSkipVerify": {
-          "type": "boolean",
+          "type": "string",
           "description": "Whether to skip TLS verification"
         },
         "onboardingEndpoint": {
