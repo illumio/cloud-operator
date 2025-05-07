@@ -3,37 +3,32 @@
 package main
 
 import (
-	"bytes"         // Added for request body
-	"crypto/tls"    // Added for HTTPS client
-	"encoding/json" // Added for JSON marshalling
+	"bytes"
+	"crypto/tls"
+	"encoding/json"
 	"fmt"
-	"net/http" // Added for HTTP client
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require" // Using require for setup/teardown assertions
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
-var testToken = createSignedToken() // Renamed to avoid conflict if run in same package
+var token = createSignedToken()
 
 func createSignedToken() string {
-	// Use a consistent audience for testing, matching what FakeServer might expect
-	// Note: The FakeServer's gRPC component might need a different audience
-	// than the one used for generating tokens *for* the client.
-	// Let's assume the audience here is relevant for the token *provided* by the server.
-	aud := "192.168.49.1:50051" // Audience expected by gRPC server
+	aud := "192.168.49.1:50051"
 	token := "token1"
 	// Example of generating a JWT with an "aud" claim
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": token,
-		"aud": []string{aud},                        // Audience claim
-		"exp": time.Now().Add(time.Hour * 1).Unix(), // Shorter expiry for test token
+		"aud": []string{aud},
+		"exp": time.Now().Add(time.Hour * 72).Unix(),
 	})
-	// Use a consistent, known key for test signing
-	// IMPORTANT: Never use hardcoded secrets like this in production!
+	// Just using "secret" for test signing
 	mySigningKey := []byte("secret")
 
 	// Sign and get the complete encoded token as a string
@@ -43,53 +38,41 @@ func createSignedToken() string {
 		logger.Error("Token could not be signed with fake secret key")
 	}
 	return signedToken
-}
 
-// --- Existing Tests ---
+}
 
 // TestFakeServerConnectionSuccesfulAndRetry tests a client connecting to the gRPC server
 func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
-	// Use t.Parallel() if tests are independent and can run in parallel
 	logger := zap.NewNop()
 	// Setup: Start the FakeServer
 	fakeServer := &FakeServer{
-		address:     "0.0.0.0:50051", // Use different ports if running tests in parallel
-		httpAddress: "0.0.0.0:50053", // Use different ports if running tests in parallel
-		stopChan:    make(chan struct{}),
-		token:       testToken, // Use the test token
-		logger:      logger,
+		address:     "0.0.0.0:50051",
+		httpAddress: "0.0.0.0:50053",
+		token:       token,
+		logger:      logger, // Use a no-op logger for testing
 		state:       &ServerState{ConnectionSuccessful: false},
-		// Ensure FakeServer's HTTP part uses TLS for this test if client expects HTTPS
 	}
 
 	// Start the server
 	err := fakeServer.start()
-	require.NoError(t, err, "Setup: Failed to start the FakeServer")
-	logger.Info("Server started for TestFakeServerConnectionSuccesfulAndRetry")
+	assert.NoError(t, err, "Failed to start the FakeServer")
 
 	// Cleanup: Stop the server after the test
-	// Use t.Cleanup for reliable teardown
-	t.Cleanup(func() {
-		logger.Info("Stopping server for TestFakeServerConnectionSuccesfulAndRetry")
-		fakeServer.stop()
-		logger.Info("Server stopped for TestFakeServerConnectionSuccesfulAndRetry")
-	})
+	defer fakeServer.stop()
 
 	// Wait for the state to change, Wanting to see client succesfully connect to fakeserver
-	timeout := time.After(120 * time.Second) // Increased timeout for CI/slow environments
+	timeout := time.After(120 * time.Second)
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
-
-	// Give the external client time to connect
-	logger.Info("Waiting for external client connection...")
-
-mainloop1: // Label for the first loop
+mainloop:
 	for {
 		select {
 		case <-timeout:
-			t.Fatal("Timeout: External client never connected successfully in the allotted time.")
-			return // Not strictly needed after t.Fatal but good practice
+			// Test failure if the state hasn't changed in time
+			t.Fatal("Operator never connected in alloted time.")
+			return
 		case <-ticker.C:
+			// time.Sleep(25 * time.Second)
 			// Check if the log entry has been recorded
 			stateChanged := fakeServer.state.ConnectionSuccessful
 
@@ -97,34 +80,24 @@ mainloop1: // Label for the first loop
 			if stateChanged {
 				t.Log("Connection Succes is true. Test passed.")
 				assert.Equal(t, stateChanged, true)
-				break mainloop1
+				break mainloop
 			}
 		}
 	}
+	fakeServer.stop()
 
-	// --- Test Retry ---
-	logger.Info("Stopping server to test client retry...")
-	fakeServer.stop()                             // Stop the server
-	fakeServer.state.ConnectionSuccessful = false // Reset state for retry
-
-	// Add a small delay to ensure the client detects the disconnection
-	time.Sleep(2 * time.Second)
-
-	logger.Info("Restarting server for retry test...")
-	// Restart the server
+	fakeServer.state.ConnectionSuccessful = false
+	// Start the server
 	err = fakeServer.start()
-	require.NoError(t, err, "Retry Setup: Failed to restart the FakeServer")
-	logger.Info("Server restarted for retry test.")
+	assert.NoError(t, err, "Failed to start the FakeServer")
+	// Cleanup: Stop the server after the test
+	defer fakeServer.stop()
 
-	// Reset timeout for the retry attempt
-	timeout = time.After(120 * time.Second)
-
-	logger.Info("Waiting for external client reconnection...")
-mainloop2: // Label for the second loop
 	for {
 		select {
 		case <-timeout:
-			t.Fatal("Timeout: External client never reconnected successfully after restart.")
+			// Test failure if the state hasn't changed in time
+			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
 			// Check if the log entry has been recorded
@@ -134,51 +107,41 @@ mainloop2: // Label for the second loop
 			if stateChanged {
 				t.Log("Connection Succes is true. Test passed.")
 				assert.Equal(t, stateChanged, true)
-				break mainloop2
+				return
 			}
 		}
 	}
 }
 
 func TestFailureDuringIntialCommit(t *testing.T) {
-	// Use t.Parallel() if tests are independent
 	logger := zap.NewNop()
-	// Setup: Start the FakeServer configured to fail the initial commit
+	// Setup: Start the FakeServer
 	fakeServer := &FakeServer{
-		address:     "0.0.0.0:50051", // Use different ports if running tests in parallel
-		httpAddress: "0.0.0.0:50053", // Use different ports if running tests in parallel
-		token:       testToken,
-		logger:      logger,
-		state:       &ServerState{ConnectionSuccessful: false, BadIntialCommit: true}, // Set BadInitialCommit to true
+		address:     "0.0.0.0:50051",
+		httpAddress: "0.0.0.0:50053",
+		token:       token,
+		logger:      logger, // Use a no-op logger for testing
+		state:       &ServerState{ConnectionSuccessful: false, BadIntialCommit: true},
 	}
 
 	// Start the server
 	err := fakeServer.start()
-	require.NoError(t, err, "Setup: Failed to start the FakeServer")
-	logger.Info("Server started for TestFailureDuringIntialCommit")
+	assert.NoError(t, err, "Failed to start the FakeServer")
 
 	// Cleanup: Stop the server after the test
-	t.Cleanup(func() {
-		logger.Info("Stopping server for TestFailureDuringIntialCommit")
-		fakeServer.stop()
-		logger.Info("Server stopped for TestFailureDuringIntialCommit")
-	})
+	defer fakeServer.stop()
 
-	// Wait for the state to change, expecting connection to succeed but perhaps specific handling for BadInitialCommit
-	// The definition of success might differ here. Does the client still connect? Does it retry?
-	// This test seems similar to the previous one in waiting for ConnectionSuccessful.
-	// Let's assume for now we just want to see if the client *can* connect initially even if the server intends to misbehave later.
+	// Wait for the state to change, Wanting to see client succesfully connect to fakeserver
 	timeout := time.After(120 * time.Second)
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
-
-	logger.Info("Waiting for external client connection (expecting potential issues later)...")
 
 mainloop:
 	for {
 		select {
 		case <-timeout:
-			t.Fatal("Timeout: External client never connected successfully in the allotted time (BadInitialCommit test).")
+			// Test failure if the state hasn't changed in time
+			t.Fatal("Operator never connected in alloted time.")
 			return
 		case <-ticker.C:
 			// Check if the log entry has been recorded
@@ -192,6 +155,7 @@ mainloop:
 			}
 		}
 	}
+	fakeServer.stop()
 }
 
 // --- New Test ---
@@ -205,7 +169,7 @@ func TestClientOnboardAndAuth(t *testing.T) {
 	fakeServer := &FakeServer{
 		address:     "0.0.0.0:50051",
 		httpAddress: "0.0.0.0:50053",
-		token:       testToken,
+		token:       token,
 		logger:      logger,
 		state:       &ServerState{},
 	}
