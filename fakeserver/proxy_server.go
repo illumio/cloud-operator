@@ -1,431 +1,189 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
-// (Based on previous refactoring for graceful shutdown)
+// Simplified to focus on HTTP CONNECT tunneling, with Hijack buffering fix.
+
 package main
 
 import (
+	// Needed for the Hijack ReadWriter
 	"context"
-	"crypto/tls"
-	"errors"
 	"fmt"
 	"io"
-	"log" // Using standard log for proxy, can be replaced with zap
+	"log"
 	"net"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
 )
 
-// ProxyServer represents a proxy server with HTTP and gRPC forwarding capabilities.
+// ProxyServer represents a proxy server focused on HTTP CONNECT.
 type ProxyServer struct {
-	httpServer          *http.Server
-	grpcListener        net.Listener
-	mainWg              sync.WaitGroup     // For main server loops (http listener, grpc accept loop)
-	activeConnectionsWg sync.WaitGroup     // To track active proxied connections (CONNECT tunnels, gRPC forwards)
-	mainCtx             context.Context    // Server-wide context, cancelled on Stop()
-	mainCancel          context.CancelFunc // Function to cancel mainCtx
-	logger              *log.Logger        // ADDED: Using standard logger for simplicity, can be zap
+	httpServer *http.Server
+	wg         sync.WaitGroup
 }
-
-const (
-	// Hardcoded target for non-CONNECT HTTP requests reverse-proxied by this server.
-	proxyDefaultReverseProxyTargetScheme   = "https"
-	proxyDefaultReverseProxyTargetHostPort = "host.docker.internal:50053" // Example, should match FakeServer HTTP
-	// Hardcoded target for the dedicated gRPC forwarding port
-	proxyDefaultDedicatedGRPCBackendAddress = "127.0.0.1:50051" // Should match FakeServer gRPC
-)
 
 // NewProxyServer creates and initializes a new ProxyServer.
-func NewProxyServer(httpAddress, grpcAddress string, logger *log.Logger) (*ProxyServer, error) {
-	mainCtx, mainCancel := context.WithCancel(context.Background())
-
-	if logger == nil { // Default logger if nil
-		// Default to discard if no logger, or use a default stdout logger:
-		// logger = log.New(os.Stdout, "[ProxyServerDefault] ", log.LstdFlags|log.Lmicroseconds)
-		logger = log.New(io.Discard, "[ProxyServerDefault] ", log.LstdFlags)
-	}
-
+func NewProxyServer(httpAddress string) (*ProxyServer, error) {
 	httpServer := &http.Server{
-		Addr:        httpAddress,
-		BaseContext: func(_ net.Listener) context.Context { return mainCtx }, // Propagate mainCtx
+		Addr: httpAddress,
 	}
-
-	var pGrpcListener net.Listener
-	var err error
-	if grpcAddress != "" {
-		pGrpcListener, err = net.Listen("tcp", grpcAddress)
-		if err != nil {
-			logger.Printf("ERROR: Failed to start Proxy gRPC listener on %s: %v", grpcAddress, err)
-			mainCancel() // Cancel context if setup fails
-			return nil, fmt.Errorf("proxy gRPC listener on %s: %w", grpcAddress, err)
-		}
+	proxyServer := &ProxyServer{
+		httpServer: httpServer,
 	}
-
-	proxy := &ProxyServer{
-		httpServer:   httpServer,
-		grpcListener: pGrpcListener,
-		mainCtx:      mainCtx,
-		mainCancel:   mainCancel,
-		logger:       logger,
-	}
-	httpServer.Handler = proxy // The proxy itself handles HTTP requests
-
-	return proxy, nil
+	httpServer.Handler = proxyServer
+	return proxyServer, nil
 }
 
-// Start launches the ProxyServer's HTTP and gRPC listeners. Non-blocking.
+// Start launches the ProxyServer's HTTP listener.
 func (p *ProxyServer) Start() error {
-	p.logger.Println("Starting ProxyServer...")
-	p.mainWg.Add(1) // For HTTP server listener loop
-
+	log.Println("Starting Simplified ProxyServer (with Hijack fix)...")
+	p.wg.Add(1)
 	go func() {
-		defer p.mainWg.Done()
-		p.logger.Printf("Proxy HTTP server starting on %s", p.httpServer.Addr)
+		defer p.wg.Done()
+		log.Printf("Proxy HTTP server starting on %s (CONNECT Tunneling Only)", p.httpServer.Addr)
 		if err := p.httpServer.ListenAndServe(); err != http.ErrServerClosed {
-			p.logger.Printf("ERROR: Proxy HTTP server error: %v", err)
-			p.mainCancel() // Signal other parts to stop
+			log.Printf("ERROR: Proxy HTTP server error: %v", err)
 		}
-		p.logger.Println("Proxy HTTP server stopped.")
+		log.Println("Proxy HTTP server stopped.")
 	}()
-
-	if p.grpcListener != nil {
-		p.mainWg.Add(1) // For gRPC listener accept loop
-		go p.acceptGRPCConnections()
-		p.logger.Printf("ProxyServer ready: HTTP Proxy on %s, Dedicated gRPC Forwarder on %s", p.httpServer.Addr, p.grpcListener.Addr().String())
-	} else {
-		p.logger.Printf("ProxyServer ready: HTTP Proxy on %s (Dedicated gRPC Forwarder not configured)", p.httpServer.Addr)
-	}
+	log.Printf("Simplified ProxyServer ready: HTTP Proxy for CONNECT on %s", p.httpServer.Addr)
 	return nil
 }
 
-func (p *ProxyServer) acceptGRPCConnections() {
-	defer p.mainWg.Done()
-	p.logger.Printf("Proxy dedicated gRPC forwarder starting on %s (forwards to %s)", p.grpcListener.Addr().String(), proxyDefaultDedicatedGRPCBackendAddress)
-	for {
-		select {
-		case <-p.mainCtx.Done():
-			p.logger.Printf("Proxy gRPC forwarder: main context cancelled, stopping accept loop on %s.", p.grpcListener.Addr().String())
-			return
-		default:
-		}
-
-		// Set a deadline for accept to make it non-blocking periodically
-		if tcpListener, ok := p.grpcListener.(*net.TCPListener); ok {
-			_ = tcpListener.SetDeadline(time.Now().Add(1 * time.Second))
-		}
-
-		conn, err := p.grpcListener.Accept()
-		if err != nil {
-			if p.mainCtx.Err() != nil { // Check if server is stopping
-				return
-			}
-			if opError, ok := err.(*net.OpError); ok && opError.Timeout() {
-				continue // Normal timeout, check context again
-			}
-			if opError, ok := err.(*net.OpError); ok && strings.Contains(opError.Err.Error(), "use of closed network connection") {
-				p.logger.Printf("Proxy gRPC forwarder listener closed on %s, stopping accept loop.", p.grpcListener.Addr().String())
-				return
-			}
-			p.logger.Printf("ERROR: Proxy gRPC forwarder accept error on %s: %v. Stopping.", p.grpcListener.Addr().String(), err)
-			p.mainCancel() // Signal other parts to stop on unrecoverable error
-			return
-		}
-
-		if tcpConn, ok := conn.(*net.TCPConn); ok { // Clear deadline for the accepted connection
-			_ = tcpConn.SetDeadline(time.Time{})
-		}
-
-		p.logger.Printf("Proxy gRPC forwarder: Accepted connection from %s on %s", conn.RemoteAddr(), p.grpcListener.Addr().String())
-		p.activeConnectionsWg.Add(1)
-		go p.handleProxiedGRPC(p.mainCtx, conn) // Pass mainCtx
-	}
-}
-
-// handleProxiedGRPC forwards a TCP connection (for gRPC) using the cancellable bidirectional copy.
-func (p *ProxyServer) handleProxiedGRPC(ctx context.Context, clientConn net.Conn) {
-	defer p.activeConnectionsWg.Done()
-
-	p.logger.Printf("Proxy handleGRPC: Handling connection from %s, to backend %s", clientConn.RemoteAddr(), proxyDefaultDedicatedGRPCBackendAddress)
-
-	connCtx, connCancel := context.WithCancel(ctx) // Context for this specific proxied connection, derived from main server ctx
-	defer connCancel()
-
-	defer func() {
-		p.logger.Printf("Proxy handleGRPC: Ensuring client connection %s is closed.", clientConn.RemoteAddr())
-		clientConn.Close()
-	}()
-
-	dialer := net.Dialer{Timeout: 10 * time.Second}
-	backendConn, err := dialer.DialContext(connCtx, "tcp", proxyDefaultDedicatedGRPCBackendAddress)
-	if err != nil {
-		p.logger.Printf("ERROR: Proxy handleGRPC: Failed to connect to backend %s for client %s: %v", proxyDefaultDedicatedGRPCBackendAddress, clientConn.RemoteAddr(), err)
-		return
-	}
-	defer func() {
-		p.logger.Printf("Proxy handleGRPC: Ensuring backend connection %s (for client %s) is closed.", backendConn.RemoteAddr(), clientConn.RemoteAddr())
-		backendConn.Close()
-	}()
-
-	p.logger.Printf("Proxy handleGRPC: Successfully connected to backend %s for client %s. Tunneling...", proxyDefaultDedicatedGRPCBackendAddress, clientConn.RemoteAddr())
-
-	clientDesc := fmt.Sprintf("ClientGRPC(%s)", clientConn.RemoteAddr())
-	backendDesc := fmt.Sprintf("BackendGRPC(%s)", backendConn.RemoteAddr())
-	performBidirectionalCopy(connCtx, clientConn, backendConn, clientDesc, backendDesc, p.logger)
-	p.logger.Printf("Proxy handleGRPC: Tunnel finished for client %s to backend %s", clientConn.RemoteAddr(), proxyDefaultDedicatedGRPCBackendAddress)
-}
-
 // Stop gracefully shuts down the ProxyServer.
-func (p *ProxyServer) Stop(ctx context.Context) error {
-	p.logger.Println("Stopping ProxyServer...")
-	var firstErr error
-
-	p.mainCancel() // Signal all internal operations to stop
-
-	if p.grpcListener != nil {
-		p.logger.Println("Proxy closing gRPC listener...")
-		if err := p.grpcListener.Close(); err != nil {
-			p.logger.Printf("ERROR: Proxy gRPC listener close error: %v", err)
-			if firstErr == nil {
-				firstErr = err
-			}
-		}
+func (p *ProxyServer) Stop() error {
+	log.Println("Stopping Simplified ProxyServer...")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := p.httpServer.Shutdown(ctx); err != nil {
+		log.Printf("ERROR: Proxy HTTP server shutdown error: %v", err)
 	}
-
-	p.logger.Println("Proxy shutting down HTTP server...")
-	httpShutdownCtx, httpShutdownCancel := context.WithTimeout(ctx, 15*time.Second)
-	defer httpShutdownCancel()
-	if err := p.httpServer.Shutdown(httpShutdownCtx); err != nil {
-		p.logger.Printf("ERROR: Proxy HTTP server shutdown error: %v", err)
-		if firstErr == nil {
-			firstErr = err
-		}
-	}
-
-	p.logger.Println("Proxy waiting for main server loops to stop...")
-	if !waitWithTimeout(&p.mainWg, 5*time.Second) {
-		p.logger.Println("WARN: Proxy timed out waiting for main server loops.")
-		if firstErr == nil {
-			firstErr = errors.New("proxy timed out waiting for main loops")
-		}
-	}
-
-	p.logger.Println("Proxy waiting for active connections to terminate...")
-	if !waitWithTimeout(&p.activeConnectionsWg, 10*time.Second) {
-		p.logger.Println("WARN: Proxy timed out waiting for all active connections to terminate.")
-		if firstErr == nil {
-			firstErr = errors.New("proxy timed out waiting for active connections")
-		}
-	}
-
-	p.logger.Println("ProxyServer stopped.")
-	return firstErr
+	p.wg.Wait()
+	log.Println("Simplified ProxyServer stopped.")
+	return nil
 }
 
-// ServeHTTP handles all incoming HTTP requests to the proxy.
+// ServeHTTP is the entry point for all HTTP requests made to the proxy server.
 func (p *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// reqCtx is derived from p.mainCtx (due to httpServer.BaseContext)
-	// and is cancelled when this ServeHTTP handler returns.
-	reqCtx := r.Context()
-	p.logger.Printf("Proxy ServeHTTP: Method=%s, URL=%s, Host=%s, RemoteAddr=%s", r.Method, r.URL.String(), r.Host, r.RemoteAddr)
-
+	log.Printf("Proxy ServeHTTP: Method=%s, URL=%s, Host=%s, RemoteAddr=%s, Proto=%s", r.Method, r.URL.String(), r.Host, r.RemoteAddr, r.Proto)
 	if r.Method == http.MethodConnect {
-		p.logger.Printf("Proxy ServeHTTP: Handling HTTPS CONNECT request for target %s", r.Host)
-		// Pass reqCtx here, as handleConnectRequest is synchronous up to hijack
-		p.handleConnectRequest(reqCtx, w, r)
+		log.Printf("Proxy ServeHTTP: Handling HTTPS CONNECT request for target %s", r.Host)
+		p.handleConnect(w, r)
 		return
 	}
-
-	p.logger.Printf("Proxy ServeHTTP: Handling plain HTTP request (to be reverse proxied): %s %s", r.Method, r.URL.Path)
-	targetURL := &url.URL{
-		Scheme: proxyDefaultReverseProxyTargetScheme,
-		Host:   proxyDefaultReverseProxyTargetHostPort,
-	}
-	reverseProxy := httputil.NewSingleHostReverseProxy(targetURL)
-	reverseProxy.Transport = &http.Transport{
-		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12},
-		DialContext:         (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-		TLSHandshakeTimeout: 10 * time.Second,
-		ForceAttemptHTTP2:   true,
-	}
-	// For reverse proxy, it's correct to use the request's context.
-	// The reverse proxy operation should be tied to the lifecycle of this specific request.
-	reverseProxy.ServeHTTP(w, r.WithContext(reqCtx))
-	p.logger.Printf("Proxy ServeHTTP: Finished plain HTTP request for %s %s", r.Method, r.URL.Path)
+	log.Printf("Proxy ServeHTTP: Received non-CONNECT method %s. This proxy only handles CONNECT.", r.Method)
+	http.Error(w, "This proxy only handles HTTP CONNECT requests", http.StatusMethodNotAllowed)
 }
 
-// handleConnectRequest handles the synchronous part of an HTTP CONNECT request:
-// dialing, sending 200 OK, and hijacking. Then spawns a goroutine for the tunnel.
-func (p *ProxyServer) handleConnectRequest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+// handleConnect handles HTTP CONNECT requests.
+func (p *ProxyServer) handleConnect(w http.ResponseWriter, r *http.Request) {
 	originalTargetHost := r.Host
 	effectiveTargetHost := r.Host
-	var targetPort string
 
-	if hostPort := strings.Split(effectiveTargetHost, ":"); len(hostPort) == 2 {
-		targetPort = hostPort[1]
+	log.Printf("Proxy handleConnect: Initial Target %s (Client %s)", originalTargetHost, r.RemoteAddr)
+
+	var targetPort string
+	if hostPortParts := strings.Split(effectiveTargetHost, ":"); len(hostPortParts) == 2 {
+		targetPort = hostPortParts[1]
 	} else {
-		p.logger.Printf("WARN: Proxy handleConnect: Target %s without explicit port, assuming 443", effectiveTargetHost)
-		targetPort = "443"
+		log.Printf("ERROR: Proxy handleConnect: Target %s for client %s is missing an explicit port.", originalTargetHost, r.RemoteAddr)
+		http.Error(w, fmt.Sprintf("Target %s is missing an explicit port", originalTargetHost), http.StatusBadRequest)
+		return
 	}
 
 	if strings.HasPrefix(effectiveTargetHost, "host.docker.internal:") ||
-		(strings.HasPrefix(effectiveTargetHost, "192.168.65.") && (strings.HasSuffix(effectiveTargetHost, ":50051") || strings.HasSuffix(effectiveTargetHost, ":50053") || strings.HasSuffix(effectiveTargetHost, proxyDefaultReverseProxyTargetHostPort[strings.LastIndex(proxyDefaultReverseProxyTargetHostPort, ":"):]))) {
+		(strings.HasPrefix(effectiveTargetHost, "192.168.65.") && (strings.HasSuffix(effectiveTargetHost, ":50051") || strings.HasSuffix(effectiveTargetHost, ":50053"))) {
 		newDialTarget := fmt.Sprintf("127.0.0.1:%s", targetPort)
-		p.logger.Printf("Proxy handleConnect: Remapping target from %s to %s for local dialing", originalTargetHost, newDialTarget)
+		log.Printf("Proxy handleConnect: Remapping target from %s to %s for local dialing by proxy", originalTargetHost, newDialTarget)
 		effectiveTargetHost = newDialTarget
 	}
-	p.logger.Printf("Proxy handleConnect: Effective Target for Dial %s", effectiveTargetHost)
 
-	// Use the passed context `ctx` (which is r.Context()) for the dial operation.
-	// If this dial takes too long and r.Context() is cancelled (e.g. client disconnects),
-	// the dial will be cancelled. This is correct.
-	dialer := net.Dialer{}
-	destConn, err := dialer.DialContext(ctx, "tcp", effectiveTargetHost)
+	log.Printf("Proxy handleConnect: Effective Target for Dial %s (Client %s)", effectiveTargetHost, r.RemoteAddr)
+	destConn, err := net.DialTimeout("tcp", effectiveTargetHost, 15*time.Second)
 	if err != nil {
-		p.logger.Printf("ERROR: Proxy handleConnect: Dial error to %s (dialed %s): %v", originalTargetHost, effectiveTargetHost, err)
-		http.Error(w, fmt.Sprintf("Failed to connect to destination %s: %v", originalTargetHost, err), http.StatusServiceUnavailable)
+		errMsgBody := fmt.Sprintf("Failed to connect to destination %s (dialed as %s): %v", originalTargetHost, effectiveTargetHost, err)
+		http.Error(w, errMsgBody, http.StatusServiceUnavailable)
+		log.Printf("ERROR: Proxy handleConnect: Dial error to %s (dialed as %s) for client %s: %v", originalTargetHost, effectiveTargetHost, r.RemoteAddr, err)
 		return
 	}
-	// destConn is passed to handleConnectTunnel, which will manage its closure.
+	defer destConn.Close()
 
-	w.WriteHeader(http.StatusOK) // Send 200 OK for CONNECT
+	log.Printf("Proxy handleConnect: TCP connected to target %s (dialed as %s). Sending 200 OK to client %s.", originalTargetHost, effectiveTargetHost, r.RemoteAddr)
+	w.WriteHeader(http.StatusOK)
 
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
-		p.logger.Printf("ERROR: Proxy handleConnect: Hijacking not supported for target %s", originalTargetHost)
-		http.Error(w, "Hijacking not supported", http.StatusInternalServerError)
-		destConn.Close()
+		log.Printf("ERROR: Proxy handleConnect: Hijacking not supported for target %s. Client %s.", originalTargetHost, r.RemoteAddr)
 		return
 	}
-	clientConn, _, err := hijacker.Hijack()
+	// Hijack the connection. clientUnderlyingConn is the raw TCP connection.
+	// clientRW is a bufio.ReadWriter that the HTTP server was using; its Reader might contain
+	// bytes already read from clientUnderlyingConn (e.g., the start of the TLS ClientHello).
+	clientUnderlyingConn, clientRW, err := hijacker.Hijack()
 	if err != nil {
-		p.logger.Printf("ERROR: Proxy handleConnect: Hijack error for target %s: %v", originalTargetHost, err)
-		destConn.Close()
+		log.Printf("ERROR: Proxy handleConnect: Hijack error for target %s, client %s: %v", originalTargetHost, r.RemoteAddr, err)
 		return
 	}
-	// clientConn is passed to handleConnectTunnel, which will manage its closure.
+	defer clientUnderlyingConn.Close() // Ensure the underlying connection is closed.
 
-	p.logger.Printf("Proxy handleConnect: Hijacked. Tunneling data between client %s and target %s (dialed %s).", clientConn.RemoteAddr(), originalTargetHost, effectiveTargetHost)
-	p.activeConnectionsWg.Add(1)
-	// **THE FIX IS HERE:** Pass `p.mainCtx` to the tunnel goroutine.
-	// The tunnel's lifecycle should be tied to the ProxyServer's lifecycle,
-	// not the lifecycle of this specific CONNECT request handler.
-	go p.handleConnectTunnel(p.mainCtx, clientConn, destConn, originalTargetHost, effectiveTargetHost)
-}
+	log.Printf("Proxy handleConnect: Hijacked. Client remote: %s, local: %s. Dest remote: %s, local: %s",
+		clientUnderlyingConn.RemoteAddr(), clientUnderlyingConn.LocalAddr(), destConn.RemoteAddr(), destConn.LocalAddr())
+	log.Printf("Proxy handleConnect: Tunneling data between client (via buffered RW) and target %s (dialed as %s).", originalTargetHost, effectiveTargetHost)
 
-// handleConnectTunnel manages the bidirectional data copy for a CONNECT tunnel.
-func (p *ProxyServer) handleConnectTunnel(ctx context.Context, clientConn net.Conn, destConn net.Conn, originalTargetHost, effectiveTargetHost string) {
-	defer p.activeConnectionsWg.Done()
-	defer clientConn.Close()
-	defer destConn.Close()
+	var tunnelWg sync.WaitGroup
+	tunnelWg.Add(2)
 
-	// Create a new context for this specific tunnel, derived from the passed `ctx` (which should now be p.mainCtx).
-	// This allows this specific tunnel to be cancelled if its parent (p.mainCtx) is cancelled.
-	connCtx, connCancel := context.WithCancel(ctx)
-	defer connCancel()
-
-	clientDesc := fmt.Sprintf("ClientCONNECT(%s)", clientConn.RemoteAddr())
-	targetDesc := fmt.Sprintf("TargetCONNECT(%s on %s)", originalTargetHost, effectiveTargetHost)
-
-	p.logger.Printf("Proxy handleConnectTunnel: Starting bidirectional copy for %s <-> %s", clientDesc, targetDesc)
-	performBidirectionalCopy(connCtx, clientConn, destConn, clientDesc, targetDesc, p.logger)
-	p.logger.Printf("Proxy handleConnectTunnel: Finished for %s <-> %s", clientDesc, targetDesc)
-}
-
-// performBidirectionalCopy handles copying data between two connections and respects context cancellation.
-func performBidirectionalCopy(ctx context.Context, conn1, conn2 net.Conn, desc1, desc2 string, logger *log.Logger) {
-	var copyWg sync.WaitGroup
-	copyWg.Add(2)
-
-	// Goroutine to copy from conn1 to conn2
+	// Example manual loop (replace io.Copy)
 	go func() {
-		defer copyWg.Done()
-		// defer conn2.Close() // Closing is handled by the caller (handleConnectTunnel/handleProxiedGRPC)
-		bytesCopied, err := io.Copy(conn2, conn1)
-		if err != nil && !isClosedConnError(err) && err != io.EOF {
-			logger.Printf("ERROR: Proxy Copy: %s -> %s: %d bytes, err: %v", desc1, desc2, bytesCopied, err)
-		} else {
-			logger.Printf("Proxy Copy: Finished %s -> %s: %d bytes, err: %v", desc1, desc2, bytesCopied, err)
+		defer tunnelWg.Done()
+		buf := make([]byte, 4096) // Or smaller buffer
+		for {
+			log.Printf("Proxy handleConnect: Client->Target attempting read...")
+			nr, er := clientRW.Reader.Read(buf)
+			if nr > 0 {
+				log.Printf("Proxy handleConnect: Client->Target read %d bytes", nr)
+				nw, ew := destConn.Write(buf[0:nr])
+				log.Printf("Proxy handleConnect: Client->Target wrote %d bytes", nw)
+				if ew != nil {
+					log.Printf("Proxy handleConnect: Client->Target write error: %v", ew)
+					break
+				}
+				if nr != nw {
+					log.Printf("Proxy handleConnect: Client->Target short write: %v", io.ErrShortWrite)
+					break
+				}
+			}
+			if er != nil {
+				if er != io.EOF {
+					log.Printf("Proxy handleConnect: Client->Target read error: %v", er)
+				} else {
+					log.Printf("Proxy handleConnect: Client->Target read EOF")
+				}
+				break
+			}
 		}
-		// Attempt to signal the other direction that this side is done, e.g., by closing the write half.
-		// This can help unblock the other io.Copy if it's waiting for an EOF.
-		if tcpConn, ok := conn2.(*net.TCPConn); ok {
-			tcpConn.CloseWrite()
-		} else if tcpConn, ok := conn1.(*net.TCPConn); ok {
-			// If conn2 is not TCP, try closing read on conn1 if it's TCP
-			tcpConn.CloseRead()
-		}
-
+		log.Printf("Proxy handleConnect: Client->Target loop finished.")
+		// ... CloseWrite logic ...
 	}()
+	// Similar loop for the other direction
 
-	// Goroutine to copy from conn2 to conn1
+	// Goroutine to copy data from destination to client.
+	// IMPORTANT: Write to clientRW.Writer and remember to Flush.
 	go func() {
-		defer copyWg.Done()
-		// defer conn1.Close() // Closing is handled by the caller
-		bytesCopied, err := io.Copy(conn1, conn2)
-		if err != nil && !isClosedConnError(err) && err != io.EOF {
-			logger.Printf("ERROR: Proxy Copy: %s -> %s: %d bytes, err: %v", desc2, desc1, bytesCopied, err)
-		} else {
-			logger.Printf("Proxy Copy: Finished %s -> %s: %d bytes, err: %v", desc2, desc1, bytesCopied, err)
+		defer tunnelWg.Done()
+		// Using clientRW.Writer which wraps clientUnderlyingConn.
+		bytesCopied, copyErr := io.Copy(clientRW.Writer, destConn)
+		if copyErr == nil { // Only flush if copy was successful or EOF
+			if err := clientRW.Writer.Flush(); err != nil {
+				log.Printf("ERROR: Proxy handleConnect: Flushing to client writer error: %v", err)
+			}
 		}
-		if tcpConn, ok := conn1.(*net.TCPConn); ok {
-			tcpConn.CloseWrite()
-		} else if tcpConn, ok := conn2.(*net.TCPConn); ok {
-			tcpConn.CloseRead()
+		log.Printf("Proxy handleConnect: Target (%s/%s) -> Client (buffered): %d bytes, err: %v", originalTargetHost, effectiveTargetHost, bytesCopied, copyErr)
+		if tcpConn, ok := clientUnderlyingConn.(*net.TCPConn); ok { // Though CloseWrite on client side is less common
+			_ = tcpConn.CloseWrite()
 		}
 	}()
 
-	select {
-	case <-ctx.Done():
-		logger.Printf("Proxy Bidirectional copy for %s <-> %s cancelled by context. Initiating connection closures.", desc1, desc2)
-		// Connections will be closed by the defer statements in handleConnectTunnel or handleProxiedGRPC
-		// and also by the final conn1.Close()/conn2.Close() below.
-		// Forcing closure here can help unblock io.Copy immediately if ctx.Done() is received.
-		conn1.Close()
-		conn2.Close()
-	case <-waiter(&copyWg):
-		logger.Printf("Proxy Bidirectional copy for %s <-> %s completed naturally.", desc1, desc2)
-	}
-
-	// Ensure connections are closed and wait for copy goroutines to exit.
-	conn1.Close()
-	conn2.Close()
-	copyWg.Wait()
-	logger.Printf("Proxy Bidirectional copy fully terminated for %s <-> %s.", desc1, desc2)
-}
-
-func isClosedConnError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := err.Error()
-	return strings.Contains(errStr, "use of closed network connection") ||
-		strings.Contains(errStr, "connection reset by peer") ||
-		strings.Contains(errStr, "broken pipe") ||
-		strings.Contains(errStr, "forcibly closed") || // Windows
-		err == io.EOF // EOF is also a common way for io.Copy to end when a connection is closed.
-}
-
-func waiter(wg *sync.WaitGroup) <-chan struct{} {
-	ch := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(ch)
-	}()
-	return ch
-}
-
-func waitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
-	c := make(chan struct{})
-	go func() {
-		defer close(c)
-		wg.Wait()
-	}()
-	select {
-	case <-c:
-		return true
-	case <-time.After(timeout):
-		return false
-	}
+	tunnelWg.Wait()
+	log.Printf("Proxy handleConnect: Tunnel finished for %s (Client %s)", originalTargetHost, r.RemoteAddr)
 }
