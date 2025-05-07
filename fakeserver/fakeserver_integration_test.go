@@ -203,8 +203,8 @@ func TestClientOnboardAndAuth(t *testing.T) {
 
 	// Setup: Start the FakeServer, ensuring it uses TLS for HTTP
 	fakeServer := &FakeServer{
-		address:     "0.0.0.0:50051", // Use different ports if running tests in parallel
-		httpAddress: "0.0.0.0:50053", // Use different ports if running tests in parallel
+		address:     "0.0.0.0:50051",
+		httpAddress: "0.0.0.0:50053",
 		token:       testToken,
 		logger:      logger,
 		state:       &ServerState{},
@@ -238,7 +238,7 @@ func TestClientOnboardAndAuth(t *testing.T) {
 
 	// --- Simulate Onboarding Request ---
 	t.Log("Simulating onboarding request...")
-	onboardURL := fmt.Sprintf("https://%s/api/v1/k8s_cluster/onboard", httpAddr) // Use HTTPS
+	onboardURL := fmt.Sprintf("https://%s/api/v1/k8s_cluster/onboard", "0.0.0.0:50053") // Use HTTPS
 	onboardPayload := map[string]string{
 		"onboarding_client_id":     onboardClientID,
 		"onboarding_client_secret": onboardClientSecret,
@@ -270,7 +270,7 @@ func TestClientOnboardAndAuth(t *testing.T) {
 
 	// --- Simulate Authentication Request ---
 	t.Log("Simulating authentication request...")
-	authURL := fmt.Sprintf("https://%s/api/v1/k8s_cluster/authenticate", httpAddr) // Use HTTPS
+	authURL := fmt.Sprintf("https://%s/api/v1/k8s_cluster/authenticate", "0.0.0.0:50053") // Use HTTPS
 	authPayload := map[string]string{
 		"client_id":     clusterClientID,      // Use credentials received from onboarding
 		"client_secret": clusterClientSecret,  // Use credentials received from onboarding
@@ -295,8 +295,6 @@ func TestClientOnboardAndAuth(t *testing.T) {
 	require.True(t, ok, "Access token not found or not a string in response")
 	require.NotEmpty(t, accessToken, "Access token should not be empty")
 	t.Logf("Received Access Token (length): %d", len(accessToken))
-	// You could add more assertions here (e.g., check token_type, expires_in)
-	// assert.Equal(t, "Bearer", authRespBody["token_type"])
 
 	t.Log("Onboarding and Authentication test passed.")
 }
