@@ -81,10 +81,6 @@ func main() {
 	// Set logrLogger as the global logger for klog
 	klog.SetLoggerWithOptions(logrLogger)
 
-	// Set the gRPC logger to use the zapgrpc logger
-	// grpcLogger := zapgrpc.NewLogger(logger.WithOptions(zap.AddCallerSkip(3)))
-	// grpclog.SetLoggerV2(grpcLogger)
-
 	viper.AutomaticEnv()
 
 	// Bind specific environment variables to keys
