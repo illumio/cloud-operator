@@ -9,12 +9,13 @@ on:
       - 'cloud-operator/values.yaml'
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
-  update-schema:
+  # Job for PR validation - keeps contents: read permission
+  validate-schema:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    if: github.event_name == 'pull_request'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -37,8 +38,44 @@ jobs:
           git diff --exit-code cloud-operator/values.schema.json || echo "changes=true" >> $GITHUB_OUTPUT
 
       - name: Fail if schema needs updating
-        if: steps.git-check.outputs.changes == 'true' && github.event_name == 'pull_request'
+        if: steps.git-check.outputs.changes == 'true'
         run: |
           echo "::error::The values.schema.json file needs to be updated to match changes in values.yaml."
           echo "::error::Please run 'helm schema-gen values.yaml -o values.schema.json' or similar tool to update the schema."
           exit 1
+
+  # Job for main branch - uses contents: write permission to auto-update schema
+  update-schema:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4.2.0
+        with:
+          version: "v3.16.4"
+
+      - name: Generate schema
+        uses: losisin/helm-values-schema-json-action@v1
+        with:
+          path: cloud-operator
+          values-file: values.yaml
+          schema-file: values.schema.json
+
+      - name: Check for changes
+        id: git-check
+        run: |
+          git diff --exit-code cloud-operator/values.schema.json || echo "changes=true" >> $GITHUB_OUTPUT
+
+      - name: Commit and push changes
+        if: steps.git-check.outputs.changes == 'true'
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add cloud-operator/values.schema.json
+          git commit -m "Auto-update values.schema.json based on values.yaml changes"
+          git push
