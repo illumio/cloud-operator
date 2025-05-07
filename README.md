@@ -96,10 +96,7 @@ helm install illumio --namespace illumio-cloud oci://ghcr.io/illumio/charts/clou
 
 ### Configuring the Proxy
 
-1. Set the `HTTPS_PROXY` environment variable to the URL of your proxy server. For example:
-   ```bash
-   export HTTPS_PROXY=http://proxy.example.com:8080
-   ```
+1. The `HTTPS_PROXY` environment variable is set in the Helm file, which is read when the client is launched into a Kubernetes container. This ensures that the proxy server is correctly configured for the environment.
 
 2. Ensure that the proxy server is accessible from the environment where the Cloud Operator is running.
 
@@ -111,7 +108,6 @@ helm install illumio --namespace illumio-cloud oci://ghcr.io/illumio/charts/clou
 
 - **gRPC Requests**:
   - All gRPC requests will also respect the `HTTPS_PROXY` environment variable.
-  - A custom dialer is implemented to route gRPC traffic through the proxy.
 
 ## License
 
