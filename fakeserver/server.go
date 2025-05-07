@@ -108,6 +108,8 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
+			// The client has closed the stream
+			logger.Info("Client has closed the KubernetesResources stream")
 			return nil
 		}
 		if err != nil {
@@ -138,6 +140,8 @@ func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error 
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
+			// The client has closed the stream
+			logger.Info("Client has closed the logs stream")
 			return nil
 		}
 		if err != nil {
@@ -160,19 +164,19 @@ func logReceivedLogEntry(log *pb.LogEntry, logger *zap.Logger) error {
 	var logEntry LogEntry = make(map[string]any)
 	if err := json.Unmarshal([]byte(log.JsonMessage), &logEntry); err != nil {
 		logger.Error("Error decoding JSON log message", zap.Error(err))
-		return status.Errorf(codes.Internal, "Internal error")
+		return status.Error(codes.InvalidArgument, "Invalid JSON message")
 	}
 
 	// Check for an empty log entry
 	if len(logEntry) == 0 {
 		logger.Warn("Received empty log entry")
-		return status.Errorf(codes.InvalidArgument, "Empty log entry")
+		return status.Error(codes.InvalidArgument, "Empty log entry")
 	}
 
 	level, err := logEntry.Level()
 	if err != nil {
 		logger.Error("Error converting log level", zap.Error(err))
-		return status.Errorf(codes.Internal, "Internal error")
+		return status.Error(codes.InvalidArgument, "Invalid log level")
 	}
 
 	if ce := logger.Check(level, "Received log entry from cloud-operator"); ce != nil {
@@ -189,6 +193,8 @@ func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConf
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
+			// The client has closed the stream
+			logger.Info("Client has closed the ConfigurationUpdates stream")
 			return nil
 		}
 		if err != nil {
@@ -207,6 +213,8 @@ func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_Send
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
+			// The client has closed the stream
+			logger.Info("Client has closed the flows stream")
 			return nil
 		}
 		if err != nil {
