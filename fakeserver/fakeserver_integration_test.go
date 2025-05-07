@@ -24,8 +24,8 @@ func createSignedToken() string {
 	// Note: The FakeServer's gRPC component might need a different audience
 	// than the one used for generating tokens *for* the client.
 	// Let's assume the audience here is relevant for the token *provided* by the server.
-	aud := "host.docker.internal:50051" // Audience expected by gRPC server
-	sub := "test-client-subject"        // Subject representing the client
+	aud := "192.168.49.1:50051"  // Audience expected by gRPC server
+	sub := "test-client-subject" // Subject representing the client
 	// Example of generating a JWT with an "aud" claim
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": sub,
