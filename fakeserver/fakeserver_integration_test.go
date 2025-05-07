@@ -24,24 +24,23 @@ func createSignedToken() string {
 	// Note: The FakeServer's gRPC component might need a different audience
 	// than the one used for generating tokens *for* the client.
 	// Let's assume the audience here is relevant for the token *provided* by the server.
-	aud := "192.168.49.1:50051"  // Audience expected by gRPC server
-	sub := "test-client-subject" // Subject representing the client
+	aud := "192.168.49.1:50051" // Audience expected by gRPC server
+	token := "token1"
 	// Example of generating a JWT with an "aud" claim
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": sub,
+		"sub": token,
 		"aud": []string{aud},                        // Audience claim
 		"exp": time.Now().Add(time.Hour * 1).Unix(), // Shorter expiry for test token
-		"iat": time.Now().Unix(),
 	})
 	// Use a consistent, known key for test signing
 	// IMPORTANT: Never use hardcoded secrets like this in production!
-	mySigningKey := []byte("test-secret-key-12345") // nosemgrep: go.lang.security.audit.crypto.hardcoded-shared-secret.hardcoded-shared-secret
+	mySigningKey := []byte("secret")
 
 	// Sign and get the complete encoded token as a string
+	// nosemgrep: jwt.hardcoded-jwt-key
 	signedToken, err := jwtToken.SignedString(mySigningKey)
 	if err != nil {
-		// Use panic in setup as tests shouldn't run without a valid token
-		panic(fmt.Sprintf("Test setup failed: Token could not be signed: %v", err))
+		logger.Error("Token could not be signed with fake secret key")
 	}
 	return signedToken
 }
@@ -91,10 +90,13 @@ mainloop1: // Label for the first loop
 			t.Fatal("Timeout: External client never connected successfully in the allotted time.")
 			return // Not strictly needed after t.Fatal but good practice
 		case <-ticker.C:
-			if fakeServer.state.ConnectionSuccessful {
-				logger.Info("ConnectionSuccessful state reached.")
-				t.Log("Connection Success is true. Test passed for initial connection.")
-				assert.True(t, fakeServer.state.ConnectionSuccessful, "Expected ConnectionSuccessful to be true")
+			// Check if the log entry has been recorded
+			stateChanged := fakeServer.state.ConnectionSuccessful
+
+			// Check if the log entry we sent is in the received logs
+			if stateChanged {
+				t.Log("Connection Succes is true. Test passed.")
+				assert.Equal(t, stateChanged, true)
 				break mainloop1
 			}
 		}
@@ -125,10 +127,13 @@ mainloop2: // Label for the second loop
 			t.Fatal("Timeout: External client never reconnected successfully after restart.")
 			return
 		case <-ticker.C:
-			if fakeServer.state.ConnectionSuccessful {
-				logger.Info("ConnectionSuccessful state reached after retry.")
-				t.Log("Connection Success is true after retry. Test passed.")
-				assert.True(t, fakeServer.state.ConnectionSuccessful, "Expected ConnectionSuccessful to be true after retry")
+			// Check if the log entry has been recorded
+			stateChanged := fakeServer.state.ConnectionSuccessful
+
+			// Check if the log entry we sent is in the received logs
+			if stateChanged {
+				t.Log("Connection Succes is true. Test passed.")
+				assert.Equal(t, stateChanged, true)
 				break mainloop2
 			}
 		}
@@ -176,13 +181,13 @@ mainloop:
 			t.Fatal("Timeout: External client never connected successfully in the allotted time (BadInitialCommit test).")
 			return
 		case <-ticker.C:
-			if fakeServer.state.ConnectionSuccessful {
-				logger.Info("ConnectionSuccessful state reached (BadInitialCommit test).")
-				t.Log("Connection Success is true, even with BadInitialCommit flag. Test passed initial connection phase.")
-				assert.True(t, fakeServer.state.ConnectionSuccessful, "Expected ConnectionSuccessful to be true")
-				// Depending on client logic, you might want to wait longer here
-				// to see if the client disconnects or handles the bad commit scenario.
-				// For now, just verifying initial connection.
+			// Check if the log entry has been recorded
+			stateChanged := fakeServer.state.ConnectionSuccessful
+
+			// Check if the log entry we sent is in the received logs
+			if stateChanged {
+				t.Log("Connection Succes is true. Test passed.")
+				assert.Equal(t, stateChanged, true)
 				break mainloop
 			}
 		}
@@ -195,14 +200,11 @@ mainloop:
 func TestClientOnboardAndAuth(t *testing.T) {
 	// Use t.Parallel() if tests are independent
 	logger := zap.NewNop()
-	httpPort := "50054"                 // Use a potentially different port to avoid clashes if tests run in parallel
-	grpcPort := "50052"                 // Use a potentially different port
-	httpAddr := "127.0.0.1:" + httpPort // Listen on localhost only for test client
 
 	// Setup: Start the FakeServer, ensuring it uses TLS for HTTP
 	fakeServer := &FakeServer{
-		address:     "0.0.0.0:" + grpcPort, // gRPC can listen on all interfaces
-		httpAddress: httpAddr,
+		address:     "0.0.0.0:50051", // Use different ports if running tests in parallel
+		httpAddress: "0.0.0.0:50053", // Use different ports if running tests in parallel
 		token:       testToken,
 		logger:      logger,
 		state:       &ServerState{},
