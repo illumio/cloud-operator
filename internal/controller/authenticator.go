@@ -164,14 +164,6 @@ func SetUpOAuthConnection(
 	}
 	tokenSource := GetTokenSource(contextWithTimeout, oauthConfig, tlsConfig)
 
-	// Log proxy settings
-	logger.Info(
-		"Configuring proxy from environment variables",
-		zap.String("http_proxy", os.Getenv("HTTP_PROXY")),
-		zap.String("https_proxy", os.Getenv("HTTPS_PROXY")),
-		zap.String("no_proxy", os.Getenv("NO_PROXY")),
-	)
-
 	token, err := tokenSource.Token()
 	if err != nil {
 		logger.Error("Error retrieving a valid token", zap.Error(err))
