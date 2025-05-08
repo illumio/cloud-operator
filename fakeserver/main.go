@@ -53,7 +53,7 @@ func main() {
 	var proxyServer *ProxyServer
 	if *proxyFlag {
 		// Initialize the ProxyServer
-		proxyServer, err = NewProxyServer("0.0.0.0:8888")
+		proxyServer, err = NewProxyServer("0.0.0.0:8888", logger)
 		if err != nil {
 			logger.Fatal("Failed to initialize ProxyServer", zap.Error(err))
 		}
