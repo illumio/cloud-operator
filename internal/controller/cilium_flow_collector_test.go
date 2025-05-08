@@ -4,10 +4,14 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	"github.com/cilium/cilium/api/v1/flow"
+	"github.com/cilium/cilium/api/v1/observer"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/types/known/timestamppb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 	v1 "k8s.io/api/core/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -335,6 +339,160 @@ func (suite *ControllerTestSuite) TestConvertCiliumIP() {
 		suite.Run(name, func() {
 			result := convertCiliumIP(tt.input)
 			assert.Equal(suite.T(), tt.expected, result)
+		})
+	}
+}
+
+func (suite *ControllerTestSuite) TestConvertCiliumFlow() {
+	now := time.Now()
+	timestamp := timestamppb.New(now)
+
+	tests := map[string]struct {
+		input    *observer.GetFlowsResponse
+		expected *pb.CiliumFlow
+	}{
+		"valid flow with all fields": {
+			input: &observer.GetFlowsResponse{
+				ResponseTypes: &observer.GetFlowsResponse_Flow{
+					Flow: &flow.Flow{
+						Time:             timestamp,
+						NodeName:         "test-node",
+						Verdict:          flow.Verdict_FORWARDED,
+						TrafficDirection: flow.TrafficDirection_INGRESS,
+						IP: &flow.IP{
+							Source:      "192.168.1.1",
+							Destination: "192.168.1.2",
+							IpVersion:   flow.IPVersion_IPv4,
+						},
+						L4: &flow.Layer4{
+							Protocol: &flow.Layer4_TCP{
+								TCP: &flow.TCP{
+									SourcePort:      1234,
+									DestinationPort: 5678,
+								},
+							},
+						},
+						Source: &flow.Endpoint{
+							ID:          1,
+							ClusterName: "test-cluster",
+							Namespace:   "test-ns",
+							Labels:      []string{"app=test"},
+							PodName:     "test-pod",
+							Workloads: []*flow.Workload{
+								{
+									Name: "test-workload",
+									Kind: "Deployment",
+								},
+							},
+						},
+						Destination: &flow.Endpoint{
+							ID:          2,
+							ClusterName: "test-cluster",
+							Namespace:   "test-ns",
+							Labels:      []string{"app=test"},
+							PodName:     "test-pod-2",
+							Workloads: []*flow.Workload{
+								{
+									Name: "test-workload-2",
+									Kind: "Deployment",
+								},
+							},
+						},
+						DestinationService: &flow.Service{
+							Name:      "test-service",
+							Namespace: "test-ns",
+						},
+						EgressAllowedBy: []*flow.Policy{
+							{
+								Name:      "test-policy",
+								Namespace: "test-ns",
+								Labels:    []string{"app=test"},
+								Revision:  1,
+							},
+						},
+						IsReply: wrapperspb.Bool(true),
+					},
+				},
+			},
+			expected: &pb.CiliumFlow{
+				Time:             timestamp,
+				NodeName:         "test-node",
+				Verdict:          pb.Verdict(flow.Verdict_FORWARDED),
+				TrafficDirection: pb.TrafficDirection(flow.TrafficDirection_INGRESS),
+				Layer3: &pb.IP{
+					Source:      "192.168.1.1",
+					Destination: "192.168.1.2",
+					IpVersion:   pb.IPVersion(flow.IPVersion_IPv4),
+				},
+				Layer4: &pb.Layer4{
+					Protocol: &pb.Layer4_Tcp{
+						Tcp: &pb.TCP{
+							SourcePort:      1234,
+							DestinationPort: 5678,
+						},
+					},
+				},
+				SourceEndpoint: &pb.Endpoint{
+					Uid:         1,
+					ClusterName: "test-cluster",
+					Namespace:   "test-ns",
+					Labels:      []string{"app=test"},
+					PodName:     "test-pod",
+					Workloads: []*pb.Workload{
+						{
+							Name: "test-workload",
+							Kind: "Deployment",
+						},
+					},
+				},
+				DestinationEndpoint: &pb.Endpoint{
+					Uid:         2,
+					ClusterName: "test-cluster",
+					Namespace:   "test-ns",
+					Labels:      []string{"app=test"},
+					PodName:     "test-pod-2",
+					Workloads: []*pb.Workload{
+						{
+							Name: "test-workload-2",
+							Kind: "Deployment",
+						},
+					},
+				},
+				DestinationService: &pb.Service{
+					Name:      "test-service",
+					Namespace: "test-ns",
+				},
+				EgressAllowedBy: []*pb.Policy{
+					{
+						Name:      "test-policy",
+						Namespace: "test-ns",
+						Labels:    []string{"app=test"},
+						Revision:  1,
+					},
+				},
+				IsReply: wrapperspb.Bool(true),
+			},
+		},
+		"nil flow": {
+			input:    nil,
+			expected: nil,
+		},
+		"flow with missing required fields": {
+			input: &observer.GetFlowsResponse{
+				ResponseTypes: &observer.GetFlowsResponse_Flow{
+					Flow: &flow.Flow{
+						// Missing required fields like Time, NodeName, etc.
+					},
+				},
+			},
+			expected: nil,
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			got := convertCiliumFlow(tt.input)
+			assert.Equal(suite.T(), tt.expected, got, "Expected: %v, got: %v", tt.expected, got)
 		})
 	}
 }

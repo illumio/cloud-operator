@@ -1,0 +1,10 @@
+# Invalid values file for testing schema validation
+falco: enabled  # Should be an object, not a string
+replicaCount: "one"  # Should be an integer, not a string
+image:
+  repository: test
+  tag: latest
+  # Missing required field: pullPolicy
+serviceAccount:
+  create: "true"  # Should be a boolean, not a string
+  # Missing required field: name
