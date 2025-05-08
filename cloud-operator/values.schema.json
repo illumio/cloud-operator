@@ -212,6 +212,10 @@
         "streamSuccessPeriods": {
           "type": "object",
           "description": "Periods for stream success"
+        },
+        "logLevel": {
+          "type": "string",
+          "description": "Log level for the application"
         }
       },
       "required": ["onboardingEndpoint", "tokenEndpoint"]
