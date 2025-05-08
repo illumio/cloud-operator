@@ -2,7 +2,7 @@
 
 defaultNamespace: "illumio-cloud"
 replicaCount: 1
-priorityClassName: "" 
+priorityClassName: ""
 image:
   repository: "ghcr.io/illumio/cloud-operator"
   tag: "0.0.1"
