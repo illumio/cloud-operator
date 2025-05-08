@@ -101,6 +101,8 @@ type EnvironmentConfig struct {
 	// How long must a stream be in a state for our exponentialBackoff function to
 	// consider it a success.
 	StreamSuccessPeriod StreamSuccessPeriod
+	// HTTP Proxy URL
+	HttpsProxy string
 }
 
 // Add or delete the resource

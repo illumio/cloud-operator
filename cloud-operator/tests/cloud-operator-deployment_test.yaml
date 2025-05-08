@@ -84,6 +84,12 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[12].value
           value: "2h"
+      - equal:
+          path: spec.template.spec.containers[0].env[13].name
+          value: "HTTPS_PROXY"
+      - equal:
+          path: spec.template.spec.containers[0].env[13].value
+          value: ""
 
   # Test for replicaCount value
   - it: should set the correct number of replicas

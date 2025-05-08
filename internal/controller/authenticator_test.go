@@ -5,6 +5,10 @@ package controller
 import (
 	"context"
 	"crypto/tls"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
 
@@ -314,6 +318,95 @@ func (suite *ControllerTestSuite) TestParseToken() {
 	assert.Error(suite.T(), err)
 }
 
+func (suite *ControllerTestSuite) TestHTTPProxySupport() {
+	// Start a mock proxy server
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("Proxy used")); err != nil {
+			suite.T().Errorf("Failed to write response: %v", err)
+		}
+	}))
+	defer proxyServer.Close()
+
+	// Use a mock target server
+	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("Target server reached")); err != nil {
+			suite.T().Errorf("Failed to write response: %v", err)
+		}
+	}))
+	defer targetServer.Close()
+
+	tlsConfig := &tls.Config{InsecureSkipVerify: true}
+	proxyURL, err := url.Parse(proxyServer.URL)
+	if err != nil {
+		suite.T().Fatal("Failed to parse proxy URL")
+	}
+	client := &http.Client{Transport: &http.Transport{
+		TLSClientConfig: tlsConfig,
+		Proxy:           http.ProxyURL(proxyURL), // Explicitly set the proxy
+	}}
+
+	// Log the proxy URL for debugging
+	suite.T().Logf("Proxy URL: %s", proxyURL.String())
+
+	req, err := http.NewRequest("GET", targetServer.URL, nil)
+	assert.NoError(suite.T(), err)
+
+	resp, err := client.Do(req)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+
+	// Log the response body for debugging
+	body, _ := io.ReadAll(resp.Body)
+	suite.T().Logf("Response Body: %s", string(body))
+
+	// Verify that the response came from the proxy
+	assert.Equal(suite.T(), "Proxy used", string(body))
+}
+
+func (suite *ControllerTestSuite) TestGRPCProxySupport() {
+	// Start a mock proxy server that returns a 403 Forbidden response
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		suite.T().Logf("Proxy server received request: %s %s", r.Method, r.URL.String())
+		http.Error(w, "Access Denied", http.StatusForbidden)
+	}))
+	defer proxyServer.Close()
+
+	// Log the proxy URL for debugging
+	suite.T().Logf("Proxy URL set to: %s", proxyServer.URL)
+
+	proxyURL, err := url.Parse(proxyServer.URL)
+	if err != nil {
+		suite.T().Fatal("Failed to parse proxy URL")
+
+	}
+
+	suite.T().Logf("Proxy URL: %s", proxyURL.String())
+
+	// Attempt to set up an OAuth connection using the authenticator
+	ctx := context.Background()
+	conn, err := SetUpOAuthConnection(
+		ctx,
+		suite.logger,
+		"https://example.com/token",
+		true, // Skip TLS verification for testing
+		"test-client-id",
+		"test-client-secret",
+	)
+
+	// Ensure the connection object is closed if initialized
+	if conn != nil {
+		defer conn.Close()
+	}
+
+	// Assert that an error is returned due to the proxy
+	if err == nil {
+		suite.T().Log("No error returned from SetUpOAuthConnection")
+		suite.T().Fatal("Expected an error due to proxy failure, but got nil")
+	}
+	assert.Contains(suite.T(), err.Error(), "Access Denied", "Error message should indicate a proxy failure")
+}
 func TestGetTLSConfig(t *testing.T) {
 	tests := []struct {
 		name          string
