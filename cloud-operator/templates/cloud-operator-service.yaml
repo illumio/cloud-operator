@@ -9,6 +9,7 @@ metadata:
     app: {{ include "cloud-operator.name" . }}
     release: {{ .Release.Name }}
 spec:
+  clusterIP: 10.96.0.0/24
   selector:
     app: {{ include "cloud-operator.name" . }}
     release: {{ .Release.Name }}
@@ -17,3 +18,7 @@ spec:
       protocol: TCP
       port: 5000
       targetPort: 5000
+    - name: ipfix-collector
+      protocol: UDP
+      port: 4789
+      targetPort: 4789

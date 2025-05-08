@@ -1,15 +1,29 @@
 package controller
 
 import (
+	"bytes"
 	"context"
-	"encoding/binary"
-	"fmt"
 	"net"
 
-	"github.com/bio-routing/flowhouse/pkg/packet/ipfix"
+	netflows "github.com/netsampler/goflow2/decoders/netflow"
 	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// IPFIXHeader represents the header of an IPFIX message.
+type IPFIXHeader struct {
+	Version        uint16
+	Length         uint16
+	ExportTime     uint32
+	SequenceNumber uint32
+	ObservationID  uint32
+}
+
+// FieldInfo represents the offset and size of a field in a template.
+type FieldInfo struct {
+	Offset int
+	Size   int
+}
 
 // IsOVNDeployed Checks for the presence of the `ovn-kubernetes` namespace, detection based on OVN namespace.
 // https://ovn-kubernetes.io/installation/launching-ovn-kubernetes-on-kind/#run-the-kind-deployment-with-podman
@@ -63,7 +77,7 @@ func (sm *streamManager) startOVNIPFIXCollector(ctx context.Context, logger *zap
 					logger.Error("Failed to read from OVN listener", zap.Error(err))
 					return err
 				}
-				logger.Info("Received data from OVN listener", zap.Int("bytesRead", n))
+				// logger.Info("Received data from OVN listener", zap.Int("bytesRead", n))
 				sm.streamClient.ovnEventChan <- buf[:n]
 			}
 		}
@@ -71,76 +85,67 @@ func (sm *streamManager) startOVNIPFIXCollector(ctx context.Context, logger *zap
 }
 
 func (sm *streamManager) processOVNFlow(ctx context.Context, logger *zap.Logger) error {
-	logger.Info("Starting processOVNFlow")
+	// Initialize the BasicTemplateSystem using the CreateTemplateSystem function
+	templateSystem := netflows.CreateTemplateSystem()
+	// Intialize the template set via the binary observed
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Info("Context canceled in processOVNFlow")
+			logger.Info("Context canceled in processOVNFlow. Exiting.")
 			return ctx.Err()
-		case packet := <-sm.streamClient.ovnEventChan:
-			logger.Info("Processing packet from ovnEventChan", zap.Int("packetLength", len(packet)))
-
-			if len(packet) < 2 {
-				logger.Error("Packet too short to contain a template ID")
-				continue
+		case packet, ok := <-sm.streamClient.ovnEventChan:
+			if !ok {
+				logger.Info("ovnEventChan closed. Exiting processOVNFlow.")
+				return nil
 			}
 
-			packetDecoded, err := ipfix.Decode(packet)
+			if len(packet) < 16 { // Min IPFIX header size
+				logger.Warn("Packet too short for IPFIX header", zap.Int("length", len(packet)))
+				continue
+			}
+			decodedMessage, err := netflows.DecodeMessage(bytes.NewBuffer(packet), templateSystem)
 			if err != nil {
-				logger.Error("Failed to decode IPFIX packet", zap.Error(err))
-				logger.Debug("Raw packet data", zap.String("rawPacket", fmt.Sprintf("%x", packet)))
+				logger.Error("Failed to decode message", zap.Error(err))
 				continue
 			}
-
-			ipfix.PrintHeader(packetDecoded)
-			logger.Info("Decoded IPFIX packet", zap.Any("packet", packetDecoded))
-
-			for _, flowSet := range packetDecoded.DataFlowSets() {
-				templateID := flowSet.Header.SetID
-				template, exists := ipfixTemplates[templateID]
-				if !exists {
-					logger.Error("Template not found for SetID", zap.Uint16("templateID", templateID))
-					continue
+			forceType, ok := decodedMessage.(netflows.IPFIXPacket)
+			if ok {
+				for _, flowSet := range forceType.FlowSets {
+					switch flowSet := flowSet.(type) {
+					case netflows.DataFlowSet:
+						for _, dataRecord := range flowSet.Records {
+							for _, field := range dataRecord.Values {
+								switch field.Type {
+								// All of these assumptions are based on the IPFIX spec
+								// https://github.com/netsampler/goflow2/blob/v1.3.7/decoders/netflow/ipfix.go#L8
+								case 8: // Assuming 8 corresponds to sourceIPv4Address
+									if srcIP, ok := field.Value.(net.IP); ok {
+										logger.Info("Extracted source IP", zap.String("srcIP", srcIP.String()))
+									}
+								case 12: // Assuming 12 corresponds to destinationIPv4Address
+									if dstIP, ok := field.Value.(net.IP); ok {
+										logger.Info("Extracted destination IP", zap.String("dstIP", dstIP.String()))
+									}
+								case 7: // Assuming 7 corresponds to sourcePort
+									if srcPort, ok := field.Value.(uint16); ok {
+										logger.Info("Extracted source port", zap.Uint16("srcPort", srcPort))
+									}
+								case 11: // Assuming 11 corresponds to destinationPort
+									if dstPort, ok := field.Value.(uint16); ok {
+										logger.Info("Extracted destination port", zap.Uint16("dstPort", dstPort))
+									}
+								case 4: // Assuming 4 corresponds to protocol
+									if protocol, ok := field.Value.(uint8); ok {
+										logger.Info("Extracted protocol", zap.Uint8("protocol", protocol))
+									}
+								}
+							}
+						}
+					}
 				}
-
-				logger.Info("Using template to decode flow records", zap.Uint16("templateID", templateID))
-				records := decodeFlowRecords(flowSet.Records, template, logger)
-				for _, record := range records {
-					logger.Info("Decoded flow record", zap.Any("record", record))
-				}
+			} else {
+				logger.Info("Not an IPFIX packet")
 			}
 		}
 	}
-}
-
-// decodeFlowRecords decodes raw flow records using the provided template.
-func decodeFlowRecords(records []byte, template Template, logger *zap.Logger) []map[string]interface{} {
-	var decodedRecords []map[string]interface{}
-	offset := 0
-
-	for offset < len(records) {
-		record := make(map[string]interface{})
-		for fieldName, fieldOffset := range template.Fields {
-			fieldEnd := fieldOffset + 4 // Assuming all fields are 4 bytes for simplicity
-			if fieldEnd > len(records) {
-				logger.Error("Field exceeds record length", zap.String("fieldName", fieldName))
-				break
-			}
-
-			// Interpret the field based on its name or type
-			switch fieldName {
-			case "SourceIP", "DestinationIP":
-				record[fieldName] = net.IP(records[fieldOffset:fieldEnd]).String()
-			case "SourcePort", "DestinationPort":
-				record[fieldName] = binary.BigEndian.Uint16(records[fieldOffset:fieldEnd])
-			default:
-				// Default to base64 encoding for unknown fields
-				record[fieldName] = fmt.Sprintf("%x", records[fieldOffset:fieldEnd])
-			}
-		}
-		decodedRecords = append(decodedRecords, record)
-		offset += len(template.Fields) * 4 // Assuming fixed field size
-	}
-
-	return decodedRecords
 }
