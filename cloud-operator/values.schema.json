@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "defaultNamespace": {
+      "type": "string",
+      "description": "Default namespace for the operator"
+    },
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of replicas for the operator deployment"
+    },
+    "priorityClassName": {
+      "type": "string",
+      "description": "Priority class name for the operator pods"
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": {
+          "type": "string",
+          "description": "Docker image repository"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Docker image tag"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"],
+          "description": "Docker image pull policy"
+        }
+      },
+      "required": ["repository", "tag", "pullPolicy"]
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "description": "Whether to create a service account"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the service account"
+        },
+        "annotations": {
+          "type": "object",
+          "description": "Annotations for the service account"
+        },
+        "automount": {
+          "type": "boolean",
+          "description": "Whether to automount the service account token"
+        }
+      },
+      "required": ["create", "name"]
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "limits": {
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "type": "string",
+              "description": "CPU limit"
+            },
+            "memory": {
+              "type": "string",
+              "description": "Memory limit"
+            }
+          },
+          "required": ["cpu", "memory"]
+        },
+        "requests": {
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "type": "string",
+              "description": "CPU request"
+            },
+            "memory": {
+              "type": "string",
+              "description": "Memory request"
+            }
+          },
+          "required": ["cpu", "memory"]
+        }
+      },
+      "required": ["limits", "requests"]
+    },
+    "clusterCredsSecret": {
+      "type": "object",
+      "properties": {
+        "clientId": {
+          "type": "string",
+          "description": "Client ID for cluster credentials"
+        },
+        "clientSecret": {
+          "type": "string",
+          "description": "Client secret for cluster credentials"
+        },
+        "disableSecretCreation": {
+          "type": "boolean",
+          "description": "Whether to disable secret creation"
+        },
+        "forceSecretCreation": {
+          "type": "boolean",
+          "description": "Whether to force secret creation"
+        }
+      },
+      "required": ["clientId", "clientSecret"]
+    },
+    "onboardingSecret": {
+      "type": "object",
+      "properties": {
+        "clientId": {
+          "type": "string",
+          "description": "Client ID for onboarding"
+        },
+        "clientSecret": {
+          "type": "string",
+          "description": "Client secret for onboarding"
+        }
+      },
+      "required": ["clientId", "clientSecret"]
+    },
+    "falco": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether to enable Falco installation"
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Namespace for Falco installation"
+        },
+        "falco": {
+          "type": "object",
+          "description": "Falco configuration",
+          "properties": {
+            "http_output": {
+              "type": "object",
+              "description": "HTTP output configuration for Falco",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Whether to enable HTTP output"
+                },
+                "keep_alive": {
+                  "type": "boolean",
+                  "description": "Whether to keep the HTTP connection alive"
+                },
+                "url": {
+                  "type": "string",
+                  "description": "URL for HTTP output"
+                },
+                "insecure": {
+                  "type": "boolean",
+                  "description": "Whether to allow insecure HTTP connections"
+                }
+              },
+              "required": ["enabled", "url"]
+            },
+            "json_output": {
+              "type": "boolean",
+              "description": "Whether to output events in JSON format"
+            },
+            "json_include_tags_property": {
+              "type": "boolean",
+              "description": "Whether to include tags property in JSON output"
+            },
+            "json_include_output_property": {
+              "type": "boolean",
+              "description": "Whether to include output property in JSON output"
+            },
+            "buffered_outputs": {
+              "type": "boolean",
+              "description": "Whether to buffer outputs"
+            }
+          },
+          "required": ["http_output", "json_output"]
+        },
+        "customRules": {
+          "type": "object",
+          "description": "Custom rules for Falco"
+        }
+      },
+      "required": ["enabled", "namespace", "falco"]
+    },
+    "env": {
+      "type": "object",
+      "properties": {
+        "tlsSkipVerify": {
+          "type": "boolean",
+          "description": "Whether to skip TLS verification"
+        },
+        "onboardingEndpoint": {
+          "type": "string",
+          "description": "Endpoint for onboarding"
+        },
+        "tokenEndpoint": {
+          "type": "string",
+          "description": "Endpoint for token retrieval"
+        },
+        "streamKeepalivePeriods": {
+          "type": "object",
+          "description": "Periods for stream keepalive"
+        },
+        "streamSuccessPeriods": {
+          "type": "object",
+          "description": "Periods for stream success"
+        }
+      },
+      "required": ["onboardingEndpoint", "tokenEndpoint"]
+    }
+  },
+  "required": ["defaultNamespace", "replicaCount", "image", "serviceAccount", "resources", "falco", "env"]
+}
