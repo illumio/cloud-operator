@@ -50,34 +50,44 @@ func TestConvertProtocol(t *testing.T) {
 	tests := map[string]struct {
 		input    []byte
 		expected string
+		err      bool
 	}{
 		"ICMP protocol": {
 			input:    []byte{1},
 			expected: "icmpt",
+			err:      false,
 		},
 		"TCP protocol": {
 			input:    []byte{6},
 			expected: "tcp",
+			err:      false,
 		},
 		"UDP protocol": {
 			input:    []byte{17},
 			expected: "udp",
+			err:      false,
 		},
 		"SCTP protocol": {
 			input:    []byte{132},
 			expected: "sctp",
+			err:      false,
 		},
 		"Unknown protocol": {
 			input:    []byte{255},
-			expected: "Unknown",
+			expected: "",
+			err:      true,
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			result, err := parseProtocol(tt.input)
-			assert.NoError(t, err)
-			assert.Equal(t, tt.expected, result)
+			if tt.err {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
 		})
 	}
 }

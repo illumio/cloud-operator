@@ -9,7 +9,9 @@ metadata:
     app: {{ include "cloud-operator.name" . }}
     release: {{ .Release.Name }}
 spec:
-  clusterIP: 10.96.0.0/24
+  {{- if .Values.service.clusterIP }}
+  clusterIP: {{ .Values.service.clusterIP }}
+  {{- end }}
   selector:
     app: {{ include "cloud-operator.name" . }}
     release: {{ .Release.Name }}
