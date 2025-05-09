@@ -221,8 +221,8 @@
       "properties": {
         "clusterIP": {
           "type": "string",
-          "description": "Static cluster IP for the service. Must be a valid IP address.",
-          "pattern": "^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$"
+          "description": "Static cluster IP for the service. Must be a valid IP address or an empty string.",
+          "pattern": "^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$|^$"
         }
       }
     }
