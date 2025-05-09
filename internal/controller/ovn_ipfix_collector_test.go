@@ -75,34 +75,8 @@ func TestConvertProtocol(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result := convertProtocol(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestConvertIpVersion(t *testing.T) {
-	tests := map[string]struct {
-		input    []byte
-		expected string
-	}{
-		"IPv4 version": {
-			input:    []byte{4},
-			expected: "ipv4",
-		},
-		"IPv6 version": {
-			input:    []byte{6},
-			expected: "ipv6",
-		},
-		"Unknown version": {
-			input:    []byte{0},
-			expected: "Unknown",
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			result := convertIpVersion(tt.input)
+			result, err := parseProtocol(tt.input)
+			assert.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -112,21 +86,29 @@ func TestParseIPv4Address(t *testing.T) {
 	tests := map[string]struct {
 		input    []byte
 		expected string
+		err      bool
 	}{
 		"Valid IPv4 address": {
 			input:    []byte{192, 168, 1, 1},
 			expected: "192.168.1.1",
+			err:      false,
 		},
-		"Another valid IPv4 address": {
-			input:    []byte{10, 0, 0, 1},
-			expected: "10.0.0.1",
+		"Invalid IPv4 address": {
+			input:    []byte{192, 168},
+			expected: "",
+			err:      true,
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result := parseIPv4Address(tt.input)
-			assert.Equal(t, tt.expected, result)
+			result, err := parseIPv4Address(tt.input)
+			if tt.err {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
 		})
 	}
 }
@@ -135,21 +117,91 @@ func TestParsePort(t *testing.T) {
 	tests := map[string]struct {
 		input    []byte
 		expected uint16
+		err      bool
 	}{
 		"Valid port 80": {
 			input:    []byte{0, 80},
 			expected: 80,
+			err:      false,
 		},
-		"Valid port 8080": {
-			input:    []byte{31, 144},
-			expected: 8080,
+		"Invalid port": {
+			input:    []byte{80},
+			expected: 0,
+			err:      true,
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result := parsePort(tt.input)
-			assert.Equal(t, tt.expected, result)
+			result, err := parsePort(tt.input)
+			if tt.err {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestParseProtocol(t *testing.T) {
+	tests := map[string]struct {
+		input    []byte
+		expected string
+		err      bool
+	}{
+		"TCP protocol": {
+			input:    []byte{6},
+			expected: "tcp",
+			err:      false,
+		},
+		"Unknown protocol": {
+			input:    []byte{255},
+			expected: "",
+			err:      true,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			result, err := parseProtocol(tt.input)
+			if tt.err {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestParseIPVersion(t *testing.T) {
+	tests := map[string]struct {
+		input    []byte
+		expected string
+		err      bool
+	}{
+		"IPv4 version": {
+			input:    []byte{4},
+			expected: "ipv4",
+			err:      false,
+		},
+		"Unknown version": {
+			input:    []byte{0},
+			expected: "",
+			err:      true,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			result, err := parseIPVersion(tt.input)
+			if tt.err {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
 		})
 	}
 }
@@ -158,6 +210,7 @@ func TestProcessDataRecord(t *testing.T) {
 	tests := map[string]struct {
 		input    netflows.DataRecord
 		expected OVNFlow
+		err      bool
 	}{
 		"Valid data record": {
 			input: netflows.DataRecord{
@@ -178,14 +231,28 @@ func TestProcessDataRecord(t *testing.T) {
 				Protocol:        "tcp",
 				IPVersion:       "ipv4",
 			},
+			err: false,
+		},
+		"Invalid data record": {
+			input: netflows.DataRecord{
+				Values: []netflows.DataField{
+					{Type: 8, Value: []byte{192, 168}}, // Invalid Source IP
+				},
+			},
+			expected: OVNFlow{},
+			err:      true,
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			result, err := processDataRecord(tt.input)
-			assert.NoError(t, err)
-			assert.Equal(t, tt.expected, result)
+			if tt.err {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
 		})
 	}
 }

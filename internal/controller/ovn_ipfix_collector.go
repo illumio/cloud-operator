@@ -129,9 +129,9 @@ func (sm *streamManager) processOVNFlow(ctx context.Context, logger *zap.Logger)
 			if err != nil {
 				continue
 			}
-			forceType, ok := decodedMessage.(netflows.IPFIXPacket)
+			ipFixPacket, ok := decodedMessage.(netflows.IPFIXPacket)
 			if ok {
-				for _, flowSet := range forceType.FlowSets {
+				for _, flowSet := range ipFixPacket.FlowSets {
 					switch flowSet := flowSet.(type) {
 					case netflows.DataFlowSet:
 						for _, dataRecord := range flowSet.Records {
@@ -173,28 +173,62 @@ func (sm *streamManager) processOVNFlow(ctx context.Context, logger *zap.Logger)
 }
 
 // parseIPv4Address converts a byte slice into an IPv4 address string.
-// Returns an empty string if the slice is not the correct size.
-func parseIPv4Address(decodedValue []byte) string {
+// Returns an error if the slice is not the correct size.
+func parseIPv4Address(decodedValue []byte) (string, error) {
 	if len(decodedValue) < 4 {
-		return "" // Return an empty string if the slice is too short
+		return "", errors.New("insufficient data to parse IPv4 address")
 	}
 	ip := net.IPv4(decodedValue[0], decodedValue[1], decodedValue[2], decodedValue[3])
-	return ip.String()
+	return ip.String(), nil
 }
 
 // parsePort converts a byte slice into a uint16 port number using BigEndian encoding.
-func parsePort(decodedValue []byte) uint16 {
-	return binary.BigEndian.Uint16(decodedValue)
+// Returns an error if the slice is not the correct size.
+func parsePort(decodedValue []byte) (uint16, error) {
+	if len(decodedValue) < 2 {
+		return 0, errors.New("insufficient data to parse port")
+	}
+	return binary.BigEndian.Uint16(decodedValue), nil
 }
 
 // parseProtocol converts a byte slice into a protocol string based on IANA protocol numbers.
-func parseProtocol(decodedValue []byte) string {
-	return convertProtocol(decodedValue)
+// Returns an error if the slice is not the correct size or the protocol is unknown.
+func parseProtocol(decodedValue []byte) (string, error) {
+	if len(decodedValue) < 1 {
+		return "", errors.New("insufficient data to parse protocol")
+	}
+
+	protocol := uint8(decodedValue[0])
+	switch protocol {
+	case 1:
+		return "icmpt", nil
+	case 6:
+		return "tcp", nil
+	case 17:
+		return "udp", nil
+	case 132:
+		return "sctp", nil
+	default:
+		return "", errors.New("unknown protocol")
+	}
 }
 
 // parseIPVersion converts a byte slice into an IP version string (e.g., "ipv4" or "ipv6").
-func parseIPVersion(decodedValue []byte) string {
-	return convertIpVersion(decodedValue)
+// Returns an error if the slice is not the correct size or the IP version is unknown.
+func parseIPVersion(decodedValue []byte) (string, error) {
+	if len(decodedValue) < 1 {
+		return "", errors.New("insufficient data to parse IP version")
+	}
+
+	ipVersion := uint8(decodedValue[0])
+	switch ipVersion {
+	case 4:
+		return "ipv4", nil
+	case 6:
+		return "ipv6", nil
+	default:
+		return "", errors.New("unknown IP version")
+	}
 }
 
 // processDataRecord processes a single data record and converts it into an OVNFlow.
@@ -204,77 +238,44 @@ func processDataRecord(dataRecord netflows.DataRecord) (OVNFlow, error) {
 	for _, field := range dataRecord.Values {
 		switch field.Type {
 		case 8: // Assuming 8 corresponds to sourceIPv4Address
-			ovnFlow.SourceIP = parseIPv4Address(field.Value.([]byte))
-			if ovnFlow.SourceIP == "" {
-				return OVNFlow{}, errors.New("failed to parse source IPv4 address")
+			sourceIP, err := parseIPv4Address(field.Value.([]byte))
+			if err != nil {
+				return OVNFlow{}, err
 			}
+			ovnFlow.SourceIP = sourceIP
 		case 12: // Assuming 12 corresponds to destinationIPv4Address
-			ovnFlow.DestinationIP = parseIPv4Address(field.Value.([]byte))
-			if ovnFlow.DestinationIP == "" {
-				return OVNFlow{}, errors.New("failed to parse destination IPv4 address")
+			destinationIP, err := parseIPv4Address(field.Value.([]byte))
+			if err != nil {
+				return OVNFlow{}, err
 			}
+			ovnFlow.DestinationIP = destinationIP
 		case 7: // Assuming 7 corresponds to sourcePort
-			if len(field.Value.([]byte)) < 2 {
-				return OVNFlow{}, errors.New("failed to parse source port: insufficient data")
+			sourcePort, err := parsePort(field.Value.([]byte))
+			if err != nil {
+				return OVNFlow{}, err
 			}
-			ovnFlow.SourcePort = parsePort(field.Value.([]byte))
+			ovnFlow.SourcePort = sourcePort
 		case 11: // Assuming 11 corresponds to destinationPort
-			if len(field.Value.([]byte)) < 2 {
-				return OVNFlow{}, errors.New("failed to parse destination port: insufficient data")
+			destinationPort, err := parsePort(field.Value.([]byte))
+			if err != nil {
+				return OVNFlow{}, err
 			}
-			ovnFlow.DestinationPort = parsePort(field.Value.([]byte))
+			ovnFlow.DestinationPort = destinationPort
 		case 4: // Assuming 4 corresponds to protocol
-			ovnFlow.Protocol = parseProtocol(field.Value.([]byte))
-			if ovnFlow.Protocol == "Unknown" {
-				return OVNFlow{}, errors.New("failed to parse protocol")
+			protocol, err := parseProtocol(field.Value.([]byte))
+			if err != nil {
+				return OVNFlow{}, err
 			}
+			ovnFlow.Protocol = protocol
 		case 60: // Assuming 60 corresponds to ipVersion
-			ovnFlow.IPVersion = parseIPVersion(field.Value.([]byte))
-			if ovnFlow.IPVersion == "Unknown" {
-				return OVNFlow{}, errors.New("failed to parse IP version")
+			ipVersion, err := parseIPVersion(field.Value.([]byte))
+			if err != nil {
+				return OVNFlow{}, err
 			}
+			ovnFlow.IPVersion = ipVersion
 		default:
 			// Ignore unknown field types
 		}
 	}
 	return ovnFlow, nil
-}
-
-// convertIpVersion converts a byte slice into a string representation of the IP version.
-// It uses IANA IP version numbers to map the byte value to a version name (e.g., "ipv4", "ipv6").
-func convertIpVersion(decodedValue []byte) string {
-	if len(decodedValue) < 1 {
-		return "Unknown" // Return "Unknown" if the slice is too short
-	}
-	ipVersion := uint8(decodedValue[0])
-	switch ipVersion {
-	case 4:
-		return "ipv4"
-	case 6:
-		return "ipv6"
-	default:
-		return "Unknown"
-	}
-}
-
-// convertProtocol converts a byte slice into a string representation of the protocol.
-// It uses IANA protocol numbers to map the byte value to a protocol name (e.g., "tcp", "udp").
-func convertProtocol(decodedValue []byte) string {
-	if len(decodedValue) < 1 {
-		return "Unknown" // Return "Unknown" if the slice is too short
-	}
-
-	protocol := uint8(decodedValue[0])
-	switch protocol {
-	case 1:
-		return "icmpt"
-	case 6:
-		return "tcp"
-	case 17:
-		return "udp"
-	case 132:
-		return "sctp"
-	default:
-		return "Unknown"
-	}
 }
