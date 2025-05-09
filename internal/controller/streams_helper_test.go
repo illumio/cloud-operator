@@ -130,8 +130,8 @@ func TestSendNetworkFlowRequest(t *testing.T) {
 		assert.Equal(t, expected, mockStream.lastRequest)
 	})
 
-	t.Run("falco flow", func(t *testing.T) {
-		flow := &pb.FalcoFlow{
+	t.Run("standard flow", func(t *testing.T) {
+		flow := &pb.StandardFlow{
 			Layer3: &pb.IP{
 				Source:      "10.0.0.1",
 				Destination: "10.0.0.2",
@@ -142,8 +142,8 @@ func TestSendNetworkFlowRequest(t *testing.T) {
 		require.NoError(t, err)
 
 		expected := &pb.SendKubernetesNetworkFlowsRequest{
-			Request: &pb.SendKubernetesNetworkFlowsRequest_FalcoFlow{
-				FalcoFlow: flow,
+			Request: &pb.SendKubernetesNetworkFlowsRequest_StandardFlow{
+				StandardFlow: flow,
 			},
 		}
 		assert.Equal(t, expected, mockStream.lastRequest)

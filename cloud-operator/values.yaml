@@ -32,6 +32,9 @@ onboardingSecret:
   clientId: ""
   clientSecret: ""
 
+service:
+  clusterIP: ""
+
 falco:
   enabled: false
   namespace: falco

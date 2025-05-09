@@ -37,16 +37,17 @@ const (
 )
 
 type streamClient struct {
-	ciliumNamespace           string
-	conn                      *grpc.ClientConn
-	client                    pb.KubernetesInfoServiceClient
-	disableNetworkFlowsCilium bool
-	falcoEventChan            chan string
-	flowCollector             pb.FlowCollector
-	logStream                 pb.KubernetesInfoService_SendLogsClient
-	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
-	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient
-	configStream              pb.KubernetesInfoService_GetConfigurationUpdatesClient
+	ciliumNamespace    string
+	conn               *grpc.ClientConn
+	client             pb.KubernetesInfoServiceClient
+	falcoEventChan     chan string
+	ovnEventChan       chan []byte
+	IpfixCollectorPort string
+	flowCollector      pb.FlowCollector
+	logStream          pb.KubernetesInfoService_SendLogsClient
+	networkFlowsStream pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
+	resourceStream     pb.KubernetesInfoService_SendKubernetesResourcesClient
+	configStream       pb.KubernetesInfoService_GetConfigurationUpdatesClient
 }
 
 type deadlockDetector struct {
@@ -90,6 +91,8 @@ type EnvironmentConfig struct {
 	OnboardingClientSecret string
 	// URL of the onboarding endpoint.
 	OnboardingEndpoint string
+	// Port for the IPFIX collector
+	IpfixCollectorPort string
 	// URL of the token endpoint.
 	TokenEndpoint string
 	// Whether to skip TLS certificate verification when starting a stream.
@@ -380,6 +383,7 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 		case <-ctx.Done():
 			return ctx.Err()
 		case flow := <-sm.FlowCache.outFlows:
+			logger.Info("Received flow from cache", zap.Any("flow", flow))
 			err := sm.sendNetworkFlowRequest(logger, flow)
 			if err != nil {
 				return err
@@ -411,7 +415,6 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 			err := ciliumFlowCollector.exportCiliumFlows(ctx, sm)
 			if err != nil {
 				logger.Warn("Failed to collect and export flows from Cilium Hubble Relay", zap.Error(err))
-				sm.streamClient.disableNetworkFlowsCilium = true
 				return err
 			}
 		}
@@ -435,8 +438,8 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				continue
 			}
 
-			convertedFalcoFlow, err := parsePodNetworkInfo(match[1])
-			if convertedFalcoFlow == nil {
+			convertedStandardFlow, err := parsePodNetworkInfo(match[1])
+			if convertedStandardFlow == nil {
 				// If the event can't be parsed, consider that it's not a flow event and just ignore it.
 				// If the event has bad ports in any way ignore it.
 				// If the event has an incomplete L3/L4 layer lets just ignore it.
@@ -445,13 +448,23 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				logger.Error("Failed to parse Falco event into flow", zap.Error(err))
 				return err
 			}
-			err = sm.FlowCache.CacheFlow(ctx, convertedFalcoFlow)
+			err = sm.FlowCache.CacheFlow(ctx, convertedStandardFlow)
 			if err != nil {
 				logger.Error("Failed to cache flow", zap.Error(err))
 				return err
 			}
 		}
 	}
+}
+
+// StreamOVNNetworkFlows handles the OVN network flow stream.
+func (sm *streamManager) StreamOVNNetworkFlows(ctx context.Context, logger *zap.Logger) error {
+	err := sm.startOVNIPFIXCollector(ctx, logger)
+	if err != nil {
+		logger.Error("Failed to listen to OVN IPFIX collector", zap.Error(err))
+		return err
+	}
+	return nil
 }
 
 // StreamKeepalives loops infinitely as long as the keepalives are working. This
@@ -633,6 +646,37 @@ func (sm *streamManager) connectAndStreamConfigurationUpdates(logger *zap.Logger
 	return nil
 }
 
+// connectAndStreamOVNNetworkFlows creates OVN networkFlowsStream client and
+// begins the streaming of OVN network flows. Also starts a goroutine to send
+// keepalives at the configured period
+func (sm *streamManager) connectAndStreamOVNNetworkFlows(logger *zap.Logger, keepalivePeriod time.Duration) error {
+	ovnContext, ovnCancel := context.WithCancel(context.Background())
+	defer ovnCancel()
+
+	sendOVNNetworkFlows, err := sm.streamClient.client.SendKubernetesNetworkFlows(ovnContext)
+	if err != nil {
+		logger.Error("Failed to connect to server", zap.Error(err))
+		return err
+	}
+	sm.streamClient.networkFlowsStream = sendOVNNetworkFlows
+
+	go func() {
+		err := sm.StreamKeepalives(ovnContext, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
+		if err != nil {
+			logger.Error("Failed to send keepalives; canceling stream", zap.Error(err))
+		}
+		ovnCancel()
+	}()
+
+	err = sm.StreamOVNNetworkFlows(ovnContext, logger)
+	if err != nil {
+		logger.Error("Failed to stream OVN network flows", zap.Error(err))
+		return err
+	}
+
+	return nil
+}
+
 // Generic function to manage any stream with backoff and reconnection logic.
 func (sm *streamManager) manageStream(
 	logger *zap.Logger,
@@ -686,6 +730,17 @@ func (sm *streamManager) manageStream(
 	if err != nil {
 		logger.Error("Failed to reset connectAndStream. Something is very wrong", zap.Error(err))
 		return
+	}
+}
+
+// determineFlowCollector determines the flow collector type and returns the flow collector type, stream function, and the corresponding done channel.
+func determineFlowCollector(ctx context.Context, logger *zap.Logger, sm *streamManager) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
+	if sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace) != nil {
+		return pb.FlowCollector_FLOW_COLLECTOR_CILIUM, sm.connectAndStreamCiliumNetworkFlows, make(chan struct{})
+	} else if sm.isOVNDeployed(logger) {
+		return pb.FlowCollector_FLOW_COLLECTOR_OVN, sm.connectAndStreamOVNNetworkFlows, make(chan struct{})
+	} else {
+		return pb.FlowCollector_FLOW_COLLECTOR_FALCO, sm.connectAndStreamFalcoNetworkFlows, make(chan struct{})
 	}
 }
 
@@ -752,11 +807,12 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			}
 
 			streamClient := &streamClient{
-				conn:                      authConn,
-				client:                    client,
-				ciliumNamespace:           envMap.CiliumNamespace,
-				disableNetworkFlowsCilium: false,
-				falcoEventChan:            falcoEventChan,
+				conn:               authConn,
+				client:             client,
+				ciliumNamespace:    envMap.CiliumNamespace,
+				falcoEventChan:     falcoEventChan,
+				ovnEventChan:       make(chan []byte),
+				IpfixCollectorPort: envMap.IpfixCollectorPort,
 			}
 
 			sm := &streamManager{
@@ -768,18 +824,9 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					make(chan pb.Flow, 100),
 				),
 			}
-			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
-			if ciliumFlowCollector == nil {
-				sm.streamClient.disableNetworkFlowsCilium = true
-				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_FALCO
-			} else {
-				sm.streamClient.disableNetworkFlowsCilium = false
-				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_CILIUM
-			}
 
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
-			var ciliumDone, falcoDone chan struct{}
 			configDone := make(chan struct{})
 
 			sm.bufferedGrpcSyncer.done = logDone
@@ -817,28 +864,21 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				ctxCancelFlowCacheRun()
 			}()
 
-			// Only start network flows stream if not disabled
-			if !sm.streamClient.disableNetworkFlowsCilium {
-				ciliumDone = make(chan struct{})
-				go sm.manageStream(
-					logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
-					sm.connectAndStreamCiliumNetworkFlows,
-					ciliumDone,
-					envMap.KeepalivePeriods.KubernetesNetworkFlows,
-					envMap.StreamSuccessPeriod,
-				)
-			}
+			ovnDone := make(chan struct{})
+			falcoDone := make(chan struct{})
+			ciliumDone := make(chan struct{})
 
-			if sm.streamClient.disableNetworkFlowsCilium {
-				falcoDone := make(chan struct{})
-				go sm.manageStream(
-					logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
-					sm.connectAndStreamFalcoNetworkFlows,
-					falcoDone,
-					envMap.KeepalivePeriods.KubernetesNetworkFlows,
-					envMap.StreamSuccessPeriod,
-				)
-			}
+			flowCollector, streamFunc, doneChannel := determineFlowCollector(ctx, logger, sm)
+			sm.streamClient.flowCollector = flowCollector
+
+			go sm.manageStream(
+				logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
+				streamFunc,
+				doneChannel,
+				envMap.KeepalivePeriods.KubernetesNetworkFlows,
+				envMap.StreamSuccessPeriod,
+			)
+
 			go func() {
 				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(ctx)
 				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger)
@@ -862,6 +902,8 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				failureReason = "Log stream closed"
 			case <-configDone:
 				failureReason = "Configuration update stream closed"
+			case <-ovnDone:
+				failureReason = "OVN network flow stream closed"
 			}
 			authConContextCancel()
 		}

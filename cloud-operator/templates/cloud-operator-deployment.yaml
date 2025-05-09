@@ -52,6 +52,7 @@ spec:
           ports:
             - containerPort: 8080
             - containerPort: 5000
+            - containerPort: 4739
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: CLUSTER_CREDS_SECRET
