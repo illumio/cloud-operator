@@ -733,6 +733,17 @@ func (sm *streamManager) manageStream(
 	}
 }
 
+// determineFlowCollector determines the flow collector type and returns the flow collector type, stream function, and the corresponding done channel.
+func determineFlowCollector(ctx context.Context, logger *zap.Logger, sm *streamManager) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
+	if sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace) != nil {
+		return pb.FlowCollector_FLOW_COLLECTOR_CILIUM, sm.connectAndStreamCiliumNetworkFlows, make(chan struct{})
+	} else if sm.isOVNDeployed(logger) {
+		return pb.FlowCollector_FLOW_COLLECTOR_OVN, sm.connectAndStreamOVNNetworkFlows, make(chan struct{})
+	} else {
+		return pb.FlowCollector_FLOW_COLLECTOR_FALCO, sm.connectAndStreamFalcoNetworkFlows, make(chan struct{})
+	}
+}
+
 // ConnectStreams will continue to reboot and restart the main operations within
 // the operator if any disconnects or errors occur.
 func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
@@ -856,38 +867,18 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			ovnDone := make(chan struct{})
 			falcoDone := make(chan struct{})
 			ciliumDone := make(chan struct{})
-			switch {
-			case sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace) != nil:
-				// Cilium case
-				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_CILIUM
-				go sm.manageStream(
-					logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
-					sm.connectAndStreamCiliumNetworkFlows,
-					ciliumDone,
-					envMap.KeepalivePeriods.KubernetesNetworkFlows,
-					envMap.StreamSuccessPeriod,
-				)
-			case sm.isOVNDeployed(logger):
-				// OVN case
-				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_OVN
-				go sm.manageStream(
-					logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
-					sm.connectAndStreamOVNNetworkFlows,
-					ovnDone,
-					envMap.KeepalivePeriods.KubernetesNetworkFlows,
-					envMap.StreamSuccessPeriod,
-				)
-			default:
-				// Falco case
-				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_FALCO
-				go sm.manageStream(
-					logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
-					sm.connectAndStreamFalcoNetworkFlows,
-					falcoDone,
-					envMap.KeepalivePeriods.KubernetesNetworkFlows,
-					envMap.StreamSuccessPeriod,
-				)
-			}
+
+			flowCollector, streamFunc, doneChannel := determineFlowCollector(ctx, logger, sm)
+			sm.streamClient.flowCollector = flowCollector
+
+			go sm.manageStream(
+				logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
+				streamFunc,
+				doneChannel,
+				envMap.KeepalivePeriods.KubernetesNetworkFlows,
+				envMap.StreamSuccessPeriod,
+			)
+
 			go func() {
 				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(ctx)
 				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger)
