@@ -1212,7 +1212,7 @@ func (*KubernetesResourceMutation_UpdateResource) isKubernetesResourceMutation_M
 
 func (*KubernetesResourceMutation_DeleteResource) isKubernetesResourceMutation_Mutation() {}
 
-// A flow received from Falco using custom rules
+// A flow received from a CNI
 type StandardFlow struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// layer3 IP layer, source, destination and ip_version
@@ -1303,7 +1303,7 @@ type isStandardFlow_Ts interface {
 }
 
 type StandardFlow_Time struct {
-	// time contains the unparsed timestamp string received from Falco; parse it and set timestamp instead
+	// time contains the unparsed timestamp string received from a CNI; parse it and set timestamp instead
 	//
 	// Deprecated: Marked as deprecated in illumio/cloud/k8sclustersync/v1/k8s_info.proto.
 	Time string `protobuf:"bytes,3,opt,name=time,proto3,oneof"`

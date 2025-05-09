@@ -343,6 +343,7 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 		case <-ctx.Done():
 			return ctx.Err()
 		case flow := <-sm.FlowCache.outFlows:
+			logger.Info("Received flow from cache", zap.Any("flow", flow))
 			err := sm.sendNetworkFlowRequest(logger, flow)
 			if err != nil {
 				return err
@@ -612,15 +613,22 @@ func (sm *streamManager) connectAndStreamOVNNetworkFlows(logger *zap.Logger, kee
 	ovnContext, ovnCancel := context.WithCancel(context.Background())
 	defer ovnCancel()
 
-	// go func() {
-	// 	err := sm.StreamKeepalives(ovnContext, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
-	// 	if err != nil {
-	// 		logger.Error("Failed to send keepalives; canceling stream", zap.Error(err))
-	// 	}
-	// 	ovnCancel()
-	// }()
+	sendOVNNetworkFlows, err := sm.streamClient.client.SendKubernetesNetworkFlows(ovnContext)
+	if err != nil {
+		logger.Error("Failed to connect to server", zap.Error(err))
+		return err
+	}
+	sm.streamClient.networkFlowsStream = sendOVNNetworkFlows
 
-	err := sm.StreamOVNNetworkFlows(ovnContext, logger)
+	go func() {
+		err := sm.StreamKeepalives(ovnContext, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
+		if err != nil {
+			logger.Error("Failed to send keepalives; canceling stream", zap.Error(err))
+		}
+		ovnCancel()
+	}()
+
+	err = sm.StreamOVNNetworkFlows(ovnContext, logger)
 	if err != nil {
 		logger.Error("Failed to stream OVN network flows", zap.Error(err))
 		return err
@@ -808,9 +816,6 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			ovnDone := make(chan struct{})
 			falcoDone := make(chan struct{})
 			ciliumDone := make(chan struct{})
-			logger.Info("Evaluating case: Cilium", zap.String("ciliumNamespace", sm.streamClient.ciliumNamespace))
-			logger.Info("Cilium case is true: Hubble Relay found", zap.String("ciliumNamespace", sm.streamClient.ciliumNamespace))
-			logger.Info("IsOVNDeployed", zap.Bool("isOVNDeployed", sm.isOVNDeployed(logger)))
 			switch {
 			case sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace) != nil:
 				// Cilium case
@@ -833,8 +838,6 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					envMap.StreamSuccessPeriod,
 				)
 			default:
-				logger.Info("Evaluating case: Falco")
-				logger.Info("Falco case is true: Default case entered")
 				// Falco case
 				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_FALCO
 				go sm.manageStream(
@@ -845,7 +848,6 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					envMap.StreamSuccessPeriod,
 				)
 			}
-			logger.Info("This is the flow collector", zap.String("flowCollector", sm.streamClient.flowCollector.String()))
 			go func() {
 				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(ctx)
 				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger)

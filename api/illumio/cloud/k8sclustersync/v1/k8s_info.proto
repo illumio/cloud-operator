@@ -177,7 +177,7 @@ message KubernetesResourceMutation {
   }
 }
 
-// A flow received from Falco using custom rules
+// A flow received from a CNI
 message StandardFlow {
   // layer3 IP layer, source, destination and ip_version
   IP layer3 = 1;
@@ -185,7 +185,7 @@ message StandardFlow {
   Layer4 layer4 = 2;
 
   oneof ts {
-    // time contains the unparsed timestamp string received from Falco; parse it and set timestamp instead
+    // time contains the unparsed timestamp string received from a CNI; parse it and set timestamp instead
     string time = 3 [deprecated = true];
     google.protobuf.Timestamp timestamp = 4;
   }

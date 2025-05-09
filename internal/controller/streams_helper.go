@@ -134,31 +134,41 @@ func (sm *streamManager) sendResourceSnapshotComplete(logger *zap.Logger) error 
 func (sm *streamManager) sendKeepalive(logger *zap.Logger, st StreamType) error {
 	var err error
 
+	// Check if the stream is nil before sending the keepalive due to the fact that these keepalives
+	// May try to fire off before a stream client is even intialized (i.e. OVN network flow stream only intializes once )
 	switch st {
 	case STREAM_NETWORK_FLOWS:
-		err = sm.streamClient.networkFlowsStream.Send(&pb.SendKubernetesNetworkFlowsRequest{
-			Request: &pb.SendKubernetesNetworkFlowsRequest_Keepalive{
-				Keepalive: &pb.Keepalive{},
-			},
-		})
+		if sm.streamClient.networkFlowsStream != nil {
+			err = sm.streamClient.networkFlowsStream.Send(&pb.SendKubernetesNetworkFlowsRequest{
+				Request: &pb.SendKubernetesNetworkFlowsRequest_Keepalive{
+					Keepalive: &pb.Keepalive{},
+				},
+			})
+		}
 	case STREAM_RESOURCES:
-		err = sm.streamClient.resourceStream.Send(&pb.SendKubernetesResourcesRequest{
-			Request: &pb.SendKubernetesResourcesRequest_Keepalive{
-				Keepalive: &pb.Keepalive{},
-			},
-		})
+		if sm.streamClient.resourceStream != nil {
+			err = sm.streamClient.resourceStream.Send(&pb.SendKubernetesResourcesRequest{
+				Request: &pb.SendKubernetesResourcesRequest_Keepalive{
+					Keepalive: &pb.Keepalive{},
+				},
+			})
+		}
 	case STREAM_LOGS:
-		err = sm.streamClient.logStream.Send(&pb.SendLogsRequest{
-			Request: &pb.SendLogsRequest_Keepalive{
-				Keepalive: &pb.Keepalive{},
-			},
-		})
+		if sm.streamClient.logStream != nil {
+			err = sm.streamClient.logStream.Send(&pb.SendLogsRequest{
+				Request: &pb.SendLogsRequest_Keepalive{
+					Keepalive: &pb.Keepalive{},
+				},
+			})
+		}
 	case STREAM_CONFIGURATION:
-		err = sm.streamClient.configStream.Send(&pb.GetConfigurationUpdatesRequest{
-			Request: &pb.GetConfigurationUpdatesRequest_Keepalive{
-				Keepalive: &pb.Keepalive{},
-			},
-		})
+		if sm.streamClient.configStream != nil {
+			err = sm.streamClient.configStream.Send(&pb.GetConfigurationUpdatesRequest{
+				Request: &pb.GetConfigurationUpdatesRequest_Keepalive{
+					Keepalive: &pb.Keepalive{},
+				},
+			})
+		}
 	default:
 		return fmt.Errorf("unsupported stream type: %s", st)
 	}

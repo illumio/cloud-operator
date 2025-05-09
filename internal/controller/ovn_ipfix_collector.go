@@ -39,6 +39,8 @@ type OVNFlow struct {
 	IPVersion       string
 }
 
+const ovnNamespace = "openshift-ovn-kubernetes"
+
 // IsOVNDeployed Checks for the presence of the `ovn-kubernetes` namespace, detection based on OVN namespace.
 // https://ovn-kubernetes.io/installation/launching-ovn-kubernetes-on-kind/#run-the-kind-deployment-with-podman
 func (sm *streamManager) isOVNDeployed(logger *zap.Logger) bool {
@@ -48,7 +50,7 @@ func (sm *streamManager) isOVNDeployed(logger *zap.Logger) bool {
 		logger.Error("Failed to create clientset", zap.Error(err))
 		return false
 	}
-	_, err = clientset.CoreV1().Namespaces().Get(context.TODO(), "openshift-ovn-kubernetes", metav1.GetOptions{})
+	_, err = clientset.CoreV1().Namespaces().Get(context.TODO(), ovnNamespace, metav1.GetOptions{})
 	if err != nil {
 		logger.Debug("OVN namespace not found", zap.Error(err))
 		return false
@@ -137,24 +139,23 @@ func (sm *streamManager) processOVNFlow(ctx context.Context, logger *zap.Logger)
 								logger.Error("Failed to process data record", zap.Error(err))
 								continue
 							}
-							layer4, err := createLayer4Message(ovnFlow.Protocol, uint32(ovnFlow.SourcePort), uint32(ovnFlow.DestinationPort), ovnFlow.IPVersion)
-							if err != nil {
-								logger.Error("Failed to create layer4 message", zap.Error(err))
-								continue
-							}
-							layer3, err := createLayer3Message(ovnFlow.SourceIP, ovnFlow.DestinationIP, ovnFlow.IPVersion)
+							layer3Message, err := createLayer3Message(ovnFlow.SourceIP, ovnFlow.DestinationIP, ovnFlow.IPVersion)
 							if err != nil {
 								logger.Error("Failed to create layer3 message", zap.Error(err))
 								continue
 							}
+							layer4Message, err := createLayer4Message(ovnFlow.Protocol, uint32(ovnFlow.SourcePort), uint32(ovnFlow.DestinationPort), ovnFlow.IPVersion)
+							if err != nil {
+								logger.Error("Failed to create layer4 message", zap.Error(err))
+								continue
+							}
 							convertOvnFlow := &pb.StandardFlow{
-								Layer3: layer3,
-								Layer4: layer4,
+								Layer3: layer3Message,
+								Layer4: layer4Message,
 								Ts: &pb.StandardFlow_Timestamp{
 									Timestamp: timestamppb.New(time.Now()),
 								},
 							}
-							logger.Info("Converted OVN flow", zap.Any("ovnFlow", convertOvnFlow))
 							err = sm.FlowCache.CacheFlow(ctx, convertOvnFlow)
 							if err != nil {
 								logger.Error("Failed to cache flow", zap.Error(err))
