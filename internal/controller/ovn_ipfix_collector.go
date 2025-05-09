@@ -3,10 +3,14 @@ package controller
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"net"
+	"time"
 
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	netflows "github.com/netsampler/goflow2/decoders/netflow"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -23,6 +27,16 @@ type IPFIXHeader struct {
 type FieldInfo struct {
 	Offset int
 	Size   int
+}
+
+// OVNFlow represents a flow captured from OVN.
+type OVNFlow struct {
+	SourceIP        string
+	DestinationIP   string
+	SourcePort      uint16
+	DestinationPort uint16
+	Protocol        string
+	IPVersion       string
 }
 
 // IsOVNDeployed Checks for the presence of the `ovn-kubernetes` namespace, detection based on OVN namespace.
@@ -43,6 +57,9 @@ func (sm *streamManager) isOVNDeployed(logger *zap.Logger) bool {
 	return true
 }
 
+// startOVNIPFIXCollector starts the OVN IPFIX collector.
+// It creates a custom listener for OVN flows on port 4739 and processes
+// the received flows in a separate goroutine.
 func (sm *streamManager) startOVNIPFIXCollector(ctx context.Context, logger *zap.Logger) error {
 	logger.Info("Starting OVN IPFIX Collector")
 	go func() {
@@ -65,8 +82,8 @@ func (sm *streamManager) startOVNIPFIXCollector(ctx context.Context, logger *zap
 		}
 
 		logger.Info("OVN server listening", zap.String("address", sm.streamClient.IpfixCollectorPort))
-		buf := make([]byte, 65535)
 		for {
+			buf := make([]byte, 65535)
 			select {
 			case <-ctx.Done():
 				logger.Info("Context canceled in OVN listener loop")
@@ -77,13 +94,15 @@ func (sm *streamManager) startOVNIPFIXCollector(ctx context.Context, logger *zap
 					logger.Error("Failed to read from OVN listener", zap.Error(err))
 					return err
 				}
-				// logger.Info("Received data from OVN listener", zap.Int("bytesRead", n))
 				sm.streamClient.ovnEventChan <- buf[:n]
 			}
 		}
 	}
 }
 
+// processOVNFlow processes OVN IPFIX flows received from the ovnEventChan.
+// It decodes the IPFIX packets, extracts data records, and converts them into
+// StandardFlow objects, which are then cached for sending to CloudSecure.
 func (sm *streamManager) processOVNFlow(ctx context.Context, logger *zap.Logger) error {
 	// Initialize the BasicTemplateSystem using the CreateTemplateSystem function
 	templateSystem := netflows.CreateTemplateSystem()
@@ -105,7 +124,6 @@ func (sm *streamManager) processOVNFlow(ctx context.Context, logger *zap.Logger)
 			}
 			decodedMessage, err := netflows.DecodeMessage(bytes.NewBuffer(packet), templateSystem)
 			if err != nil {
-				logger.Error("Failed to decode message", zap.Error(err))
 				continue
 			}
 			forceType, ok := decodedMessage.(netflows.IPFIXPacket)
@@ -114,31 +132,33 @@ func (sm *streamManager) processOVNFlow(ctx context.Context, logger *zap.Logger)
 					switch flowSet := flowSet.(type) {
 					case netflows.DataFlowSet:
 						for _, dataRecord := range flowSet.Records {
-							for _, field := range dataRecord.Values {
-								switch field.Type {
-								// All of these assumptions are based on the IPFIX spec
-								// https://github.com/netsampler/goflow2/blob/v1.3.7/decoders/netflow/ipfix.go#L8
-								case 8: // Assuming 8 corresponds to sourceIPv4Address
-									if srcIP, ok := field.Value.(net.IP); ok {
-										logger.Info("Extracted source IP", zap.String("srcIP", srcIP.String()))
-									}
-								case 12: // Assuming 12 corresponds to destinationIPv4Address
-									if dstIP, ok := field.Value.(net.IP); ok {
-										logger.Info("Extracted destination IP", zap.String("dstIP", dstIP.String()))
-									}
-								case 7: // Assuming 7 corresponds to sourcePort
-									if srcPort, ok := field.Value.(uint16); ok {
-										logger.Info("Extracted source port", zap.Uint16("srcPort", srcPort))
-									}
-								case 11: // Assuming 11 corresponds to destinationPort
-									if dstPort, ok := field.Value.(uint16); ok {
-										logger.Info("Extracted destination port", zap.Uint16("dstPort", dstPort))
-									}
-								case 4: // Assuming 4 corresponds to protocol
-									if protocol, ok := field.Value.(uint8); ok {
-										logger.Info("Extracted protocol", zap.Uint8("protocol", protocol))
-									}
-								}
+							ovnFlow, err := processDataRecord(dataRecord)
+							if err != nil {
+								logger.Error("Failed to process data record", zap.Error(err))
+								continue
+							}
+							layer4, err := createLayer4Message(ovnFlow.Protocol, uint32(ovnFlow.SourcePort), uint32(ovnFlow.DestinationPort), ovnFlow.IPVersion)
+							if err != nil {
+								logger.Error("Failed to create layer4 message", zap.Error(err))
+								continue
+							}
+							layer3, err := createLayer3Message(ovnFlow.SourceIP, ovnFlow.DestinationIP, ovnFlow.IPVersion)
+							if err != nil {
+								logger.Error("Failed to create layer3 message", zap.Error(err))
+								continue
+							}
+							convertOvnFlow := &pb.StandardFlow{
+								Layer3: layer3,
+								Layer4: layer4,
+								Ts: &pb.StandardFlow_Timestamp{
+									Timestamp: timestamppb.New(time.Now()),
+								},
+							}
+							logger.Info("Converted OVN flow", zap.Any("ovnFlow", convertOvnFlow))
+							err = sm.FlowCache.CacheFlow(ctx, convertOvnFlow)
+							if err != nil {
+								logger.Error("Failed to cache flow", zap.Error(err))
+								return err
 							}
 						}
 					}
@@ -147,5 +167,82 @@ func (sm *streamManager) processOVNFlow(ctx context.Context, logger *zap.Logger)
 				logger.Info("Not an IPFIX packet")
 			}
 		}
+	}
+}
+
+// parseIPv4Address converts a byte slice into an IPv4 address string.
+func parseIPv4Address(decodedValue []byte) string {
+	ip := net.IPv4(decodedValue[0], decodedValue[1], decodedValue[2], decodedValue[3])
+	return ip.String()
+}
+
+// parsePort converts a byte slice into a uint16 port number using BigEndian encoding.
+func parsePort(decodedValue []byte) uint16 {
+	return binary.BigEndian.Uint16(decodedValue)
+}
+
+// parseProtocol converts a byte slice into a protocol string based on IANA protocol numbers.
+func parseProtocol(decodedValue []byte) string {
+	return convertProtocol(decodedValue)
+}
+
+// parseIPVersion converts a byte slice into an IP version string (e.g., "ipv4" or "ipv6").
+func parseIPVersion(decodedValue []byte) string {
+	return convertIpVersion(decodedValue)
+}
+
+// processDataRecord processes a single data record and converts it into an OVNFlow.
+func processDataRecord(dataRecord netflows.DataRecord) (OVNFlow, error) {
+	ovnFlow := OVNFlow{}
+	for _, field := range dataRecord.Values {
+		switch field.Type {
+		case 8: // Assuming 8 corresponds to sourceIPv4Address
+			ovnFlow.SourceIP = parseIPv4Address(field.Value.([]byte))
+		case 12: // Assuming 12 corresponds to destinationIPv4Address
+			ovnFlow.DestinationIP = parseIPv4Address(field.Value.([]byte))
+		case 7: // Assuming 7 corresponds to sourcePort
+			ovnFlow.SourcePort = parsePort(field.Value.([]byte))
+		case 11: // Assuming 11 corresponds to destinationPort
+			ovnFlow.DestinationPort = parsePort(field.Value.([]byte))
+		case 4: // Assuming 4 corresponds to protocol
+			ovnFlow.Protocol = parseProtocol(field.Value.([]byte))
+		case 60: // Assuming 60 corresponds to ipVersion
+			ovnFlow.IPVersion = parseIPVersion(field.Value.([]byte))
+		default:
+			// Ignore unknown field types
+		}
+	}
+	return ovnFlow, nil
+}
+
+// convertIpVersion converts a byte slice into a string representation of the IP version.
+// It uses IANA IP version numbers to map the byte value to a version name (e.g., "ipv4", "ipv6").
+func convertIpVersion(decodedValue []byte) string {
+	ipVersion := uint8(decodedValue[0])
+	switch ipVersion {
+	case 4:
+		return "ipv4"
+	case 6:
+		return "ipv6"
+	default:
+		return "Unknown"
+	}
+}
+
+// convertProtocol converts a byte slice into a string representation of the protocol.
+// It uses IANA protocol numbers to map the byte value to a protocol name (e.g., "tcp", "udp").
+func convertProtocol(decodedValue []byte) string {
+	protocol := uint8(decodedValue[0])
+	switch protocol {
+	case 1:
+		return "icmpt"
+	case 6:
+		return "tcp"
+	case 17:
+		return "udp"
+	case 132:
+		return "sctp"
+	default:
+		return "Unknown"
 	}
 }
