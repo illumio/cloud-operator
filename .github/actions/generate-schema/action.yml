@@ -4,6 +4,9 @@ outputs:
   changes:
     description: 'Whether there are changes to the schema'
     value: ${{ steps.git-check.outputs.changes }}
+  diff:
+    description: 'The diff between the current and generated schema'
+    value: ${{ steps.git-check.outputs.diff }}
 runs:
   using: "composite"
   steps:
@@ -23,4 +26,15 @@ runs:
       id: git-check
       shell: bash
       run: |
+        # Capture the diff content
+        DIFF=$(git diff cloud-operator/values.schema.json)
+        # Check if there are changes
         git diff --exit-code cloud-operator/values.schema.json || echo "changes=true" >> $GITHUB_OUTPUT
+        # Escape newlines and quotes for GitHub Actions
+        DIFF="${DIFF//'%'/'%25'}"
+        DIFF="${DIFF//$'\n'/'%0A'}"
+        DIFF="${DIFF//$'\r'/'%0D'}"
+        # Output the diff
+        echo "diff<<EOF" >> $GITHUB_OUTPUT
+        echo "$DIFF" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
