@@ -17,6 +17,9 @@ jobs:
       contents: read
     if: github.event_name == 'pull_request'
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - uses: ./.github/actions/generate-schema
         id: generate
 
@@ -34,6 +37,9 @@ jobs:
       contents: write
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - uses: ./.github/actions/generate-schema
         id: generate
 
