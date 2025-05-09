@@ -3,6 +3,9 @@
 package controller
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"time"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -334,4 +337,50 @@ func (suite *ControllerTestSuite) TestConvertStringToTimestamp() {
 		})
 	}
 
+}
+
+func (suite *ControllerTestSuite) TestNewFalcoEventHandler() {
+	eventChan := make(chan string, 1)
+	handler := NewFalcoEventHandler(eventChan)
+
+	tests := map[string]struct {
+		body           string
+		expectedStatus int
+		expectedEvent  string
+	}{
+		"valid event": {
+			body:           `{"output": "test event"}`,
+			expectedStatus: http.StatusOK,
+			expectedEvent:  "test event",
+		},
+		"invalid JSON": {
+			body:           `invalid json`,
+			expectedStatus: http.StatusBadRequest,
+			expectedEvent:  "",
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			// Create a test request
+			req := httptest.NewRequest("POST", "/", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+
+			handler.ServeHTTP(rr, req)
+
+			assert.Equal(suite.T(), tt.expectedStatus, rr.Code)
+
+			// If we expect a successful response, check the event channel
+			if tt.expectedStatus == http.StatusOK {
+				select {
+				case event := <-eventChan:
+					assert.Equal(suite.T(), tt.expectedEvent, event)
+				case <-time.After(100 * time.Millisecond):
+					suite.T().Error("Expected event not received")
+				}
+			}
+		})
+	}
 }

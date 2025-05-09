@@ -1,4 +1,4 @@
-name: Helm Unit Tests
+name: Helm Lint and Unit Tests
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
       - 'cloud-operator/**'
 
 jobs:
-  helm-unit-tests:
+  helm-lint-and-tests:
     runs-on: ubuntu-latest
 
     steps:
@@ -25,8 +25,8 @@ jobs:
         run: |
           helm plugin install https://github.com/helm-unittest/helm-unittest.git
 
-      - name: Run Helm unit tests
+      - name: Run Helm lint and unit tests
         run: |
-          helm lint cloud-operator
+          helm lint cloud-operator # Validates the chart, including schema validation
           helm template my-release cloud-operator --namespace test-namespace
           helm unittest cloud-operator
