@@ -42,6 +42,13 @@ type OVNFlow struct {
 
 const ovnNamespace = "openshift-ovn-kubernetes"
 
+// https://datatracker.ietf.org/doc/rfc7011/
+// The IPFIX Message Header 16-bit Length field limits the length of an
+// IPFIX Message to 65535 octets, including the header.  A Collecting
+// Process MUST be able to handle IPFIX Message lengths of up to
+// 65535 octets.
+const ipfixMaxLength = 65535
+
 // IsOVNDeployed Checks for the presence of the `ovn-kubernetes` namespace, detection based on OVN namespace.
 // https://ovn-kubernetes.io/installation/launching-ovn-kubernetes-on-kind/#run-the-kind-deployment-with-podman
 func (sm *streamManager) isOVNDeployed(logger *zap.Logger) bool {
@@ -86,7 +93,7 @@ func (sm *streamManager) startOVNIPFIXCollector(ctx context.Context, logger *zap
 
 		logger.Info("OVN server listening", zap.String("address", sm.streamClient.IpfixCollectorPort))
 		for {
-			buf := make([]byte, 65535)
+			buf := make([]byte, ipfixMaxLength)
 			select {
 			case <-ctx.Done():
 				logger.Info("Context canceled in OVN listener loop")
