@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"net"
 	"time"
 
@@ -136,7 +137,7 @@ func (sm *streamManager) processOVNFlow(ctx context.Context, logger *zap.Logger)
 						for _, dataRecord := range flowSet.Records {
 							ovnFlow, err := processDataRecord(dataRecord)
 							if err != nil {
-								logger.Error("Failed to process data record", zap.Error(err))
+								logger.Warn("Skipping data record due to parsing error", zap.Error(err))
 								continue
 							}
 							layer3Message, err := createLayer3Message(ovnFlow.SourceIP, ovnFlow.DestinationIP, ovnFlow.IPVersion)
@@ -172,7 +173,11 @@ func (sm *streamManager) processOVNFlow(ctx context.Context, logger *zap.Logger)
 }
 
 // parseIPv4Address converts a byte slice into an IPv4 address string.
+// Returns an empty string if the slice is not the correct size.
 func parseIPv4Address(decodedValue []byte) string {
+	if len(decodedValue) < 4 {
+		return "" // Return an empty string if the slice is too short
+	}
 	ip := net.IPv4(decodedValue[0], decodedValue[1], decodedValue[2], decodedValue[3])
 	return ip.String()
 }
@@ -193,22 +198,41 @@ func parseIPVersion(decodedValue []byte) string {
 }
 
 // processDataRecord processes a single data record and converts it into an OVNFlow.
+// If any parsing step fails, it returns an error and skips the record.
 func processDataRecord(dataRecord netflows.DataRecord) (OVNFlow, error) {
 	ovnFlow := OVNFlow{}
 	for _, field := range dataRecord.Values {
 		switch field.Type {
 		case 8: // Assuming 8 corresponds to sourceIPv4Address
 			ovnFlow.SourceIP = parseIPv4Address(field.Value.([]byte))
+			if ovnFlow.SourceIP == "" {
+				return OVNFlow{}, errors.New("failed to parse source IPv4 address")
+			}
 		case 12: // Assuming 12 corresponds to destinationIPv4Address
 			ovnFlow.DestinationIP = parseIPv4Address(field.Value.([]byte))
+			if ovnFlow.DestinationIP == "" {
+				return OVNFlow{}, errors.New("failed to parse destination IPv4 address")
+			}
 		case 7: // Assuming 7 corresponds to sourcePort
+			if len(field.Value.([]byte)) < 2 {
+				return OVNFlow{}, errors.New("failed to parse source port: insufficient data")
+			}
 			ovnFlow.SourcePort = parsePort(field.Value.([]byte))
 		case 11: // Assuming 11 corresponds to destinationPort
+			if len(field.Value.([]byte)) < 2 {
+				return OVNFlow{}, errors.New("failed to parse destination port: insufficient data")
+			}
 			ovnFlow.DestinationPort = parsePort(field.Value.([]byte))
 		case 4: // Assuming 4 corresponds to protocol
 			ovnFlow.Protocol = parseProtocol(field.Value.([]byte))
+			if ovnFlow.Protocol == "Unknown" {
+				return OVNFlow{}, errors.New("failed to parse protocol")
+			}
 		case 60: // Assuming 60 corresponds to ipVersion
 			ovnFlow.IPVersion = parseIPVersion(field.Value.([]byte))
+			if ovnFlow.IPVersion == "Unknown" {
+				return OVNFlow{}, errors.New("failed to parse IP version")
+			}
 		default:
 			// Ignore unknown field types
 		}
@@ -219,6 +243,9 @@ func processDataRecord(dataRecord netflows.DataRecord) (OVNFlow, error) {
 // convertIpVersion converts a byte slice into a string representation of the IP version.
 // It uses IANA IP version numbers to map the byte value to a version name (e.g., "ipv4", "ipv6").
 func convertIpVersion(decodedValue []byte) string {
+	if len(decodedValue) < 1 {
+		return "Unknown" // Return "Unknown" if the slice is too short
+	}
 	ipVersion := uint8(decodedValue[0])
 	switch ipVersion {
 	case 4:
@@ -233,6 +260,10 @@ func convertIpVersion(decodedValue []byte) string {
 // convertProtocol converts a byte slice into a string representation of the protocol.
 // It uses IANA protocol numbers to map the byte value to a protocol name (e.g., "tcp", "udp").
 func convertProtocol(decodedValue []byte) string {
+	if len(decodedValue) < 1 {
+		return "Unknown" // Return "Unknown" if the slice is too short
+	}
+
 	protocol := uint8(decodedValue[0])
 	switch protocol {
 	case 1:
