@@ -122,7 +122,6 @@ jobs:
             --set env.onboardingEndpoint=$ONBOARDING_ENDPOINT \
             --set env.tokenEndpoint=$TOKEN_ENDPOINT \
             --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
-            --set service.clusterIP=10.96.0.10 \
 
       - name:  Run Integration Tests
         if: steps.dry_run.outputs.supported == 'true'

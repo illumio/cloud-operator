@@ -215,6 +215,16 @@
         }
       },
       "required": ["onboardingEndpoint", "tokenEndpoint"]
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "clusterIP": {
+          "type": "string",
+          "description": "Static cluster IP for the service. Must be a valid IP address.",
+          "pattern": "^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$"
+        }
+      }
     }
   },
   "required": ["defaultNamespace", "replicaCount", "image", "serviceAccount", "resources", "falco", "env"]
