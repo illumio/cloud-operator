@@ -43,12 +43,9 @@ jobs:
       - uses: ./.github/actions/generate-schema
         id: generate
 
-      - name: Show diff and commit changes
+      - name: Commit and push changes
         if: steps.generate.outputs.changes == 'true'
         run: |
-          echo "::group::Schema Diff"
-          echo "${{ steps.generate.outputs.diff }}"
-          echo "::endgroup::"
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
           git add cloud-operator/values.schema.json
