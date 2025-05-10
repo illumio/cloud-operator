@@ -23,6 +23,12 @@ jobs:
       - uses: ./.github/actions/generate-schema
         id: generate
 
+      - name: Always show diff
+        run: |
+          echo "::group::Schema Diff"
+          echo "${{ steps.generate.outputs.diff }}"
+          echo "::endgroup::"
+
       - name: Fail if schema needs updating
         if: steps.generate.outputs.changes == 'true'
         run: |
@@ -42,6 +48,12 @@ jobs:
 
       - uses: ./.github/actions/generate-schema
         id: generate
+
+      - name: Always show diff
+        run: |
+          echo "::group::Schema Diff"
+          echo "${{ steps.generate.outputs.diff }}"
+          echo "::endgroup::"
 
       - name: Commit and push changes
         if: steps.generate.outputs.changes == 'true'
