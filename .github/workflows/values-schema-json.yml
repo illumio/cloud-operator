@@ -17,8 +17,17 @@ jobs:
       contents: read
     if: github.event_name == 'pull_request'
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - uses: ./.github/actions/generate-schema
         id: generate
+
+      - name: Always show diff
+        run: |
+          echo "::group::Schema Diff"
+          echo "${{ steps.generate.outputs.diff }}"
+          echo "::endgroup::"
 
       - name: Fail if schema needs updating
         if: steps.generate.outputs.changes == 'true'
@@ -34,8 +43,17 @@ jobs:
       contents: write
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - uses: ./.github/actions/generate-schema
         id: generate
+
+      - name: Always show diff
+        run: |
+          echo "::group::Schema Diff"
+          echo "${{ steps.generate.outputs.diff }}"
+          echo "::endgroup::"
 
       - name: Commit and push changes
         if: steps.generate.outputs.changes == 'true'
