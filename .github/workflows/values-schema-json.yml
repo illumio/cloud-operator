@@ -17,6 +17,9 @@ jobs:
       contents: read
     if: github.event_name == 'pull_request'
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - uses: ./.github/actions/generate-schema
         id: generate
 
@@ -34,12 +37,18 @@ jobs:
       contents: write
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - uses: ./.github/actions/generate-schema
         id: generate
 
-      - name: Commit and push changes
+      - name: Show diff and commit changes
         if: steps.generate.outputs.changes == 'true'
         run: |
+          echo "::group::Schema Diff"
+          echo "${{ steps.generate.outputs.diff }}"
+          echo "::endgroup::"
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
           git add cloud-operator/values.schema.json
