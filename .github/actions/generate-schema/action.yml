@@ -15,9 +15,9 @@ runs:
     - name: Generate schema
       uses: losisin/helm-values-schema-json-action@v1
       with:
-        path: cloud-operator
-        values-file: values.yaml
-        schema-file: values.schema.json
+        working-directory: cloud-operator
+        input: values.yaml
+        output: values.schema.json
 
     - name: Check for changes
       id: git-check
