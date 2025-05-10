@@ -1,5 +1,5 @@
 name: 'Generate Helm Schema'
-description: 'Checkout code, set up Helm, generate schema, and check for changes'
+description: 'Set up Helm, generate schema, and check for changes'
 outputs:
   changes:
     description: 'Whether there are changes to the schema'
@@ -7,9 +7,6 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
     - name: Set up Helm
       uses: azure/setup-helm@v4.2.0
       with:

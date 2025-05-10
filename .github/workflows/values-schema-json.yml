@@ -20,12 +20,9 @@ jobs:
       - uses: ./.github/actions/generate-schema
         id: generate
 
-      - name: Show diff and fail if schema needs updating
+      - name: Fail if schema needs updating
         if: steps.generate.outputs.changes == 'true'
         run: |
-          echo "::group::Schema Diff"
-          echo "${{ steps.generate.outputs.diff }}"
-          echo "::endgroup::"
           echo "::error::The values.schema.json file needs to be updated to match changes in values.yaml."
           echo "::error::Please run 'helm schema-gen values.yaml -o values.schema.json' or similar tool to update the schema."
           exit 1
@@ -40,12 +37,9 @@ jobs:
       - uses: ./.github/actions/generate-schema
         id: generate
 
-      - name: Show diff and commit changes
+      - name: Commit and push changes
         if: steps.generate.outputs.changes == 'true'
         run: |
-          echo "::group::Schema Diff"
-          echo "${{ steps.generate.outputs.diff }}"
-          echo "::endgroup::"
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
           git add cloud-operator/values.schema.json
