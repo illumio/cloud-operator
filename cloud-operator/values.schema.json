@@ -26,6 +26,9 @@
                 "httpsProxy": {
                     "type": "string"
                 },
+                "logLevel": {
+                    "type": "string"
+                },
                 "onboardingEndpoint": {
                     "type": "string"
                 },
