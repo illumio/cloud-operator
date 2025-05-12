@@ -177,6 +177,14 @@
             },
             "type": "object"
         },
+        "service": {
+            "properties": {
+                "clusterIP": {
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
         "serviceAccount": {
             "properties": {
                 "annotations": {
