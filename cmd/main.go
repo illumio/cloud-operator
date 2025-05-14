@@ -24,10 +24,12 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 
+	"github.com/go-logr/zapr"
 	"github.com/google/gops/agent"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/klog/v2"
 
 	controller "github.com/illumio/cloud-operator/internal/controller"
 	//+kubebuilder:scaffold:imports
@@ -73,6 +75,12 @@ func main() {
 	logger := controller.NewProductionGRPCLogger(bufferedGrpcSyncer)
 	defer logger.Sync() //nolint:errcheck
 
+	// Convert zap.Logger to logr.Logger
+	logrLogger := zapr.NewLogger(logger)
+
+	// Set logrLogger as the global logger for klog
+	klog.SetLoggerWithOptions(logrLogger)
+
 	viper.AutomaticEnv()
 
 	// Bind specific environment variables to keys
@@ -90,6 +98,7 @@ func main() {
 	bindEnv(logger, "pod_namespace", "POD_NAMESPACE")
 	bindEnv(logger, "stream_success_period_connect", "STREAM_SUCCESS_PERIOD_CONNECT")
 	bindEnv(logger, "stream_success_period_auth", "STREAM_SUCCESS_PERIOD_AUTH")
+	bindEnv(logger, "https_proxy", "HTTPS_PROXY")
 
 	// Set default values
 	viper.SetDefault("cluster_creds", "clustercreds")
@@ -104,6 +113,7 @@ func main() {
 	viper.SetDefault("pod_namespace", defaultPodNamespace)
 	viper.SetDefault("stream_success_period_connect", defaultStreamSuccessPeriodConnect)
 	viper.SetDefault("stream_success_period_auth", defaultStreamSuccessPeriodAuth)
+	viper.SetDefault("https_proxy", "")
 
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),
@@ -124,6 +134,7 @@ func main() {
 			Connect: viper.GetDuration("stream_success_period_connect"),
 			Auth:    viper.GetDuration("stream_success_period_auth"),
 		},
+		HttpsProxy: viper.GetString("https_proxy"),
 	}
 
 	logger.Info("Starting application",
@@ -140,6 +151,7 @@ func main() {
 		zap.String("pod_namespace", envConfig.PodNamespace),
 		zap.Duration("stream_success_period_connect", envConfig.StreamSuccessPeriod.Connect),
 		zap.Duration("stream_success_period_auth", envConfig.StreamSuccessPeriod.Auth),
+		zap.String("https_proxy", envConfig.HttpsProxy),
 	)
 
 	// Start the gops agent

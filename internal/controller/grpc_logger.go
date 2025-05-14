@@ -68,7 +68,8 @@ func (b *BufferedGrpcWriteSyncer) Close() error {
 	return b.conn.Close()
 }
 
-// flush will attempt to dump buffer into GRPC stream if available
+// flush will attempt to dump buffer into GRPC stream if available.
+// Returns after the buffer is flushed or any messages failed to be sent.
 func (b *BufferedGrpcWriteSyncer) flush() {
 	if len(b.buffer) == 0 || b.conn == nil || b.conn.GetState() != connectivity.Ready {
 		return
@@ -87,24 +88,32 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 				zap.Int("lost_log_entries", b.lostLogEntriesCount),
 			},
 		)
-		if err != nil {
-			b.lostLogEntriesErr = err
-			return
+		if err == nil {
+			if err := b.sendLogEntry(lostLogsMessage); err != nil {
+				b.lostLogEntriesErr = err
+				return
+			}
+			b.lostLogEntriesCount = 0
+			b.lostLogEntriesErr = nil
 		}
-		if err := b.sendLogEntry(lostLogsMessage); err != nil {
-			b.lostLogEntriesErr = err
-			return
-		}
-		b.lostLogEntriesCount = 0
 	}
 
+	sentMessageCount := 0
 	for _, jsonMessage := range b.buffer {
 		if err := b.sendLogEntry(jsonMessage); err != nil {
-			b.lostLogEntriesCount += 1
 			b.lostLogEntriesErr = err
+			break
 		}
+		sentMessageCount += 1
 	}
-	b.buffer = b.buffer[:0]
+
+	// Only un-buffer the messages that were sent
+	// and keep the remaining messages buffered for the next flush()
+	if sentMessageCount > 0 {
+		newBufferLen := len(b.buffer) - sentMessageCount
+		copy(b.buffer, b.buffer[sentMessageCount:])
+		b.buffer = b.buffer[:newBufferLen]
+	}
 }
 
 // run flushes the buffer at the configured interval until Stop is called.

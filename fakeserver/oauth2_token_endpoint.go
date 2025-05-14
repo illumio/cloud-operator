@@ -100,7 +100,6 @@ func (a *AuthService) authenticateHandler(w http.ResponseWriter, r *http.Request
 	if r.Method != http.MethodPost {
 		a.logger.Error("Invalid request method, method not allowed", zap.String("method", r.Method))
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-
 		return
 	}
 
@@ -110,7 +109,6 @@ func (a *AuthService) authenticateHandler(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		a.logger.Error("Invalid request, unable to parse form", zap.Error(err))
 		http.Error(w, "Invalid request", http.StatusBadRequest)
-
 		return
 	}
 
@@ -118,16 +116,20 @@ func (a *AuthService) authenticateHandler(w http.ResponseWriter, r *http.Request
 	req.ClientID = r.FormValue("client_id")
 	req.ClientSecret = r.FormValue("client_secret")
 
-	if req.GrantType != AllowedGrantType {
-		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": InvalidGrantError})
+	a.logger.Info("Received credentials", zap.String("client_id", req.ClientID), zap.String("client_secret", req.ClientSecret))
 
+	if req.GrantType != AllowedGrantType {
+		a.logger.Error("Invalid grant type", zap.String("grant_type", req.GrantType))
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": InvalidGrantError})
 		return
 	}
 
 	if req.ClientID == a.clientID && req.ClientSecret == a.clientSecret {
 		response := TokenResponse{AccessToken: a.token}
+		a.logger.Info("Authentication successful", zap.String("access_token", a.token))
 		jsonResponse(w, http.StatusOK, response)
 	} else {
+		a.logger.Error("Authentication failed", zap.String("received_client_id", req.ClientID), zap.String("received_client_secret", req.ClientSecret), zap.String("expected_client_id", a.clientID), zap.String("expected_client_secret", a.clientSecret))
 		jsonResponse(w, http.StatusUnauthorized, map[string]string{"error": UnauthorizedClient})
 	}
 }
@@ -142,7 +144,6 @@ func (a *AuthService) onboardCluster(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		a.logger.Error("Invalid request method, method not allowed", zap.String("method", r.Method))
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-
 		return
 	}
 
@@ -159,12 +160,15 @@ func (a *AuthService) onboardCluster(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error unmarshalling JSON", http.StatusBadRequest)
 		return
 	}
+	a.logger.Info("Received onboarding data", zap.String("onboarding_client_id", requestData.OnboardingClientId), zap.String("onboarding_client_secret", requestData.OnboardingClientSecret))
+
 	if !(reflect.TypeOf(requestData.OnboardingClientId).Kind() == reflect.String && reflect.TypeOf(requestData.OnboardingClientSecret).Kind() == reflect.String) {
+		a.logger.Error("Bad format request", zap.Any("request_data", requestData))
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "Bad format request"})
 		return
 	}
 	// Just pass back what client sent for testing purposes.
 	resp := OnboardResponse{ClusterClientId: requestData.OnboardingClientId, ClusterClientSecret: requestData.OnboardingClientSecret}
-
+	a.logger.Info("Onboarding successful", zap.Any("response", resp))
 	jsonResponse(w, http.StatusOK, resp)
 }

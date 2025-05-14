@@ -19,7 +19,9 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -56,6 +58,7 @@ type deadlockDetector struct {
 type streamManager struct {
 	bufferedGrpcSyncer *BufferedGrpcWriteSyncer
 	streamClient       *streamClient
+	FlowCache          *FlowCache
 }
 
 type KeepalivePeriods struct {
@@ -98,30 +101,35 @@ type EnvironmentConfig struct {
 	// How long must a stream be in a state for our exponentialBackoff function to
 	// consider it a success.
 	StreamSuccessPeriod StreamSuccessPeriod
+	// HTTP Proxy URL
+	HttpsProxy string
 }
 
-var resourceAPIGroupMap = map[string]string{
-	"cronjobs":                  "batch",
-	"customresourcedefinitions": "apiextensions.k8s.io",
-	"daemonsets":                "apps",
-	"deployments":               "apps",
-	"endpoints":                 "",
-	"gateways":                  "gateway.networking.k8s.io",
-	"gatewayclasses":            "gateway.networking.k8s.io",
-	"httproutes":                "gateway.networking.k8s.io",
-	"ingresses":                 "networking.k8s.io",
-	"ingressclasses":            "networking.k8s.io",
-	"jobs":                      "batch",
-	"namespaces":                "",
-	"networkpolicies":           "networking.k8s.io",
-	"nodes":                     "",
-	"pods":                      "",
-	"replicasets":               "apps",
-	"replicationcontrollers":    "",
-	"serviceaccounts":           "",
-	"services":                  "",
-	"statefulsets":              "apps",
+// Add or delete the resource
+var resources = []string{
+	"cronjobs",
+	"customresourcedefinitions",
+	"daemonsets",
+	"deployments",
+	"endpoints",
+	"gateways",
+	"gatewayclasses",
+	"httproutes",
+	"ingresses",
+	"ingressclasses",
+	"jobs",
+	"namespaces",
+	"networkpolicies",
+	"nodes",
+	"pods",
+	"replicasets",
+	"replicationcontrollers",
+	"serviceaccounts",
+	"services",
+	"statefulsets",
 }
+
+var resourceAPIGroupMap = make(map[string]string)
 
 var dd = &deadlockDetector{}
 var ErrStopRetries = errors.New("stop retries")
@@ -151,6 +159,52 @@ func ServerIsHealthy() bool {
 	return true
 }
 
+// buildResourceApiGroupMap creates a mapping between Kubernetes resources and their corresponding API groups.
+// It uses the discovery client to fetch all available API groups and resources, then maps the requested resources to their API groups.
+func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset *kubernetes.Clientset, logger *zap.Logger) (map[string]string, error) {
+	// Map to store resource-to-API group mapping
+	resourceAPIGroupMap := make(map[string]string)
+
+	// Convert input resources list to a map for quick lookups
+	resourceSet := make(map[string]struct{})
+	for _, resource := range resources {
+		resourceSet[resource] = struct{}{}
+	}
+
+	// Create a discovery client for fetching API groups and resources
+	discoveryClient := discovery.NewDiscoveryClient(clientset.RESTClient())
+	apiGroups, err := discoveryClient.ServerGroups()
+	if err != nil {
+		logger.Error("Error fetching API groups", zap.Error(err))
+		return resourceAPIGroupMap, err
+	}
+
+	// Iterate over all API groups and versions
+	for _, group := range apiGroups.Groups {
+		// Skip metrics API group
+		if group.Name == "metrics.k8s.io" {
+			continue
+		}
+
+		for _, version := range group.Versions {
+			resourceList, err := discoveryClient.ServerResourcesForGroupVersion(version.GroupVersion)
+			if err != nil {
+				logger.Error("Error fetching resources for groupVersion", zap.Error(err))
+				return resourceAPIGroupMap, err
+			}
+
+			// Map resources to their API groups
+			for _, resource := range resourceList.APIResources {
+				if _, exists := resourceSet[resource.Name]; exists {
+					resourceAPIGroupMap[resource.Name] = group.Name
+				}
+			}
+		}
+	}
+
+	return resourceAPIGroupMap, nil
+}
+
 // StreamResources handles the resource stream.
 func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger, cancel context.CancelFunc) error {
 	defer cancel()
@@ -174,27 +228,14 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		logger.Error("Failed to create clientset", zap.Error(err))
 		return err
 	}
-	apiGroups, err := clientset.Discovery().ServerGroups()
+
+	//This builds resourceAPIGroupMap from Kubernetes API
+	resourceAPIGroupMap, err = sm.buildResourceApiGroupMap(resources, clientset, logger)
 	if err != nil {
-		logger.Error("Failed to discover API groups", zap.Error(err))
-	}
-	foundGatewayAPIGroup := false
-
-	// Check if the "gateway.networking.k8s.io" API group is not available, if it is not delete those resources and groups
-	for _, group := range apiGroups.Groups {
-		if group.Name == "gateway.networking.k8s.io" {
-			foundGatewayAPIGroup = true
-			break
-		}
+		logger.Error("Failed to build resource api group map", zap.Error(err))
+		return err
 	}
 
-	// If the "gateway.networking.k8s.io" API group is not found, remove the resources
-	if !foundGatewayAPIGroup {
-		gatewayResources := []string{"gateways", "gatewayclasses", "httproutes"}
-		for _, resource := range gatewayResources {
-			delete(resourceAPIGroupMap, resource)
-		}
-	}
 	dd.mutex.Lock()
 	dd.timeStarted = time.Now()
 	dd.processingResources = true
@@ -333,6 +374,21 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 	return nil
 }
 
+func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *zap.Logger) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case flow := <-sm.FlowCache.outFlows:
+			err := sm.sendNetworkFlowRequest(logger, flow)
+			if err != nil {
+				return err
+			}
+		}
+
+	}
+}
+
 // findHubbleRelay returns a *CiliumFlowCollector if hubble relay is found in the given namespace
 func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger, ciliumNamespace string) *CiliumFlowCollector {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
@@ -389,9 +445,9 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				logger.Error("Failed to parse Falco event into flow", zap.Error(err))
 				return err
 			}
-			err = sm.sendNetworkFlowRequest(logger, convertedFalcoFlow)
+			err = sm.FlowCache.CacheFlow(ctx, convertedFalcoFlow)
 			if err != nil {
-				logger.Error("Failed to send Falco flow", zap.Error(err))
+				logger.Error("Failed to cache flow", zap.Error(err))
 				return err
 			}
 		}
@@ -436,7 +492,6 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 		return err
 	}
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
-
 	go func() {
 		err := sm.StreamKeepalives(ciliumCtx, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
 		if err != nil {
@@ -707,6 +762,11 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			sm := &streamManager{
 				streamClient:       streamClient,
 				bufferedGrpcSyncer: bufferedGrpcSyncer,
+				FlowCache: NewFlowCache(
+					20*time.Second, // TODO: Make the active timeout configurable.
+					1000,           // TODO: Make the maxFlows capacity configurable.
+					make(chan pb.Flow, 100),
+				),
 			}
 			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
 			if ciliumFlowCollector == nil {
@@ -748,6 +808,15 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				envMap.StreamSuccessPeriod,
 			)
 
+			go func() {
+				ctxFlowCacheRun, ctxCancelFlowCacheRun := context.WithCancel(ctx)
+				err := sm.FlowCache.Run(ctxFlowCacheRun, logger)
+				if err != nil {
+					logger.Info("Failed to execute flow caching and eviction", zap.Error(err))
+				}
+				ctxCancelFlowCacheRun()
+			}()
+
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
@@ -770,6 +839,14 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					envMap.StreamSuccessPeriod,
 				)
 			}
+			go func() {
+				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(ctx)
+				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger)
+				if err != nil {
+					logger.Info("Failed to send network flow from cache", zap.Error(err))
+				}
+				ctxCancelFlowCacheOutReader()
+			}()
 
 			// Block until one of the streams fail. Then we will jump to the top of
 			// this loop & try again: authenticate and open the streams.
