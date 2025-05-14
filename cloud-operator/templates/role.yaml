@@ -10,3 +10,14 @@ rules:
   resources: ["secrets"]
   # resourceNames: ["onboardingcreds", "clustercreds"]
   verbs: ["get", "list", "patch", "update", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: kube-system # Namespace where the Secret exists
+  name: hubble-client-certs-reader
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["hubble-relay-client-certs"] # Name of the Secret
+  verbs: ["get"]
