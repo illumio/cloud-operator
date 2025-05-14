@@ -19,7 +19,9 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -99,30 +101,35 @@ type EnvironmentConfig struct {
 	// How long must a stream be in a state for our exponentialBackoff function to
 	// consider it a success.
 	StreamSuccessPeriod StreamSuccessPeriod
+	// HTTP Proxy URL
+	HttpsProxy string
 }
 
-var resourceAPIGroupMap = map[string]string{
-	"cronjobs":                  "batch",
-	"customresourcedefinitions": "apiextensions.k8s.io",
-	"daemonsets":                "apps",
-	"deployments":               "apps",
-	"endpoints":                 "",
-	"gateways":                  "gateway.networking.k8s.io",
-	"gatewayclasses":            "gateway.networking.k8s.io",
-	"httproutes":                "gateway.networking.k8s.io",
-	"ingresses":                 "networking.k8s.io",
-	"ingressclasses":            "networking.k8s.io",
-	"jobs":                      "batch",
-	"namespaces":                "",
-	"networkpolicies":           "networking.k8s.io",
-	"nodes":                     "",
-	"pods":                      "",
-	"replicasets":               "apps",
-	"replicationcontrollers":    "",
-	"serviceaccounts":           "",
-	"services":                  "",
-	"statefulsets":              "apps",
+// Add or delete the resource
+var resources = []string{
+	"cronjobs",
+	"customresourcedefinitions",
+	"daemonsets",
+	"deployments",
+	"endpoints",
+	"gateways",
+	"gatewayclasses",
+	"httproutes",
+	"ingresses",
+	"ingressclasses",
+	"jobs",
+	"namespaces",
+	"networkpolicies",
+	"nodes",
+	"pods",
+	"replicasets",
+	"replicationcontrollers",
+	"serviceaccounts",
+	"services",
+	"statefulsets",
 }
+
+var resourceAPIGroupMap = make(map[string]string)
 
 var dd = &deadlockDetector{}
 var ErrStopRetries = errors.New("stop retries")
@@ -152,6 +159,52 @@ func ServerIsHealthy() bool {
 	return true
 }
 
+// buildResourceApiGroupMap creates a mapping between Kubernetes resources and their corresponding API groups.
+// It uses the discovery client to fetch all available API groups and resources, then maps the requested resources to their API groups.
+func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset *kubernetes.Clientset, logger *zap.Logger) (map[string]string, error) {
+	// Map to store resource-to-API group mapping
+	resourceAPIGroupMap := make(map[string]string)
+
+	// Convert input resources list to a map for quick lookups
+	resourceSet := make(map[string]struct{})
+	for _, resource := range resources {
+		resourceSet[resource] = struct{}{}
+	}
+
+	// Create a discovery client for fetching API groups and resources
+	discoveryClient := discovery.NewDiscoveryClient(clientset.RESTClient())
+	apiGroups, err := discoveryClient.ServerGroups()
+	if err != nil {
+		logger.Error("Error fetching API groups", zap.Error(err))
+		return resourceAPIGroupMap, err
+	}
+
+	// Iterate over all API groups and versions
+	for _, group := range apiGroups.Groups {
+		// Skip metrics API group
+		if group.Name == "metrics.k8s.io" {
+			continue
+		}
+
+		for _, version := range group.Versions {
+			resourceList, err := discoveryClient.ServerResourcesForGroupVersion(version.GroupVersion)
+			if err != nil {
+				logger.Error("Error fetching resources for groupVersion", zap.Error(err))
+				return resourceAPIGroupMap, err
+			}
+
+			// Map resources to their API groups
+			for _, resource := range resourceList.APIResources {
+				if _, exists := resourceSet[resource.Name]; exists {
+					resourceAPIGroupMap[resource.Name] = group.Name
+				}
+			}
+		}
+	}
+
+	return resourceAPIGroupMap, nil
+}
+
 // StreamResources handles the resource stream.
 func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger, cancel context.CancelFunc) error {
 	defer cancel()
@@ -175,27 +228,14 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		logger.Error("Failed to create clientset", zap.Error(err))
 		return err
 	}
-	apiGroups, err := clientset.Discovery().ServerGroups()
+
+	//This builds resourceAPIGroupMap from Kubernetes API
+	resourceAPIGroupMap, err = sm.buildResourceApiGroupMap(resources, clientset, logger)
 	if err != nil {
-		logger.Error("Failed to discover API groups", zap.Error(err))
-	}
-	foundGatewayAPIGroup := false
-
-	// Check if the "gateway.networking.k8s.io" API group is not available, if it is not delete those resources and groups
-	for _, group := range apiGroups.Groups {
-		if group.Name == "gateway.networking.k8s.io" {
-			foundGatewayAPIGroup = true
-			break
-		}
+		logger.Error("Failed to build resource api group map", zap.Error(err))
+		return err
 	}
 
-	// If the "gateway.networking.k8s.io" API group is not found, remove the resources
-	if !foundGatewayAPIGroup {
-		gatewayResources := []string{"gateways", "gatewayclasses", "httproutes"}
-		for _, resource := range gatewayResources {
-			delete(resourceAPIGroupMap, resource)
-		}
-	}
 	dd.mutex.Lock()
 	dd.timeStarted = time.Now()
 	dd.processingResources = true

@@ -92,6 +92,23 @@ helm install illumio --namespace illumio-cloud oci://ghcr.io/illumio/charts/clou
  --values ./fakeserver/cloud-operator.fakeserver.yaml,./cloud-operator.image.yaml
 `
 
+## Proxy Configuration
+
+### Configuring the Proxy
+
+1. The `HTTPS_PROXY` environment variable is set in the Helm file, which is read when the client is launched into a Kubernetes container. This ensures that the proxy server is correctly configured for the environment.
+
+2. Ensure that the proxy server is accessible from the environment where the Cloud Operator is running.
+
+### Behavior
+
+- **HTTP Requests**:
+  - All HTTP requests made by the Cloud Operator will respect the `HTTPS_PROXY` environment variable.
+  - The `http.ProxyFromEnvironment` function is used to determine the proxy settings.
+
+- **gRPC Requests**:
+  - All gRPC requests will also respect the `HTTPS_PROXY` environment variable.
+
 ## License
 
 Copyright 2024 Illumio, Inc. All Rights Reserved.

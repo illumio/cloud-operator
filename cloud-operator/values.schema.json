@@ -1,0 +1,200 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+        "clusterCredsSecret": {
+            "properties": {
+                "clientId": {
+                    "type": "string"
+                },
+                "clientSecret": {
+                    "type": "string"
+                },
+                "disableSecretCreation": {
+                    "type": "boolean"
+                },
+                "forceSecretCreation": {
+                    "type": "boolean"
+                }
+            },
+            "type": "object"
+        },
+        "defaultNamespace": {
+            "type": "string"
+        },
+        "env": {
+            "properties": {
+                "httpsProxy": {
+                    "type": "string"
+                },
+                "onboardingEndpoint": {
+                    "type": "string"
+                },
+                "streamKeepalivePeriods": {
+                    "properties": {
+                        "configuration": {
+                            "type": "string"
+                        },
+                        "kubernetes_network_flows": {
+                            "type": "string"
+                        },
+                        "kubernetes_resources": {
+                            "type": "string"
+                        },
+                        "logs": {
+                            "type": "string"
+                        }
+                    },
+                    "type": "object"
+                },
+                "streamSuccessPeriods": {
+                    "properties": {
+                        "auth": {
+                            "type": "string"
+                        },
+                        "connect": {
+                            "type": "string"
+                        }
+                    },
+                    "type": "object"
+                },
+                "tlsSkipVerify": {
+                    "type": "boolean"
+                },
+                "tokenEndpoint": {
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "falco": {
+            "properties": {
+                "customRules": {
+                    "properties": {
+                        "rules-networking.yaml": {
+                            "type": "string"
+                        }
+                    },
+                    "type": "object"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "falco": {
+                    "properties": {
+                        "buffered_outputs": {
+                            "type": "boolean"
+                        },
+                        "http_output": {
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "insecure": {
+                                    "type": "boolean"
+                                },
+                                "keep_alive": {
+                                    "type": "boolean"
+                                },
+                                "url": {
+                                    "type": "string"
+                                }
+                            },
+                            "type": "object"
+                        },
+                        "json_include_output_property": {
+                            "type": "boolean"
+                        },
+                        "json_include_tags_property": {
+                            "type": "boolean"
+                        },
+                        "json_output": {
+                            "type": "boolean"
+                        }
+                    },
+                    "type": "object"
+                },
+                "namespace": {
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "image": {
+            "properties": {
+                "pullPolicy": {
+                    "type": "string"
+                },
+                "repository": {
+                    "type": "string"
+                },
+                "tag": {
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "onboardingSecret": {
+            "properties": {
+                "clientId": {
+                    "type": "string"
+                },
+                "clientSecret": {
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "priorityClassName": {
+            "type": "string"
+        },
+        "replicaCount": {
+            "type": "integer"
+        },
+        "resources": {
+            "properties": {
+                "limits": {
+                    "properties": {
+                        "cpu": {
+                            "type": "string"
+                        },
+                        "memory": {
+                            "type": "string"
+                        }
+                    },
+                    "type": "object"
+                },
+                "requests": {
+                    "properties": {
+                        "cpu": {
+                            "type": "string"
+                        },
+                        "memory": {
+                            "type": "string"
+                        }
+                    },
+                    "type": "object"
+                }
+            },
+            "type": "object"
+        },
+        "serviceAccount": {
+            "properties": {
+                "annotations": {
+                    "properties": {},
+                    "type": "object"
+                },
+                "automount": {
+                    "type": "boolean"
+                },
+                "create": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        }
+    },
+    "type": "object"
+}
