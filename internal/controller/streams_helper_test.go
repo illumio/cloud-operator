@@ -131,7 +131,7 @@ func TestSendNetworkFlowRequest(t *testing.T) {
 	})
 
 	t.Run("standard flow", func(t *testing.T) {
-		flow := &pb.StandardFlow{
+		flow := &pb.FiveTupleFlow{
 			Layer3: &pb.IP{
 				Source:      "10.0.0.1",
 				Destination: "10.0.0.2",
@@ -142,8 +142,8 @@ func TestSendNetworkFlowRequest(t *testing.T) {
 		require.NoError(t, err)
 
 		expected := &pb.SendKubernetesNetworkFlowsRequest{
-			Request: &pb.SendKubernetesNetworkFlowsRequest_StandardFlow{
-				StandardFlow: flow,
+			Request: &pb.SendKubernetesNetworkFlowsRequest_FiveTupleFlow{
+				FiveTupleFlow: flow,
 			},
 		}
 		assert.Equal(t, expected, mockStream.lastRequest)

@@ -1,3 +1,5 @@
+// Copyright 2025 Illumio, Inc. All Rights Reserved.
+
 package controller
 
 import (
@@ -12,16 +14,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func (suite *ControllerTestSuite) TestIsOVNDeployed() {
+func (suite *ControllerTestSuite) TestIsOVNKDeployed() {
 	tests := map[string]struct {
 		namespaceExists bool
 		expectedResult  bool
 	}{
-		"OVN namespace exists": {
+		"OVNK namespace exists": {
 			namespaceExists: false,
 			expectedResult:  false,
 		},
-		"OVN namespace does not exist": {
+		"OVNK namespace does not exist": {
 			namespaceExists: true,
 			expectedResult:  true,
 		},
@@ -40,7 +42,7 @@ func (suite *ControllerTestSuite) TestIsOVNDeployed() {
 
 			logger := zap.NewNop()
 			sm := &streamManager{}
-			result := sm.isOVNDeployed(logger)
+			result := sm.isOVNKDeployed(logger, "openshift-ovn-kubernetes")
 			assert.Equal(suite.T(), tt.expectedResult, result)
 		})
 	}
@@ -219,7 +221,7 @@ func TestParseIPVersion(t *testing.T) {
 func TestProcessDataRecord(t *testing.T) {
 	tests := map[string]struct {
 		input    netflows.DataRecord
-		expected OVNFlow
+		expected OVNKFlow
 		err      bool
 	}{
 		"Valid data record": {
@@ -233,7 +235,7 @@ func TestProcessDataRecord(t *testing.T) {
 					{Type: 60, Value: []byte{4}},              // IP Version (IPv4)
 				},
 			},
-			expected: OVNFlow{
+			expected: OVNKFlow{
 				SourceIP:        "192.168.1.1",
 				DestinationIP:   "192.168.1.2",
 				SourcePort:      80,
@@ -249,7 +251,7 @@ func TestProcessDataRecord(t *testing.T) {
 					{Type: 8, Value: []byte{192, 168}}, // Invalid Source IP
 				},
 			},
-			expected: OVNFlow{},
+			expected: OVNKFlow{},
 			err:      true,
 		},
 	}

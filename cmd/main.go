@@ -100,6 +100,7 @@ func main() {
 	bindEnv(logger, "stream_success_period_connect", "STREAM_SUCCESS_PERIOD_CONNECT")
 	bindEnv(logger, "stream_success_period_auth", "STREAM_SUCCESS_PERIOD_AUTH")
 	bindEnv(logger, "https_proxy", "HTTPS_PROXY")
+	bindEnv(logger, "ovnk_namespace", "OVNK_NAMESPACE")
 
 	// Set default values
 	viper.SetDefault("cluster_creds", "clustercreds")
@@ -116,6 +117,7 @@ func main() {
 	viper.SetDefault("stream_success_period_connect", defaultStreamSuccessPeriodConnect)
 	viper.SetDefault("stream_success_period_auth", defaultStreamSuccessPeriodAuth)
 	viper.SetDefault("https_proxy", "")
+	viper.SetDefault("ovnk_namespace", "openshift-ovn-kubernetes")
 
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),
@@ -123,7 +125,7 @@ func main() {
 		OnboardingClientId:     viper.GetString("onboarding_client_id"),
 		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
 		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
-		IpfixCollectorPort:     viper.GetString("ipfix_collector_port"),
+		IPFIXCollectorPort:     viper.GetString("ipfix_collector_port"),
 		TokenEndpoint:          viper.GetString("token_endpoint"),
 		TlsSkipVerify:          viper.GetBool("tls_skip_verify"),
 		KeepalivePeriods: controller.KeepalivePeriods{
@@ -137,7 +139,8 @@ func main() {
 			Connect: viper.GetDuration("stream_success_period_connect"),
 			Auth:    viper.GetDuration("stream_success_period_auth"),
 		},
-		HttpsProxy: viper.GetString("https_proxy"),
+		HttpsProxy:    viper.GetString("https_proxy"),
+		OvnkNamespace: viper.GetString("ovnk_namespace"),
 	}
 
 	logger.Info("Starting application",
@@ -145,7 +148,8 @@ func main() {
 		zap.String("cilium_namespace", envConfig.CiliumNamespace),
 		zap.String("onboarding_client_id", envConfig.OnboardingClientId),
 		zap.String("onboarding_endpoint", envConfig.OnboardingEndpoint),
-		zap.String("ipfix_collector_port", envConfig.IpfixCollectorPort),
+		zap.String("ovnk_namespace", envConfig.OvnkNamespace),
+		zap.String("ipfix_collector_port", envConfig.IPFIXCollectorPort),
 		zap.String("token_endpoint", envConfig.TokenEndpoint),
 		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
 		zap.Duration("stream_keepalive_period_kubernetes_resources", envConfig.KeepalivePeriods.KubernetesResources),

@@ -4,9 +4,9 @@ import (
 	"time"
 )
 
-var _ Flow = &StandardFlow{}
+var _ Flow = &FiveTupleFlow{}
 
-type StandardFlowKey struct {
+type FiveTupleFlowKey struct {
 	SourceIP        string
 	DestinationIP   string
 	SourcePort      int
@@ -14,16 +14,16 @@ type StandardFlowKey struct {
 	Protocol        string
 }
 
-func (flow *StandardFlow) StartTimestamp() time.Time {
+func (flow *FiveTupleFlow) StartTimestamp() time.Time {
 	return flow.GetTimestamp().AsTime()
 }
 
-func (flow *StandardFlow) Key() any {
+func (flow *FiveTupleFlow) Key() any {
 	if flow == nil {
 		return nil
 
 	}
-	key := StandardFlowKey{
+	key := FiveTupleFlowKey{
 		SourceIP:      flow.GetLayer3().GetSource(),
 		DestinationIP: flow.GetLayer3().GetDestination(),
 	}

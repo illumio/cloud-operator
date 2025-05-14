@@ -41,8 +41,8 @@ type streamClient struct {
 	conn               *grpc.ClientConn
 	client             pb.KubernetesInfoServiceClient
 	falcoEventChan     chan string
-	ovnEventChan       chan []byte
-	IpfixCollectorPort string
+	ovnkEventChan      chan []byte
+	IPFIXCollectorPort string
 	flowCollector      pb.FlowCollector
 	logStream          pb.KubernetesInfoService_SendLogsClient
 	networkFlowsStream pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
@@ -92,7 +92,9 @@ type EnvironmentConfig struct {
 	// URL of the onboarding endpoint.
 	OnboardingEndpoint string
 	// Port for the IPFIX collector
-	IpfixCollectorPort string
+	IPFIXCollectorPort string
+	// Namespace of OVN-Kubernetes
+	OvnkNamespace string
 	// URL of the token endpoint.
 	TokenEndpoint string
 	// Whether to skip TLS certificate verification when starting a stream.
@@ -383,7 +385,6 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 		case <-ctx.Done():
 			return ctx.Err()
 		case flow := <-sm.FlowCache.outFlows:
-			logger.Info("Received flow from cache", zap.Any("flow", flow))
 			err := sm.sendNetworkFlowRequest(logger, flow)
 			if err != nil {
 				return err
@@ -457,11 +458,11 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 	}
 }
 
-// StreamOVNNetworkFlows handles the OVN network flow stream.
-func (sm *streamManager) StreamOVNNetworkFlows(ctx context.Context, logger *zap.Logger) error {
-	err := sm.startOVNIPFIXCollector(ctx, logger)
+// StreamOVNKNetworkFlows handles the OVN-K network flow stream.
+func (sm *streamManager) StreamOVNKNetworkFlows(ctx context.Context, logger *zap.Logger) error {
+	err := sm.startOVNKIPFIXCollector(ctx, logger)
 	if err != nil {
-		logger.Error("Failed to listen to OVN IPFIX collector", zap.Error(err))
+		logger.Error("Failed to listen for OVN-K IPFIX flows", zap.Error(err))
 		return err
 	}
 	return nil
@@ -646,31 +647,31 @@ func (sm *streamManager) connectAndStreamConfigurationUpdates(logger *zap.Logger
 	return nil
 }
 
-// connectAndStreamOVNNetworkFlows creates OVN networkFlowsStream client and
-// begins the streaming of OVN network flows. Also starts a goroutine to send
+// connectAndStreamOVNKNetworkFlows creates OVN-K networkFlowsStream client and
+// begins the streaming of OVN-K network flows. Also starts a goroutine to send
 // keepalives at the configured period
-func (sm *streamManager) connectAndStreamOVNNetworkFlows(logger *zap.Logger, keepalivePeriod time.Duration) error {
-	ovnContext, ovnCancel := context.WithCancel(context.Background())
-	defer ovnCancel()
+func (sm *streamManager) connectAndStreamOVNKNetworkFlows(logger *zap.Logger, keepalivePeriod time.Duration) error {
+	ovnkContext, ovnkCancel := context.WithCancel(context.Background())
+	defer ovnkCancel()
 
-	sendOVNNetworkFlows, err := sm.streamClient.client.SendKubernetesNetworkFlows(ovnContext)
+	sendOVNKNetworkFlows, err := sm.streamClient.client.SendKubernetesNetworkFlows(ovnkContext)
 	if err != nil {
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
 	}
-	sm.streamClient.networkFlowsStream = sendOVNNetworkFlows
+	sm.streamClient.networkFlowsStream = sendOVNKNetworkFlows
 
 	go func() {
-		err := sm.StreamKeepalives(ovnContext, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
+		err := sm.StreamKeepalives(ovnkContext, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
 		if err != nil {
 			logger.Error("Failed to send keepalives; canceling stream", zap.Error(err))
 		}
-		ovnCancel()
+		ovnkCancel()
 	}()
 
-	err = sm.StreamOVNNetworkFlows(ovnContext, logger)
+	err = sm.StreamOVNKNetworkFlows(ovnkContext, logger)
 	if err != nil {
-		logger.Error("Failed to stream OVN network flows", zap.Error(err))
+		logger.Error("Failed to stream OVN-K network flows", zap.Error(err))
 		return err
 	}
 
@@ -734,11 +735,11 @@ func (sm *streamManager) manageStream(
 }
 
 // determineFlowCollector determines the flow collector type and returns the flow collector type, stream function, and the corresponding done channel.
-func determineFlowCollector(ctx context.Context, logger *zap.Logger, sm *streamManager) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
+func determineFlowCollector(ctx context.Context, logger *zap.Logger, sm *streamManager, envMap EnvironmentConfig) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
 	if sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace) != nil {
 		return pb.FlowCollector_FLOW_COLLECTOR_CILIUM, sm.connectAndStreamCiliumNetworkFlows, make(chan struct{})
-	} else if sm.isOVNDeployed(logger) {
-		return pb.FlowCollector_FLOW_COLLECTOR_OVN, sm.connectAndStreamOVNNetworkFlows, make(chan struct{})
+	} else if sm.isOVNKDeployed(logger, envMap.OvnkNamespace) {
+		return pb.FlowCollector_FLOW_COLLECTOR_OVNK, sm.connectAndStreamOVNKNetworkFlows, make(chan struct{})
 	} else {
 		return pb.FlowCollector_FLOW_COLLECTOR_FALCO, sm.connectAndStreamFalcoNetworkFlows, make(chan struct{})
 	}
@@ -811,8 +812,8 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				client:             client,
 				ciliumNamespace:    envMap.CiliumNamespace,
 				falcoEventChan:     falcoEventChan,
-				ovnEventChan:       make(chan []byte),
-				IpfixCollectorPort: envMap.IpfixCollectorPort,
+				ovnkEventChan:      make(chan []byte),
+				IPFIXCollectorPort: envMap.IPFIXCollectorPort,
 			}
 
 			sm := &streamManager{
@@ -864,11 +865,11 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				ctxCancelFlowCacheRun()
 			}()
 
-			ovnDone := make(chan struct{})
+			ovnkDone := make(chan struct{})
 			falcoDone := make(chan struct{})
 			ciliumDone := make(chan struct{})
 
-			flowCollector, streamFunc, doneChannel := determineFlowCollector(ctx, logger, sm)
+			flowCollector, streamFunc, doneChannel := determineFlowCollector(ctx, logger, sm, envMap)
 			sm.streamClient.flowCollector = flowCollector
 
 			go sm.manageStream(
@@ -902,8 +903,8 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				failureReason = "Log stream closed"
 			case <-configDone:
 				failureReason = "Configuration update stream closed"
-			case <-ovnDone:
-				failureReason = "OVN network flow stream closed"
+			case <-ovnkDone:
+				failureReason = "OVN-K network flow stream closed"
 			}
 			authConContextCancel()
 		}

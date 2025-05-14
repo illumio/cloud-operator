@@ -35,6 +35,10 @@ onboardingSecret:
 service:
   clusterIP: ""
 
+
+openshift:
+  ovnk_namespace: "openshift-ovn-kubernetes"
+
 falco:
   enabled: false
   namespace: falco
