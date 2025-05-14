@@ -144,6 +144,14 @@
             },
             "type": "object"
         },
+        "openshift": {
+            "properties": {
+                "ovnk_namespace": {
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
         "priorityClassName": {
             "type": "string"
         },
