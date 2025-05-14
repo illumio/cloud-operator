@@ -1,0 +1,65 @@
+name: Validate and Update Helm Values Schema JSON
+
+on:
+  push:
+    paths:
+      - 'cloud-operator/values.yaml'
+  pull_request:
+    paths:
+      - 'cloud-operator/values.yaml'
+  workflow_dispatch:
+
+jobs:
+  # Job for PR validation - keeps contents: read permission
+  validate-schema:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/generate-schema
+        id: generate
+
+      - name: Always show diff
+        run: |
+          echo "::group::Schema Diff"
+          echo "${{ steps.generate.outputs.diff }}"
+          echo "::endgroup::"
+
+      - name: Fail if schema needs updating
+        if: steps.generate.outputs.changes == 'true'
+        run: |
+          echo "::error::The values.schema.json file needs to be updated to match changes in values.yaml."
+          echo "::error::Please run 'helm schema-gen values.yaml -o values.schema.json' or similar tool to update the schema."
+          exit 1
+
+  # Job for main branch - uses contents: write permission to auto-update schema
+  update-schema:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/generate-schema
+        id: generate
+
+      - name: Always show diff
+        run: |
+          echo "::group::Schema Diff"
+          echo "${{ steps.generate.outputs.diff }}"
+          echo "::endgroup::"
+
+      - name: Commit and push changes
+        if: steps.generate.outputs.changes == 'true'
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add cloud-operator/values.schema.json
+          git commit -m "Auto-update values.schema.json based on values.yaml changes"
+          git push

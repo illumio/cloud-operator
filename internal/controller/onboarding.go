@@ -29,6 +29,7 @@ func Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string,
 	}
 	transport := &http.Transport{
 		TLSClientConfig: tlsConfig,
+		Proxy:           http.ProxyFromEnvironment,
 	}
 	client := &http.Client{
 		Transport: transport,

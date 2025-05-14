@@ -133,6 +133,8 @@ func NewClientSet() (*kubernetes.Clientset, error) {
 		return nil, err
 	}
 
+	clusterConfig.Proxy = http.ProxyURL(nil)
+
 	return kubernetes.NewForConfig(clusterConfig)
 }
 
@@ -181,6 +183,7 @@ func SetUpOAuthConnection(
 	}
 	tokenSource = GetTokenSource(ctx, oauthConfig, tlsConfig)
 	creds := credentials.NewTLS(tlsConfig)
+
 	conn, err := grpc.NewClient(
 		aud,
 		grpc.WithTransportCredentials(creds),
@@ -206,6 +209,7 @@ func GetTokenSource(ctx context.Context, config clientcredentials.Config, tlsCon
 	return config.TokenSource(context.WithValue(ctx, oauth2.HTTPClient, &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: tlsConfig,
+			Proxy:           http.ProxyFromEnvironment,
 		},
 	}))
 }

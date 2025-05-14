@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -8,6 +9,10 @@ import (
 )
 
 func main() {
+	// Parse flags
+	proxyFlag := flag.Bool("proxy", false, "Start the proxy server")
+	flag.Parse()
+
 	logger, _ := zap.NewDevelopment()
 	aud := "192.168.65.254:50051"
 	token := "token1"
@@ -18,7 +23,7 @@ func main() {
 		"exp": time.Now().Add(time.Hour * 72).Unix(),
 	})
 	// Just using "secret" for test signing
-	mySigningKey := []byte("token1")
+	mySigningKey := []byte("secret")
 
 	// Sign and get the complete encoded token as a string
 	// nosemgrep: jwt.hardcoded-jwt-key
@@ -26,6 +31,7 @@ func main() {
 	if err != nil {
 		logger.Error("Token could not be signed with fake secret key")
 	}
+
 	fs := FakeServer{
 		address:     "0.0.0.0:50051",
 		httpAddress: "0.0.0.0:50053",
@@ -40,6 +46,28 @@ func main() {
 		logger.Fatal("Failed to start server", zap.Error(err))
 	}
 	defer fs.stop()
+
+	logger.Info("FakeServer started")
+
+	// Start the proxy server if the flag is set
+	var proxyServer *ProxyServer
+	if *proxyFlag {
+		// Initialize the ProxyServer
+		proxyServer, err = NewProxyServer("0.0.0.0:8888", logger)
+		if err != nil {
+			logger.Fatal("Failed to initialize ProxyServer", zap.Error(err))
+		}
+
+		logger.Info("Starting ProxyServer")
+		if err := proxyServer.Start(); err != nil {
+			logger.Fatal("Failed to start ProxyServer", zap.Error(err))
+		}
+		defer func() {
+			if err := proxyServer.Stop(); err != nil {
+				logger.Error("Failed to stop ProxyServer", zap.Error(err))
+			}
+		}()
+	}
 
 	// Wait indefinitely for server stop signal
 	logger.Info("Server started")
