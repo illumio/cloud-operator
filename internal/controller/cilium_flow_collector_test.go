@@ -18,9 +18,10 @@ func (suite *ControllerTestSuite) TestDiscoverHubbleRelayAddress() {
 	ctx := context.Background()
 
 	tests := map[string]struct {
-		service        *v1.Service
-		expectedAddr   string
-		expectedErrMsg string
+		service              *v1.Service
+		expectedAddr         string
+		expectedErrMsg       string
+		expectedIsAKSManaged bool
 	}{
 		"successful discovery": {
 			service: &v1.Service{
@@ -37,13 +38,15 @@ func (suite *ControllerTestSuite) TestDiscoverHubbleRelayAddress() {
 					},
 				},
 			},
-			expectedAddr:   "10.0.0.1:80",
-			expectedErrMsg: "",
+			expectedAddr:         "10.0.0.1:80",
+			expectedErrMsg:       "",
+			expectedIsAKSManaged: false,
 		},
 		"service not found": {
-			service:        nil,
-			expectedAddr:   "",
-			expectedErrMsg: "hubble Relay service not found; disabling Cilium flow collection",
+			service:              nil,
+			expectedAddr:         "",
+			expectedErrMsg:       "hubble Relay service not found; disabling Cilium flow collection",
+			expectedIsAKSManaged: false,
 		},
 		"no ports in service": {
 			service: &v1.Service{
@@ -56,8 +59,31 @@ func (suite *ControllerTestSuite) TestDiscoverHubbleRelayAddress() {
 					Ports:     []v1.ServicePort{},
 				},
 			},
-			expectedAddr:   "",
-			expectedErrMsg: "hubble Relay service has no ports; disabling Cilium flow collection",
+			expectedAddr:         "",
+			expectedErrMsg:       "hubble Relay service has no ports; disabling Cilium flow collection",
+			expectedIsAKSManaged: false,
+		},
+		"aks managed": {
+			service: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "hubble-relay",
+					Namespace: "kube-system",
+					Annotations: map[string]string{
+						"meta.helm.sh/release-name": "aks-managed-hubble",
+					},
+				},
+				Spec: v1.ServiceSpec{
+					ClusterIP: "10.0.0.1",
+					Ports: []v1.ServicePort{
+						{
+							Port: 80,
+						},
+					},
+				},
+			},
+			expectedAddr:         "10.0.0.1:80",
+			expectedErrMsg:       "",
+			expectedIsAKSManaged: true,
 		},
 	}
 
@@ -69,8 +95,9 @@ func (suite *ControllerTestSuite) TestDiscoverHubbleRelayAddress() {
 				assert.NoError(suite.T(), err)
 			}
 
-			addr, err := discoverCiliumHubbleRelayAddress(ctx, "kube-system", clientset)
+			addr, isAKSManaged, err := discoverCiliumHubbleRelayAddress(ctx, "kube-system", clientset)
 			assert.Equal(suite.T(), tt.expectedAddr, addr)
+			assert.Equal(suite.T(), tt.expectedIsAKSManaged, isAKSManaged)
 
 			if tt.expectedErrMsg != "" {
 				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
