@@ -62,7 +62,7 @@ func (s *ControllerTestSuite) waitForDeletion(
 	kind, name string,
 	timeout time.Duration,
 ) {
-	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(s.ctx, timeout)
 	defer cancel()
 
 	for {
