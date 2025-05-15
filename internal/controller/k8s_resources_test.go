@@ -966,14 +966,15 @@ func (suite *ControllerTestSuite) TestConvertToKubernetesServiceData() {
 			t := suite.T()
 			ctx := context.TODO()
 
-			// Ensure the service is deleted before creating it again
+			// Ensure the service under test is deleted to start the test in a
+			// controlled state
 			if tt.service == nil {
 				suite.SynchronousDeleteService("default", "test-service", 1*time.Second)
 			} else {
 				suite.SynchronousDeleteService(tt.service.Namespace, tt.service.Name, 1*time.Second)
 			}
 
-			// Create servie if necessary
+			// Create the service if necessary
 			if tt.service != nil {
 				_, err := suite.clientset.CoreV1().Services(tt.service.Namespace).Create(ctx, tt.service, metav1.CreateOptions{})
 				assert.NoError(t, err)
