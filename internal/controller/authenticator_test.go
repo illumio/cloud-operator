@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/stretchr/testify/assert"
@@ -192,7 +193,8 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 			authn := &Authenticator{Logger: suite.logger}
 
 			// Since go test does not follow any order, always make sure namespace is deleted before each test
-			_ = suite.clientset.CoreV1().Namespaces().Delete(context.TODO(), "illumio-cloud", metav1.DeleteOptions{})
+			suite.SynchronousDeleteNamespace("illumio-cloud", 10*time.Second)
+
 			if tt.namespaceExists {
 				namespaceObj := &v1.Namespace{
 					ObjectMeta: metav1.ObjectMeta{

@@ -10,11 +10,10 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
-
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -22,6 +21,8 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 // ptrBool is a helper function to create pointers to bool values (used in metav1.OwnerReference)
@@ -962,19 +963,31 @@ func (suite *ControllerTestSuite) TestConvertToKubernetesServiceData() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
+			t := suite.T()
 			ctx := context.TODO()
-			if tt.service != nil {
-				_, err := suite.clientset.CoreV1().Services(tt.service.Namespace).Create(ctx, tt.service, metav1.CreateOptions{})
-				assert.NoError(suite.T(), err)
+
+			// Ensure the service under test is deleted to start the test in a
+			// controlled state
+			if tt.service == nil {
+				suite.SynchronousDeleteService("default", "test-service", 1*time.Second)
+			} else {
+				suite.SynchronousDeleteService(tt.service.Namespace, tt.service.Name, 1*time.Second)
 			}
 
-			result, err := convertToKubernetesServiceData(ctx, "test-service", suite.clientset, "default")
+			// Create the service if necessary
+			if tt.service != nil {
+				_, err := suite.clientset.CoreV1().Services(tt.service.Namespace).Create(ctx, tt.service, metav1.CreateOptions{})
+				assert.NoError(t, err)
+			}
+
+			// Call the function under test
+			actual, err := convertToKubernetesServiceData(ctx, "test-service", suite.clientset, "default")
 			if tt.expectedError != nil {
-				assert.EqualError(suite.T(), err, tt.expectedError.Error())
+				assert.EqualError(t, err, tt.expectedError.Error())
 			} else {
-				assert.NoError(suite.T(), err)
+				require.NoError(t, err)
 				// Custom comparison ignoring IpAddresses field since KIND can mess with them.
-				assertEqualKubernetesServiceData(suite.T(), tt.expectedResult, result)
+				assertEqualKubernetesServiceData(t, tt.expectedResult, actual)
 			}
 		})
 	}
