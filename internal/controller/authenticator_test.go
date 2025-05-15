@@ -195,18 +195,6 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() {
 			// Since go test does not follow any order, always make sure namespace is deleted before each test
 			suite.SynchronousDeleteNamespace("illumio-cloud", 10*time.Second)
 
-			// Add polling logic to ensure namespace deletion
-			for {
-				_, err := suite.clientset.CoreV1().Namespaces().Get(context.TODO(), "illumio-cloud", metav1.GetOptions{})
-				if errors.IsNotFound(err) {
-					break // Namespace is deleted
-				}
-				if err != nil {
-					suite.T().Fatal("Error while checking namespace deletion: " + err.Error())
-				}
-				time.Sleep(100 * time.Millisecond) // Wait before retrying
-			}
-
 			if tt.namespaceExists {
 				namespaceObj := &v1.Namespace{
 					ObjectMeta: metav1.ObjectMeta{
