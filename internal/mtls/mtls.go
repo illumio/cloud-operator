@@ -97,10 +97,6 @@ func loadMTLSCredentialsFromData(logger *zap.Logger, aksManaged bool, caCertData
 	if aksManaged {
 		logger.Debug("AKS Managed: Using experimental NewTLSWithALPNDisabled")
 		cred = exp_credentials.NewTLSWithALPNDisabled(tlsConfig)
-	} else {
-		// For non-AKS, or if experimental is not desired/available for some reason.
-		logger.Debug("Non-AKS Managed (or fallback): Using standard NewTLS")
-		cred = credentials.NewTLS(tlsConfig)
 	}
 
 	return cred, nil

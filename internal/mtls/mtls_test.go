@@ -8,12 +8,12 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
-	"google.golang.org/grpc/credentials"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
@@ -182,7 +182,7 @@ func (suite *MTLSuite) TestLoadMTLSCredentialsFromData() {
 	suite.NotNil(creds)
 
 	// Ensure the returned credentials are of the correct type
-	if _, ok := creds.(credentials.TransportCredentials); !ok {
+	if reflect.TypeOf(creds).String() != "credentials.TransportCredentials" {
 		suite.Fail("Expected TransportCredentials, got %T", creds)
 	}
 }
