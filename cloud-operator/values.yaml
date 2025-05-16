@@ -65,6 +65,8 @@ env:
   tlsSkipVerify: false
   onboardingEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
   tokenEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
+  # Add this line for Calico namespace
+  calicoNamespace: "calico-system"  # Adjust to your Calico installation namespace
   streamKeepalivePeriods:
     kubernetes_resources: "10s"
     kubernetes_network_flows: "10s"

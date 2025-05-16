@@ -90,6 +90,11 @@ spec:
               value: "{{ .Values.env.streamSuccessPeriods.auth }}"
             - name: HTTPS_PROXY
               value: "{{ .Values.env.httpsProxy | default "" }}"
+            - name: CILIUM_NAMESPACE
+              value: "kube-system"  # This might already exist
+            # Add this line for Calico namespace
+            - name: CALICO_NAMESPACE
+              value: "{{ .Values.env.calicoNamespace }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

@@ -38,9 +38,11 @@ const (
 
 type streamClient struct {
 	ciliumNamespace           string
+	calicoNamespace           string
 	conn                      *grpc.ClientConn
 	client                    pb.KubernetesInfoServiceClient
 	disableNetworkFlowsCilium bool
+	disableNetworkFlowsCalico bool
 	falcoEventChan            chan string
 	flowCollector             pb.FlowCollector
 	logStream                 pb.KubernetesInfoService_SendLogsClient
@@ -82,6 +84,8 @@ type watcherInfo struct {
 type EnvironmentConfig struct {
 	// Namspace of Cilium.
 	CiliumNamespace string
+	// Namespace of Calico.
+	CalicoNamespace string
 	// K8s cluster secret name.
 	ClusterCreds string
 	// Client ID for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
@@ -399,6 +403,15 @@ func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger
 	return ciliumFlowCollector
 }
 
+func (sm *streamManager) findCalico(ctx context.Context, logger *zap.Logger, calicoNamespace string) *CalicoFlowCollector {
+	// TODO: Add logic for a discoveribility function to decide which CNI to use.
+	calicoFlowCollector, err := newCalicoFlowCollector(ctx, logger, calicoNamespace)
+	if err != nil {
+		return nil
+	}
+	return calicoFlowCollector
+}
+
 // StreamCiliumNetworkFlows handles the cilium network flow stream.
 func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *zap.Logger, ciliumNamespace string) error {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
@@ -412,6 +425,25 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 			if err != nil {
 				logger.Warn("Failed to collect and export flows from Cilium Hubble Relay", zap.Error(err))
 				sm.streamClient.disableNetworkFlowsCilium = true
+				return err
+			}
+		}
+	}
+}
+
+// StreamCalicoNetworkFlows handles the calico network flow stream.
+func (sm *streamManager) StreamCalicoNetworkFlows(ctx context.Context, logger *zap.Logger, calicoNamespace string) error {
+	// TODO: Add logic for a discoveribility function to decide which CNI to use.
+	calicoFlowCollector := sm.findCalico(ctx, logger, calicoNamespace)
+	if calicoFlowCollector == nil {
+		logger.Info("Failed to initialize Calico flow collector; disabling flow collector")
+		return errors.New("calico cannot be found")
+	} else {
+		for {
+			err := calicoFlowCollector.exportCalicoFlows(ctx, sm)
+			if err != nil {
+				logger.Warn("Failed to collect and export flows from Calico", zap.Error(err))
+				sm.streamClient.disableNetworkFlowsCalico = true
 				return err
 			}
 		}
@@ -504,6 +536,39 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 	if err != nil {
 		if errors.Is(err, ErrHubbleNotFound) || errors.Is(err, ErrNoPortsAvailable) {
 			logger.Warn("Disabling Cilium flow collection", zap.Error(err))
+			return ErrStopRetries
+		}
+		return err
+	}
+
+	return nil
+}
+
+// connectAndStreamCalicoNetworkFlows creates networkFlowsStream client and
+// begins the streaming of network flows. Also starts a goroutine to send
+// keepalives at the configured period
+func (sm *streamManager) connectAndStreamCalicoNetworkFlows(logger *zap.Logger, keepalivePeriod time.Duration) error {
+	calicoCtx, calicoCancel := context.WithCancel(context.Background())
+	defer calicoCancel()
+
+	sendCalicoNetworkFlowsStream, err := sm.streamClient.client.SendKubernetesNetworkFlows(calicoCtx)
+	if err != nil {
+		logger.Error("Failed to connect to server", zap.Error(err))
+		return err
+	}
+	sm.streamClient.networkFlowsStream = sendCalicoNetworkFlowsStream
+	go func() {
+		err := sm.StreamKeepalives(calicoCtx, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
+		if err != nil {
+			logger.Error("Failed to send keepalives; canceling stream", zap.Error(err))
+		}
+		calicoCancel()
+	}()
+
+	err = sm.StreamCalicoNetworkFlows(calicoCtx, logger, sm.streamClient.calicoNamespace)
+	if err != nil {
+		if errors.Is(err, ErrCalicoNotFound) || errors.Is(err, ErrCalicoNoPortsAvailable) {
+			logger.Warn("Disabling Calico flow collection", zap.Error(err))
 			return ErrStopRetries
 		}
 		return err
@@ -755,7 +820,9 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				conn:                      authConn,
 				client:                    client,
 				ciliumNamespace:           envMap.CiliumNamespace,
+				calicoNamespace:           envMap.CalicoNamespace,
 				disableNetworkFlowsCilium: false,
+				disableNetworkFlowsCalico: false,
 				falcoEventChan:            falcoEventChan,
 			}
 
@@ -768,18 +835,32 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					make(chan pb.Flow, 100),
 				),
 			}
+			// Try to find Cilium first
 			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
-			if ciliumFlowCollector == nil {
-				sm.streamClient.disableNetworkFlowsCilium = true
-				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_FALCO
-			} else {
+			if ciliumFlowCollector != nil {
 				sm.streamClient.disableNetworkFlowsCilium = false
 				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_CILIUM
+			} else {
+				sm.streamClient.disableNetworkFlowsCilium = true
+
+				// Try to find Calico next
+				calicoFlowCollector := sm.findCalico(ctx, logger, sm.streamClient.calicoNamespace)
+				if calicoFlowCollector != nil {
+					sm.streamClient.disableNetworkFlowsCalico = false
+					// After regenerating the protobuf code, this would be:
+					// sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_CALICO
+					// For now, we'll use FLOW_COLLECTOR_DISABLED as a placeholder
+					sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_DISABLED
+				} else {
+					sm.streamClient.disableNetworkFlowsCalico = true
+					// Fall back to Falco if neither Cilium nor Calico is available
+					sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_FALCO
+				}
 			}
 
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
-			var ciliumDone, falcoDone chan struct{}
+			var ciliumDone, calicoDone, falcoDone chan struct{}
 			configDone := make(chan struct{})
 
 			sm.bufferedGrpcSyncer.done = logDone
@@ -827,9 +908,18 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					envMap.KeepalivePeriods.KubernetesNetworkFlows,
 					envMap.StreamSuccessPeriod,
 				)
-			}
-
-			if sm.streamClient.disableNetworkFlowsCilium {
+			} else if !sm.streamClient.disableNetworkFlowsCalico {
+				// If Cilium is disabled but Calico is available, use Calico
+				calicoDone = make(chan struct{})
+				go sm.manageStream(
+					logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
+					sm.connectAndStreamCalicoNetworkFlows,
+					calicoDone,
+					envMap.KeepalivePeriods.KubernetesNetworkFlows,
+					envMap.StreamSuccessPeriod,
+				)
+			} else {
+				// If both Cilium and Calico are disabled, fall back to Falco
 				falcoDone := make(chan struct{})
 				go sm.manageStream(
 					logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
@@ -854,6 +944,8 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			select {
 			case <-ciliumDone:
 				failureReason = "Cilium network flow stream closed"
+			case <-calicoDone:
+				failureReason = "Calico network flow stream closed"
 			case <-falcoDone:
 				failureReason = "Falco network flow stream closed"
 			case <-resourceDone:

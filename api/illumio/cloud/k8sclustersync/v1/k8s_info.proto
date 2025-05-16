@@ -124,6 +124,8 @@ enum FlowCollector {
   FLOW_COLLECTOR_CILIUM = 2;
   // Indicates that Falco is deployed and configured for collecting network flows.
   FLOW_COLLECTOR_FALCO = 3;
+  // Indicates that Calico CNI plugin is deployed and is used for collecting network flows.
+  FLOW_COLLECTOR_CALICO = 4;
 }
 
 // Message sent by the operator in a KubernetesResources request stream.
@@ -358,6 +360,40 @@ message Policy {
   uint64 revision = 4;
 }
 
+// A flow received from Calico using the Felix API.
+message CalicoFlow {
+  // Time when flow occurred.
+  google.protobuf.Timestamp time = 1;
+  // node_name is the name of the node from which this Flow was captured.
+  string node_name = 2;
+  // traffic_direction distinguishes direction of the connection, e.g. ingress or egress.
+  TrafficDirection traffic_direction = 3;
+  // verdict of the flow, indicating the outcome of the network packet processing.
+  Verdict verdict = 4;
+  // layer3 IP layer, source, destination and ip_version
+  IP layer3 = 5;
+  // layer4 contains protocol used
+  Layer4 layer4 = 6;
+  // is_reply indicates that this was a packet (L4) or message (L7) in the
+  // reply direction. May be absent (in which case it is unknown whether it
+  // is a reply or not).
+  google.protobuf.BoolValue is_reply = 7;
+  // endpoint of source ip with metadata
+  optional Endpoint source_endpoint = 8;
+  // endpoint of destination ip with metadata
+  optional Endpoint destination_endpoint = 9;
+  // destination_service contains the service name of the destination
+  Service destination_service = 10;
+  // The NetworkPolicies allowing the egress of the flow.
+  repeated Policy egress_allowed_by = 11;
+  // The NetworkPolicies allowing the ingress of the flow.
+  repeated Policy ingress_allowed_by = 12;
+  // The NetworkPolicies denying the egress of the flow.
+  repeated Policy egress_denied_by = 13;
+  // The NetworkPolicies denying the ingress of the flow.
+  repeated Policy ingress_denied_by = 14;
+}
+
 // Flow exported by the CNI plugin in the cluster.
 message SendKubernetesNetworkFlowsRequest {
   oneof request {
@@ -365,6 +401,7 @@ message SendKubernetesNetworkFlowsRequest {
 
     CiliumFlow cilium_flow = 1;
     FalcoFlow falco_flow = 2;
+    CalicoFlow calico_flow = 4;
   }
 }
 
