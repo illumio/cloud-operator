@@ -266,7 +266,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 			BaseLogger:    logger,
 			DynamicClient: dynamicClient,
 			StreamManager: sm,
-			Limiter:       sharedLimiter, // Use the shared limiter
+			Limiter:       sharedLimiter,
 		})
 		resourceManagers[resource] = resourceManager
 
@@ -293,10 +293,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 
 	// PHASE 3: Start watchers concurrently
 	for _, info := range allWatchInfos {
-		// Update the resource manager for this watcher
 		resourceManager := resourceManagers[info.resource]
-		resourceManager.resourceName = info.resource
-		resourceManager.logger = logger.With(zap.String("resource", info.resource))
 
 		go func(info watcherInfo, manager *ResourceManager) {
 			manager.WatchK8sResources(ctx, cancel, info.apiGroup, info.resourceVersion)
