@@ -57,11 +57,6 @@ func NewResourceManager(config ResourceManagerConfig) *ResourceManager {
 	}
 }
 
-// GetLogger returns the logger with resource context
-func (r *ResourceManager) GetLogger() *zap.Logger {
-	return r.logger
-}
-
 // TODO: Make a struct with the ClientSet as a field, and convertMetaObjectToMetadata, getPodIPAddresses, getProviderIdNodeSpec should be methods of that struct.
 
 // WatchK8sResources initiates a watch stream for the specified Kubernetes resource starting from the given resourceVersion.

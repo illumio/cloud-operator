@@ -248,7 +248,10 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 	}
 	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
 
-	// PHASE 1: List all resources in deterministic order
+	// Create a single rate limiter to be shared across all resource managers
+	// This ensures we don't overwhelm the k8s API server with too many concurrent watch requests
+	sharedLimiter := rate.NewLimiter(1, 5)
+	resourceManagers := make(map[string]*ResourceManager)
 	for _, resource := range slices.Sorted(maps.Keys(resourceAPIGroupMap)) {
 		apiGroup := resourceAPIGroupMap[resource]
 		select {
@@ -263,11 +266,13 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 			BaseLogger:    logger,
 			DynamicClient: dynamicClient,
 			StreamManager: sm,
-			Limiter:       rate.NewLimiter(1, 5),
+			Limiter:       sharedLimiter, // Use the shared limiter
 		})
-		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.GetLogger(), apiGroup)
+		resourceManagers[resource] = resourceManager
+
+		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger, apiGroup)
 		if err != nil {
-			resourceManager.GetLogger().Error("Failed to list resource", zap.Error(err))
+			resourceManager.logger.Error("Failed to list resource", zap.Error(err))
 			return err
 		}
 
@@ -288,18 +293,14 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 
 	// PHASE 3: Start watchers concurrently
 	for _, info := range allWatchInfos {
-		// Create a new resource manager for each watcher
-		watchResourceManager := NewResourceManager(ResourceManagerConfig{
-			ResourceName:  info.resource,
-			Clientset:     clientset,
-			BaseLogger:    logger,
-			DynamicClient: dynamicClient,
-			StreamManager: sm,
-			Limiter:       rate.NewLimiter(1, 5),
-		})
+		// Update the resource manager for this watcher
+		resourceManager := resourceManagers[info.resource]
+		resourceManager.resourceName = info.resource
+		resourceManager.logger = logger.With(zap.String("resource", info.resource))
+
 		go func(info watcherInfo, manager *ResourceManager) {
 			manager.WatchK8sResources(ctx, cancel, info.apiGroup, info.resourceVersion)
-		}(info, watchResourceManager)
+		}(info, resourceManager)
 	}
 
 	dd.mutex.Lock()
