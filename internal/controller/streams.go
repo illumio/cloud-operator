@@ -240,13 +240,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 	dd.timeStarted = time.Now()
 	dd.processingResources = true
 	dd.mutex.Unlock()
-	resourceLister := &ResourceManager{
-		clientset:     clientset,
-		logger:        logger,
-		dynamicClient: dynamicClient,
-		streamManager: sm,
-		limiter:       rate.NewLimiter(1, 5),
-	}
+
 	err = sm.sendClusterMetadata(ctx, logger)
 	if err != nil {
 		logger.Error("Failed to send cluster metadata", zap.Error(err))
@@ -254,7 +248,10 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 	}
 	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
 
-	// PHASE 1: List all resources in deterministic order
+	// Create a single rate limiter to be shared across all resource managers
+	// This ensures we don't overwhelm the k8s API server with too many concurrent watch requests
+	sharedLimiter := rate.NewLimiter(1, 5)
+	resourceManagers := make(map[string]*ResourceManager)
 	for _, resource := range slices.Sorted(maps.Keys(resourceAPIGroupMap)) {
 		apiGroup := resourceAPIGroupMap[resource]
 		select {
@@ -262,10 +259,20 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 			return ctx.Err()
 		default:
 		}
+		// Create a new resource manager for each resource type
+		resourceManager := NewResourceManager(ResourceManagerConfig{
+			ResourceName:  resource,
+			Clientset:     clientset,
+			BaseLogger:    logger,
+			DynamicClient: dynamicClient,
+			StreamManager: sm,
+			Limiter:       sharedLimiter,
+		})
+		resourceManagers[resource] = resourceManager
 
-		resourceVersion, err := resourceLister.DynamicListResources(ctx, resourceLister.logger, resource, apiGroup)
+		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger, apiGroup)
 		if err != nil {
-			resourceLister.logger.Error("Failed to list resource", zap.String("resource", resource), zap.Error(err))
+			resourceManager.logger.Error("Failed to list resource", zap.Error(err))
 			return err
 		}
 
@@ -279,16 +286,18 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 	// PHASE 2: Send snapshot complete
 	err = sm.sendResourceSnapshotComplete(logger)
 	if err != nil {
-		resourceLister.logger.Error("Failed to send snapshot complete", zap.Error(err))
+		logger.Error("Failed to send snapshot complete", zap.Error(err))
 		return err
 	}
 	logger.Info("Successfully sent resource snapshot")
 
 	// PHASE 3: Start watchers concurrently
 	for _, info := range allWatchInfos {
-		go func(info watcherInfo) {
-			resourceLister.WatchK8sResources(ctx, cancel, info.resource, info.apiGroup, info.resourceVersion)
-		}(info)
+		resourceManager := resourceManagers[info.resource]
+
+		go func(info watcherInfo, manager *ResourceManager) {
+			manager.WatchK8sResources(ctx, cancel, info.apiGroup, info.resourceVersion)
+		}(info, resourceManager)
 	}
 
 	dd.mutex.Lock()
