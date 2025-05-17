@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	v1 "k8s.io/api/core/v1"
+	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -963,6 +964,16 @@ func (suite *ControllerTestSuite) TestConvertToKubernetesServiceData() {
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			ctx := context.TODO()
+
+			// Ensure the service is deleted before running the test
+			if tt.service == nil {
+				err := suite.clientset.CoreV1().Services("default").Delete(ctx, "test-service", metav1.DeleteOptions{})
+				if err != nil && !k8sErrors.IsNotFound(err) {
+					suite.T().Fatal("Failed to delete service: " + err.Error())
+				}
+				time.Sleep(100 * time.Millisecond) // Wait for deletion to propagate
+			}
+
 			if tt.service != nil {
 				_, err := suite.clientset.CoreV1().Services(tt.service.Namespace).Create(ctx, tt.service, metav1.CreateOptions{})
 				assert.NoError(suite.T(), err)
