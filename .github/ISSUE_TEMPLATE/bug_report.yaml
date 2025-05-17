@@ -1,0 +1,87 @@
+name: Bug Report
+description: Report a bug encountered while operating the Cloud Operator
+labels: ["kind/bug", "needs/triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! If you have usage questions, please check the documentation first.
+        **Important**: For security related issues: We strongly encourage you to report security vulnerabilities to the private security mailing list: security@illumio.com - first, before disclosing them in any public forums.
+  - type: checkboxes
+    attributes:
+      label: Is there an existing issue for this?
+      description: Please search to see if an issue already exists for the bug you encountered.
+      options:
+      - label: I have searched the existing issues
+        required: true
+  - type: dropdown
+    id: version
+    attributes:
+      label: Version
+      description: |
+        What version of the Cloud Operator was running when you discovered this issue?
+      options:
+        - 'latest'
+        - 'v1.0.0'
+        - 'other (please specify in the description)'
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us, what did you expect to happen?
+      placeholder: |
+        1. In this environment...
+        2. With this config...
+        3. Run '...'
+        4. See error...
+      value: "A bug happened!"
+    validations:
+      required: true
+  - type: textarea
+    id: how-happened
+    attributes:
+      label: How can we reproduce the issue?
+      description: Please give us reproducible steps so that it is easier to find the root cause.
+      placeholder: |
+        1. Install cloud-operator with helm
+        2. Helm flags `helm install --set ...`
+    validations:
+      required: true
+  - type: textarea
+    id: operator-version
+    validations:
+      required: true
+    attributes:
+      label: Cloud Operator Version
+      description: What version of the software was running when you discovered this issue?
+  - type: textarea
+    id: k8s-version
+    attributes:
+      label: Kubernetes Version
+      description: Which Kubernetes version are you running? (run `kubectl version`)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Please copy and paste any relevant log output. This will be automatically formatted into code, so no need for backticks.
+      render: shell
+  - type: textarea
+    attributes:
+      label: Anything else?
+      description: |
+        Links? References? Anything that will provide more context about the issue you are encountering!
+        Tip: You can attach images or log files by clicking this area to highlight it and then dragging files in.
+    validations:
+      required: false
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our Code of Conduct
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true
