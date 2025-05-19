@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -182,16 +183,17 @@ func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset 
 
 	// Iterate over all API groups and versions
 	for _, group := range apiGroups.Groups {
-		// Skip metrics API group
-		if group.Name == "metrics.k8s.io" {
-			continue
-		}
-
 		for _, version := range group.Versions {
 			resourceList, err := discoveryClient.ServerResourcesForGroupVersion(version.GroupVersion)
 			if err != nil {
 				if apiErr, ok := err.(*apierrors.StatusError); ok && apiErr.ErrStatus.Code == 403 {
 					logger.Warn("Access forbidden for resource", zap.Error(err))
+					continue
+				} else if strings.Contains(err.Error(), "forbidden") || strings.Contains(err.Error(), "cannot list resource") {
+					// This is a fallback check in case the error doesn't come as a StatusError
+					logger.Warn("Access forbidden for resource",
+						zap.String("group-version", version.GroupVersion),
+						zap.Error(err))
 					continue
 				} else {
 					return resourceAPIGroupMap, err
