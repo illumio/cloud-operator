@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -189,8 +190,12 @@ func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset 
 		for _, version := range group.Versions {
 			resourceList, err := discoveryClient.ServerResourcesForGroupVersion(version.GroupVersion)
 			if err != nil {
-				logger.Error("Error fetching resources for groupVersion", zap.Error(err))
-				return resourceAPIGroupMap, err
+				if apiErr, ok := err.(*apierrors.StatusError); ok && apiErr.ErrStatus.Code == 403 {
+					logger.Warn("Access forbidden for resource", zap.Error(err))
+					continue
+				} else {
+					return resourceAPIGroupMap, err
+				}
 			}
 
 			// Map resources to their API groups
