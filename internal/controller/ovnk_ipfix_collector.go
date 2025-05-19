@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"net"
+	"os"
 	"time"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -17,21 +18,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// IPFIXHeader represents the header of an IPFIX message.
-type IPFIXHeader struct {
-	Version        uint16
-	Length         uint16
-	ExportTime     uint32
-	SequenceNumber uint32
-	ObservationID  uint32
-}
-
-// FieldInfo represents the offset and size of a field in a template.
-type FieldInfo struct {
-	Offset int
-	Size   int
-}
-
 // OVNKFlow represents a flow captured from OVN-Kubernetes.
 type OVNKFlow struct {
 	SourceIP        string
@@ -40,6 +26,7 @@ type OVNKFlow struct {
 	DestinationPort uint16
 	Protocol        string
 	IPVersion       string
+	StartTimestamp  *timestamppb.Timestamp
 }
 
 // https://datatracker.ietf.org/doc/rfc7011/
@@ -72,12 +59,12 @@ func (sm *streamManager) isOVNKDeployed(logger *zap.Logger, ovnkNamespace string
 // the received flows in a separate goroutine.
 func (sm *streamManager) startOVNKIPFIXCollector(ctx context.Context, logger *zap.Logger) error {
 	logger.Info("Starting OVN-K IPFIX Collector")
+	ctxProcessOVNKFlow, cancelProcessOVNKFlow := context.WithCancel(ctx)
+	defer cancelProcessOVNKFlow()
 	go func() {
-		ctxProcessOVNKFlow, cancelProcessOVNKFlow := context.WithCancel(ctx)
-		defer cancelProcessOVNKFlow()
-		logger.Debug("Starting processOVNKFlow goroutine")
-		if err := sm.processOVNKFlow(ctxProcessOVNKFlow, logger); err != nil {
-			logger.Error("Error in processOVNKFlow", zap.Error(err))
+		logger.Debug("Starting processIPFIXMessage goroutine")
+		if err := sm.processIPFIXMessage(ctxProcessOVNKFlow, logger); err != nil {
+			logger.Error("Error in processIPFIXMessage", zap.Error(err))
 		}
 	}()
 	select {
@@ -110,21 +97,32 @@ func (sm *streamManager) startOVNKIPFIXCollector(ctx context.Context, logger *za
 	}
 }
 
-// processOVNKFlow processes OVN-K IPFIX flows received from the ovnkEventChan.
+// processIPFIXMessage processes OVN-K IPFIX flows received from the ovnkEventChan.
 // It decodes the IPFIX packets, extracts data records, and converts them into
 // FiveTupleFlow objects, which are then cached for sending to CloudSecure.
-func (sm *streamManager) processOVNKFlow(ctx context.Context, logger *zap.Logger) error {
-	// Initialize the BasicTemplateSystem using the CreateTemplateSystem function
+func (sm *streamManager) processIPFIXMessage(ctx context.Context, logger *zap.Logger) error {
+	// This segment of code is used to decode the template set and add it to the template system
 	templateSystem := netflows.CreateTemplateSystem()
-	// Intialize the template set via the binary observed
+	packet, err := os.ReadFile("/template-storage/template_set.bin")
+	if err != nil {
+		logger.Error("Failed to read template set from file", zap.Error(err))
+		return err
+	}
+	// By decoding this packet netflows package will add the template set to the template system
+	_, err = netflows.DecodeMessage(bytes.NewBuffer(packet), templateSystem)
+	if err != nil {
+		logger.Error("Failed to decode message", zap.Error(err))
+		return err
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Info("Context canceled in processOVNKFlow. Exiting.")
+			logger.Info("Context canceled while processing IPFIX message")
 			return ctx.Err()
 		case packet, ok := <-sm.streamClient.ovnkEventChan:
 			if !ok {
-				logger.Info("ovnkEventChan closed. Exiting processOVNKFlow.")
+				logger.Info("ovnkEventChan closed")
 				return nil
 			}
 
@@ -132,48 +130,50 @@ func (sm *streamManager) processOVNKFlow(ctx context.Context, logger *zap.Logger
 				logger.Warn("Packet too short for IPFIX header", zap.Int("length", len(packet)))
 				continue
 			}
+
 			decodedMessage, err := netflows.DecodeMessage(bytes.NewBuffer(packet), templateSystem)
 			if err != nil {
 				continue
 			}
+
 			ipFixPacket, ok := decodedMessage.(netflows.IPFIXPacket)
 			if ok {
 				for _, flowSet := range ipFixPacket.FlowSets {
 					switch flowSet := flowSet.(type) {
 					case netflows.DataFlowSet:
 						for _, dataRecord := range flowSet.Records {
-							ovnkFlow, err := processDataRecord(dataRecord)
+							ovnkFlow, err := processDataRecord(dataRecord, ipFixPacket.ExportTime)
 							if err != nil {
 								logger.Warn("Skipping data record due to parsing error", zap.Error(err))
 								continue
 							}
 							layer3Message, err := createLayer3Message(ovnkFlow.SourceIP, ovnkFlow.DestinationIP, ovnkFlow.IPVersion)
 							if err != nil {
-								logger.Error("Failed to create layer3 message", zap.Error(err))
+								logger.Error("Failed to create layer3 message from OVN-K flow", zap.Error(err))
 								continue
 							}
 							layer4Message, err := createLayer4Message(ovnkFlow.Protocol, uint32(ovnkFlow.SourcePort), uint32(ovnkFlow.DestinationPort), ovnkFlow.IPVersion)
 							if err != nil {
-								logger.Error("Failed to create layer4 message", zap.Error(err))
+								logger.Error("Failed to create layer4 message from OVN-K flow", zap.Error(err))
 								continue
 							}
 							convertOvnkFlow := &pb.FiveTupleFlow{
 								Layer3: layer3Message,
 								Layer4: layer4Message,
 								Ts: &pb.FiveTupleFlow_Timestamp{
-									Timestamp: timestamppb.New(time.Now()),
+									Timestamp: ovnkFlow.StartTimestamp,
 								},
 							}
 							err = sm.FlowCache.CacheFlow(ctx, convertOvnkFlow)
 							if err != nil {
-								logger.Error("Failed to cache flow", zap.Error(err))
+								logger.Error("Failed to cache flow from OVN-K flow", zap.Error(err))
 								return err
 							}
 						}
 					}
 				}
 			} else {
-				logger.Info("Not an IPFIX packet")
+				logger.Info("Received a message that is not an IPFIX packet")
 			}
 		}
 	}
@@ -240,46 +240,49 @@ func parseIPVersion(decodedValue []byte) (string, error) {
 
 // processDataRecord processes a single data record and converts it into an OVNFlow.
 // If any parsing step fails, it returns an error and skips the record.
-func processDataRecord(dataRecord netflows.DataRecord) (OVNKFlow, error) {
+func processDataRecord(dataRecord netflows.DataRecord, exportTime uint32) (OVNKFlow, error) {
 	ovnkFlow := OVNKFlow{}
 	for _, field := range dataRecord.Values {
 		switch field.Type {
-		case 8: // Assuming 8 corresponds to sourceIPv4Address
+		case 8: // sourceIPv4Address
 			sourceIP, err := parseIPv4Address(field.Value.([]byte))
 			if err != nil {
 				return OVNKFlow{}, err
 			}
 			ovnkFlow.SourceIP = sourceIP
-		case 12: // Assuming 12 corresponds to destinationIPv4Address
+		case 12: // destinationIPv4Address
 			destinationIP, err := parseIPv4Address(field.Value.([]byte))
 			if err != nil {
 				return OVNKFlow{}, err
 			}
 			ovnkFlow.DestinationIP = destinationIP
-		case 7: // Assuming 7 corresponds to sourcePort
+		case 7: // sourcePort
 			sourcePort, err := parsePort(field.Value.([]byte))
 			if err != nil {
 				return OVNKFlow{}, err
 			}
 			ovnkFlow.SourcePort = sourcePort
-		case 11: // Assuming 11 corresponds to destinationPort
+		case 11: // destinationPort
 			destinationPort, err := parsePort(field.Value.([]byte))
 			if err != nil {
 				return OVNKFlow{}, err
 			}
 			ovnkFlow.DestinationPort = destinationPort
-		case 4: // Assuming 4 corresponds to protocol
+		case 4: // protocol
 			protocol, err := parseProtocol(field.Value.([]byte))
 			if err != nil {
 				return OVNKFlow{}, err
 			}
 			ovnkFlow.Protocol = protocol
-		case 60: // Assuming 60 corresponds to ipVersion
+		case 60: // ipVersion
 			ipVersion, err := parseIPVersion(field.Value.([]byte))
 			if err != nil {
 				return OVNKFlow{}, err
 			}
 			ovnkFlow.IPVersion = ipVersion
+		case 158: // start time delta
+			startTimeDelta := binary.BigEndian.Uint32(field.Value.([]byte))
+			ovnkFlow.StartTimestamp = timestamppb.New(time.Unix(int64(exportTime), 0).Add(-time.Duration(startTimeDelta) * time.Second))
 		default:
 			// Ignore unknown field types
 		}

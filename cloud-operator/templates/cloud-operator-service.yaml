@@ -22,5 +22,5 @@ spec:
       targetPort: 5000
     - name: ipfix-collector
       protocol: UDP
-      port: 4789
-      targetPort: 4789
+      port: 4739
+      targetPort: 4739

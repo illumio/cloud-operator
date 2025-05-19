@@ -96,8 +96,13 @@ spec:
           volumeMounts:
             - name: gops-volume
               mountPath: /var/run/gops
+            - name: template-volume
+              mountPath: /template-storage
       volumes:
         - name: gops-volume
           emptyDir:
             medium: Memory
             sizeLimit: 10Mi
+        - name: template-volume
+          configMap:
+            name: template-set-config

@@ -187,7 +187,7 @@ func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset 
 	// Iterate over all API groups and versions
 	for _, group := range apiGroups.Groups {
 		// Skip metrics API group
-		if group.Name == "metrics.k8s.io" {
+		if group.Name == "metrics.k8s.io" || group.Name == "config.openshift.io" {
 			continue
 		}
 

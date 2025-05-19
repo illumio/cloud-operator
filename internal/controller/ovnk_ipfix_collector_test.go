@@ -258,7 +258,7 @@ func TestProcessDataRecord(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result, err := processDataRecord(tt.input)
+			result, err := processDataRecord(tt.input, 0)
 			if tt.err {
 				assert.Error(t, err)
 			} else {
