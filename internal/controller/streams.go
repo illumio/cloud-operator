@@ -37,9 +37,19 @@ const (
 )
 
 type streamClient struct {
-	ciliumNamespace           string
-	conn                      *grpc.ClientConn
-	client                    pb.KubernetesInfoServiceClient
+	ciliumNamespace string
+	conn            *grpc.ClientConn
+	resourceConn    *grpc.ClientConn
+	flowsConn       *grpc.ClientConn
+	logsConn        *grpc.ClientConn
+	configConn      *grpc.ClientConn
+
+	resourceClient pb.KubernetesInfoServiceClient
+	flowsClient    pb.KubernetesInfoServiceClient
+	logsClient     pb.KubernetesInfoServiceClient
+	configClient   pb.KubernetesInfoServiceClient
+	client         pb.KubernetesInfoServiceClient
+
 	disableNetworkFlowsCilium bool
 	falcoEventChan            chan string
 	flowCollector             pb.FlowCollector
@@ -495,7 +505,7 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
 	defer ciliumCancel()
 
-	sendCiliumNetworkFlowsStream, err := sm.streamClient.client.SendKubernetesNetworkFlows(ciliumCtx)
+	sendCiliumNetworkFlowsStream, err := sm.streamClient.flowsClient.SendKubernetesNetworkFlows(ciliumCtx)
 	if err != nil {
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
@@ -528,7 +538,7 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, k
 	falcoCtx, falcoCancel := context.WithCancel(context.Background())
 	defer falcoCancel()
 
-	sendFalcoNetworkFlows, err := sm.streamClient.client.SendKubernetesNetworkFlows(falcoCtx)
+	sendFalcoNetworkFlows, err := sm.streamClient.flowsClient.SendKubernetesNetworkFlows(falcoCtx)
 	if err != nil {
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
@@ -559,7 +569,7 @@ func (sm *streamManager) connectAndStreamResources(logger *zap.Logger, keepalive
 	resourceCtx, resourceCancel := context.WithCancel(context.Background())
 	defer resourceCancel()
 
-	sendKubernetesResourcesStream, err := sm.streamClient.client.SendKubernetesResources(resourceCtx)
+	sendKubernetesResourcesStream, err := sm.streamClient.resourceClient.SendKubernetesResources(resourceCtx)
 	if err != nil {
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
@@ -589,7 +599,7 @@ func (sm *streamManager) connectAndStreamLogs(logger *zap.Logger, keepalivePerio
 	logCtx, logCancel := context.WithCancel(context.Background())
 	defer logCancel()
 
-	sendLogsStream, err := sm.streamClient.client.SendLogs(logCtx)
+	sendLogsStream, err := sm.streamClient.logsClient.SendLogs(logCtx)
 	if err != nil {
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
@@ -619,7 +629,7 @@ func (sm *streamManager) connectAndStreamConfigurationUpdates(logger *zap.Logger
 	configCtx, configCancel := context.WithCancel(context.Background())
 	defer configCancel()
 
-	getConfigurationUpdatesStream, err := sm.streamClient.client.GetConfigurationUpdates(configCtx)
+	getConfigurationUpdatesStream, err := sm.streamClient.configClient.GetConfigurationUpdates(configCtx)
 	if err != nil {
 		logger.Error("Failed to connect to server", zap.Error(err))
 		return err
@@ -749,8 +759,10 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			logger.Warn("Context canceled while trying to authenticate and open streams")
 			return
 		case <-resetTimer.C:
+
+			// Get credentials and write them to K8s secret
 			authConContext, authConContextCancel := context.WithCancel(ctx)
-			authConn, client, err := NewAuthenticatedConnection(authConContext, logger, envMap)
+			clientID, clientSecret, err := GetAndWriteOnboardingCredentials(authConContext, logger, envMap)
 			if err != nil {
 				logger.Error("Failed to establish initial connection; will retry", zap.Error(err))
 				// When we try this loop again, we wait 10 seconds with 20% jitter.
@@ -760,9 +772,68 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				break
 			}
 
+			// Get resource connection and client
+			resourceAuthConn, resourceClient, err := GetAuthConnAndClient(ctx, logger, envMap, clientID, clientSecret, resetTimer)
+			if err != nil {
+				logger.Error("Failed to establish initial resource connection; will retry", zap.Error(err))
+				// When we try this loop again, we wait 10 seconds with 20% jitter.
+				resetTimer.Reset(jitterTime(10*time.Second, 0.20))
+				authConContextCancel()
+				failureReason = "Failed to establish initial connection"
+				break
+			}
+
+			// Get flows connection and client
+			flowsAuthConn, flowsClient, err := GetAuthConnAndClient(ctx, logger, envMap, clientID, clientSecret, resetTimer)
+			if err != nil {
+				logger.Error("Failed to set up an OAuth connection", zap.Error(err))
+				resetTimer.Reset(jitterTime(10*time.Second, 0.20))
+				authConContextCancel()
+				failureReason = "Failed to set up an OAuth connection"
+				break
+			}
+
+			// Get logs connection and client
+			logsAuthConn, logsClient, err := GetAuthConnAndClient(ctx, logger, envMap, clientID, clientSecret, resetTimer)
+			if err != nil {
+				logger.Error("Failed to set up an OAuth connection", zap.Error(err))
+				resetTimer.Reset(jitterTime(10*time.Second, 0.20))
+				authConContextCancel()
+				failureReason = "Failed to set up an OAuth connection"
+				break
+			}
+
+			// Get config connection and client
+			configAuthConn, configClient, err := GetAuthConnAndClient(ctx, logger, envMap, clientID, clientSecret, resetTimer)
+			if err != nil {
+				logger.Error("Failed to set up an OAuth connection", zap.Error(err))
+				resetTimer.Reset(jitterTime(10*time.Second, 0.20))
+				authConContextCancel()
+				failureReason = "Failed to set up an OAuth connection"
+				break
+			}
+
+			// TODO: Remove this after testing
+			authConn, client, err := GetAuthConnAndClient(ctx, logger, envMap, clientID, clientSecret, resetTimer)
+			if err != nil {
+				logger.Error("Failed to set up an OAuth connection", zap.Error(err))
+				resetTimer.Reset(jitterTime(10*time.Second, 0.20))
+				authConContextCancel()
+				failureReason = "Failed to set up an OAuth connection"
+				break
+			}
+
 			streamClient := &streamClient{
-				conn:                      authConn,
-				client:                    client,
+				conn:                      authConn, // TODO: Remove this after testing
+				resourceConn:              resourceAuthConn,
+				flowsConn:                 flowsAuthConn,
+				logsConn:                  logsAuthConn,
+				configConn:                configAuthConn,
+				client:                    client, // TODO: Remove this after testing
+				resourceClient:            resourceClient,
+				flowsClient:               flowsClient,
+				logsClient:                logsClient,
+				configClient:              configClient,
 				ciliumNamespace:           envMap.CiliumNamespace,
 				disableNetworkFlowsCilium: false,
 				falcoEventChan:            falcoEventChan,
@@ -777,6 +848,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					make(chan pb.Flow, 100),
 				),
 			}
+
 			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
 			if ciliumFlowCollector == nil {
 				sm.streamClient.disableNetworkFlowsCilium = true
@@ -881,8 +953,20 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 	}
 }
 
-// NewAuthenticatedConnection gets a valid token and creats a connection to CloudSecure.
-func NewAuthenticatedConnection(ctx context.Context, logger *zap.Logger, envMap EnvironmentConfig) (*grpc.ClientConn, pb.KubernetesInfoServiceClient, error) {
+// GetAuthConnAndClient gets a connection and client for the given credentials.
+func GetAuthConnAndClient(ctx context.Context, logger *zap.Logger, envMap EnvironmentConfig, clientID string, clientSecret string, resetTimer *time.Timer) (*grpc.ClientConn, pb.KubernetesInfoServiceClient, error) {
+	authConn, err := SetUpOAuthConnection(ctx, logger, envMap.TokenEndpoint, envMap.TlsSkipVerify, clientID, clientSecret)
+	if err != nil {
+		logger.Error("Failed to set up an OAuth connection", zap.Error(err))
+		resetTimer.Reset(jitterTime(10*time.Second, 0.20))
+		return nil, nil, err
+	}
+	client := pb.NewKubernetesInfoServiceClient(authConn)
+	return authConn, client, nil
+}
+
+// GetAndWriteOnboardingCredentials gets a valid token and creats a connection to CloudSecure.
+func GetAndWriteOnboardingCredentials(ctx context.Context, logger *zap.Logger, envMap EnvironmentConfig) (string, string, error) {
 	authn := Authenticator{Logger: logger}
 
 	clientID, clientSecret, err := authn.ReadCredentialsK8sSecrets(ctx, envMap.ClusterCreds, envMap.PodNamespace)
@@ -903,7 +987,7 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.Logger, envMap 
 		responseData, err := Onboard(ctx, envMap.TlsSkipVerify, envMap.OnboardingEndpoint, OnboardingCredentials, logger)
 		if err != nil {
 			logger.Error("Failed to register cluster", zap.Error(err))
-			return nil, nil, err
+			return "", "", err
 		}
 		err = authn.WriteK8sSecret(ctx, responseData, envMap.ClusterCreds, envMap.PodNamespace)
 		if err != nil {
@@ -929,18 +1013,10 @@ func NewAuthenticatedConnection(ctx context.Context, logger *zap.Logger, envMap 
 		}
 		if err != nil {
 			logger.Error("Could not read K8s credentials", zap.Error(err))
-			return nil, nil, err
+			return "", "", err
 		}
 	}
-	conn, err := SetUpOAuthConnection(ctx, logger, envMap.TokenEndpoint, envMap.TlsSkipVerify, clientID, clientSecret)
-	if err != nil {
-		logger.Error("Failed to set up an OAuth connection", zap.Error(err))
-		return nil, nil, err
-	}
-
-	client := pb.NewKubernetesInfoServiceClient(conn)
-
-	return conn, client, err
+	return clientID, clientSecret, err
 }
 
 // jitterTime subtracts a percentage from the base time, in order to introduce
