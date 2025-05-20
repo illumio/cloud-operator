@@ -25,6 +25,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	hubble "github.com/illumio/cloud-operator/internal/controller/hubble"
 )
 
 type StreamType string
@@ -394,6 +395,7 @@ func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, ciliumNamespace)
 	if err != nil {
+		logger.Error("Failed to create CiliumFlowCollector", zap.Error(err))
 		return nil
 	}
 	return ciliumFlowCollector
@@ -502,7 +504,7 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, logger, sm.streamClient.ciliumNamespace)
 	if err != nil {
-		if errors.Is(err, ErrHubbleNotFound) || errors.Is(err, ErrNoPortsAvailable) {
+		if errors.Is(err, hubble.ErrHubbleNotFound) || errors.Is(err, hubble.ErrNoPortsAvailable) {
 			logger.Warn("Disabling Cilium flow collection", zap.Error(err))
 			return ErrStopRetries
 		}

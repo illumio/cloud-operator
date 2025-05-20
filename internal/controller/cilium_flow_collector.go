@@ -4,20 +4,16 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/cilium/cilium/api/v1/flow"
 	observer "github.com/cilium/cilium/api/v1/observer"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/aks"
-	mtls "github.com/illumio/cloud-operator/internal/mtls"
+	"github.com/illumio/cloud-operator/internal/controller/hubble"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 )
 
 // CiliumFlowCollector collects flows from Cilium Hubble Relay running in this cluster.
@@ -28,55 +24,27 @@ type CiliumFlowCollector struct {
 
 const (
 	ciliumHubbleRelayMaxFlowCount uint64 = 100
-	ciliumHubbleRelayServiceName  string = "hubble-relay"
 
 	// Constants for fetching the mTLS secret
 	hubbleMTLSSecretName       string = "hubble-relay-client-certs"
 	ciliumHubbleRelayNamespace string = "kube-system"
 )
 
-var (
-	ErrHubbleNotFound   = errors.New("hubble Relay service not found; disabling Cilium flow collection")
-	ErrNoPortsAvailable = errors.New("hubble Relay service has no ports; disabling Cilium flow collection")
-)
-
-func discoverCiliumHubbleRelay(ctx context.Context, ciliumNamespace string, clientset kubernetes.Interface) (*v1.Service, error) {
-	service, err := clientset.CoreV1().Services(ciliumNamespace).Get(ctx, ciliumHubbleRelayServiceName, metav1.GetOptions{})
-	if err != nil {
-		return nil, ErrHubbleNotFound
-	}
-
-	return service, nil
-}
-
-// retrieveHubbleRelayAddress uses a kubernetes clientset to discover the address of the hubble-relay service within kube-system.
-func retrieveHubbleRelayAddress(service *v1.Service) (string, error) {
-	if len(service.Spec.Ports) == 0 {
-		return "", ErrNoPortsAvailable
-	}
-
-	address := fmt.Sprintf("%s:%d", service.Spec.ClusterIP, service.Spec.Ports[0].Port)
-	return address, nil
-}
-
 // newCiliumFlowCollector connects to Cilium Hubble Relay, sets up an Observer client, and returns a new Collector using it.
 func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace string) (*CiliumFlowCollector, error) {
 	clientset, err := NewClientSet()
 	if err != nil {
-		logger.Error("Failed to create new client set", zap.Error(err))
 		return nil, fmt.Errorf("failed to create new client set: %w", err)
 	}
 
-	service, err := discoverCiliumHubbleRelay(ctx, ciliumNamespace, clientset)
+	service, err := hubble.DiscoverCiliumHubbleRelay(ctx, ciliumNamespace, clientset)
 	if err != nil {
-		logger.Error("Failed to discover Hubble Relay service", zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("failed to discover Hubble Relay service: %w", err)
 	}
 
-	hubbleAddress, err := retrieveHubbleRelayAddress(service)
+	hubbleAddress, err := hubble.GetHubbleRelayAddress(service)
 	if err != nil {
-		logger.Error("Failed to discover Hubble Relay address", zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("failed to discover Hubble Relay address: %w", err)
 	}
 	isAKSManaged := aks.IsAKSManagedHubble(service.Annotations)
 
@@ -84,7 +52,7 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 	if isAKSManaged {
 		logger.Debug("Attempting mTLS connection for AKS-managed Hubble", zap.String("address", hubbleAddress))
 
-		creds, err := mtls.FetchAndLoadMTLSCredentials(ctx, clientset, logger, hubbleMTLSSecretName, ciliumHubbleRelayNamespace, isAKSManaged)
+		creds, err := hubble.GetHubbleCTransportCredentials(ctx, clientset, logger, hubbleMTLSSecretName, ciliumHubbleRelayNamespace, isAKSManaged)
 		if err != nil {
 			return nil, err
 		}
@@ -94,7 +62,7 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 			grpc.WithTransportCredentials(creds),
 		)
 	} else {
-		logger.Debug("Using insecure connection for standard Hubble Relay", zap.String("address", hubbleAddress))
+		logger.Debug("Using insecure connection to Hubble Relay", zap.String("address", hubbleAddress))
 		conn, err = grpc.NewClient(
 			hubbleAddress,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),

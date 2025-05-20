@@ -21,8 +21,8 @@ metadata:
   name: cloud-operator-read-hubble-client-certs
 subjects:
 - kind: ServiceAccount
-  name: {{ .Values.serviceAccount.name }} # SA name of your operator
-  namespace: {{ .Release.Namespace }} # Namespace of your operator
+  name: {{ .Values.serviceAccount.name }}
+  namespace: {{ .Release.Namespace }}
 roleRef:
   kind: Role
   name: hubble-client-certs-reader
