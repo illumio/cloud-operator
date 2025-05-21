@@ -5,12 +5,14 @@ package controller
 import (
 	"context"
 	"testing"
+	"time"
 
 	netflows "github.com/netsampler/goflow2/decoders/netflow"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -38,6 +40,18 @@ func (suite *ControllerTestSuite) TestIsOVNKDeployed() {
 					},
 				}, metav1.CreateOptions{})
 				assert.NoError(suite.T(), err)
+			} else {
+				// Add polling logic to ensure namespace deletion
+				for {
+					err := suite.clientset.CoreV1().Namespaces().Delete(context.TODO(), "openshift-ovn-kubernetes", metav1.DeleteOptions{})
+					if errors.IsNotFound(err) {
+						break // Namespace is deleted
+					}
+					if err != nil {
+						suite.T().Fatal("Error while checking namespace deletion: " + err.Error())
+					}
+					time.Sleep(100 * time.Millisecond) // Wait before retrying
+				}
 			}
 
 			logger := zap.NewNop()
