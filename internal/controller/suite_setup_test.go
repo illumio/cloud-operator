@@ -7,13 +7,12 @@ import (
 	"testing"
 	"time"
 
-	testhelper "github.com/illumio/cloud-operator/internal/controller/testhelper"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+
+	testhelper "github.com/illumio/cloud-operator/internal/controller/testhelper"
 )
 
 type ControllerTestSuite struct {
@@ -68,20 +67,7 @@ func (suite *ControllerTestSuite) TearDownSuite() {
 }
 
 func (suite *ControllerTestSuite) SetupTest() {
-	// Delete the illumio-cloud namespace if it exists
-	var gracePeriod int64 = 0
-	err := suite.clientset.CoreV1().Namespaces().Delete(context.TODO(), "illumio-cloud", metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod})
-	if err != nil && !errors.IsNotFound(err) {
-		suite.T().Fatal("Failed to delete illumio-cloud namespace " + err.Error())
-	}
-	// Wait for the namespace to be fully deleted
-	for {
-		_, err := suite.clientset.CoreV1().Namespaces().Get(context.TODO(), "illumio-cloud", metav1.GetOptions{})
-		if errors.IsNotFound(err) {
-			break
-		}
-		time.Sleep(1 * time.Second)
-	}
+	suite.SynchronousDeleteNamespace("illumio-cloud", 10*time.Second)
 }
 
 // LogWriter is a writer that writes to a custom function
