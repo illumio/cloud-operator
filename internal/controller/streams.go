@@ -448,8 +448,8 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				continue
 			}
 
-			convertedStandardFlow, err := parsePodNetworkInfo(match[1])
-			if convertedStandardFlow == nil {
+			convertedFiveTupleFlow, err := parsePodNetworkInfo(match[1])
+			if convertedFiveTupleFlow == nil {
 				// If the event can't be parsed, consider that it's not a flow event and just ignore it.
 				// If the event has bad ports in any way ignore it.
 				// If the event has an incomplete L3/L4 layer lets just ignore it.
@@ -458,7 +458,7 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				logger.Error("Failed to parse Falco event into flow", zap.Error(err))
 				return err
 			}
-			err = sm.FlowCache.CacheFlow(ctx, convertedStandardFlow)
+			err = sm.FlowCache.CacheFlow(ctx, convertedFiveTupleFlow)
 			if err != nil {
 				logger.Error("Failed to cache flow", zap.Error(err))
 				return err
@@ -744,10 +744,10 @@ func (sm *streamManager) manageStream(
 }
 
 // determineFlowCollector determines the flow collector type and returns the flow collector type, stream function, and the corresponding done channel.
-func determineFlowCollector(ctx context.Context, logger *zap.Logger, sm *streamManager, envMap EnvironmentConfig) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
+func determineFlowCollector(ctx context.Context, logger *zap.Logger, sm *streamManager, envMap EnvironmentConfig, clientset *kubernetes.Clientset) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
 	if sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace) != nil {
 		return pb.FlowCollector_FLOW_COLLECTOR_CILIUM, sm.connectAndStreamCiliumNetworkFlows, make(chan struct{})
-	} else if sm.isOVNKDeployed(logger, envMap.OvnkNamespace) {
+	} else if sm.isOVNKDeployed(ctx, logger, envMap.OvnkNamespace, clientset) {
 		return pb.FlowCollector_FLOW_COLLECTOR_OVNK, sm.connectAndStreamOVNKNetworkFlows, make(chan struct{})
 	} else {
 		return pb.FlowCollector_FLOW_COLLECTOR_FALCO, sm.connectAndStreamFalcoNetworkFlows, make(chan struct{})
@@ -877,8 +877,14 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			ovnkDone := make(chan struct{})
 			falcoDone := make(chan struct{})
 			ciliumDone := make(chan struct{})
+			clientset, err := NewClientSet()
+			if err != nil {
+				logger.Error("Failed to create clientset", zap.Error(err))
+				authConContextCancel()
+				return
+			}
 
-			flowCollector, streamFunc, doneChannel := determineFlowCollector(ctx, logger, sm, envMap)
+			flowCollector, streamFunc, doneChannel := determineFlowCollector(ctx, logger, sm, envMap, clientset)
 			sm.streamClient.flowCollector = flowCollector
 
 			go sm.manageStream(

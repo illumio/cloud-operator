@@ -130,7 +130,7 @@ func TestSendNetworkFlowRequest(t *testing.T) {
 		assert.Equal(t, expected, mockStream.lastRequest)
 	})
 
-	t.Run("standard flow", func(t *testing.T) {
+	t.Run("five tuple flow", func(t *testing.T) {
 		flow := &pb.FiveTupleFlow{
 			Layer3: &pb.IP{
 				Source:      "10.0.0.1",

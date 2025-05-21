@@ -89,6 +89,7 @@ func main() {
 	bindEnv(logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
 	bindEnv(logger, "onboarding_client_secret", "ONBOARDING_CLIENT_SECRET")
 	bindEnv(logger, "onboarding_endpoint", "ONBOARDING_ENDPOINT")
+	bindEnv(logger, "ovnk_namespace", "OVNK_NAMESPACE")
 	bindEnv(logger, "ipfix_collector_port", "IPFIX_COLLECTOR_PORT")
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
@@ -100,12 +101,12 @@ func main() {
 	bindEnv(logger, "stream_success_period_connect", "STREAM_SUCCESS_PERIOD_CONNECT")
 	bindEnv(logger, "stream_success_period_auth", "STREAM_SUCCESS_PERIOD_AUTH")
 	bindEnv(logger, "https_proxy", "HTTPS_PROXY")
-	bindEnv(logger, "ovnk_namespace", "OVNK_NAMESPACE")
 
 	// Set default values
 	viper.SetDefault("cluster_creds", "clustercreds")
 	viper.SetDefault("cilium_namespace", "kube-system")
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
+	viper.SetDefault("ovnk_namespace", "openshift-ovn-kubernetes")
 	viper.SetDefault("ipfix_collector_port", ":4739")
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("tls_skip_verify", false)
@@ -117,7 +118,6 @@ func main() {
 	viper.SetDefault("stream_success_period_connect", defaultStreamSuccessPeriodConnect)
 	viper.SetDefault("stream_success_period_auth", defaultStreamSuccessPeriodAuth)
 	viper.SetDefault("https_proxy", "")
-	viper.SetDefault("ovnk_namespace", "openshift-ovn-kubernetes")
 
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),

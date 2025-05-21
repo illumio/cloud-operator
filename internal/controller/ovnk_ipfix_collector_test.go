@@ -42,7 +42,7 @@ func (suite *ControllerTestSuite) TestIsOVNKDeployed() {
 
 			logger := zap.NewNop()
 			sm := &streamManager{}
-			result := sm.isOVNKDeployed(logger, "openshift-ovn-kubernetes")
+			result := sm.isOVNKDeployed(context.TODO(), logger, "openshift-ovn-kubernetes", suite.clientset)
 			assert.Equal(suite.T(), tt.expectedResult, result)
 		})
 	}

@@ -53,7 +53,7 @@ func parseFalcoTimestamp(value string) (*timestamppb.Timestamp, error) {
 	return timestamppb.New(t), nil
 }
 
-// parsePodNetworkInfo parses the input string to extract network information into a StandardFlow message.
+// parsePodNetworkInfo parses the input string to extract network information into a FiveTupleFlow message.
 func parsePodNetworkInfo(input string) (*pb.FiveTupleFlow, error) {
 	var info FalcoEvent
 	// Regular expression to extract the key-value pairs from the input string
