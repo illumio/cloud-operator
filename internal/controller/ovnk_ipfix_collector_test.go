@@ -139,6 +139,37 @@ func TestParseIPv4Address(t *testing.T) {
 	}
 }
 
+func TestParseIPv6Address(t *testing.T) {
+	tests := map[string]struct {
+		input    []byte
+		expected string
+		err      bool
+	}{
+		"Valid IPv6 address": {
+			input:    []byte{0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01},
+			expected: "2001:db8::1",
+			err:      false,
+		},
+		"Invalid IPv6 address": {
+			input:    []byte{0x20, 0x01, 0x0d, 0xb8},
+			expected: "",
+			err:      true,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			result, err := parseIPv6Address(tt.input)
+			if tt.err {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
 func TestParsePort(t *testing.T) {
 	tests := map[string]struct {
 		input    []byte

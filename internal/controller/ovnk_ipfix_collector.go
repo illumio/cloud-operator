@@ -28,6 +28,7 @@ type OVNKFlow struct {
 	Protocol        string
 	IPVersion       string
 	StartTimestamp  *timestamppb.Timestamp
+	EndTimestamp    *timestamppb.Timestamp
 }
 
 // https://datatracker.ietf.org/doc/rfc7011/
@@ -60,7 +61,7 @@ func (sm *streamManager) startOVNKIPFIXCollector(ctx context.Context, logger *za
 
 	select {
 	case <-ctx.Done():
-		logger.Info("Context canceled in IPFIX collector")
+		logger.Info("Context canceled in OVN-K IPFIX collector")
 		return ctx.Err()
 	default:
 		logger.Debug("Listening on IPFIX port")
@@ -179,11 +180,22 @@ func (sm *streamManager) processIPFIXMessages(ctx context.Context, logger *zap.L
 
 // parseIPv4Address converts a byte slice into an IPv4 address string.
 // Returns an error if the slice is not the correct size.
-func parseIPv4Address(decodedValue []byte) (string, error) {
-	if len(decodedValue) < 4 {
+func parseIPv4Address(b []byte) (string, error) {
+	if len(b) < 4 {
 		return "", errors.New("insufficient data to parse IPv4 address")
 	}
-	ip := net.IPv4(decodedValue[0], decodedValue[1], decodedValue[2], decodedValue[3])
+	ip := net.IPv4(b[0], b[1], b[2], b[3])
+	return ip.String(), nil
+}
+
+func parseIPv6Address(b []byte) (string, error) {
+	if len(b) < 16 {
+		return "", errors.New("insufficient data to parse IPv6 address")
+	}
+	ip := net.IP(b)
+	if ip.To16() == nil {
+		return "", errors.New("invalid IPv6 address")
+	}
 	return ip.String(), nil
 }
 
@@ -254,6 +266,18 @@ func processDataRecord(dataRecord netflows.DataRecord, exportTime uint32) (OVNKF
 				return OVNKFlow{}, err
 			}
 			ovnkFlow.DestinationIP = destinationIP
+		case 27: // sourceIPv6Address
+			sourceIP, err := parseIPv6Address(field.Value.([]byte))
+			if err != nil {
+				return OVNKFlow{}, err
+			}
+			ovnkFlow.SourceIP = sourceIP
+		case 28: // destinationIPv6Address
+			destinationIP, err := parseIPv6Address(field.Value.([]byte))
+			if err != nil {
+				return OVNKFlow{}, err
+			}
+			ovnkFlow.DestinationIP = destinationIP
 		case 7: // sourcePort
 			sourcePort, err := parsePort(field.Value.([]byte))
 			if err != nil {
@@ -281,7 +305,9 @@ func processDataRecord(dataRecord netflows.DataRecord, exportTime uint32) (OVNKF
 		case 158: // flowStartDeltaMicroseconds
 			startTimeDelta := binary.BigEndian.Uint32(field.Value.([]byte))
 			ovnkFlow.StartTimestamp = timestamppb.New(time.Unix(int64(exportTime), 0).Add(-time.Duration(startTimeDelta) * time.Microsecond))
-			// Ignore unknown field types
+		case 159: // flowEndDeltaMicroseconds
+			endTimeDelta := binary.BigEndian.Uint32(field.Value.([]byte))
+			ovnkFlow.EndTimestamp = timestamppb.New(time.Unix(int64(exportTime), 0).Add(-time.Duration(endTimeDelta) * time.Microsecond))
 		}
 	}
 	return ovnkFlow, nil
