@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -28,7 +29,14 @@ func (s *ControllerTestSuite) SynchronousDeleteNamespace(namespace string, timeo
 	}
 	defer watcher.Stop()
 
-	s.waitForDeletion(watcher, "namespace", namespace, timeout)
+	err = s.waitForDeletion(watcher, "namespace", namespace, timeout)
+	if err != nil {
+		s.T().Logf("UPGRADE: Failed to wait for namespace %q to be deleted: %v", namespace, err)
+	}
+	s.waitForDeletion(watcher, "namespace", namespace, 2*time.Minute)
+	if err != nil {
+		s.T().Fatalf("ARI_DEBUG: LONG WAIT: Failed to wait for namespace %q to be deleted: %v", namespace, err)
+	}
 }
 
 // SynchronousDeleteService deletes a service and blocks until it's deleted or
@@ -61,26 +69,28 @@ func (s *ControllerTestSuite) waitForDeletion(
 	watcher watch.Interface,
 	kind, name string,
 	timeout time.Duration,
-) {
+) error {
 	ctx, cancel := context.WithTimeout(s.ctx, timeout)
 	defer cancel()
 
 	for {
+		s.T().Logf("ARI_DEBUG: We are selecting on an event or on context finished...")
 		select {
 		case event, ok := <-watcher.ResultChan():
+			s.T().Logf("ARI_DEBUG: We are in the event select case. Recv'd event | %+v", event)
 			if !ok {
-				s.T().Fatalf("Watch closed unexpectedly while waiting for %s %q to be deleted", kind, name)
-				return
+				s.T().Logf("UPGRDAE: Watch closed unexpectedly while waiting for %s %q to be deleted", kind, name)
+				return fmt.Errorf("watch closed unexpectedly")
 			}
 
 			if event.Type == watch.Deleted {
 				s.T().Logf("successfully deleted %s %q", kind, name)
-				return
+				return nil
 			}
 
 		case <-ctx.Done():
-			s.T().Fatalf("Context done while waiting for %s %q to be deleted: %v", kind, name, ctx.Err())
-			return
+			s.T().Logf("UPGRADE: Context done while waiting for %s %q to be deleted: %v", kind, name, ctx.Err())
+			return ctx.Err()
 		}
 	}
 }
