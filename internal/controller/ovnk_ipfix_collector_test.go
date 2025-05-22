@@ -70,7 +70,7 @@ func TestConvertProtocol(t *testing.T) {
 	}{
 		"ICMP protocol": {
 			input:    []byte{1},
-			expected: "icmpt",
+			expected: "icmp",
 			err:      false,
 		},
 		"TCP protocol": {

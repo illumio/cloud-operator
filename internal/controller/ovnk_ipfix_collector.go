@@ -60,10 +60,10 @@ func (sm *streamManager) startOVNKIPFIXCollector(ctx context.Context, logger *za
 	logger.Info("Starting OVN-K IPFIX collector")
 	logger.Debug("Listening on IPFIX port")
 	listener, err := net.ListenPacket(UDP, sm.streamClient.IPFIXCollectorPort)
-	defer listener.Close()
 	if err != nil {
 		logger.Fatal("Failed to listen on IPFIX port", zap.Error(err))
 	}
+	defer listener.Close()
 
 	logger.Info("OVN-K IPFIX collector listening")
 	templateSystem, err := newTemplateSystem(logger)
