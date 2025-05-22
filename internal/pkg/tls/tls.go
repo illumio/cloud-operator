@@ -26,8 +26,8 @@ import (
 	"crypto/tls"
 	"net"
 
-	"github.com/illumio/cloud-operator/internal/tls/spiffe"
-	"github.com/illumio/cloud-operator/internal/tls/syscallconn"
+	"github.com/illumio/cloud-operator/internal/pkg/tls/spiffe"
+	"github.com/illumio/cloud-operator/internal/pkg/tls/syscallconn"
 	"go.uber.org/zap"
 	"golang.org/x/net/http2"
 	"google.golang.org/grpc/credentials"

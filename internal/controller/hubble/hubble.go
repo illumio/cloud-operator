@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 
-	exp_credentials "github.com/illumio/cloud-operator/internal/tls"
+	exp_credentials "github.com/illumio/cloud-operator/internal/pkg/tls"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/credentials"
 	v1 "k8s.io/api/core/v1"
@@ -19,19 +19,19 @@ import (
 )
 
 const (
-	hubbleRelayExpectedServerName        = "ui.hubble-relay.cilium.io"
-	ciliumHubbleRelayServiceName  string = "hubble-relay"
+	ciliumHubbleRelayExpectedServerName = "ui.hubble-relay.cilium.io"
+	ciliumHubbleRelayServiceName        = "hubble-relay"
 )
 
 var (
 	ErrCertDataMissingInSecret = errors.New("required certificate data (ca.crt, tls.crt, or tls.key) not found in secret")
-	ErrHubbleNotFound          = errors.New("hubble Relay service not found; disabling Cilium flow collection")
-	ErrNoPortsAvailable        = errors.New("hubble Relay service has no ports; disabling Cilium flow collection")
+	ErrHubbleNotFound          = errors.New("Cilium Hubble Relay service not found; disabling Cilium flow collection")
+	ErrNoPortsAvailable        = errors.New("Cilium Hubble Relay service has no ports; disabling Cilium flow collection")
 )
 
-// getHubbleMTLSCertificatesFromSecret fetches ca.crt, tls.crt (client cert), and tls.key (client key)
+// getMTLSCertificatesFromSecret fetches ca.crt, tls.crt (client cert), and tls.key (client key)
 // from the specified Kubernetes secret.
-func getHubbleMTLSCertificatesFromSecret(
+func getMTLSCertificatesFromSecret(
 	ctx context.Context,
 	clientset kubernetes.Interface,
 	logger *zap.Logger,
@@ -70,7 +70,7 @@ func getHubbleMTLSCertificatesFromSecret(
 }
 
 // loadMTLSCredentialsFromData loads mTLS credentials from byte slice.
-func loadMTLSCredentialsFromData(logger *zap.Logger, aksManaged bool, caCertData, clientCertData, clientKeyData []byte) (credentials.TransportCredentials, error) {
+func loadMTLSCredentialsFromData(logger *zap.Logger, disableALPN bool, caCertData, clientCertData, clientKeyData []byte) (credentials.TransportCredentials, error) {
 	// Validate PEM data
 	if !isValidPEM(caCertData) || !isValidPEM(clientCertData) || !isValidPEM(clientKeyData) {
 		return nil, errors.New("invalid PEM data: ensure proper headers and formatting")
@@ -91,7 +91,7 @@ func loadMTLSCredentialsFromData(logger *zap.Logger, aksManaged bool, caCertData
 	logger.Debug("CA certificate appended to pool from data.")
 
 	tlsConfig := &tls.Config{
-		ServerName:         hubbleRelayExpectedServerName,
+		ServerName:         ciliumHubbleRelayExpectedServerName,
 		Certificates:       []tls.Certificate{cert},
 		RootCAs:            certPool,
 		InsecureSkipVerify: false,
@@ -99,19 +99,19 @@ func loadMTLSCredentialsFromData(logger *zap.Logger, aksManaged bool, caCertData
 	}
 
 	var cred credentials.TransportCredentials
-	if aksManaged {
-		logger.Debug("AKS Managed: Using experimental NewTLSWithALPNDisabled")
+	if disableALPN {
+		logger.Info("Disabling ALPN for MTLS connections to Cilium Hubble Relay")
 		cred = exp_credentials.NewTLSWithALPNDisabled(tlsConfig, logger)
 	}
 
 	return cred, nil
 }
 
-// GetHubbleTransportCredentials read TLS transport credentials to connect to Hubble from the given Secret.
-func GetHubbleCTransportCredentials(ctx context.Context, clientset kubernetes.Interface,
-	logger *zap.Logger, secretName, namespace string, isAKSManaged bool) (credentials.TransportCredentials, error) {
+// GetTransportCredentials read TLS transport credentials to connect to Hubble from the given Secret.
+func GetTransportCredentials(ctx context.Context, clientset kubernetes.Interface,
+	logger *zap.Logger, secretName, namespace string, disableALPN bool) (credentials.TransportCredentials, error) {
 	// Fetch mTLS certificates
-	caData, clientCertData, clientKeyData, fetchErr := getHubbleMTLSCertificatesFromSecret(
+	caData, clientCertData, clientKeyData, fetchErr := getMTLSCertificatesFromSecret(
 		ctx, clientset, logger, secretName, namespace,
 	)
 	if fetchErr != nil {
@@ -119,7 +119,7 @@ func GetHubbleCTransportCredentials(ctx context.Context, clientset kubernetes.In
 	}
 
 	// Load credentials
-	creds, loadErr := loadMTLSCredentialsFromData(logger, isAKSManaged, caData, clientCertData, clientKeyData)
+	creds, loadErr := loadMTLSCredentialsFromData(logger, disableALPN, caData, clientCertData, clientKeyData)
 	if loadErr != nil {
 		return nil, fmt.Errorf("failed to load mTLS credentials: %w", loadErr)
 	}
@@ -133,7 +133,7 @@ func isValidPEM(data []byte) bool {
 	return block != nil
 }
 
-// DiscoverCiliumHubbleRelayAddress uses a kubernetes clientset in order to discover the address of the hubble-relay se…
+// DiscoverCiliumHubbleRelay uses a kubernetes clientset in order to discover the address of the hubble-relay service.
 func DiscoverCiliumHubbleRelay(ctx context.Context, ciliumNamespace string, clientset kubernetes.Interface) (*v1.Service, error) {
 	service, err := clientset.CoreV1().Services(ciliumNamespace).Get(ctx, ciliumHubbleRelayServiceName, metav1.GetOptions{})
 	if err != nil {
@@ -143,8 +143,8 @@ func DiscoverCiliumHubbleRelay(ctx context.Context, ciliumNamespace string, clie
 	return service, nil
 }
 
-// GetHubbleRelayAddress returns the address of the hubble-relay service to connect a gRPC client to.
-func GetHubbleRelayAddress(service *v1.Service) (string, error) {
+// GetAddressFromService returns the address of the given service to connect a gRPC client to.
+func GetAddressFromService(service *v1.Service) (string, error) {
 	if len(service.Spec.Ports) == 0 {
 		return "", ErrNoPortsAvailable
 	}

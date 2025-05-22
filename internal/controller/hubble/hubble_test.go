@@ -97,7 +97,7 @@ func (suite *HubbleSuite) TestFetchAndLoadMTLSCredentials() {
 				Data: tt.secretData,
 			})
 
-			creds, err := GetHubbleCTransportCredentials(ctx, clientset, logger, "hubble-relay-client-certs", "kube-system", true)
+			creds, err := GetTransportCredentials(ctx, clientset, logger, "hubble-relay-client-certs", "kube-system", true)
 
 			if tt.expectedErr != nil {
 				suite.ErrorIs(err, tt.expectedErr)
@@ -162,7 +162,7 @@ func (suite *HubbleSuite) TestGetHubbleMTLSCertificatesFromSecret() {
 				Data: tt.secretData,
 			})
 
-			caData, clientCertData, clientKeyData, err := getHubbleMTLSCertificatesFromSecret(ctx, clientset, logger, "hubble-relay-client-certs", "kube-system")
+			caData, clientCertData, clientKeyData, err := getMTLSCertificatesFromSecret(ctx, clientset, logger, "hubble-relay-client-certs", "kube-system")
 
 			if tt.expectedErr != nil {
 				suite.ErrorIs(err, tt.expectedErr)
@@ -205,7 +205,7 @@ func (suite *HubbleSuite) TestGetHubbleMTLSCertificatesFromSecret_MissingData() 
 		},
 	})
 
-	_, _, _, err := getHubbleMTLSCertificatesFromSecret(ctx, clientset, logger, "hubble-relay-client-certs", "kube-system")
+	_, _, _, err := getMTLSCertificatesFromSecret(ctx, clientset, logger, "hubble-relay-client-certs", "kube-system")
 	suite.Error(err)
 	suite.ErrorIs(err, ErrCertDataMissingInSecret)
 }
@@ -436,7 +436,7 @@ func TestGetHubbleRelayAddress(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			addr, err := GetHubbleRelayAddress(tt.service)
+			addr, err := GetAddressFromService(tt.service)
 
 			assert.Equal(t, tt.expectedAddr, addr)
 
