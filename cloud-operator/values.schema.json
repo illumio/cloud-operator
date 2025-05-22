@@ -26,6 +26,9 @@
                 "httpsProxy": {
                     "type": "string"
                 },
+                "ipfixCollectorPort": {
+                    "type": "integer"
+                },
                 "onboardingEndpoint": {
                     "type": "string"
                 },
@@ -144,6 +147,14 @@
             },
             "type": "object"
         },
+        "openshift": {
+            "properties": {
+                "ovnk_namespace": {
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
         "priorityClassName": {
             "type": "string"
         },
@@ -173,6 +184,14 @@
                         }
                     },
                     "type": "object"
+                }
+            },
+            "type": "object"
+        },
+        "service": {
+            "properties": {
+                "clusterIP": {
+                    "type": "string"
                 }
             },
             "type": "object"

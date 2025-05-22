@@ -52,6 +52,7 @@ spec:
           ports:
             - containerPort: 8080
             - containerPort: 5000
+            - containerPort: 4739
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: CLUSTER_CREDS_SECRET
@@ -90,13 +91,22 @@ spec:
               value: "{{ .Values.env.streamSuccessPeriods.auth }}"
             - name: HTTPS_PROXY
               value: "{{ .Values.env.httpsProxy | default "" }}"
+            - name: OVNK_NAMESPACE
+              value: "{{ .Values.openshift.ovnk_namespace }}"
+            - name: IPFIX_COLLECTOR_PORT
+              value: "{{ .Values.env.ipfixCollectorPort }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             - name: gops-volume
               mountPath: /var/run/gops
+            - name: ipfix-template-sets
+              mountPath: /ipfix-template-sets
       volumes:
         - name: gops-volume
           emptyDir:
             medium: Memory
             sizeLimit: 10Mi
+        - name: ipfix-template-sets
+          configMap:
+            name: ipfix-template-sets
