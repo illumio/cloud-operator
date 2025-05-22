@@ -26,6 +26,9 @@
                 "httpsProxy": {
                     "type": "string"
                 },
+                "ipfixCollectorPort": {
+                    "type": "integer"
+                },
                 "onboardingEndpoint": {
                     "type": "string"
                 },
