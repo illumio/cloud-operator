@@ -78,9 +78,9 @@ func parsePodNetworkInfo(input string) (*pb.FiveTupleFlow, error) {
 			case "dstport":
 				info.DstPort = value
 			case "proto":
-				info.Proto = TCP
+				info.Proto = value
 			case "ipversion":
-				info.IpVersion = IPv4
+				info.IpVersion = value
 			}
 		}
 	}
