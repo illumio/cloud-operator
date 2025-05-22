@@ -95,7 +95,7 @@ tests:
           value: "OVNK_NAMESPACE"
       - equal:
           path: spec.template.spec.containers[0].env[14].value
-          value: "ovnk-system"
+          value: "openshift-ovn-kubernetes"
       - equal:
           path: spec.template.spec.containers[0].env[15].name
           value: "IPFIX_COLLECTOR_PORT"
