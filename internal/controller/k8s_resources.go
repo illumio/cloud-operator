@@ -12,12 +12,12 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/client-go/kubernetes"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 )
 
 // convertObjectToMetadata extracts the ObjectMeta from a metav1.Object interface.
@@ -93,6 +93,12 @@ func convertMetaObjectToMetadata(logger *zap.Logger, ctx context.Context, obj me
 			return objMetadata, nil
 		}
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: convertPodIPsToStrings(podIPS)}}
+	case "NetworkPolicy":
+		networkPolicy, err := getContentsOfNetworkPolicy(ctx, obj.GetName(), clientset, obj.GetNamespace())
+		if err != nil {
+			return objMetadata, nil
+		}
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_NetworkPolicy{NetworkPolicy: networkPolicy}
 	case "Node":
 		providerId, err := getProviderIdNodeSpec(ctx, clientset, obj.GetName())
 		if err != nil {
@@ -111,6 +117,42 @@ func convertMetaObjectToMetadata(logger *zap.Logger, ctx context.Context, obj me
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Service{Service: convertedServiceData}
 	}
 	return objMetadata, nil
+}
+
+// getContentsOfNetworkPolicy gets the contents of a NetworkPolicy and returns it as a KubernetesNetworkPolicyData proto message
+func getContentsOfNetworkPolicy(ctx context.Context, s1 string, clientset *kubernetes.Clientset, s2 string) (*pb.KubernetesNetworkPolicyData, error) {
+	networkPolicy, err := clientset.NetworkingV1().NetworkPolicies(s2).Get(ctx, s1, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	convertedNetworkPolicyData, err := convertNetworkPolicyToProto(networkPolicy)
+	if err != nil {
+		return nil, err
+	}
+	return convertedNetworkPolicyData, nil
+}
+
+func convertNetworkPolicyToProto(networkPolicy *networkingv1.NetworkPolicy) (*pb.KubernetesNetworkPolicyData, error) {
+	if networkPolicy == nil {
+		return nil, errors.New("networkPolicy is nil")
+	}
+	networkPolicyData := &pb.KubernetesNetworkPolicyData{
+		PolicyTypes: convertPolicyTypesToProto(networkPolicy.Spec.PolicyTypes),
+		PodSelector: &pb.KubernetesNetworkPolicyData_PodSelector{
+			MatchLabels: networkPolicy.Spec.PodSelector.MatchLabels,
+		},
+		IngressRules: networkPolicy.Spec.Ingress,
+		EgressRules:  networkPolicy.Spec.Egress,
+	}
+	return networkPolicyData, nil
+}
+
+func convertPolicyTypesToProto(policyType []networkingv1.PolicyType) []string {
+	policyTypes := []string{}
+	for _, policyType := range policyType {
+		policyTypes = append(policyTypes, string(policyType))
+	}
+	return policyTypes
 }
 
 // getNodeIpAddresses fetches the IP addresses of a node

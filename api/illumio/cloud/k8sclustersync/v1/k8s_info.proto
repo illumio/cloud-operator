@@ -44,6 +44,7 @@ message KubernetesObjectData {
     KubernetesPodData pod = 100;
     KubernetesNodeData node = 101;
     KubernetesServiceData service = 102;
+    KubernetesNetworkPolicyData network_policy = 103;
   }
 }
 
@@ -85,6 +86,48 @@ message KubernetesNodeData {
 // A Pod may be allocated at most 1 value for each of IPv4 and IPv6. This list is empty if no IPs have been allocated yet.
 message KubernetesPodData {
   repeated string ip_addresses = 1;
+}
+
+message KubernetesNetworkPolicyData {
+  // Specification of the NetworkPolicy.
+  repeated string policy_types = 1; // E.g., "Ingress", "Egress"
+  PodSelector pod_selector = 2;
+  repeated NetworkPolicyRule ingress_rules = 3;
+  repeated NetworkPolicyRule egress_rules = 4;
+
+  // PodSelector defines the pods targeted by the policy.
+  message PodSelector {
+    map<string, string> match_labels = 1;
+  }
+
+  // NetworkPolicyRule defines a single ingress or egress rule.
+  message NetworkPolicyRule {
+    repeated IPBlock ip_blocks = 1;
+    repeated Peer peers = 2;
+    repeated Port ports = 3;
+
+    // IPBlock defines a CIDR block and exceptions.
+    message IPBlock {
+      string cidr = 1;
+      repeated string except = 2;
+    }
+
+    // Peer defines a network peer (pod or namespace selector).
+    message Peer {
+      PodSelector pod_selector = 1;
+      NamespaceSelector namespace_selector = 2;
+
+      message NamespaceSelector {
+        map<string, string> match_labels = 1;
+      }
+    }
+
+    // Port defines a network port.
+    message Port {
+      string protocol = 1; // E.g., "TCP", "UDP"
+      uint32 port = 2;
+    }
+  }
 }
 
 // Information identifying an object owning a Kubernetes resource.
