@@ -41,7 +41,6 @@ type streamClient struct {
 	conn               *grpc.ClientConn
 	client             pb.KubernetesInfoServiceClient
 	falcoEventChan     chan string
-	ovnkEventChan      chan []byte
 	IPFIXCollectorPort string
 	flowCollector      pb.FlowCollector
 	logStream          pb.KubernetesInfoService_SendLogsClient
@@ -94,7 +93,7 @@ type EnvironmentConfig struct {
 	// Port for the IPFIX collector
 	IPFIXCollectorPort string
 	// Namespace of OVN-Kubernetes
-	OvnkNamespace string
+	OVNKNamespace string
 	// URL of the token endpoint.
 	TokenEndpoint string
 	// Whether to skip TLS certificate verification when starting a stream.
@@ -747,7 +746,7 @@ func (sm *streamManager) manageStream(
 func determineFlowCollector(ctx context.Context, logger *zap.Logger, sm *streamManager, envMap EnvironmentConfig, clientset *kubernetes.Clientset) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
 	if sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace) != nil {
 		return pb.FlowCollector_FLOW_COLLECTOR_CILIUM, sm.connectAndStreamCiliumNetworkFlows, make(chan struct{})
-	} else if sm.isOVNKDeployed(ctx, logger, envMap.OvnkNamespace, clientset) {
+	} else if sm.isOVNKDeployed(ctx, logger, envMap.OVNKNamespace, clientset) {
 		return pb.FlowCollector_FLOW_COLLECTOR_OVNK, sm.connectAndStreamOVNKNetworkFlows, make(chan struct{})
 	} else {
 		return pb.FlowCollector_FLOW_COLLECTOR_FALCO, sm.connectAndStreamFalcoNetworkFlows, make(chan struct{})
@@ -821,7 +820,6 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				client:             client,
 				ciliumNamespace:    envMap.CiliumNamespace,
 				falcoEventChan:     falcoEventChan,
-				ovnkEventChan:      make(chan []byte),
 				IPFIXCollectorPort: envMap.IPFIXCollectorPort,
 			}
 

@@ -91,6 +91,10 @@ spec:
               value: "{{ .Values.env.streamSuccessPeriods.auth }}"
             - name: HTTPS_PROXY
               value: "{{ .Values.env.httpsProxy | default "" }}"
+            - name: OVNK_NAMESPACE
+              value: "{{ .Values.env.openshift.ovnk_namespace }}"
+            - name: IPFIX_COLLECTOR_PORT
+              value: "{{ .Values.env.ipfixCollectorPort }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

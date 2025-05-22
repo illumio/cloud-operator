@@ -58,61 +58,53 @@ func (sm *streamManager) startOVNKIPFIXCollector(ctx context.Context, logger *za
 		zap.String("address", sm.streamClient.IPFIXCollectorPort),
 	)
 	logger.Info("Starting OVN-K IPFIX collector")
-
-	select {
-	case <-ctx.Done():
-		logger.Info("Context canceled in OVN-K IPFIX collector")
-		return ctx.Err()
-	default:
-		logger.Debug("Listening on IPFIX port")
-		listener, err := net.ListenPacket("udp", sm.streamClient.IPFIXCollectorPort)
-		if err != nil {
-			logger.Fatal("Failed to listen on IPFIX port", zap.Error(err))
-		}
-
-		logger.Info("OVN-K IPFIX collector listening")
-		templateSystem, err := createTemplateSystem(logger)
-		if err != nil {
-			logger.Error("Failed to create template set", zap.Error(err))
-			return err
-		}
-
-		// Start a goroutine for blocking reads
-		go func() {
-			buf := make([]byte, ipfixMessageMaxLength)
-			for {
-				select {
-				case <-ctx.Done():
-					logger.Info("Context canceled in OVN-K IPFIX collector")
-					return
-				default:
-				}
-				n, _, err := listener.ReadFrom(buf)
-				if err != nil {
-					logger.Error("Failed to read from OVN-K listener", zap.Error(err))
-					return
-				}
-
-				err = sm.processIPFIXMessages(ctx, logger, buf[:n], templateSystem)
-				if err != nil {
-					logger.Error("Failed to process IPFIX message", zap.Error(err))
-					return
-				}
-			}
-		}()
-
-		// Wait for context cancellation
-		<-ctx.Done()
-		logger.Info("Context canceled in OVN-K IPFIX collector")
-		listener.Close()
-		return ctx.Err()
+	logger.Debug("Listening on IPFIX port")
+	listener, err := net.ListenPacket(UDP, sm.streamClient.IPFIXCollectorPort)
+	defer listener.Close()
+	if err != nil {
+		logger.Fatal("Failed to listen on IPFIX port", zap.Error(err))
 	}
+
+	logger.Info("OVN-K IPFIX collector listening")
+	templateSystem, err := newTemplateSystem(logger)
+	if err != nil {
+		logger.Error("Failed to create template set", zap.Error(err))
+		return err
+	}
+
+	// Start a goroutine for blocking reads
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				logger.Info("Context canceled in OVN-K IPFIX collector")
+				return
+			default:
+			}
+			buf := make([]byte, ipfixMessageMaxLength)
+			n, _, err := listener.ReadFrom(buf)
+			if err != nil {
+				logger.Error("Failed to read from OVN-K listener", zap.Error(err))
+				return
+			}
+			err = sm.processIPFIXMessage(ctx, logger, buf[:n], templateSystem)
+			if err != nil {
+				logger.Error("Failed to process IPFIX message", zap.Error(err))
+				return
+			}
+		}
+	}()
+
+	// Wait for context cancellation
+	<-ctx.Done()
+	logger.Info("Context canceled in OVN-K IPFIX collector")
+	return ctx.Err()
 }
 
-// createTemplateSystem creates a template system for IPFIX messages.
+// newTemplateSystem creates a template system for IPFIX message.
 // It reads the template set from a binary file and adds it to the template system.
-func createTemplateSystem(logger *zap.Logger) (*netflows.BasicTemplateSystem, error) {
-	// This segment of code is used to decode the template set and add it to the template system
+func newTemplateSystem(logger *zap.Logger) (*netflows.BasicTemplateSystem, error) {
+	// Decode the template set and add it to the template system
 	templateSystem := netflows.CreateTemplateSystem()
 	packet, err := os.ReadFile("/ipfix-template-sets/openvswitch.bin")
 	if err != nil {
@@ -128,52 +120,52 @@ func createTemplateSystem(logger *zap.Logger) (*netflows.BasicTemplateSystem, er
 	return templateSystem, nil
 }
 
-// processIPFIXMessages decodes and processes a single IPFIX packet.
+// processIPFIXMessage decodes and processes a single IPFIX packet.
 // Extracts data records, converts them into FiveTupleFlow objects, and caches them.
-func (sm *streamManager) processIPFIXMessages(ctx context.Context, logger *zap.Logger, packet []byte, templateSystem *netflows.BasicTemplateSystem) error {
+func (sm *streamManager) processIPFIXMessage(ctx context.Context, logger *zap.Logger, packet []byte, templateSystem *netflows.BasicTemplateSystem) error {
 	decodedMessage, err := netflows.DecodeMessage(bytes.NewBuffer(packet), templateSystem)
 	if err != nil {
 		return err
 	}
 
 	ipFixPacket, ok := decodedMessage.(netflows.IPFIXPacket)
-	if ok {
-		for _, flowSet := range ipFixPacket.FlowSets {
-			switch flowSet := flowSet.(type) {
-			case netflows.DataFlowSet:
-				for _, dataRecord := range flowSet.Records {
-					ovnkFlow, err := processDataRecord(dataRecord, ipFixPacket.ExportTime)
-					if err != nil {
-						logger.Debug("Skipping data record due to parsing error", zap.Error(err))
-						continue
-					}
-					layer3Message, err := createLayer3Message(ovnkFlow.SourceIP, ovnkFlow.DestinationIP, ovnkFlow.IPVersion)
-					if err != nil {
-						logger.Debug("Failed to create layer3 message from OVN-K flow", zap.Error(err))
-						continue
-					}
-					layer4Message, err := createLayer4Message(ovnkFlow.Protocol, uint32(ovnkFlow.SourcePort), uint32(ovnkFlow.DestinationPort), ovnkFlow.IPVersion)
-					if err != nil {
-						logger.Debug("Failed to create layer4 message from OVN-K flow", zap.Error(err))
-						continue
-					}
-					convertOvnkFlow := &pb.FiveTupleFlow{
-						Layer3: layer3Message,
-						Layer4: layer4Message,
-						Ts: &pb.FiveTupleFlow_Timestamp{
-							Timestamp: ovnkFlow.StartTimestamp,
-						},
-					}
-					err = sm.FlowCache.CacheFlow(ctx, convertOvnkFlow)
-					if err != nil {
-						logger.Error("Failed to cache flow from OVN-K flow", zap.Error(err))
-						return err
-					}
+	if !ok {
+		logger.Debug("Received a message that is not an IPFIX packet")
+		return nil
+	}
+	for _, flowSet := range ipFixPacket.FlowSets {
+		switch flowSet := flowSet.(type) {
+		case netflows.DataFlowSet:
+			for _, dataRecord := range flowSet.Records {
+				ovnkFlow, err := processDataRecord(dataRecord, ipFixPacket.ExportTime)
+				if err != nil {
+					logger.Debug("Skipping data record due to parsing error", zap.Error(err))
+					continue
+				}
+				layer3Message, err := createLayer3Message(ovnkFlow.SourceIP, ovnkFlow.DestinationIP, ovnkFlow.IPVersion)
+				if err != nil {
+					logger.Debug("Failed to create layer3 message from OVN-K flow", zap.Error(err))
+					continue
+				}
+				layer4Message, err := createLayer4Message(ovnkFlow.Protocol, uint32(ovnkFlow.SourcePort), uint32(ovnkFlow.DestinationPort), ovnkFlow.IPVersion)
+				if err != nil {
+					logger.Debug("Failed to create layer4 message from OVN-K flow", zap.Error(err))
+					continue
+				}
+				convertOvnkFlow := &pb.FiveTupleFlow{
+					Layer3: layer3Message,
+					Layer4: layer4Message,
+					Ts: &pb.FiveTupleFlow_Timestamp{
+						Timestamp: ovnkFlow.StartTimestamp,
+					},
+				}
+				err = sm.FlowCache.CacheFlow(ctx, convertOvnkFlow)
+				if err != nil {
+					logger.Error("Failed to cache flow from OVN-K", zap.Error(err))
+					return err
 				}
 			}
 		}
-	} else {
-		logger.Debug("Received a message that is not an IPFIX packet")
 	}
 	return nil
 }
@@ -188,6 +180,8 @@ func parseIPv4Address(b []byte) (string, error) {
 	return ip.String(), nil
 }
 
+// parseIPv6Address converts a byte slice into an IPv6 address string.
+// Returns an error if the slice is not the correct size.
 func parseIPv6Address(b []byte) (string, error) {
 	if len(b) < 16 {
 		return "", errors.New("insufficient data to parse IPv6 address")
@@ -218,13 +212,13 @@ func parseProtocol(decodedValue []byte) (string, error) {
 	protocol := uint8(decodedValue[0])
 	switch protocol {
 	case 1:
-		return "icmpt", nil
+		return ICMP, nil
 	case 6:
-		return "tcp", nil
+		return TCP, nil
 	case 17:
-		return "udp", nil
+		return UDP, nil
 	case 132:
-		return "sctp", nil
+		return SCTP, nil
 	default:
 		return "", errors.New("unknown protocol")
 	}
@@ -240,9 +234,9 @@ func parseIPVersion(decodedValue []byte) (string, error) {
 	ipVersion := uint8(decodedValue[0])
 	switch ipVersion {
 	case 4:
-		return "ipv4", nil
+		return IPv4, nil
 	case 6:
-		return "ipv6", nil
+		return IPv6, nil
 	default:
 		return "", errors.New("unknown IP version")
 	}

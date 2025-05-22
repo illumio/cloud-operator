@@ -90,6 +90,18 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[13].value
           value: ""
+      - equal:
+          path: spec.template.spec.containers[0].env[14].name
+          value: "OVNK_NAMESPACE"
+      - equal:
+          path: spec.template.spec.containers[0].env[14].value
+          value: "ovnk-system"
+      - equal:
+          path: spec.template.spec.containers[0].env[15].name
+          value: "IPFIX_COLLECTOR_PORT"
+      - equal:
+          path: spec.template.spec.containers[0].env[15].value
+          value: "4739"
 
   # Test for replicaCount value
   - it: should set the correct number of replicas

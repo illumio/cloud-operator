@@ -86,11 +86,12 @@ func main() {
 	// Bind specific environment variables to keys
 	bindEnv(logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
 	bindEnv(logger, "cilium_namespace", "CILIUM_NAMESPACE")
+	bindEnv(logger, "https_proxy", "HTTPS_PROXY")
+	bindEnv(logger, "ipfix_collector_port", "IPFIX_COLLECTOR_PORT")
 	bindEnv(logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
 	bindEnv(logger, "onboarding_client_secret", "ONBOARDING_CLIENT_SECRET")
 	bindEnv(logger, "onboarding_endpoint", "ONBOARDING_ENDPOINT")
 	bindEnv(logger, "ovnk_namespace", "OVNK_NAMESPACE")
-	bindEnv(logger, "ipfix_collector_port", "IPFIX_COLLECTOR_PORT")
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
 	bindEnv(logger, "stream_keepalive_period_kubernetes_resources", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES")
@@ -100,14 +101,14 @@ func main() {
 	bindEnv(logger, "pod_namespace", "POD_NAMESPACE")
 	bindEnv(logger, "stream_success_period_connect", "STREAM_SUCCESS_PERIOD_CONNECT")
 	bindEnv(logger, "stream_success_period_auth", "STREAM_SUCCESS_PERIOD_AUTH")
-	bindEnv(logger, "https_proxy", "HTTPS_PROXY")
 
 	// Set default values
 	viper.SetDefault("cluster_creds", "clustercreds")
 	viper.SetDefault("cilium_namespace", "kube-system")
+	viper.SetDefault("https_proxy", "")
+	viper.SetDefault("ipfix_collector_port", ":4739")
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
 	viper.SetDefault("ovnk_namespace", "openshift-ovn-kubernetes")
-	viper.SetDefault("ipfix_collector_port", ":4739")
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("tls_skip_verify", false)
 	viper.SetDefault("stream_keepalive_period_kubernetes_resources", defaultStreamKeepalivePeriodKubernetesResources)
@@ -117,15 +118,16 @@ func main() {
 	viper.SetDefault("pod_namespace", defaultPodNamespace)
 	viper.SetDefault("stream_success_period_connect", defaultStreamSuccessPeriodConnect)
 	viper.SetDefault("stream_success_period_auth", defaultStreamSuccessPeriodAuth)
-	viper.SetDefault("https_proxy", "")
 
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),
 		CiliumNamespace:        viper.GetString("cilium_namespace"),
+		HttpsProxy:             viper.GetString("https_proxy"),
+		IPFIXCollectorPort:     viper.GetString("ipfix_collector_port"),
 		OnboardingClientId:     viper.GetString("onboarding_client_id"),
 		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
 		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
-		IPFIXCollectorPort:     viper.GetString("ipfix_collector_port"),
+		OVNKNamespace:          viper.GetString("ovnk_namespace"),
 		TokenEndpoint:          viper.GetString("token_endpoint"),
 		TlsSkipVerify:          viper.GetBool("tls_skip_verify"),
 		KeepalivePeriods: controller.KeepalivePeriods{
@@ -139,16 +141,15 @@ func main() {
 			Connect: viper.GetDuration("stream_success_period_connect"),
 			Auth:    viper.GetDuration("stream_success_period_auth"),
 		},
-		HttpsProxy:    viper.GetString("https_proxy"),
-		OvnkNamespace: viper.GetString("ovnk_namespace"),
 	}
 
 	logger.Info("Starting application",
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
 		zap.String("cilium_namespace", envConfig.CiliumNamespace),
+		zap.String("https_proxy", envConfig.HttpsProxy),
 		zap.String("onboarding_client_id", envConfig.OnboardingClientId),
 		zap.String("onboarding_endpoint", envConfig.OnboardingEndpoint),
-		zap.String("ovnk_namespace", envConfig.OvnkNamespace),
+		zap.String("ovnk_namespace", envConfig.OVNKNamespace),
 		zap.String("ipfix_collector_port", envConfig.IPFIXCollectorPort),
 		zap.String("token_endpoint", envConfig.TokenEndpoint),
 		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
@@ -159,7 +160,6 @@ func main() {
 		zap.String("pod_namespace", envConfig.PodNamespace),
 		zap.Duration("stream_success_period_connect", envConfig.StreamSuccessPeriod.Connect),
 		zap.Duration("stream_success_period_auth", envConfig.StreamSuccessPeriod.Auth),
-		zap.String("https_proxy", envConfig.HttpsProxy),
 	)
 
 	// Start the gops agent
