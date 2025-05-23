@@ -274,15 +274,11 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 
 		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger, apiGroup)
 		if err != nil {
-<<<<<<< HEAD
-			resourceManager.logger.Error("Failed to list resource", zap.Error(err))
-=======
 			if strings.Contains(err.Error(), "access forbidden") {
 				logger.Info("Access forbidden for resource", zap.String("resource", resource), zap.String("apiGroup", apiGroup), zap.Error(err))
 				continue
 			}
-			resourceLister.logger.Error("Failed to list resource", zap.String("resource", resource), zap.Error(err))
->>>>>>> 20e3575 (Added graceful error handling in FetchResources function)
+			logger.Error("Failed to list resource", zap.String("resource", resource), zap.Error(err))
 			return err
 		}
 
