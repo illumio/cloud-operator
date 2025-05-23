@@ -235,6 +235,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 	//This builds resourceAPIGroupMap from Kubernetes API
 	resourceAPIGroupMap, err = sm.buildResourceApiGroupMap(resources, clientset, logger)
 	if err != nil {
+		logger.Error("Failed to build resource api group map", zap.Error(err))
 		return err
 	}
 
@@ -275,7 +276,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger, apiGroup)
 		if err != nil {
 			if strings.Contains(err.Error(), "access forbidden") {
-				logger.Info("Access forbidden for resource", zap.String("resource", resource), zap.String("apiGroup", apiGroup), zap.Error(err))
+				logger.Debug("Access forbidden for resource", zap.String("resource", resource), zap.String("apiGroup", apiGroup), zap.Error(err))
 				continue
 			}
 			logger.Error("Failed to list resource", zap.String("resource", resource), zap.Error(err))
