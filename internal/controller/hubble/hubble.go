@@ -167,7 +167,7 @@ func ConnectToHubbleRelay(ctx context.Context, logger *zap.Logger, hubbleAddress
 	var creds credentials.TransportCredentials
 
 	if tlsConfig != nil {
-		logger.Info("Attempting mTLS connection to Cilium Hubble Relay", zap.String("address", hubbleAddress))
+		logger.Debug("Attempting mTLS connection to Cilium Hubble Relay", zap.String("address", hubbleAddress))
 		if disableALPN {
 			logger.Info("Disabling ALPN for mTLS connection")
 			creds = exp_credentials.NewTLSWithALPNDisabled(tlsConfig, logger)
@@ -175,7 +175,7 @@ func ConnectToHubbleRelay(ctx context.Context, logger *zap.Logger, hubbleAddress
 			creds = credentials.NewTLS(tlsConfig)
 		}
 	} else {
-		logger.Info("Using insecure connection to Cilium Hubble Relay", zap.String("address", hubbleAddress))
+		logger.Debug("Using insecure connection to Cilium Hubble Relay", zap.String("address", hubbleAddress))
 		creds = insecure.NewCredentials()
 	}
 
