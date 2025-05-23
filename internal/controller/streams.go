@@ -13,12 +13,14 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -184,16 +186,17 @@ func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset 
 
 	// Iterate over all API groups and versions
 	for _, group := range apiGroups.Groups {
-		// Skip metrics API group
-		if group.Name == "metrics.k8s.io" {
-			continue
-		}
-
 		for _, version := range group.Versions {
 			resourceList, err := discoveryClient.ServerResourcesForGroupVersion(version.GroupVersion)
 			if err != nil {
-				logger.Error("Error fetching resources for groupVersion", zap.Error(err))
-				return resourceAPIGroupMap, err
+				if apiErr, ok := err.(*apierrors.StatusError); ok && apiErr.ErrStatus.Code == 403 {
+					continue
+				} else if strings.Contains(err.Error(), "forbidden") || strings.Contains(err.Error(), "cannot list resource") {
+					// This is a fallback check in case the error doesn't come as a StatusError
+					continue
+				} else {
+					return resourceAPIGroupMap, err
+				}
 			}
 
 			// Map resources to their API groups
@@ -275,7 +278,11 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 
 		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger, apiGroup)
 		if err != nil {
-			resourceManager.logger.Error("Failed to list resource", zap.Error(err))
+			if strings.Contains(err.Error(), "access forbidden") {
+				logger.Debug("Access forbidden for resource", zap.String("resource", resource), zap.String("apiGroup", apiGroup), zap.Error(err))
+				continue
+			}
+			logger.Error("Failed to list resource", zap.String("resource", resource), zap.Error(err))
 			return err
 		}
 
