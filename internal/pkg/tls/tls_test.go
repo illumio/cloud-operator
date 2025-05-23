@@ -114,10 +114,6 @@ func compare(a1, a2 credentials.AuthInfo) bool {
 	}
 }
 
-func launchServer(t *testing.T, hs serverHandshake, done chan credentials.AuthInfo) net.Listener {
-	return launchServerOnListenAddress(t, hs, done, "localhost:0")
-}
-
 func launchServerOnListenAddress(t *testing.T, hs serverHandshake, done chan credentials.AuthInfo, address string) net.Listener {
 	lis, err := net.Listen("tcp", address)
 	if err != nil {
