@@ -17,11 +17,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
-	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
-	k8sfake "k8s.io/client-go/kubernetes/fake"
 )
 
 type HubbleSuite struct {
@@ -133,7 +131,7 @@ func (suite *HubbleSuite) TestGetTLSConfig() {
 		suite.Run(name, func() {
 			logger := zap.NewExample()
 			ctx := context.Background()
-			clientset := k8sfake.NewSimpleClientset(&corev1.Secret{
+			clientset := fake.NewSimpleClientset(&v1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "hubble-relay-client-certs",
 					Namespace: "kube-system",
@@ -199,7 +197,7 @@ func (suite *HubbleSuite) TestGetHubbleMTLSCertificatesFromSecret() {
 		suite.Run(name, func() {
 			logger := zap.NewExample()
 			ctx := context.Background()
-			clientset := k8sfake.NewSimpleClientset(&corev1.Secret{
+			clientset := fake.NewSimpleClientset(&v1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "hubble-relay-client-certs",
 					Namespace: "kube-system",
@@ -240,7 +238,7 @@ func (suite *HubbleSuite) TestLoadMTLSConfigFromData() {
 func (suite *HubbleSuite) TestGetHubbleMTLSCertificatesFromSecret_MissingData() {
 	logger := zap.NewExample()
 	ctx := context.Background()
-	clientset := k8sfake.NewSimpleClientset(&corev1.Secret{
+	clientset := fake.NewSimpleClientset(&v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "hubble-relay-client-certs",
 			Namespace: "kube-system",

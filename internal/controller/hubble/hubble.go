@@ -27,8 +27,8 @@ const (
 
 var (
 	ErrCertDataMissingInSecret = errors.New("required certificate data (ca.crt, tls.crt, or tls.key) not found in secret")
-	ErrHubbleNotFound          = errors.New("Cilium Hubble Relay service not found; disabling Cilium flow collection")
-	ErrNoPortsAvailable        = errors.New("Cilium Hubble Relay service has no ports; disabling Cilium flow collection")
+	ErrHubbleNotFound          = errors.New("cilium Hubble Relay service not found; disabling Cilium flow collection")
+	ErrNoPortsAvailable        = errors.New("cilium Hubble Relay service has no ports; disabling Cilium flow collection")
 )
 
 // getMTLSCertificatesFromSecret fetches ca.crt, tls.crt (client cert), and tls.key (client key)

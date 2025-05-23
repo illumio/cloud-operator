@@ -38,28 +38,20 @@ const defaultTestTimeout = 10 * time.Second
 
 func TestTLSOverrideServerName(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	expectedServerName := "server.name"
-	c := NewTLSWithALPNDisabled(nil, logger)
-	c.OverrideServerName(expectedServerName)
-	if c.Info().ServerName != expectedServerName {
-		t.Fatalf("c.Info().ServerName = %v, want %v", c.Info().ServerName, expectedServerName)
+	authority := "server.name"
+	c := NewTLSWithALPNDisabled(&tls.Config{ServerName: authority}, logger)
+	if c.Info().ServerName != authority {
+		t.Fatalf("c.Info().ServerName = %v, want %v", c.Info().ServerName, authority)
 	}
 }
 
 func TestTLSClone(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	expectedServerName := "server.name"
-	c := NewTLSWithALPNDisabled(nil, logger)
-	c.OverrideServerName(expectedServerName)
-	cc := c.Clone()
-	if cc.Info().ServerName != expectedServerName {
-		t.Fatalf("cc.Info().ServerName = %v, want %v", cc.Info().ServerName, expectedServerName)
+	authority := "server.name"
+	c := NewTLSWithALPNDisabled(&tls.Config{ServerName: authority}, logger)
+	if c.Info().ServerName != authority {
+		t.Fatalf("Change in clone should not affect the original, c.Info().ServerName = %v, want %v", c.Info().ServerName, authority)
 	}
-	cc.OverrideServerName("")
-	if c.Info().ServerName != expectedServerName {
-		t.Fatalf("Change in clone should not affect the original, c.Info().ServerName = %v, want %v", c.Info().ServerName, expectedServerName)
-	}
-
 }
 
 type serverHandshake func(net.Conn) (credentials.AuthInfo, error)
