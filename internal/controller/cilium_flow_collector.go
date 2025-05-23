@@ -10,10 +10,7 @@ import (
 	observer "github.com/cilium/cilium/api/v1/observer"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/hubble"
-	"github.com/illumio/cloud-operator/internal/pkg/aks"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // CiliumFlowCollector collects flows from Cilium Hubble Relay running in this cluster.
@@ -46,31 +43,13 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover Cilium Hubble Relay address: %w", err)
 	}
-	isAKSManaged := aks.IsAKSManagedHubble(service.Annotations)
-
-	var conn *grpc.ClientConn
-	if isAKSManaged {
-		logger.Debug("Attempting mTLS connection for AKS-managed Cilium Hubble Relay", zap.String("address", hubbleAddress))
-
-		creds, err := hubble.GetTransportCredentials(ctx, clientset, logger, ciliumHubbleMTLSSecretName, ciliumHubbleRelayNamespace, isAKSManaged)
-		if err != nil {
-			return nil, err
-		}
-
-		conn, err = grpc.NewClient(
-			hubbleAddress,
-			grpc.WithTransportCredentials(creds),
-		)
-	} else {
-		logger.Debug("Using insecure connection to Cilium Hubble Relay", zap.String("address", hubbleAddress))
-		conn, err = grpc.NewClient(
-			hubbleAddress,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		)
+	tlsConfig, err := hubble.GetTLSConfig(ctx, clientset, logger, ciliumHubbleMTLSSecretName, ciliumHubbleRelayNamespace)
+	if err != nil {
+		tlsConfig = nil
 	}
 
+	conn, err := hubble.ConnectToHubbleRelay(ctx, logger, hubbleAddress, tlsConfig)
 	if err != nil {
-		logger.Error("Failed to connect to Cilium Hubble Relay", zap.String("address", hubbleAddress), zap.Error(err))
 		return nil, fmt.Errorf("failed to connect to Cilium Hubble Relay: %w", err)
 	}
 	logger.Info("Successfully connected to Cilium Hubble Relay", zap.String("address", hubbleAddress))

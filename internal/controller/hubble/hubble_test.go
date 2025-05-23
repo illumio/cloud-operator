@@ -6,11 +6,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
-	"reflect"
 	"testing"
 	"time"
 
@@ -44,7 +44,51 @@ func init() {
 	}
 }
 
-func (suite *HubbleSuite) TestFetchAndLoadMTLSCredentials() {
+// GenerateTestCerts generates a self-signed certificate and private key for testing purposes.
+// It returns the CA certificate, client certificate, and client private key as PEM-encoded strings.
+func GenerateTestCerts() (caCertPEM, clientCertPEM, clientKeyPEM string, err error) {
+	// Generate a private key
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	// Create a certificate template
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			Organization: []string{"Test Org"},
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour), // 1 year validity
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	// Self-sign the certificate
+	certBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	// Encode the certificate to PEM format
+	certPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certBytes,
+	})
+
+	// Encode the private key to PEM format
+	keyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	})
+
+	// Return the same certificate as the CA certificate for simplicity
+	return string(certPEM), string(certPEM), string(keyPEM), nil
+}
+
+func (suite *HubbleSuite) TestGetTLSConfig() {
 	tests := map[string]struct {
 		secretData         map[string][]byte
 		expectedErr        error
@@ -97,18 +141,19 @@ func (suite *HubbleSuite) TestFetchAndLoadMTLSCredentials() {
 				Data: tt.secretData,
 			})
 
-			creds, err := GetTransportCredentials(ctx, clientset, logger, "hubble-relay-client-certs", "kube-system", true)
+			tlsConfig, err := GetTLSConfig(ctx, clientset, logger, "hubble-relay-client-certs", "kube-system")
 
 			if tt.expectedErr != nil {
 				suite.ErrorIs(err, tt.expectedErr)
 			} else {
 				suite.NoError(err)
+				suite.NotNil(tlsConfig)
 			}
 
 			if tt.expectedCredsExist {
-				suite.NotNil(creds)
+				suite.NotNil(tlsConfig)
 			} else {
-				suite.Nil(creds)
+				suite.Nil(tlsConfig)
 			}
 		})
 	}
@@ -176,20 +221,20 @@ func (suite *HubbleSuite) TestGetHubbleMTLSCertificatesFromSecret() {
 	}
 }
 
-func (suite *HubbleSuite) TestLoadMTLSCredentialsFromData() {
+func (suite *HubbleSuite) TestLoadMTLSConfigFromData() {
 	logger := zap.NewExample()
 	caCertData := []byte(caCertPEM)
 	clientCertData := []byte(clientCertPEM)
 	clientKeyData := []byte(clientKeyPEM)
 
-	creds, err := loadMTLSCredentialsFromData(logger, true, caCertData, clientCertData, clientKeyData)
+	tlsConfig, err := loadMTLSConfigFromData(logger, caCertData, clientCertData, clientKeyData)
 	suite.NoError(err)
-	suite.NotNil(creds)
+	suite.NotNil(tlsConfig)
 
-	// Ensure the returned credentials are of the correct type
-	if reflect.TypeOf(creds).String() != "credentials.TransportCredentials" {
-		suite.Fail("Expected TransportCredentials, got %T", creds)
-	}
+	// Validate specific fields in the tls.Config object
+	suite.Equal("ui.hubble-relay.cilium.io", tlsConfig.ServerName, "ServerName should match expected value")
+	suite.NotEmpty(tlsConfig.Certificates, "Certificates should not be empty")
+	suite.NotNil(tlsConfig.RootCAs, "RootCAs should not be nil")
 }
 
 func (suite *HubbleSuite) TestGetHubbleMTLSCertificatesFromSecret_MissingData() {
@@ -208,50 +253,6 @@ func (suite *HubbleSuite) TestGetHubbleMTLSCertificatesFromSecret_MissingData() 
 	_, _, _, err := getMTLSCertificatesFromSecret(ctx, clientset, logger, "hubble-relay-client-certs", "kube-system")
 	suite.Error(err)
 	suite.ErrorIs(err, ErrCertDataMissingInSecret)
-}
-
-// GenerateTestCerts generates a self-signed certificate and private key for testing purposes.
-// It returns the CA certificate, client certificate, and client private key as PEM-encoded strings.
-func GenerateTestCerts() (caCertPEM, clientCertPEM, clientKeyPEM string, err error) {
-	// Generate a private key
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return "", "", "", err
-	}
-
-	// Create a certificate template
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			Organization: []string{"Test Org"},
-		},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(365 * 24 * time.Hour), // 1 year validity
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-	}
-
-	// Self-sign the certificate
-	certBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
-	if err != nil {
-		return "", "", "", err
-	}
-
-	// Encode the certificate to PEM format
-	certPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: certBytes,
-	})
-
-	// Encode the private key to PEM format
-	keyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
-	})
-
-	// Return the same certificate as the CA certificate for simplicity
-	return string(certPEM), string(certPEM), string(keyPEM), nil
 }
 
 func (suite *HubbleSuite) TestDiscoverHubbleRelay() {
@@ -379,7 +380,7 @@ func (suite *HubbleSuite) TestDiscoverHubbleRelay() {
 	}
 }
 
-func TestGetHubbleRelayAddress(t *testing.T) {
+func (suite *HubbleSuite) TestGetHubbleRelayAddress() {
 	tests := map[string]struct {
 		service      *v1.Service
 		expectedAddr string
@@ -435,15 +436,92 @@ func TestGetHubbleRelayAddress(t *testing.T) {
 	}
 
 	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
+		suite.Run(name, func() {
 			addr, err := GetAddressFromService(tt.service)
 
-			assert.Equal(t, tt.expectedAddr, addr)
+			assert.Equal(suite.T(), tt.expectedAddr, addr)
 
 			if tt.expectedErr != nil {
-				assert.EqualError(t, err, tt.expectedErr.Error())
+				assert.EqualError(suite.T(), err, tt.expectedErr.Error())
 			} else {
-				assert.NoError(t, err)
+				assert.NoError(suite.T(), err)
+			}
+		})
+	}
+}
+
+func (suite *HubbleSuite) TestConnectToHubbleRelay() {
+	tests := map[string]struct {
+		tlsConfig     *tls.Config
+		hubbleAddress string
+		expectedErr   error
+		expectedConn  bool
+	}{
+		"successful mTLS connection": {
+			tlsConfig: &tls.Config{
+				ServerName: "ui.hubble-relay.cilium.io",
+			},
+			hubbleAddress: "10.0.0.1:8080",
+			expectedErr:   nil,
+			expectedConn:  true,
+		},
+		"insecure connection": {
+			tlsConfig:     nil,
+			hubbleAddress: "10.0.0.1:8080",
+			expectedErr:   nil,
+			expectedConn:  true,
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			logger := zap.NewExample()
+			ctx := context.Background()
+
+			conn, err := ConnectToHubbleRelay(ctx, logger, tt.hubbleAddress, tt.tlsConfig)
+
+			if tt.expectedErr != nil {
+				suite.ErrorIs(err, tt.expectedErr)
+			} else {
+				suite.NoError(err)
+				if tt.expectedConn {
+					suite.NotNil(conn)
+				} else {
+					suite.Nil(conn)
+				}
+			}
+		})
+	}
+}
+
+func (suite *HubbleSuite) TestGenerateTransportCredentials() {
+	tests := map[string]struct {
+		disableALPN   bool
+		expectedCreds bool
+	}{
+		"ALPN enabled": {
+			disableALPN:   false,
+			expectedCreds: true,
+		},
+		"ALPN disabled": {
+			disableALPN:   true,
+			expectedCreds: true,
+		},
+	}
+
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			logger := zap.NewExample()
+			tlsConfig := &tls.Config{
+				ServerName: "ui.hubble-relay.cilium.io",
+			}
+
+			creds := generateTransportCredentials(tlsConfig, logger, tt.disableALPN)
+
+			if tt.expectedCreds {
+				suite.NotNil(creds, "TransportCredentials should not be nil")
+			} else {
+				suite.Nil(creds, "TransportCredentials should be nil")
 			}
 		})
 	}
