@@ -25,6 +25,8 @@ import (
 	"k8s.io/client-go/rest"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller/hubble"
+	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
 type StreamType string
@@ -41,6 +43,7 @@ type streamClient struct {
 	conn                      *grpc.ClientConn
 	client                    pb.KubernetesInfoServiceClient
 	disableNetworkFlowsCilium bool
+	disableALPN               bool
 	falcoEventChan            chan string
 	flowCollector             pb.FlowCollector
 	logStream                 pb.KubernetesInfoService_SendLogsClient
@@ -401,8 +404,9 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 // findHubbleRelay returns a *CiliumFlowCollector if hubble relay is found in the given namespace
 func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger, ciliumNamespace string) *CiliumFlowCollector {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
-	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, ciliumNamespace)
+	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, ciliumNamespace, sm.streamClient.disableALPN)
 	if err != nil {
+		logger.Error("Failed to create Cilium flow collector", zap.Error(err))
 		return nil
 	}
 	return ciliumFlowCollector
@@ -420,6 +424,10 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 			err := ciliumFlowCollector.exportCiliumFlows(ctx, sm)
 			if err != nil {
 				logger.Warn("Failed to collect and export flows from Cilium Hubble Relay", zap.Error(err))
+				if errors.Is(err, tls.ErrTLSALPNHandshakeFailed) {
+					sm.streamClient.disableALPN = true
+					return err
+				}
 				sm.streamClient.disableNetworkFlowsCilium = true
 				return err
 			}
@@ -511,7 +519,7 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, logger, sm.streamClient.ciliumNamespace)
 	if err != nil {
-		if errors.Is(err, ErrHubbleNotFound) || errors.Is(err, ErrNoPortsAvailable) {
+		if errors.Is(err, hubble.ErrHubbleNotFound) || errors.Is(err, hubble.ErrNoPortsAvailable) {
 			logger.Warn("Disabling Cilium flow collection", zap.Error(err))
 			return ErrStopRetries
 		}
@@ -783,6 +791,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_FALCO
 			} else {
 				sm.streamClient.disableNetworkFlowsCilium = false
+				sm.streamClient.disableALPN = false
 				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_CILIUM
 			}
 
