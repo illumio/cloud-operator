@@ -9,7 +9,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"strings"
 
 	exp_credentials "github.com/illumio/cloud-operator/internal/pkg/tls"
 	"go.uber.org/zap"
@@ -164,37 +163,29 @@ func generateTransportCredentials(tlsConfig *tls.Config, logger *zap.Logger, dis
 }
 
 // ConnectToHubbleRelay handles the connection logic for Hubble Relay
-func ConnectToHubbleRelay(ctx context.Context, logger *zap.Logger, hubbleAddress string, tlsConfig *tls.Config) (*grpc.ClientConn, error) {
-	creds := insecure.NewCredentials()
-	disableALPN := false
+func ConnectToHubbleRelay(ctx context.Context, logger *zap.Logger, hubbleAddress string, tlsConfig *tls.Config, disableALPN bool) (*grpc.ClientConn, error) {
+	var creds credentials.TransportCredentials
+
 	if tlsConfig != nil {
-		logger.Debug("Attempting mTLS connection to Cilium Hubble Relay", zap.String("address", hubbleAddress))
-		for attempt := 0; attempt < 2; attempt++ {
-			creds = generateTransportCredentials(tlsConfig, logger, disableALPN)
-			conn, err := grpc.NewClient(
-				hubbleAddress,
-				grpc.WithTransportCredentials(creds),
-			)
-			if err != nil {
-				if strings.Contains(err.Error(), "missing selected ALPN property") {
-					logger.Warn("ALPN is disabled, retrying connection with ALPN disabled", zap.Error(err))
-					disableALPN = true
-					continue
-				}
-				return nil, fmt.Errorf("failed to connect to Cilium Hubble Relay: %w", err)
-			}
-			return conn, nil
+		logger.Info("Attempting mTLS connection to Cilium Hubble Relay", zap.String("address", hubbleAddress))
+		if disableALPN {
+			logger.Info("Disabling ALPN for mTLS connection")
+			creds = exp_credentials.NewTLSWithALPNDisabled(tlsConfig, logger)
+		} else {
+			creds = credentials.NewTLS(tlsConfig)
 		}
 	} else {
-		logger.Debug("Using insecure connection to Cilium Hubble Relay", zap.String("address", hubbleAddress))
-		conn, err := grpc.NewClient(
-			hubbleAddress,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to connect to Cilium Hubble Relay: %w", err)
-		}
-		return conn, nil
+		logger.Info("Using insecure connection to Cilium Hubble Relay", zap.String("address", hubbleAddress))
+		creds = insecure.NewCredentials()
 	}
-	return nil, errors.New("unexpected error in connection logic")
+
+	conn, err := grpc.NewClient(
+		hubbleAddress,
+		grpc.WithTransportCredentials(creds),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to Cilium Hubble Relay: %w", err)
+	}
+
+	return conn, nil
 }

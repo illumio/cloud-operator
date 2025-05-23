@@ -5,11 +5,13 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/cilium/cilium/api/v1/flow"
 	observer "github.com/cilium/cilium/api/v1/observer"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/hubble"
+	"github.com/illumio/cloud-operator/internal/pkg/tls"
 	"go.uber.org/zap"
 )
 
@@ -28,7 +30,7 @@ const (
 )
 
 // newCiliumFlowCollector connects to Cilium Hubble Relay, sets up an Observer client, and returns a new Collector using it.
-func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace string) (*CiliumFlowCollector, error) {
+func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace string, disableALPN bool) (*CiliumFlowCollector, error) {
 	clientset, err := NewClientSet()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new client set: %w", err)
@@ -48,7 +50,7 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 		tlsConfig = nil
 	}
 
-	conn, err := hubble.ConnectToHubbleRelay(ctx, logger, hubbleAddress, tlsConfig)
+	conn, err := hubble.ConnectToHubbleRelay(ctx, logger, hubbleAddress, tlsConfig, disableALPN)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Cilium Hubble Relay: %w", err)
 	}
@@ -155,6 +157,10 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 	observerClient := fm.client
 	stream, err := observerClient.GetFlows(ctx, req)
 	if err != nil {
+		if strings.Contains(err.Error(), "missing selected ALPN property") {
+			fm.logger.Error("ALPN handshake failed, retrying with ALPN disabled")
+			return tls.ErrTLSALPNHandshakeFailed
+		}
 		fm.logger.Error("Error getting network flows", zap.Error(err))
 		return err
 	}

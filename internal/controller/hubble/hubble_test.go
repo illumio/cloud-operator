@@ -454,6 +454,7 @@ func (suite *HubbleSuite) TestConnectToHubbleRelay() {
 	tests := map[string]struct {
 		tlsConfig     *tls.Config
 		hubbleAddress string
+		disableALPN   bool
 		expectedErr   error
 		expectedConn  bool
 	}{
@@ -462,12 +463,23 @@ func (suite *HubbleSuite) TestConnectToHubbleRelay() {
 				ServerName: "ui.hubble-relay.cilium.io",
 			},
 			hubbleAddress: "10.0.0.1:8080",
+			disableALPN:   false,
+			expectedErr:   nil,
+			expectedConn:  true,
+		},
+		"ALPN error and retry": {
+			tlsConfig: &tls.Config{
+				ServerName: "ui.hubble-relay.cilium.io",
+			},
+			hubbleAddress: "10.0.0.1:8080",
+			disableALPN:   true,
 			expectedErr:   nil,
 			expectedConn:  true,
 		},
 		"insecure connection": {
 			tlsConfig:     nil,
 			hubbleAddress: "10.0.0.1:8080",
+			disableALPN:   false,
 			expectedErr:   nil,
 			expectedConn:  true,
 		},
@@ -478,7 +490,7 @@ func (suite *HubbleSuite) TestConnectToHubbleRelay() {
 			logger := zap.NewExample()
 			ctx := context.Background()
 
-			conn, err := ConnectToHubbleRelay(ctx, logger, tt.hubbleAddress, tt.tlsConfig)
+			conn, err := ConnectToHubbleRelay(ctx, logger, tt.hubbleAddress, tt.tlsConfig, tt.disableALPN)
 
 			if tt.expectedErr != nil {
 				suite.ErrorIs(err, tt.expectedErr)

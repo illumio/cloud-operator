@@ -24,6 +24,7 @@ package tls
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 
 	"github.com/illumio/cloud-operator/internal/pkg/tls/spiffe"
@@ -39,6 +40,10 @@ type tlsCreds struct {
 	config *tls.Config
 	logger *zap.Logger
 }
+
+var (
+	ErrTLSALPNHandshakeFailed = errors.New("ALPN handshake failed, retrying with ALPN disabled")
+)
 
 func (c tlsCreds) Info() credentials.ProtocolInfo {
 	return credentials.ProtocolInfo{
