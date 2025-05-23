@@ -141,10 +141,38 @@ func convertNetworkPolicyToProto(networkPolicy *networkingv1.NetworkPolicy) (*pb
 		PodSelector: &pb.KubernetesNetworkPolicyData_PodSelector{
 			MatchLabels: networkPolicy.Spec.PodSelector.MatchLabels,
 		},
-		IngressRules: networkPolicy.Spec.Ingress,
+		IngressRules: convertNetworkPolicyIngressRuleToProto(networkPolicy.Spec.Ingress),
 		EgressRules:  networkPolicy.Spec.Egress,
 	}
 	return networkPolicyData, nil
+}
+
+func convertNetworkPolicyIngessRuleToProto(ingressRule networkingv1.NetworkPolicyIngressRule) *pb.KubernetesNetworkPolicyData_NetworkPolicyRule {
+	return &pb.KubernetesNetworkPolicyData_NetworkPolicyRule{
+		Peers: convertNetworkPolicyPeerToProto(ingressRule.From),
+		Ports: convertNetworkPolicyPortToProto(ingressRule.Ports),
+	}
+}
+
+func convertNetworkPolicyPeerToProto(egressRule networkingv1.NetworkPolicyPeer) *pb.KubernetesNetworkPolicyData_Net {
+	return &pb.KubernetesNetworkPolicyData_NetworkPolicyRule_Peer{
+		IpBlock:           convertIPBlocksToProto(egressRule.IPBlock),
+		PodSelector:       convertNetworkPolicyPodSelectorToProto(egressRule.PodSelector),
+		NamespaceSelector: convertNetworkPolicyNamespaceSelectorToProto(egressRule.NamespaceSelector),
+	}
+}
+
+func convertIPBlocksToProto(iPBlock *networkingv1.IPBlock) *pb.KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_IpBlock {
+	return &pb.KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_NamespaceSelector{
+		Cidr:   iPBlock.CIDR,
+		Except: iPBlock.Except,
+	}
+}
+
+func convertNetworkPolicyPodSelectorToProto(podSelector *metav1.LabelSelector) *pb.KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_PodSelector {
+	return &pb.KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_PodSelector{
+		MatchLabels: podSelector.MatchLabels,
+	}
 }
 
 func convertPolicyTypesToProto(policyType []networkingv1.PolicyType) []string {

@@ -100,31 +100,30 @@ message KubernetesNetworkPolicyData {
     map<string, string> match_labels = 1;
   }
 
+  message IPBlock {
+    string cidr = 1;
+    repeated string except = 2;
+  }
+
+  message NamespaceSelector {
+    map<string, string> match_labels = 1;
+  }
+
+  // Peer defines a network peer (pod or namespace selector).
+  message Peer {
+    IPBlock ip_block = 1;
+    PodSelector pod_selector = 2;
+    NamespaceSelector namespace_selector = 3;
+  }
+
   // NetworkPolicyRule defines a single ingress or egress rule.
   message NetworkPolicyRule {
-    repeated IPBlock ip_blocks = 1;
-    repeated Peer peers = 2;
-    repeated Port ports = 3;
-
-    // IPBlock defines a CIDR block and exceptions.
-    message IPBlock {
-      string cidr = 1;
-      repeated string except = 2;
-    }
-
-    // Peer defines a network peer (pod or namespace selector).
-    message Peer {
-      PodSelector pod_selector = 1;
-      NamespaceSelector namespace_selector = 2;
-
-      message NamespaceSelector {
-        map<string, string> match_labels = 1;
-      }
-    }
+    repeated Peer peers = 1;
+    repeated Port ports = 2;
 
     // Port defines a network port.
     message Port {
-      string protocol = 1; // E.g., "TCP", "UDP"
+      string protocol = 1;
       uint32 port = 2;
     }
   }

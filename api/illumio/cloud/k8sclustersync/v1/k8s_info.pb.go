@@ -2967,19 +2967,175 @@ func (x *KubernetesNetworkPolicyData_PodSelector) GetMatchLabels() map[string]st
 	return nil
 }
 
+type KubernetesNetworkPolicyData_IPBlock struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Cidr          string                 `protobuf:"bytes,1,opt,name=cidr,proto3" json:"cidr,omitempty"`
+	Except        []string               `protobuf:"bytes,2,rep,name=except,proto3" json:"except,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KubernetesNetworkPolicyData_IPBlock) Reset() {
+	*x = KubernetesNetworkPolicyData_IPBlock{}
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KubernetesNetworkPolicyData_IPBlock) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KubernetesNetworkPolicyData_IPBlock) ProtoMessage() {}
+
+func (x *KubernetesNetworkPolicyData_IPBlock) ProtoReflect() protoreflect.Message {
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KubernetesNetworkPolicyData_IPBlock.ProtoReflect.Descriptor instead.
+func (*KubernetesNetworkPolicyData_IPBlock) Descriptor() ([]byte, []int) {
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{5, 1}
+}
+
+func (x *KubernetesNetworkPolicyData_IPBlock) GetCidr() string {
+	if x != nil {
+		return x.Cidr
+	}
+	return ""
+}
+
+func (x *KubernetesNetworkPolicyData_IPBlock) GetExcept() []string {
+	if x != nil {
+		return x.Except
+	}
+	return nil
+}
+
+type KubernetesNetworkPolicyData_NamespaceSelector struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MatchLabels   map[string]string      `protobuf:"bytes,1,rep,name=match_labels,json=matchLabels,proto3" json:"match_labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KubernetesNetworkPolicyData_NamespaceSelector) Reset() {
+	*x = KubernetesNetworkPolicyData_NamespaceSelector{}
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KubernetesNetworkPolicyData_NamespaceSelector) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KubernetesNetworkPolicyData_NamespaceSelector) ProtoMessage() {}
+
+func (x *KubernetesNetworkPolicyData_NamespaceSelector) ProtoReflect() protoreflect.Message {
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KubernetesNetworkPolicyData_NamespaceSelector.ProtoReflect.Descriptor instead.
+func (*KubernetesNetworkPolicyData_NamespaceSelector) Descriptor() ([]byte, []int) {
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{5, 2}
+}
+
+func (x *KubernetesNetworkPolicyData_NamespaceSelector) GetMatchLabels() map[string]string {
+	if x != nil {
+		return x.MatchLabels
+	}
+	return nil
+}
+
+// Peer defines a network peer (pod or namespace selector).
+type KubernetesNetworkPolicyData_Peer struct {
+	state             protoimpl.MessageState                         `protogen:"open.v1"`
+	IpBlock           *KubernetesNetworkPolicyData_IPBlock           `protobuf:"bytes,1,opt,name=ip_block,json=ipBlock,proto3" json:"ip_block,omitempty"`
+	PodSelector       *KubernetesNetworkPolicyData_PodSelector       `protobuf:"bytes,2,opt,name=pod_selector,json=podSelector,proto3" json:"pod_selector,omitempty"`
+	NamespaceSelector *KubernetesNetworkPolicyData_NamespaceSelector `protobuf:"bytes,3,opt,name=namespace_selector,json=namespaceSelector,proto3" json:"namespace_selector,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *KubernetesNetworkPolicyData_Peer) Reset() {
+	*x = KubernetesNetworkPolicyData_Peer{}
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KubernetesNetworkPolicyData_Peer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KubernetesNetworkPolicyData_Peer) ProtoMessage() {}
+
+func (x *KubernetesNetworkPolicyData_Peer) ProtoReflect() protoreflect.Message {
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KubernetesNetworkPolicyData_Peer.ProtoReflect.Descriptor instead.
+func (*KubernetesNetworkPolicyData_Peer) Descriptor() ([]byte, []int) {
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{5, 3}
+}
+
+func (x *KubernetesNetworkPolicyData_Peer) GetIpBlock() *KubernetesNetworkPolicyData_IPBlock {
+	if x != nil {
+		return x.IpBlock
+	}
+	return nil
+}
+
+func (x *KubernetesNetworkPolicyData_Peer) GetPodSelector() *KubernetesNetworkPolicyData_PodSelector {
+	if x != nil {
+		return x.PodSelector
+	}
+	return nil
+}
+
+func (x *KubernetesNetworkPolicyData_Peer) GetNamespaceSelector() *KubernetesNetworkPolicyData_NamespaceSelector {
+	if x != nil {
+		return x.NamespaceSelector
+	}
+	return nil
+}
+
 // NetworkPolicyRule defines a single ingress or egress rule.
 type KubernetesNetworkPolicyData_NetworkPolicyRule struct {
-	state         protoimpl.MessageState                                   `protogen:"open.v1"`
-	IpBlocks      []*KubernetesNetworkPolicyData_NetworkPolicyRule_IPBlock `protobuf:"bytes,1,rep,name=ip_blocks,json=ipBlocks,proto3" json:"ip_blocks,omitempty"`
-	Peers         []*KubernetesNetworkPolicyData_NetworkPolicyRule_Peer    `protobuf:"bytes,2,rep,name=peers,proto3" json:"peers,omitempty"`
-	Ports         []*KubernetesNetworkPolicyData_NetworkPolicyRule_Port    `protobuf:"bytes,3,rep,name=ports,proto3" json:"ports,omitempty"`
+	state         protoimpl.MessageState                                `protogen:"open.v1"`
+	Peers         []*KubernetesNetworkPolicyData_Peer                   `protobuf:"bytes,1,rep,name=peers,proto3" json:"peers,omitempty"`
+	Ports         []*KubernetesNetworkPolicyData_NetworkPolicyRule_Port `protobuf:"bytes,2,rep,name=ports,proto3" json:"ports,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *KubernetesNetworkPolicyData_NetworkPolicyRule) Reset() {
 	*x = KubernetesNetworkPolicyData_NetworkPolicyRule{}
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[37]
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2991,7 +3147,7 @@ func (x *KubernetesNetworkPolicyData_NetworkPolicyRule) String() string {
 func (*KubernetesNetworkPolicyData_NetworkPolicyRule) ProtoMessage() {}
 
 func (x *KubernetesNetworkPolicyData_NetworkPolicyRule) ProtoReflect() protoreflect.Message {
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[37]
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3004,17 +3160,10 @@ func (x *KubernetesNetworkPolicyData_NetworkPolicyRule) ProtoReflect() protorefl
 
 // Deprecated: Use KubernetesNetworkPolicyData_NetworkPolicyRule.ProtoReflect.Descriptor instead.
 func (*KubernetesNetworkPolicyData_NetworkPolicyRule) Descriptor() ([]byte, []int) {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{5, 1}
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{5, 4}
 }
 
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule) GetIpBlocks() []*KubernetesNetworkPolicyData_NetworkPolicyRule_IPBlock {
-	if x != nil {
-		return x.IpBlocks
-	}
-	return nil
-}
-
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule) GetPeers() []*KubernetesNetworkPolicyData_NetworkPolicyRule_Peer {
+func (x *KubernetesNetworkPolicyData_NetworkPolicyRule) GetPeers() []*KubernetesNetworkPolicyData_Peer {
 	if x != nil {
 		return x.Peers
 	}
@@ -3028,116 +3177,10 @@ func (x *KubernetesNetworkPolicyData_NetworkPolicyRule) GetPorts() []*Kubernetes
 	return nil
 }
 
-// IPBlock defines a CIDR block and exceptions.
-type KubernetesNetworkPolicyData_NetworkPolicyRule_IPBlock struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Cidr          string                 `protobuf:"bytes,1,opt,name=cidr,proto3" json:"cidr,omitempty"`
-	Except        []string               `protobuf:"bytes,2,rep,name=except,proto3" json:"except,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_IPBlock) Reset() {
-	*x = KubernetesNetworkPolicyData_NetworkPolicyRule_IPBlock{}
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[39]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_IPBlock) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KubernetesNetworkPolicyData_NetworkPolicyRule_IPBlock) ProtoMessage() {}
-
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_IPBlock) ProtoReflect() protoreflect.Message {
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[39]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KubernetesNetworkPolicyData_NetworkPolicyRule_IPBlock.ProtoReflect.Descriptor instead.
-func (*KubernetesNetworkPolicyData_NetworkPolicyRule_IPBlock) Descriptor() ([]byte, []int) {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{5, 1, 0}
-}
-
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_IPBlock) GetCidr() string {
-	if x != nil {
-		return x.Cidr
-	}
-	return ""
-}
-
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_IPBlock) GetExcept() []string {
-	if x != nil {
-		return x.Except
-	}
-	return nil
-}
-
-// Peer defines a network peer (pod or namespace selector).
-type KubernetesNetworkPolicyData_NetworkPolicyRule_Peer struct {
-	state             protoimpl.MessageState                                                `protogen:"open.v1"`
-	PodSelector       *KubernetesNetworkPolicyData_PodSelector                              `protobuf:"bytes,1,opt,name=pod_selector,json=podSelector,proto3" json:"pod_selector,omitempty"`
-	NamespaceSelector *KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_NamespaceSelector `protobuf:"bytes,2,opt,name=namespace_selector,json=namespaceSelector,proto3" json:"namespace_selector,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
-}
-
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Peer) Reset() {
-	*x = KubernetesNetworkPolicyData_NetworkPolicyRule_Peer{}
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[40]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Peer) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KubernetesNetworkPolicyData_NetworkPolicyRule_Peer) ProtoMessage() {}
-
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Peer) ProtoReflect() protoreflect.Message {
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[40]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KubernetesNetworkPolicyData_NetworkPolicyRule_Peer.ProtoReflect.Descriptor instead.
-func (*KubernetesNetworkPolicyData_NetworkPolicyRule_Peer) Descriptor() ([]byte, []int) {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{5, 1, 1}
-}
-
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Peer) GetPodSelector() *KubernetesNetworkPolicyData_PodSelector {
-	if x != nil {
-		return x.PodSelector
-	}
-	return nil
-}
-
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Peer) GetNamespaceSelector() *KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_NamespaceSelector {
-	if x != nil {
-		return x.NamespaceSelector
-	}
-	return nil
-}
-
 // Port defines a network port.
 type KubernetesNetworkPolicyData_NetworkPolicyRule_Port struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Protocol      string                 `protobuf:"bytes,1,opt,name=protocol,proto3" json:"protocol,omitempty"` // E.g., "TCP", "UDP"
+	Protocol      string                 `protobuf:"bytes,1,opt,name=protocol,proto3" json:"protocol,omitempty"`
 	Port          uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3145,7 +3188,7 @@ type KubernetesNetworkPolicyData_NetworkPolicyRule_Port struct {
 
 func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Port) Reset() {
 	*x = KubernetesNetworkPolicyData_NetworkPolicyRule_Port{}
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[41]
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3157,7 +3200,7 @@ func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Port) String() string {
 func (*KubernetesNetworkPolicyData_NetworkPolicyRule_Port) ProtoMessage() {}
 
 func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Port) ProtoReflect() protoreflect.Message {
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[41]
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3170,7 +3213,7 @@ func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Port) ProtoReflect() prot
 
 // Deprecated: Use KubernetesNetworkPolicyData_NetworkPolicyRule_Port.ProtoReflect.Descriptor instead.
 func (*KubernetesNetworkPolicyData_NetworkPolicyRule_Port) Descriptor() ([]byte, []int) {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{5, 1, 2}
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{5, 4, 0}
 }
 
 func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Port) GetProtocol() string {
@@ -3185,50 +3228,6 @@ func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Port) GetPort() uint32 {
 		return x.Port
 	}
 	return 0
-}
-
-type KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_NamespaceSelector struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	MatchLabels   map[string]string      `protobuf:"bytes,1,rep,name=match_labels,json=matchLabels,proto3" json:"match_labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_NamespaceSelector) Reset() {
-	*x = KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_NamespaceSelector{}
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[42]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_NamespaceSelector) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_NamespaceSelector) ProtoMessage() {}
-
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_NamespaceSelector) ProtoReflect() protoreflect.Message {
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[42]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_NamespaceSelector.ProtoReflect.Descriptor instead.
-func (*KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_NamespaceSelector) Descriptor() ([]byte, []int) {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{5, 1, 1, 0}
-}
-
-func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_NamespaceSelector) GetMatchLabels() map[string]string {
-	if x != nil {
-		return x.MatchLabels
-	}
-	return nil
 }
 
 type GetConfigurationUpdatesResponse_Configuration struct {
@@ -3323,7 +3322,7 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"providerId\x12!\n" +
 	"\fip_addresses\x18\x02 \x03(\tR\vipAddresses\"6\n" +
 	"\x11KubernetesPodData\x12!\n" +
-	"\fip_addresses\x18\x01 \x03(\tR\vipAddresses\"\xb2\f\n" +
+	"\fip_addresses\x18\x01 \x03(\tR\vipAddresses\"\xdd\v\n" +
 	"\x1bKubernetesNetworkPolicyData\x12!\n" +
 	"\fpolicy_types\x18\x01 \x03(\tR\vpolicyTypes\x12k\n" +
 	"\fpod_selector\x18\x02 \x01(\v2H.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelectorR\vpodSelector\x12s\n" +
@@ -3333,22 +3332,22 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\fmatch_labels\x18\x01 \x03(\v2Y.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelector.MatchLabelsEntryR\vmatchLabels\x1a>\n" +
 	"\x10MatchLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a\xcc\a\n" +
-	"\x11NetworkPolicyRule\x12s\n" +
-	"\tip_blocks\x18\x01 \x03(\v2V.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.IPBlockR\bipBlocks\x12i\n" +
-	"\x05peers\x18\x02 \x03(\v2S.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.PeerR\x05peers\x12i\n" +
-	"\x05ports\x18\x03 \x03(\v2S.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.PortR\x05ports\x1a5\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a5\n" +
 	"\aIPBlock\x12\x12\n" +
 	"\x04cidr\x18\x01 \x01(\tR\x04cidr\x12\x16\n" +
-	"\x06except\x18\x02 \x03(\tR\x06except\x1a\xfc\x03\n" +
-	"\x04Peer\x12k\n" +
-	"\fpod_selector\x18\x01 \x01(\v2H.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelectorR\vpodSelector\x12\x94\x01\n" +
-	"\x12namespace_selector\x18\x02 \x01(\v2e.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.Peer.NamespaceSelectorR\x11namespaceSelector\x1a\xef\x01\n" +
-	"\x11NamespaceSelector\x12\x99\x01\n" +
-	"\fmatch_labels\x18\x01 \x03(\v2v.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.Peer.NamespaceSelector.MatchLabelsEntryR\vmatchLabels\x1a>\n" +
+	"\x06except\x18\x02 \x03(\tR\x06except\x1a\xd8\x01\n" +
+	"\x11NamespaceSelector\x12\x82\x01\n" +
+	"\fmatch_labels\x18\x01 \x03(\v2_.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NamespaceSelector.MatchLabelsEntryR\vmatchLabels\x1a>\n" +
 	"\x10MatchLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a6\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a\xd3\x02\n" +
+	"\x04Peer\x12_\n" +
+	"\bip_block\x18\x01 \x01(\v2D.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.IPBlockR\aipBlock\x12k\n" +
+	"\fpod_selector\x18\x02 \x01(\v2H.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelectorR\vpodSelector\x12}\n" +
+	"\x12namespace_selector\x18\x03 \x01(\v2N.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NamespaceSelectorR\x11namespaceSelector\x1a\x8f\x02\n" +
+	"\x11NetworkPolicyRule\x12W\n" +
+	"\x05peers\x18\x01 \x03(\v2A.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PeerR\x05peers\x12i\n" +
+	"\x05ports\x18\x02 \x03(\v2S.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.PortR\x05ports\x1a6\n" +
 	"\x04Port\x12\x1a\n" +
 	"\bprotocol\x18\x01 \x01(\tR\bprotocol\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\rR\x04port\"\xc7\x01\n" +
@@ -3583,16 +3582,16 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_goTypes = []any{
 	nil,                                             // 39: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.LabelsEntry
 	(*KubernetesServiceData_ServicePort)(nil),       // 40: illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ServicePort
 	(*KubernetesNetworkPolicyData_PodSelector)(nil), // 41: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelector
-	(*KubernetesNetworkPolicyData_NetworkPolicyRule)(nil), // 42: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule
-	nil, // 43: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelector.MatchLabelsEntry
-	(*KubernetesNetworkPolicyData_NetworkPolicyRule_IPBlock)(nil),                // 44: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.IPBlock
-	(*KubernetesNetworkPolicyData_NetworkPolicyRule_Peer)(nil),                   // 45: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.Peer
-	(*KubernetesNetworkPolicyData_NetworkPolicyRule_Port)(nil),                   // 46: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.Port
-	(*KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_NamespaceSelector)(nil), // 47: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.Peer.NamespaceSelector
-	nil, // 48: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.Peer.NamespaceSelector.MatchLabelsEntry
-	(*GetConfigurationUpdatesResponse_Configuration)(nil), // 49: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration
-	(*timestamppb.Timestamp)(nil),                         // 50: google.protobuf.Timestamp
-	(*wrapperspb.BoolValue)(nil),                          // 51: google.protobuf.BoolValue
+	(*KubernetesNetworkPolicyData_IPBlock)(nil),     // 42: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.IPBlock
+	(*KubernetesNetworkPolicyData_NamespaceSelector)(nil), // 43: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NamespaceSelector
+	(*KubernetesNetworkPolicyData_Peer)(nil),              // 44: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.Peer
+	(*KubernetesNetworkPolicyData_NetworkPolicyRule)(nil), // 45: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule
+	nil, // 46: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelector.MatchLabelsEntry
+	nil, // 47: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NamespaceSelector.MatchLabelsEntry
+	(*KubernetesNetworkPolicyData_NetworkPolicyRule_Port)(nil), // 48: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.Port
+	(*GetConfigurationUpdatesResponse_Configuration)(nil),      // 49: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration
+	(*timestamppb.Timestamp)(nil),                              // 50: google.protobuf.Timestamp
+	(*wrapperspb.BoolValue)(nil),                               // 51: google.protobuf.BoolValue
 }
 var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	38, // 0: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.annotations:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData.AnnotationsEntry
@@ -3605,8 +3604,8 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	10, // 7: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.network_policy:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData
 	40, // 8: illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ports:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ServicePort
 	41, // 9: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelector
-	42, // 10: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.ingress_rules:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule
-	42, // 11: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.egress_rules:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule
+	45, // 10: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.ingress_rules:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule
+	45, // 11: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.egress_rules:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule
 	0,  // 12: illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadata.flow_collector:type_name -> illumio.cloud.k8sclustersync.v1.FlowCollector
 	5,  // 13: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
 	12, // 14: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.cluster_metadata:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadata
@@ -3647,13 +3646,13 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	33, // 49: illumio.cloud.k8sclustersync.v1.SendLogsRequest.log_entry:type_name -> illumio.cloud.k8sclustersync.v1.LogEntry
 	5,  // 50: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
 	49, // 51: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.update_configuration:type_name -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration
-	43, // 52: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelector.match_labels:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelector.MatchLabelsEntry
-	44, // 53: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.ip_blocks:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.IPBlock
-	45, // 54: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.peers:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.Peer
-	46, // 55: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.ports:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.Port
-	41, // 56: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.Peer.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelector
-	47, // 57: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.Peer.namespace_selector:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.Peer.NamespaceSelector
-	48, // 58: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.Peer.NamespaceSelector.match_labels:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.Peer.NamespaceSelector.MatchLabelsEntry
+	46, // 52: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelector.match_labels:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelector.MatchLabelsEntry
+	47, // 53: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NamespaceSelector.match_labels:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NamespaceSelector.MatchLabelsEntry
+	42, // 54: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.Peer.ip_block:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.IPBlock
+	41, // 55: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.Peer.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelector
+	43, // 56: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.Peer.namespace_selector:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NamespaceSelector
+	44, // 57: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.peers:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.Peer
+	48, // 58: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.ports:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.Port
 	4,  // 59: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration.log_level:type_name -> illumio.cloud.k8sclustersync.v1.LogLevel
 	13, // 60: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest
 	31, // 61: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest
