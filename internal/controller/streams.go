@@ -187,13 +187,9 @@ func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset 
 			resourceList, err := discoveryClient.ServerResourcesForGroupVersion(version.GroupVersion)
 			if err != nil {
 				if apiErr, ok := err.(*apierrors.StatusError); ok && apiErr.ErrStatus.Code == 403 {
-					logger.Warn("Access forbidden for resource", zap.Error(err))
 					continue
 				} else if strings.Contains(err.Error(), "forbidden") || strings.Contains(err.Error(), "cannot list resource") {
 					// This is a fallback check in case the error doesn't come as a StatusError
-					logger.Warn("Access forbidden for resource",
-						zap.String("group-version", version.GroupVersion),
-						zap.Error(err))
 					continue
 				} else {
 					return resourceAPIGroupMap, err
@@ -239,7 +235,6 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 	//This builds resourceAPIGroupMap from Kubernetes API
 	resourceAPIGroupMap, err = sm.buildResourceApiGroupMap(resources, clientset, logger)
 	if err != nil {
-		logger.Error("Failed to build resource api group map", zap.Error(err))
 		return err
 	}
 
@@ -279,7 +274,15 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 
 		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger, apiGroup)
 		if err != nil {
+<<<<<<< HEAD
 			resourceManager.logger.Error("Failed to list resource", zap.Error(err))
+=======
+			if strings.Contains(err.Error(), "access forbidden") {
+				logger.Info("Access forbidden for resource", zap.String("resource", resource), zap.String("apiGroup", apiGroup), zap.Error(err))
+				continue
+			}
+			resourceLister.logger.Error("Failed to list resource", zap.String("resource", resource), zap.Error(err))
+>>>>>>> 20e3575 (Added graceful error handling in FetchResources function)
 			return err
 		}
 
