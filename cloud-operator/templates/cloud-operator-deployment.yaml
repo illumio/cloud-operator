@@ -53,6 +53,8 @@ spec:
             - containerPort: 8080
             - containerPort: 5000
             - containerPort: 4739
+              protocol: UDP
+          
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: CLUSTER_CREDS_SECRET

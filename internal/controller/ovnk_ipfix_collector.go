@@ -90,7 +90,6 @@ func (sm *streamManager) startOVNKIPFIXCollector(ctx context.Context, logger *za
 			err = sm.processIPFIXMessage(ctx, logger, buf[:n], templateSystem)
 			if err != nil {
 				logger.Error("Failed to process IPFIX message", zap.Error(err))
-				return
 			}
 		}
 	}()
