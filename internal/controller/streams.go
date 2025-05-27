@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -272,11 +271,10 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 
 		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger, apiGroup)
 		if err != nil {
-			if strings.Contains(err.Error(), "access forbidden") {
-				logger.Debug("Access forbidden for resource", zap.String("resource", resource), zap.String("apiGroup", apiGroup), zap.Error(err))
+			if apierrors.IsForbidden(err) {
+				logger.Warn("Access forbidden for resource", zap.String("resource", resource), zap.String("apiGroup", apiGroup), zap.Error(err))
 				continue
 			}
-			logger.Error("Failed to list resource", zap.String("resource", resource), zap.Error(err))
 			return err
 		}
 
