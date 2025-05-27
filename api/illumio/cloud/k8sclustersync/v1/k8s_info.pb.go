@@ -3182,6 +3182,7 @@ type KubernetesNetworkPolicyData_NetworkPolicyRule_Port struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Protocol      string                 `protobuf:"bytes,1,opt,name=protocol,proto3" json:"protocol,omitempty"`
 	Port          uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
+	EndPort       uint32                 `protobuf:"varint,3,opt,name=end_port,json=endPort,proto3" json:"end_port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3226,6 +3227,13 @@ func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Port) GetProtocol() strin
 func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Port) GetPort() uint32 {
 	if x != nil {
 		return x.Port
+	}
+	return 0
+}
+
+func (x *KubernetesNetworkPolicyData_NetworkPolicyRule_Port) GetEndPort() uint32 {
+	if x != nil {
+		return x.EndPort
 	}
 	return 0
 }
@@ -3322,7 +3330,7 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"providerId\x12!\n" +
 	"\fip_addresses\x18\x02 \x03(\tR\vipAddresses\"6\n" +
 	"\x11KubernetesPodData\x12!\n" +
-	"\fip_addresses\x18\x01 \x03(\tR\vipAddresses\"\xdd\v\n" +
+	"\fip_addresses\x18\x01 \x03(\tR\vipAddresses\"\xf8\v\n" +
 	"\x1bKubernetesNetworkPolicyData\x12!\n" +
 	"\fpolicy_types\x18\x01 \x03(\tR\vpolicyTypes\x12k\n" +
 	"\fpod_selector\x18\x02 \x01(\v2H.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelectorR\vpodSelector\x12s\n" +
@@ -3344,13 +3352,14 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x04Peer\x12_\n" +
 	"\bip_block\x18\x01 \x01(\v2D.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.IPBlockR\aipBlock\x12k\n" +
 	"\fpod_selector\x18\x02 \x01(\v2H.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PodSelectorR\vpodSelector\x12}\n" +
-	"\x12namespace_selector\x18\x03 \x01(\v2N.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NamespaceSelectorR\x11namespaceSelector\x1a\x8f\x02\n" +
+	"\x12namespace_selector\x18\x03 \x01(\v2N.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NamespaceSelectorR\x11namespaceSelector\x1a\xaa\x02\n" +
 	"\x11NetworkPolicyRule\x12W\n" +
 	"\x05peers\x18\x01 \x03(\v2A.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.PeerR\x05peers\x12i\n" +
-	"\x05ports\x18\x02 \x03(\v2S.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.PortR\x05ports\x1a6\n" +
+	"\x05ports\x18\x02 \x03(\v2S.illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.NetworkPolicyRule.PortR\x05ports\x1aQ\n" +
 	"\x04Port\x12\x1a\n" +
 	"\bprotocol\x18\x01 \x01(\tR\bprotocol\x12\x12\n" +
-	"\x04port\x18\x02 \x01(\rR\x04port\"\xc7\x01\n" +
+	"\x04port\x18\x02 \x01(\rR\x04port\x12\x19\n" +
+	"\bend_port\x18\x03 \x01(\rR\aendPort\"\xc7\x01\n" +
 	"\x18KubernetesOwnerReference\x12\x1f\n" +
 	"\vapi_version\x18\x01 \x01(\tR\n" +
 	"apiVersion\x120\n" +

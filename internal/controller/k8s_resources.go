@@ -142,35 +142,116 @@ func convertNetworkPolicyToProto(networkPolicy *networkingv1.NetworkPolicy) (*pb
 			MatchLabels: networkPolicy.Spec.PodSelector.MatchLabels,
 		},
 		IngressRules: convertNetworkPolicyIngressRuleToProto(networkPolicy.Spec.Ingress),
-		EgressRules:  networkPolicy.Spec.Egress,
+		EgressRules:  convertNetworkPolicyEgressRuleToProto(networkPolicy.Spec.Egress),
 	}
+
+	// Ensure consistency for empty slices
+	for _, rule := range networkPolicyData.IngressRules {
+		if len(rule.Ports) == 0 {
+			rule.Ports = nil
+		}
+	}
+	for _, rule := range networkPolicyData.EgressRules {
+		if len(rule.Ports) == 0 {
+			rule.Ports = nil
+		}
+	}
+
+	if len(networkPolicyData.EgressRules) == 0 {
+		networkPolicyData.EgressRules = nil
+	}
+	if len(networkPolicyData.IngressRules) == 0 {
+		networkPolicyData.IngressRules = nil
+	}
+
 	return networkPolicyData, nil
 }
 
-func convertNetworkPolicyIngessRuleToProto(ingressRule networkingv1.NetworkPolicyIngressRule) *pb.KubernetesNetworkPolicyData_NetworkPolicyRule {
-	return &pb.KubernetesNetworkPolicyData_NetworkPolicyRule{
-		Peers: convertNetworkPolicyPeerToProto(ingressRule.From),
-		Ports: convertNetworkPolicyPortToProto(ingressRule.Ports),
+// Converts a list of NetworkPolicyEgressRule objects to a list of proto NetworkPolicyRule objects.
+func convertNetworkPolicyEgressRuleToProto(egressRules []networkingv1.NetworkPolicyEgressRule) []*pb.KubernetesNetworkPolicyData_NetworkPolicyRule {
+	rules := []*pb.KubernetesNetworkPolicyData_NetworkPolicyRule{}
+	for _, rule := range egressRules {
+		rules = append(rules, &pb.KubernetesNetworkPolicyData_NetworkPolicyRule{
+			Peers: convertNetworkPolicyPeerToProto(rule.To),
+			Ports: convertNetworkPolicyPortToProto(rule.Ports),
+		})
+	}
+	return rules
+}
+
+// Converts a list of NetworkPolicyIngressRule objects to a list of proto NetworkPolicyRule objects.
+func convertNetworkPolicyIngressRuleToProto(ingressRules []networkingv1.NetworkPolicyIngressRule) []*pb.KubernetesNetworkPolicyData_NetworkPolicyRule {
+	rules := []*pb.KubernetesNetworkPolicyData_NetworkPolicyRule{}
+	for _, rule := range ingressRules {
+		rules = append(rules, &pb.KubernetesNetworkPolicyData_NetworkPolicyRule{
+			Peers: convertNetworkPolicyPeerToProto(rule.From),
+			Ports: convertNetworkPolicyPortToProto(rule.Ports),
+		})
+	}
+	return rules
+}
+
+// Converts a list of NetworkPolicyPort objects to a list of proto Port objects.
+func convertNetworkPolicyPortToProto(networkPolicyPort []networkingv1.NetworkPolicyPort) []*pb.KubernetesNetworkPolicyData_NetworkPolicyRule_Port {
+	ports := []*pb.KubernetesNetworkPolicyData_NetworkPolicyRule_Port{}
+	for _, port := range networkPolicyPort {
+		portValue := uint32(0)
+		endPortValue := uint32(0)
+		if port.Port != nil {
+			portValue = uint32(port.Port.IntVal)
+		}
+		if port.EndPort != nil {
+			endPortValue = uint32(*port.EndPort)
+		}
+		ports = append(ports, &pb.KubernetesNetworkPolicyData_NetworkPolicyRule_Port{
+			Port:     portValue,
+			Protocol: string(*port.Protocol),
+			EndPort:  endPortValue,
+		})
+	}
+	return ports
+}
+
+// Converts a list of NetworkPolicyPeer objects to a list of proto Peer objects.
+func convertNetworkPolicyPeerToProto(egressRule []networkingv1.NetworkPolicyPeer) []*pb.KubernetesNetworkPolicyData_Peer {
+	peers := []*pb.KubernetesNetworkPolicyData_Peer{}
+	for _, peer := range egressRule {
+		peers = append(peers, &pb.KubernetesNetworkPolicyData_Peer{
+			IpBlock:           convertIPBlocksToProto(peer.IPBlock),
+			PodSelector:       convertNetworkPolicyPodSelectorToProto(peer.PodSelector),
+			NamespaceSelector: convertNetworkPolicyNamespaceSelectorToProto(peer.NamespaceSelector),
+		})
+	}
+	return peers
+}
+
+// Converts a Kubernetes LabelSelector to a proto NamespaceSelector object.
+func convertNetworkPolicyNamespaceSelectorToProto(labelSelector *metav1.LabelSelector) *pb.KubernetesNetworkPolicyData_NamespaceSelector {
+	if labelSelector == nil {
+		return nil
+	}
+	return &pb.KubernetesNetworkPolicyData_NamespaceSelector{
+		MatchLabels: labelSelector.MatchLabels,
 	}
 }
 
-func convertNetworkPolicyPeerToProto(egressRule networkingv1.NetworkPolicyPeer) *pb.KubernetesNetworkPolicyData_Net {
-	return &pb.KubernetesNetworkPolicyData_NetworkPolicyRule_Peer{
-		IpBlock:           convertIPBlocksToProto(egressRule.IPBlock),
-		PodSelector:       convertNetworkPolicyPodSelectorToProto(egressRule.PodSelector),
-		NamespaceSelector: convertNetworkPolicyNamespaceSelectorToProto(egressRule.NamespaceSelector),
+// Converts a Kubernetes IPBlock to a proto IPBlock object.
+func convertIPBlocksToProto(iPBlock *networkingv1.IPBlock) *pb.KubernetesNetworkPolicyData_IPBlock {
+	if iPBlock == nil {
+		return nil
 	}
-}
-
-func convertIPBlocksToProto(iPBlock *networkingv1.IPBlock) *pb.KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_IpBlock {
-	return &pb.KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_NamespaceSelector{
+	return &pb.KubernetesNetworkPolicyData_IPBlock{
 		Cidr:   iPBlock.CIDR,
 		Except: iPBlock.Except,
 	}
 }
 
-func convertNetworkPolicyPodSelectorToProto(podSelector *metav1.LabelSelector) *pb.KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_PodSelector {
-	return &pb.KubernetesNetworkPolicyData_NetworkPolicyRule_Peer_PodSelector{
+// Converts a Kubernetes LabelSelector to a proto PodSelector object.
+func convertNetworkPolicyPodSelectorToProto(podSelector *metav1.LabelSelector) *pb.KubernetesNetworkPolicyData_PodSelector {
+	if podSelector == nil {
+		return nil
+	}
+	return &pb.KubernetesNetworkPolicyData_PodSelector{
 		MatchLabels: podSelector.MatchLabels,
 	}
 }

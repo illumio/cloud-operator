@@ -125,6 +125,7 @@ message KubernetesNetworkPolicyData {
     message Port {
       string protocol = 1;
       uint32 port = 2;
+      uint32 end_port = 3;
     }
   }
 }
