@@ -272,7 +272,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger, apiGroup)
 		if err != nil {
 			if apierrors.IsForbidden(err) {
-				logger.Warn("Access forbidden for resource", zap.String("resource", resource), zap.String("apiGroup", apiGroup), zap.Error(err))
+				logger.Warn("Access forbidden for resource", zap.String("kind", resource), zap.String("api_group", apiGroup), zap.Error(err))
 				continue
 			}
 			return err
