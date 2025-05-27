@@ -287,8 +287,6 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		})
 	}
 
-	logger.Info("Phase 1: List all resources in deterministic order Done")
-
 	// PHASE 2: Send snapshot complete
 	err = sm.sendResourceSnapshotComplete(logger)
 	if err != nil {
