@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -90,6 +91,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.
 	if err != nil {
 		return "", err
 	}
+
 	for _, obj := range objs {
 		metadataObj, err := convertMetaObjectToMetadata(logger, ctx, obj, r.clientset, resourceK8sKind)
 		if err != nil {
@@ -193,6 +195,14 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 func (r *ResourceManager) FetchResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) (*unstructured.UnstructuredList, error) {
 	unstructuredResources, err := r.dynamicClient.Resource(resource).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
+		// Check if the error is related to forbidden access
+		if apierrors.IsForbidden(err) {
+			r.logger.Warn("Access forbidden for resource", zap.Stringer("kind", resource), zap.Error(err))
+			// Gracefully handle forbidden errors by returning the wrapped error
+			return nil, fmt.Errorf("access forbidden for resource %s: %w", resource.Resource, err)
+		}
+
+		// Log and return other errors as usual
 		r.logger.Error("Cannot list resource", zap.Stringer("kind", resource), zap.Error(err))
 		return nil, err
 	}
