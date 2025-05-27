@@ -197,10 +197,9 @@ func (r *ResourceManager) FetchResources(ctx context.Context, resource schema.Gr
 	if err != nil {
 		// Check if the error is related to forbidden access
 		if apierrors.IsForbidden(err) {
-			r.logger.Info("Access forbidden for resource", zap.Stringer("kind", resource), zap.Error(err))
-
-			// Gracefully handle forbidden errors by returning a custom error
-			return nil, fmt.Errorf("access forbidden for resource %s", resource.Resource)
+			r.logger.Warn("Access forbidden for resource", zap.Stringer("kind", resource), zap.Error(err))
+			// Gracefully handle forbidden errors by returning the wrapped error
+			return nil, fmt.Errorf("access forbidden for resource %s: %w", resource.Resource, err)
 		}
 
 		// Log and return other errors as usual

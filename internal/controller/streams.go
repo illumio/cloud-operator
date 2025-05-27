@@ -186,13 +186,10 @@ func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset 
 		for _, version := range group.Versions {
 			resourceList, err := discoveryClient.ServerResourcesForGroupVersion(version.GroupVersion)
 			if err != nil {
-				if apiErr, ok := err.(*apierrors.StatusError); ok && apiErr.ErrStatus.Code == 403 {
-					continue
-				} else if strings.Contains(err.Error(), "forbidden") || strings.Contains(err.Error(), "cannot list resource") {
-					// This is a fallback check in case the error doesn't come as a StatusError
+				if apierrors.IsForbidden(err) {
 					continue
 				} else {
-					return resourceAPIGroupMap, err
+					return nil, err
 				}
 			}
 
@@ -289,6 +286,8 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 			resourceVersion: resourceVersion,
 		})
 	}
+
+	logger.Info("Phase 1: List all resources in deterministic order Done")
 
 	// PHASE 2: Send snapshot complete
 	err = sm.sendResourceSnapshotComplete(logger)
