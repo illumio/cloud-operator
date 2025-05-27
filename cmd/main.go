@@ -106,7 +106,7 @@ func main() {
 	viper.SetDefault("cluster_creds", "clustercreds")
 	viper.SetDefault("cilium_namespace", "kube-system")
 	viper.SetDefault("https_proxy", "")
-	viper.SetDefault("ipfix_collector_port", ":4739")
+	viper.SetDefault("ipfix_collector_port", "4739")
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
 	viper.SetDefault("ovnk_namespace", "openshift-ovn-kubernetes")
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
