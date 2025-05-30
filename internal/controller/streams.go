@@ -44,7 +44,7 @@ type streamClient struct {
 	conn               *grpc.ClientConn
 	client             pb.KubernetesInfoServiceClient
 	falcoEventChan     chan string
-	IPFIXCollectorPort string
+	ipfixCollectorPort string
 	flowCollector      pb.FlowCollector
 	logStream          pb.KubernetesInfoService_SendLogsClient
 	networkFlowsStream pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
@@ -831,7 +831,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				client:             client,
 				ciliumNamespace:    envMap.CiliumNamespace,
 				falcoEventChan:     falcoEventChan,
-				IPFIXCollectorPort: envMap.IPFIXCollectorPort,
+				ipfixCollectorPort: envMap.IPFIXCollectorPort,
 			}
 
 			sm := &streamManager{

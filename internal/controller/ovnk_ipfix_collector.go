@@ -55,11 +55,11 @@ func (sm *streamManager) isOVNKDeployed(ctx context.Context, logger *zap.Logger,
 // It processes packets directly and handles context cancellation gracefully.
 func (sm *streamManager) startOVNKIPFIXCollector(ctx context.Context, logger *zap.Logger) error {
 	logger = logger.With(
-		zap.String("address", sm.streamClient.IPFIXCollectorPort),
+		zap.String("address", sm.streamClient.ipfixCollectorPort),
 	)
 	logger.Info("Starting OVN-K IPFIX collector")
 	logger.Debug("Listening on IPFIX port")
-	listener, err := net.ListenPacket(UDP, ":"+sm.streamClient.IPFIXCollectorPort)
+	listener, err := net.ListenPacket(UDP, ":"+sm.streamClient.ipfixCollectorPort)
 	if err != nil {
 		logger.Fatal("Failed to listen on IPFIX port", zap.Error(err))
 	}
