@@ -90,13 +90,14 @@ message KubernetesPodData {
 
 message KubernetesNetworkPolicyData {
   // Specification of the NetworkPolicy.
-  repeated string policy_types = 1; // E.g., "Ingress", "Egress"
-  PodSelector pod_selector = 2;
-  repeated NetworkPolicyRule ingress_rules = 3;
-  repeated NetworkPolicyRule egress_rules = 4;
+  bool ingress = 1; // True if Ingress policy is enabled
+  bool egress = 2; // True if Egress policy is enabled
+  LabelSelector pod_selector = 3; // Pod selector for the policy
+  repeated NetworkPolicyRule ingress_rules = 4; // Ingress rules for the policy
+  repeated NetworkPolicyRule egress_rules = 5; // Egress rules for the policy
 
   // PodSelector defines the pods targeted by the policy.
-  message PodSelector {
+  message LabelSelector {
     map<string, string> match_labels = 1;
   }
 
@@ -105,15 +106,11 @@ message KubernetesNetworkPolicyData {
     repeated string except = 2;
   }
 
-  message NamespaceSelector {
-    map<string, string> match_labels = 1;
-  }
-
   // Peer defines a network peer (pod or namespace selector).
   message Peer {
     IPBlock ip_block = 1;
-    PodSelector pod_selector = 2;
-    NamespaceSelector namespace_selector = 3;
+    LabelSelector pod_selector = 2;
+    LabelSelector namespace_selector = 3;
   }
 
   // NetworkPolicyRule defines a single ingress or egress rule.
