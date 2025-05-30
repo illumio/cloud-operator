@@ -19,12 +19,15 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller/hubble"
+	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
 type StreamType string
@@ -47,6 +50,17 @@ type streamClient struct {
 	networkFlowsStream pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 	resourceStream     pb.KubernetesInfoService_SendKubernetesResourcesClient
 	configStream       pb.KubernetesInfoService_GetConfigurationUpdatesClient
+	ciliumNamespace           string
+	conn                      *grpc.ClientConn
+	client                    pb.KubernetesInfoServiceClient
+	disableNetworkFlowsCilium bool
+	disableALPN               bool
+	falcoEventChan            chan string
+	flowCollector             pb.FlowCollector
+	logStream                 pb.KubernetesInfoService_SendLogsClient
+	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
+	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient
+	configStream              pb.KubernetesInfoService_GetConfigurationUpdatesClient
 }
 
 type deadlockDetector struct {
@@ -185,16 +199,14 @@ func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset 
 
 	// Iterate over all API groups and versions
 	for _, group := range apiGroups.Groups {
-		// Skip metrics API group
-		if group.Name == "metrics.k8s.io" || group.Name == "config.openshift.io" {
-			continue
-		}
-
 		for _, version := range group.Versions {
 			resourceList, err := discoveryClient.ServerResourcesForGroupVersion(version.GroupVersion)
 			if err != nil {
-				logger.Error("Error fetching resources for groupVersion", zap.Error(err))
-				return resourceAPIGroupMap, err
+				if apierrors.IsForbidden(err) {
+					continue
+				} else {
+					return nil, err
+				}
 			}
 
 			// Map resources to their API groups
@@ -276,7 +288,10 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 
 		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger, apiGroup)
 		if err != nil {
-			resourceManager.logger.Error("Failed to list resource", zap.Error(err))
+			if apierrors.IsForbidden(err) {
+				logger.Warn("Access forbidden for resource", zap.String("kind", resource), zap.String("api_group", apiGroup), zap.Error(err))
+				continue
+			}
 			return err
 		}
 
@@ -405,8 +420,9 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 // findHubbleRelay returns a *CiliumFlowCollector if hubble relay is found in the given namespace
 func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger, ciliumNamespace string) *CiliumFlowCollector {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
-	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, ciliumNamespace)
+	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, ciliumNamespace, sm.streamClient.disableALPN)
 	if err != nil {
+		logger.Error("Failed to create Cilium flow collector", zap.Error(err))
 		return nil
 	}
 	return ciliumFlowCollector
@@ -424,6 +440,11 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 			err := ciliumFlowCollector.exportCiliumFlows(ctx, sm)
 			if err != nil {
 				logger.Warn("Failed to collect and export flows from Cilium Hubble Relay", zap.Error(err))
+				if errors.Is(err, tls.ErrTLSALPNHandshakeFailed) {
+					sm.streamClient.disableALPN = true
+					return err
+				}
+				sm.streamClient.disableNetworkFlowsCilium = true
 				return err
 			}
 		}
@@ -524,7 +545,7 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, logger, sm.streamClient.ciliumNamespace)
 	if err != nil {
-		if errors.Is(err, ErrHubbleNotFound) || errors.Is(err, ErrNoPortsAvailable) {
+		if errors.Is(err, hubble.ErrHubbleNotFound) || errors.Is(err, hubble.ErrNoPortsAvailable) {
 			logger.Warn("Disabling Cilium flow collection", zap.Error(err))
 			return ErrStopRetries
 		}
@@ -831,6 +852,15 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					1000,           // TODO: Make the maxFlows capacity configurable.
 					make(chan pb.Flow, 100),
 				),
+			}
+			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
+			if ciliumFlowCollector == nil {
+				sm.streamClient.disableNetworkFlowsCilium = true
+				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_FALCO
+			} else {
+				sm.streamClient.disableNetworkFlowsCilium = false
+				sm.streamClient.disableALPN = false
+				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_CILIUM
 			}
 
 			resourceDone := make(chan struct{})

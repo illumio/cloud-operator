@@ -1,3 +1,5 @@
+// Copyright 2025 Illumio, Inc. All Rights Reserved.
+
 package controller
 
 import (
@@ -7,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	testhelper "github.com/illumio/cloud-operator/internal/controller/testhelper"
+	"github.com/illumio/cloud-operator/internal/controller/testhelper"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
