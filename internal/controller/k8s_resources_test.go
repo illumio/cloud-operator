@@ -1031,8 +1031,8 @@ func TestConvertNetworkPolicyEgressRuleToProto(t *testing.T) {
 	result := convertNetworkPolicyEgressRuleToProto(egressRules)
 	assert.Equal(t, 1, len(result))
 	assert.Equal(t, "backend", result[0].Peers[0].NamespaceSelector.MatchLabels["team"])
-	assert.Equal(t, "10.0.0.0/16", result[0].Peers[1].IpBlock.Cidr)
-	assert.Equal(t, "10.0.1.0/24", result[0].Peers[1].IpBlock.Except[0])
+	assert.Equal(t, "10.0.0.0/16", result[0].Peers[1].GetIpBlock().Cidr)
+	assert.Equal(t, "10.0.1.0/24", result[0].Peers[1].GetIpBlock().Except[0])
 	assert.Equal(t, uint32(443), result[0].Ports[0].Port)
 	assert.Equal(t, "TCP", result[0].Ports[0].Protocol)
 }
@@ -1111,8 +1111,8 @@ func TestConvertNetworkPolicyPeerToProto(t *testing.T) {
 	assert.Equal(t, 2, len(result))
 	assert.Equal(t, "frontend", result[0].PodSelector.MatchLabels["app"])
 	assert.Equal(t, "frontend", result[0].NamespaceSelector.MatchLabels["team"])
-	assert.Equal(t, "192.168.0.0/16", result[0].IpBlock.Cidr)
-	assert.Equal(t, "192.168.1.0/24", result[0].IpBlock.Except[0])
+	assert.Equal(t, "192.168.0.0/16", result[0].GetIpBlock().Cidr)
+	assert.Equal(t, "192.168.1.0/24", result[0].GetIpBlock().Except[0])
 	assert.Equal(t, "backend", result[1].NamespaceSelector.MatchLabels["team"])
 }
 
@@ -1178,15 +1178,14 @@ func TestConvertNetworkPolicyToProto(t *testing.T) {
 				},
 			},
 			expectedPolicy: &pb.KubernetesNetworkPolicyData{
-				PolicyTypes: []string{"Ingress"},
-				PodSelector: &pb.KubernetesNetworkPolicyData_PodSelector{
+				PodSelector: &pb.LabelSelector{
 					MatchLabels: map[string]string{"app": "frontend"},
 				},
-				IngressRules: []*pb.KubernetesNetworkPolicyData_NetworkPolicyRule{
+				IngressRules: []*pb.NetworkPolicyRule{
 					{
-						Peers: []*pb.KubernetesNetworkPolicyData_Peer{
+						Peers: []*pb.Peer{
 							{
-								NamespaceSelector: &pb.KubernetesNetworkPolicyData_NamespaceSelector{
+								NamespaceSelector: &pb.LabelSelector{
 									MatchLabels: map[string]string{"team": "backend"},
 								},
 							},
@@ -1236,15 +1235,14 @@ func TestConvertNetworkPolicyToProto(t *testing.T) {
 				},
 			},
 			expectedPolicy: &pb.KubernetesNetworkPolicyData{
-				PolicyTypes: []string{"Ingress", "Egress"},
-				PodSelector: &pb.KubernetesNetworkPolicyData_PodSelector{
+				PodSelector: &pb.LabelSelector{
 					MatchLabels: map[string]string{"role": "db"},
 				},
-				IngressRules: []*pb.KubernetesNetworkPolicyData_NetworkPolicyRule{
+				IngressRules: []*pb.NetworkPolicyRule{
 					{
-						Peers: []*pb.KubernetesNetworkPolicyData_Peer{
+						Peers: []*pb.Peer{
 							{
-								PodSelector: &pb.KubernetesNetworkPolicyData_PodSelector{
+								PodSelector: &pb.LabelSelector{
 									MatchLabels: map[string]string{"app": "frontend"},
 								},
 							},
@@ -1252,13 +1250,15 @@ func TestConvertNetworkPolicyToProto(t *testing.T) {
 						Ports: nil,
 					},
 				},
-				EgressRules: []*pb.KubernetesNetworkPolicyData_NetworkPolicyRule{
+				EgressRules: []*pb.NetworkPolicyRule{
 					{
-						Peers: []*pb.KubernetesNetworkPolicyData_Peer{
+						Peers: []*pb.Peer{
 							{
-								IpBlock: &pb.KubernetesNetworkPolicyData_IPBlock{
-									Cidr:   "10.0.0.0/16",
-									Except: []string{"10.0.1.0/24"},
+								PeerType: &pb.Peer_IpBlock{
+									IpBlock: &pb.IPBlock{
+										Cidr:   "10.0.0.0/16",
+										Except: []string{"10.0.1.0/24"},
+									},
 								},
 							},
 						},
