@@ -120,8 +120,8 @@ func convertMetaObjectToMetadata(logger *zap.Logger, ctx context.Context, obj me
 }
 
 // getContentsOfNetworkPolicy gets the contents of a NetworkPolicy and returns it as a KubernetesNetworkPolicyData proto message
-func getContentsOfNetworkPolicy(ctx context.Context, s1 string, clientset *kubernetes.Clientset, s2 string) (*pb.KubernetesNetworkPolicyData, error) {
-	networkPolicy, err := clientset.NetworkingV1().NetworkPolicies(s2).Get(ctx, s1, metav1.GetOptions{})
+func getContentsOfNetworkPolicy(ctx context.Context, networkPolicyName string, clientset *kubernetes.Clientset, networkPolicyNamespace string) (*pb.KubernetesNetworkPolicyData, error) {
+	networkPolicy, err := clientset.NetworkingV1().NetworkPolicies(networkPolicyNamespace).Get(ctx, networkPolicyName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -132,6 +132,7 @@ func getContentsOfNetworkPolicy(ctx context.Context, s1 string, clientset *kuber
 	return convertedNetworkPolicyData, nil
 }
 
+// convertNetworkPolicyToProto converts a Kubernetes NetworkPolicy to a proto message KubernetesNetworkPolicyData
 func convertNetworkPolicyToProto(networkPolicy *networkingv1.NetworkPolicy) (*pb.KubernetesNetworkPolicyData, error) {
 	if networkPolicy == nil {
 		return nil, errors.New("networkPolicy is nil")
@@ -150,6 +151,7 @@ func convertNetworkPolicyToProto(networkPolicy *networkingv1.NetworkPolicy) (*pb
 	return networkPolicyData, nil
 }
 
+// convertNetworkPolicyPodSelectorToProto converts a Kubernetes LabelSelector to a proto message LabelSelector
 func convertNetworkPolicyPodSelectorToProto(podSelector *metav1.LabelSelector) *pb.LabelSelector {
 	if podSelector == nil {
 		return nil
@@ -160,11 +162,13 @@ func convertNetworkPolicyPodSelectorToProto(podSelector *metav1.LabelSelector) *
 	}
 }
 
+// convertLabelSelectorRequirementsToProto converts a Kubernetes LabelSelectorRequirement to a proto message LabelSelectorRequirement
 func convertLabelSelectorRequirementsToProto(requirements []metav1.LabelSelectorRequirement) []*pb.LabelSelectorRequirement {
 	protoRequirements := []*pb.LabelSelectorRequirement{}
 	for _, req := range requirements {
 		protoRequirements = append(protoRequirements, &pb.LabelSelectorRequirement{
-			Key:      req.Key,
+			Key: req.Key,
+			// Operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
 			Operator: string(req.Operator),
 			Values:   req.Values,
 		})
@@ -172,6 +176,7 @@ func convertLabelSelectorRequirementsToProto(requirements []metav1.LabelSelector
 	return protoRequirements
 }
 
+// convertNetworkPolicyIngressRuleToProto converts a Kubernetes NetworkPolicyIngressRule to a proto message NetworkPolicyRule
 func convertNetworkPolicyIngressRuleToProto(ingressRules []networkingv1.NetworkPolicyIngressRule) []*pb.NetworkPolicyRule {
 	protoRules := []*pb.NetworkPolicyRule{}
 	for _, rule := range ingressRules {
@@ -183,6 +188,7 @@ func convertNetworkPolicyIngressRuleToProto(ingressRules []networkingv1.NetworkP
 	return protoRules
 }
 
+// convertNetworkPolicyEgressRuleToProto converts a Kubernetes NetworkPolicyEgressRule to a proto message NetworkPolicyRule
 func convertNetworkPolicyEgressRuleToProto(egressRules []networkingv1.NetworkPolicyEgressRule) []*pb.NetworkPolicyRule {
 	protoRules := []*pb.NetworkPolicyRule{}
 	for _, rule := range egressRules {
@@ -194,6 +200,7 @@ func convertNetworkPolicyEgressRuleToProto(egressRules []networkingv1.NetworkPol
 	return protoRules
 }
 
+// convertNetworkPolicyPeerToProto converts a Kubernetes NetworkPolicyPeer to a proto message Peer
 func convertNetworkPolicyPeerToProto(peers []networkingv1.NetworkPolicyPeer) []*pb.Peer {
 	protoPeers := []*pb.Peer{}
 	for _, peer := range peers {
@@ -211,16 +218,7 @@ func convertNetworkPolicyPeerToProto(peers []networkingv1.NetworkPolicyPeer) []*
 	return protoPeers
 }
 
-func convertIPBlockToProto(ipBlock *networkingv1.IPBlock) *pb.IPBlock {
-	if ipBlock == nil {
-		return nil
-	}
-	return &pb.IPBlock{
-		Cidr:   ipBlock.CIDR,
-		Except: ipBlock.Except,
-	}
-}
-
+// convertNetworkPolicyPortToProto converts a Kubernetes NetworkPolicyPort to a proto message Port
 func convertNetworkPolicyPortToProto(ports []networkingv1.NetworkPolicyPort) []*pb.Port {
 	protoPorts := []*pb.Port{}
 	for _, port := range ports {
@@ -233,6 +231,7 @@ func convertNetworkPolicyPortToProto(ports []networkingv1.NetworkPolicyPort) []*
 	return protoPorts
 }
 
+// convertProtocolToProto converts a Kubernetes Protocol to a proto Protocol object.
 func convertProtocolToProto(protocol *v1.Protocol) pb.Port_Protocol {
 	if protocol == nil {
 		return pb.Port_PROTOCOL_TCP_UNSPECIFIED
@@ -247,6 +246,7 @@ func convertProtocolToProto(protocol *v1.Protocol) pb.Port_Protocol {
 	}
 }
 
+// convertEndPortToProto converts a Kubernetes EndPort to a proto EndPort object.
 func convertEndPortToProto(endPort *int32) *uint32 {
 	if endPort == nil {
 		return nil
@@ -255,7 +255,7 @@ func convertEndPortToProto(endPort *int32) *uint32 {
 	return &val
 }
 
-// Converts a Kubernetes LabelSelector to a proto NamespaceSelector object.
+// convertNetworkPolicyNamespaceSelectorToProto converts a Kubernetes LabelSelector to a proto NamespaceSelector object.
 func convertNetworkPolicyNamespaceSelectorToProto(labelSelector *metav1.LabelSelector) *pb.LabelSelector {
 	if labelSelector == nil {
 		return nil
@@ -265,7 +265,7 @@ func convertNetworkPolicyNamespaceSelectorToProto(labelSelector *metav1.LabelSel
 	}
 }
 
-// Converts a Kubernetes IPBlock to a proto IPBlock object.
+// convertIPBlocksToProto converts a Kubernetes IPBlock to a proto IPBlock object.
 func convertIPBlocksToProto(iPBlock *networkingv1.IPBlock) *pb.IPBlock {
 	if iPBlock == nil {
 		return nil
