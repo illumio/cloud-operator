@@ -138,15 +138,43 @@ func convertNetworkPolicyToProto(networkPolicy *networkingv1.NetworkPolicy) (*pb
 		return nil, errors.New("networkPolicy is nil")
 	}
 
-	networkPolicyData := &pb.KubernetesNetworkPolicyData{
-		PodSelector:  convertNetworkPolicyPodSelectorToProto(&networkPolicy.Spec.PodSelector),
-		IngressRules: convertNetworkPolicyIngressRuleToProto(networkPolicy.Spec.Ingress),
-		EgressRules:  convertNetworkPolicyEgressRuleToProto(networkPolicy.Spec.Egress),
+	var ingressRules []*pb.NetworkPolicyRule
+	if len(networkPolicy.Spec.Ingress) > 0 {
+		ingressRules = convertNetworkPolicyIngressRuleToProto(networkPolicy.Spec.Ingress)
+		if len(ingressRules) == 0 {
+			ingressRules = nil
+		}
+	} else {
+		ingressRules = nil
 	}
 
-	// Set Ingress and Egress flags based on the presence of rules
-	networkPolicyData.Ingress = len(networkPolicyData.IngressRules) > 0
-	networkPolicyData.Egress = len(networkPolicyData.EgressRules) > 0
+	var egressRules []*pb.NetworkPolicyRule
+	if len(networkPolicy.Spec.Egress) > 0 {
+		egressRules = convertNetworkPolicyEgressRuleToProto(networkPolicy.Spec.Egress)
+		if len(egressRules) == 0 {
+			egressRules = nil
+		}
+	} else {
+		egressRules = nil
+	}
+
+	var podSelector *pb.LabelSelector
+	if len(networkPolicy.Spec.PodSelector.MatchLabels) > 0 || len(networkPolicy.Spec.PodSelector.MatchExpressions) > 0 {
+		podSelector = convertNetworkPolicyPodSelectorToProto(&networkPolicy.Spec.PodSelector)
+		if len(podSelector.MatchExpressions) == 0 {
+			podSelector.MatchExpressions = nil
+		}
+	} else {
+		podSelector = nil
+	}
+
+	networkPolicyData := &pb.KubernetesNetworkPolicyData{
+		PodSelector:  podSelector,
+		IngressRules: ingressRules,
+		EgressRules:  egressRules,
+		Ingress:      ingressRules != nil && len(ingressRules) > 0,
+		Egress:       egressRules != nil && len(egressRules) > 0,
+	}
 
 	return networkPolicyData, nil
 }
@@ -172,6 +200,9 @@ func convertLabelSelectorRequirementsToProto(requirements []metav1.LabelSelector
 			Operator: string(req.Operator),
 			Values:   req.Values,
 		})
+	}
+	if len(protoRequirements) == 0 {
+		return nil
 	}
 	return protoRequirements
 }
@@ -208,6 +239,11 @@ func convertNetworkPolicyPeerToProto(peers []networkingv1.NetworkPolicyPeer) []*
 			protoPeers = append(protoPeers, &pb.Peer{
 				PeerType: &pb.Peer_IpBlock{IpBlock: convertIPBlocksToProto(peer.IPBlock)},
 			})
+			continue
+		}
+
+		if peer.NamespaceSelector == nil && peer.PodSelector == nil {
+			continue
 		}
 
 		protoPeers = append(protoPeers, &pb.Peer{
@@ -215,6 +251,7 @@ func convertNetworkPolicyPeerToProto(peers []networkingv1.NetworkPolicyPeer) []*
 			PodSelector:       convertNetworkPolicyPodSelectorToProto(peer.PodSelector),
 		})
 	}
+
 	return protoPeers
 }
 
@@ -222,11 +259,20 @@ func convertNetworkPolicyPeerToProto(peers []networkingv1.NetworkPolicyPeer) []*
 func convertNetworkPolicyPortToProto(ports []networkingv1.NetworkPolicyPort) []*pb.Port {
 	protoPorts := []*pb.Port{}
 	for _, port := range ports {
-		protoPorts = append(protoPorts, &pb.Port{
+		protoPort := &pb.Port{
 			Protocol: convertProtocolToProto(port.Protocol),
-			Port:     uint32(port.Port.IntVal),
-			EndPort:  convertEndPortToProto(port.EndPort),
-		})
+		}
+		if port.Port != nil {
+			protoPort.Port = uint32(port.Port.IntVal)
+		}
+		if port.EndPort != nil {
+			protoPort.EndPort = convertEndPortToProto(port.EndPort)
+		}
+		protoPorts = append(protoPorts, protoPort)
+	}
+
+	if len(protoPorts) == 0 {
+		return nil
 	}
 	return protoPorts
 }
@@ -261,7 +307,8 @@ func convertNetworkPolicyNamespaceSelectorToProto(labelSelector *metav1.LabelSel
 		return nil
 	}
 	return &pb.LabelSelector{
-		MatchLabels: labelSelector.MatchLabels,
+		MatchLabels:      labelSelector.MatchLabels,
+		MatchExpressions: convertLabelSelectorRequirementsToProto(labelSelector.MatchExpressions),
 	}
 }
 

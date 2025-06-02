@@ -1034,7 +1034,7 @@ func TestConvertNetworkPolicyEgressRuleToProto(t *testing.T) {
 	assert.Equal(t, "10.0.0.0/16", result[0].Peers[1].GetIpBlock().Cidr)
 	assert.Equal(t, "10.0.1.0/24", result[0].Peers[1].GetIpBlock().Except[0])
 	assert.Equal(t, uint32(443), result[0].Ports[0].Port)
-	assert.Equal(t, "TCP", result[0].Ports[0].Protocol)
+	assert.Equal(t, pb.Port_PROTOCOL_TCP_UNSPECIFIED, result[0].Ports[0].Protocol)
 }
 
 func TestConvertNetworkPolicyIngressRuleToProto(t *testing.T) {
@@ -1272,6 +1272,210 @@ func TestConvertNetworkPolicyToProto(t *testing.T) {
 			input:          nil,
 			expectedPolicy: nil,
 			expectError:    true,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			result, err := convertNetworkPolicyToProto(tt.input)
+
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedPolicy, result)
+			}
+		})
+	}
+}
+
+func TestConvertNetworkPolicyToProto_Comprehensive(t *testing.T) {
+	tests := map[string]struct {
+		input          *networkingv1.NetworkPolicy
+		expectedPolicy *pb.KubernetesNetworkPolicyData
+		expectError    bool
+	}{
+		"empty policy": {
+			input: &networkingv1.NetworkPolicy{
+				Spec: networkingv1.NetworkPolicySpec{},
+			},
+			expectedPolicy: &pb.KubernetesNetworkPolicyData{
+				PodSelector:  nil,
+				IngressRules: nil,
+				EgressRules:  nil,
+			},
+			expectError: false,
+		},
+		"policy with pod selector and ingress rule": {
+			input: &networkingv1.NetworkPolicy{
+				Spec: networkingv1.NetworkPolicySpec{
+					PodSelector: metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": "frontend"},
+					},
+					Ingress: []networkingv1.NetworkPolicyIngressRule{
+						{
+							From: []networkingv1.NetworkPolicyPeer{
+								{
+									NamespaceSelector: &metav1.LabelSelector{
+										MatchLabels: map[string]string{"team": "backend"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedPolicy: &pb.KubernetesNetworkPolicyData{
+				Ingress: true,
+				PodSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{"app": "frontend"},
+				},
+				IngressRules: []*pb.NetworkPolicyRule{
+					{
+						Peers: []*pb.Peer{
+							{
+								NamespaceSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"team": "backend"},
+								},
+							},
+						},
+					},
+				},
+				EgressRules: nil,
+			},
+			expectError: false,
+		},
+		"policy with egress rule and IPBlock": {
+			input: &networkingv1.NetworkPolicy{
+				Spec: networkingv1.NetworkPolicySpec{
+					Egress: []networkingv1.NetworkPolicyEgressRule{
+						{
+							To: []networkingv1.NetworkPolicyPeer{
+								{
+									IPBlock: &networkingv1.IPBlock{
+										CIDR:   "10.0.0.0/16",
+										Except: []string{"10.0.1.0/24"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedPolicy: &pb.KubernetesNetworkPolicyData{
+				PodSelector: nil,
+				Ingress:     false,
+				Egress:      true,
+				EgressRules: []*pb.NetworkPolicyRule{
+					{
+						Peers: []*pb.Peer{
+							{
+								PeerType: &pb.Peer_IpBlock{
+									IpBlock: &pb.IPBlock{
+										Cidr:   "10.0.0.0/16",
+										Except: []string{"10.0.1.0/24"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectError: false,
+		},
+		"policy with mixed ingress and egress rules": {
+			input: &networkingv1.NetworkPolicy{
+				Spec: networkingv1.NetworkPolicySpec{
+					PodSelector: metav1.LabelSelector{
+						MatchLabels: map[string]string{"role": "db"},
+					},
+					Ingress: []networkingv1.NetworkPolicyIngressRule{
+						{
+							From: []networkingv1.NetworkPolicyPeer{
+								{
+									PodSelector: &metav1.LabelSelector{
+										MatchLabels: map[string]string{"app": "frontend"},
+									},
+								},
+							},
+						},
+					},
+					Egress: []networkingv1.NetworkPolicyEgressRule{
+						{
+							To: []networkingv1.NetworkPolicyPeer{
+								{
+									IPBlock: &networkingv1.IPBlock{
+										CIDR:   "192.168.0.0/16",
+										Except: []string{"192.168.1.0/24"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedPolicy: &pb.KubernetesNetworkPolicyData{
+				Ingress: true,
+				Egress:  true,
+				PodSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{"role": "db"},
+				},
+				IngressRules: []*pb.NetworkPolicyRule{
+					{
+						Peers: []*pb.Peer{
+							{
+								PodSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "frontend"},
+								},
+							},
+						},
+					},
+				},
+				EgressRules: []*pb.NetworkPolicyRule{
+					{
+						Peers: []*pb.Peer{
+							{
+								PeerType: &pb.Peer_IpBlock{
+									IpBlock: &pb.IPBlock{
+										Cidr:   "192.168.0.0/16",
+										Except: []string{"192.168.1.0/24"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectError: false,
+		},
+		"policy with match expressions": {
+			input: &networkingv1.NetworkPolicy{
+				Spec: networkingv1.NetworkPolicySpec{
+					PodSelector: metav1.LabelSelector{
+						MatchExpressions: []metav1.LabelSelectorRequirement{
+							{
+								Key:      "environment",
+								Operator: metav1.LabelSelectorOpIn,
+								Values:   []string{"production", "staging"},
+							},
+						},
+					},
+				},
+			},
+			expectedPolicy: &pb.KubernetesNetworkPolicyData{
+				PodSelector: &pb.LabelSelector{
+					MatchExpressions: []*pb.LabelSelectorRequirement{
+						{
+							Key:      "environment",
+							Operator: "In",
+							Values:   []string{"production", "staging"},
+						},
+					},
+				},
+				IngressRules: nil,
+				EgressRules:  nil,
+			},
+			expectError: false,
 		},
 	}
 
