@@ -95,36 +95,55 @@ message KubernetesNetworkPolicyData {
   LabelSelector pod_selector = 3; // Pod selector for the policy
   repeated NetworkPolicyRule ingress_rules = 4; // Ingress rules for the policy
   repeated NetworkPolicyRule egress_rules = 5; // Egress rules for the policy
+}
 
-  // PodSelector defines the pods targeted by the policy.
-  message LabelSelector {
-    map<string, string> match_labels = 1;
-  }
+// LabelSelector defines the pod or namespace targeted by the policy.
+message LabelSelector {
+  map<string, string> match_labels = 1;
+  repeated LabelSelectorRequirement match_expressions = 2;
+}
 
-  message IPBlock {
-    string cidr = 1;
-    repeated string except = 2;
-  }
+// LabelSelectorRequirement is a selector that contains values, a key, and an operator that relates the key and values.
+message LabelSelectorRequirement {
+  string key = 1;
+  // operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
+  string operator = 2;
+  repeated string values = 3;
+}
 
-  // Peer defines a network peer (pod or namespace selector).
-  message Peer {
+message IPBlock {
+  string cidr = 1;
+  repeated string except = 2;
+}
+
+// Peer defines a network peer (pod or namespace selector).
+message Peer {
+  // Defines policy on a particular IPBlock. If this field is set, neither of the other fields can be.
+  oneof peer_type {
     IPBlock ip_block = 1;
-    LabelSelector pod_selector = 2;
-    LabelSelector namespace_selector = 3;
+  }
+  // The following fields can be set together to select pods within namespaces.
+  optional LabelSelector namespace_selector = 2; // Selects namespaces using cluster-scoped labels.
+  optional LabelSelector pod_selector = 3; // Selects pods using label selector semantics.
+}
+
+// Port defines a network port.
+message Port {
+  enum Protocol {
+    PROTOCOL_TCP_UNSPECIFIED = 0; // Default value in Kubernetes
+    PROTOCOL_UDP = 1;
+    PROTOCOL_SCTP = 2;
   }
 
-  // NetworkPolicyRule defines a single ingress or egress rule.
-  message NetworkPolicyRule {
-    repeated Peer peers = 1;
-    repeated Port ports = 2;
+  Protocol protocol = 1;
+  uint32 port = 2;
+  optional uint32 end_port = 3;
+}
 
-    // Port defines a network port.
-    message Port {
-      string protocol = 1;
-      uint32 port = 2;
-      uint32 end_port = 3;
-    }
-  }
+// NetworkPolicyRule defines a single ingress or egress rule.
+message NetworkPolicyRule {
+  repeated Peer peers = 1;
+  repeated Port ports = 2;
 }
 
 // Information identifying an object owning a Kubernetes resource.
