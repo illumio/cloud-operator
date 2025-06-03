@@ -141,17 +141,11 @@ func convertNetworkPolicyToProto(networkPolicy *networkingv1.NetworkPolicy) (*pb
 	var ingressRules []*pb.NetworkPolicyRule
 	if len(networkPolicy.Spec.Ingress) > 0 {
 		ingressRules = convertNetworkPolicyIngressRuleToProto(networkPolicy.Spec.Ingress)
-		if len(ingressRules) == 0 {
-			ingressRules = nil
-		}
 	}
 
 	var egressRules []*pb.NetworkPolicyRule
 	if len(networkPolicy.Spec.Egress) > 0 {
 		egressRules = convertNetworkPolicyEgressRuleToProto(networkPolicy.Spec.Egress)
-		if len(egressRules) == 0 {
-			egressRules = nil
-		}
 	}
 
 	var podSelector *pb.LabelSelector
@@ -168,8 +162,8 @@ func convertNetworkPolicyToProto(networkPolicy *networkingv1.NetworkPolicy) (*pb
 		PodSelector:  podSelector,
 		IngressRules: ingressRules,
 		EgressRules:  egressRules,
-		Ingress:      ingressRules != nil && len(ingressRules) > 0,
-		Egress:       egressRules != nil && len(egressRules) > 0,
+		Ingress:      len(ingressRules) > 0,
+		Egress:       len(egressRules) > 0,
 	}
 
 	return networkPolicyData, nil
