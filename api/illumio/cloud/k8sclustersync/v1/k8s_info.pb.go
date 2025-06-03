@@ -1119,8 +1119,8 @@ func (*Peer_IpBlock) isPeer_PeerType() {}
 type Port struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Protocol      Port_Protocol          `protobuf:"varint,1,opt,name=protocol,proto3,enum=illumio.cloud.k8sclustersync.v1.Port_Protocol" json:"protocol,omitempty"`
-	Port          uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
-	EndPort       *uint32                `protobuf:"varint,3,opt,name=end_port,json=endPort,proto3,oneof" json:"end_port,omitempty"`
+	Port          int32                  `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
+	EndPort       *int32                 `protobuf:"varint,3,opt,name=end_port,json=endPort,proto3,oneof" json:"end_port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1162,14 +1162,14 @@ func (x *Port) GetProtocol() Port_Protocol {
 	return Port_PROTOCOL_TCP_UNSPECIFIED
 }
 
-func (x *Port) GetPort() uint32 {
+func (x *Port) GetPort() int32 {
 	if x != nil {
 		return x.Port
 	}
 	return 0
 }
 
-func (x *Port) GetEndPort() uint32 {
+func (x *Port) GetEndPort() int32 {
 	if x != nil && x.EndPort != nil {
 		return *x.EndPort
 	}
@@ -3467,8 +3467,8 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\r_pod_selector\"\xe2\x01\n" +
 	"\x04Port\x12J\n" +
 	"\bprotocol\x18\x01 \x01(\x0e2..illumio.cloud.k8sclustersync.v1.Port.ProtocolR\bprotocol\x12\x12\n" +
-	"\x04port\x18\x02 \x01(\rR\x04port\x12\x1e\n" +
-	"\bend_port\x18\x03 \x01(\rH\x00R\aendPort\x88\x01\x01\"M\n" +
+	"\x04port\x18\x02 \x01(\x05R\x04port\x12\x1e\n" +
+	"\bend_port\x18\x03 \x01(\x05H\x00R\aendPort\x88\x01\x01\"M\n" +
 	"\bProtocol\x12\x1c\n" +
 	"\x18PROTOCOL_TCP_UNSPECIFIED\x10\x00\x12\x10\n" +
 	"\fPROTOCOL_UDP\x10\x01\x12\x11\n" +

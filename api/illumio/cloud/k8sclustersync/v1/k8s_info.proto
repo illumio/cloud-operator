@@ -136,8 +136,8 @@ message Port {
   }
 
   Protocol protocol = 1;
-  uint32 port = 2;
-  optional uint32 end_port = 3;
+  int32 port = 2;
+  optional int32 end_port = 3;
 }
 
 // NetworkPolicyRule defines a single ingress or egress rule.

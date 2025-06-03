@@ -144,8 +144,6 @@ func convertNetworkPolicyToProto(networkPolicy *networkingv1.NetworkPolicy) (*pb
 		if len(ingressRules) == 0 {
 			ingressRules = nil
 		}
-	} else {
-		ingressRules = nil
 	}
 
 	var egressRules []*pb.NetworkPolicyRule
@@ -154,8 +152,6 @@ func convertNetworkPolicyToProto(networkPolicy *networkingv1.NetworkPolicy) (*pb
 		if len(egressRules) == 0 {
 			egressRules = nil
 		}
-	} else {
-		egressRules = nil
 	}
 
 	var podSelector *pb.LabelSelector
@@ -263,10 +259,11 @@ func convertNetworkPolicyPortToProto(ports []networkingv1.NetworkPolicyPort) []*
 			Protocol: convertProtocolToProto(port.Protocol),
 		}
 		if port.Port != nil {
-			protoPort.Port = uint32(port.Port.IntVal)
+			protoPort.Port = int32(port.Port.IntVal)
 		}
-		if port.EndPort != nil {
-			protoPort.EndPort = convertEndPortToProto(port.EndPort)
+		convertedEndPort := convertEndPortToProto(port.EndPort)
+		if convertedEndPort != nil {
+			protoPort.EndPort = convertedEndPort
 		}
 		protoPorts = append(protoPorts, protoPort)
 	}
@@ -293,12 +290,11 @@ func convertProtocolToProto(protocol *v1.Protocol) pb.Port_Protocol {
 }
 
 // convertEndPortToProto converts a Kubernetes EndPort to a proto EndPort object.
-func convertEndPortToProto(endPort *int32) *uint32 {
+func convertEndPortToProto(endPort *int32) *int32 {
 	if endPort == nil {
 		return nil
 	}
-	val := uint32(*endPort)
-	return &val
+	return endPort
 }
 
 // convertNetworkPolicyNamespaceSelectorToProto converts a Kubernetes LabelSelector to a proto NamespaceSelector object.
