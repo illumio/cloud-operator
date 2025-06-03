@@ -88,8 +88,8 @@ message KubernetesPodData {
   repeated string ip_addresses = 1;
 }
 
+// KubernetesNetworkPolicyData contains information specific to a NetworkPolicy object.
 message KubernetesNetworkPolicyData {
-  // Specification of the NetworkPolicy.
   bool ingress = 1; // True if Ingress policy is enabled
   bool egress = 2; // True if Egress policy is enabled
   LabelSelector pod_selector = 3; // Pod selector for the policy
@@ -111,6 +111,7 @@ message LabelSelectorRequirement {
   repeated string values = 3;
 }
 
+// IPBlock defines a particular CIDR (Ex: 10.10.10.0/24).
 message IPBlock {
   string cidr = 1;
   repeated string except = 2;
