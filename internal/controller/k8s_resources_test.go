@@ -1027,13 +1027,14 @@ func TestConvertNetworkPolicyEgressRuleToProto(t *testing.T) {
 			},
 		},
 	}
+	port := "443"
 
 	result := convertNetworkPolicyEgressRuleToProto(egressRules)
 	assert.Equal(t, 1, len(result))
 	assert.Equal(t, "backend", result[0].Peers[0].GetPod().NamespaceSelector.MatchLabels["team"])
 	assert.Equal(t, "10.0.0.0/16", result[0].Peers[1].GetIpBlock().Cidr)
 	assert.Equal(t, "10.0.1.0/24", result[0].Peers[1].GetIpBlock().Except[0])
-	assert.Equal(t, int32(443), result[0].Ports[0].Port)
+	assert.Equal(t, &port, result[0].Ports[0].Port)
 	assert.Equal(t, pb.Port_PROTOCOL_TCP_UNSPECIFIED, result[0].Ports[0].Protocol)
 }
 
@@ -1074,14 +1075,16 @@ func TestConvertNetworkPolicyIngressRuleToProto(t *testing.T) {
 			},
 		},
 	}
+	port1 := "80"
+	port2 := "8080"
 
 	result := convertNetworkPolicyIngressRuleToProto(ingressRules)
 	assert.Equal(t, 1, len(result))
 	assert.Equal(t, "frontend", result[0].Peers[0].GetPod().PodSelector.MatchLabels["app"])
 	assert.Equal(t, "frontend", result[0].Peers[1].GetPod().NamespaceSelector.MatchLabels["team"])
-	assert.Equal(t, int32(80), result[0].Ports[0].Port)
+	assert.Equal(t, &port1, result[0].Ports[0].Port)
 	assert.Equal(t, pb.Port_PROTOCOL_TCP_UNSPECIFIED, result[0].Ports[0].Protocol)
-	assert.Equal(t, int32(8080), result[0].Ports[1].Port)
+	assert.Equal(t, &port2, result[0].Ports[1].Port)
 	assert.Equal(t, int32(8090), *result[0].Ports[1].EndPort)
 	assert.Equal(t, pb.Port_PROTOCOL_TCP_UNSPECIFIED, result[0].Ports[1].Protocol)
 }
@@ -1243,8 +1246,8 @@ func TestConvertNetworkPolicyToProto(t *testing.T) {
 							{
 								Peer: &pb.Peer_Pod{
 									Pod: &pb.PeerSelector{
-										NamespaceSelector: &pb.LabelSelector{
-											MatchLabels: map[string]string{"team": "backend"},
+										PodSelector: &pb.LabelSelector{
+											MatchLabels: map[string]string{"app": "frontend"},
 										},
 									},
 								},

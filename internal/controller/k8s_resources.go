@@ -245,11 +245,6 @@ func convertNetworkPolicyPeerToProto(peers []networkingv1.NetworkPolicyPeer) []*
 			})
 			continue
 		}
-
-		if peer.NamespaceSelector == nil && peer.PodSelector == nil {
-			continue
-		}
-
 		protoPeers = append(protoPeers, &pb.Peer{
 			Peer: &pb.Peer_Pod{
 				Pod: &pb.PeerSelector{
@@ -258,6 +253,7 @@ func convertNetworkPolicyPeerToProto(peers []networkingv1.NetworkPolicyPeer) []*
 				},
 			},
 		})
+
 	}
 
 	return protoPeers
@@ -274,7 +270,8 @@ func convertNetworkPolicyPortToProto(ports []networkingv1.NetworkPolicyPort) []*
 			Protocol: convertProtocolToProto(port.Protocol),
 		}
 		if port.Port != nil {
-			protoPort.Port = &port.Port.StrVal
+			portString := port.Port.String()
+			protoPort.Port = &portString
 		}
 		convertedEndPort := convertEndPortToProto(port.EndPort)
 		if convertedEndPort != nil {
