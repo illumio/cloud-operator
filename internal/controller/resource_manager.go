@@ -17,9 +17,56 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// ResourceName represents a valid Kubernetes resource type name
+type ResourceName string
+
+const (
+	Pod                   ResourceName = "pods"
+	Node                  ResourceName = "nodes"
+	Service               ResourceName = "services"
+	Namespace             ResourceName = "namespaces"
+	ConfigMap             ResourceName = "configmaps"
+	Secret                ResourceName = "secrets"
+	ServiceAccount        ResourceName = "serviceaccounts"
+	PersistentVolume      ResourceName = "persistentvolumes"
+	PersistentVolumeClaim ResourceName = "persistentvolumeclaims"
+
+	// Workload resources
+	Deployment  ResourceName = "deployments"
+	StatefulSet ResourceName = "statefulsets"
+	DaemonSet   ResourceName = "daemonsets"
+	ReplicaSet  ResourceName = "replicasets"
+	Job         ResourceName = "jobs"
+	CronJob     ResourceName = "cronjobs"
+
+	// RBAC resources
+	Role               ResourceName = "roles"
+	RoleBinding        ResourceName = "rolebindings"
+	ClusterRole        ResourceName = "clusterroles"
+	ClusterRoleBinding ResourceName = "clusterrolebindings"
+)
+
+// String returns the string representation of the ResourceName
+func (r ResourceName) String() string {
+	return string(r)
+}
+
+// IsValid returns true if the ResourceName is a valid Kubernetes resource type
+func (r ResourceName) IsValid() bool {
+	switch r {
+	case Pod, Node, Service, Namespace, ConfigMap, Secret, ServiceAccount,
+		PersistentVolume, PersistentVolumeClaim, Deployment, StatefulSet,
+		DaemonSet, ReplicaSet, Job, CronJob, Role, RoleBinding,
+		ClusterRole, ClusterRoleBinding:
+		return true
+	default:
+		return false
+	}
+}
+
 // ResourceManagerConfig holds the configuration for creating a new ResourceManager
 type ResourceManagerConfig struct {
-	ResourceName  string
+	ResourceName  ResourceName
 	Clientset     *kubernetes.Clientset
 	BaseLogger    *zap.Logger
 	DynamicClient dynamic.Interface
@@ -30,7 +77,7 @@ type ResourceManagerConfig struct {
 // ResourceManager encapsulates components for listing and managing Kubernetes resources.
 type ResourceManager struct {
 	// resourceName identifies which resource this manager handles
-	resourceName string
+	resourceName ResourceName
 	// Clientset providing accees to k8s api.
 	clientset *kubernetes.Clientset
 	// Logger provides strucuted logging interface.
@@ -43,18 +90,18 @@ type ResourceManager struct {
 	limiter *rate.Limiter
 }
 
-// NewResourceManager creates a new ResourceManager for a specific resource type.
+// New creates a ResourceManager from the config.
 // The logger will automatically include the resource name in all log messages.
-func NewResourceManager(config ResourceManagerConfig) *ResourceManager {
+func (c ResourceManagerConfig) New() *ResourceManager {
 	// Create a logger with the resource name already included
-	logger := config.BaseLogger.With(zap.String("resource", config.ResourceName))
+	logger := c.BaseLogger.With(zap.String("resource", c.ResourceName.String()))
 	return &ResourceManager{
-		resourceName:  config.ResourceName,
-		clientset:     config.Clientset,
+		resourceName:  c.ResourceName,
+		clientset:     c.Clientset,
 		logger:        logger,
-		dynamicClient: config.DynamicClient,
-		streamManager: config.StreamManager,
-		limiter:       config.Limiter,
+		dynamicClient: c.DynamicClient,
+		streamManager: c.StreamManager,
+		limiter:       c.Limiter,
 	}
 }
 
@@ -86,7 +133,7 @@ func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.
 
 // DynamicListResources lists a specifed resource dynamically and sends down the current gRPC stream.
 func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.Logger, apiGroup string) (string, error) {
-	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
+	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName.String()}
 	objs, resourceListVersion, resourceK8sKind, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
 		return "", err
@@ -138,7 +185,7 @@ func getErrFromWatchEvent(event watch.Event) error {
 func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watchOptions metav1.ListOptions) error {
 	logger := r.logger.With(zap.String("api_group", apiGroup))
 
-	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
+	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName.String()}
 	watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
 		logger.Error("Error setting up watch on resource", zap.Error(err))
