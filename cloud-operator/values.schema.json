@@ -23,6 +23,9 @@
         },
         "env": {
             "properties": {
+                "calicoNamespace": {
+                    "type": "string"
+                },
                 "httpsProxy": {
                     "type": "string"
                 },
