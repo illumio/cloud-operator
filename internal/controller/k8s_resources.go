@@ -153,12 +153,22 @@ func convertNetworkPolicyToProto(networkPolicy *networkingv1.NetworkPolicy) (*pb
 		podSelector = convertLabelSelectorToProto(&networkPolicy.Spec.PodSelector)
 	}
 
+	var ingressEnabled, egressEnabled bool
+	for _, policyType := range networkPolicy.Spec.PolicyTypes {
+		switch policyType {
+		case networkingv1.PolicyTypeIngress:
+			ingressEnabled = true
+		case networkingv1.PolicyTypeEgress:
+			egressEnabled = true
+		}
+	}
+
 	networkPolicyData := &pb.KubernetesNetworkPolicyData{
 		PodSelector:  podSelector,
 		IngressRules: ingressRules,
 		EgressRules:  egressRules,
-		Ingress:      len(ingressRules) > 0,
-		Egress:       len(egressRules) > 0,
+		Ingress:      ingressEnabled,
+		Egress:       egressEnabled,
 	}
 
 	return networkPolicyData, nil
