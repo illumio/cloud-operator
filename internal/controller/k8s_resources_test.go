@@ -1030,7 +1030,7 @@ func TestConvertNetworkPolicyEgressRuleToProto(t *testing.T) {
 
 	result := convertNetworkPolicyEgressRuleToProto(egressRules)
 	assert.Equal(t, 1, len(result))
-	assert.Equal(t, "backend", result[0].Peers[0].NamespaceSelector.MatchLabels["team"])
+	assert.Equal(t, "backend", result[0].Peers[0].GetPod().NamespaceSelector.MatchLabels["team"])
 	assert.Equal(t, "10.0.0.0/16", result[0].Peers[1].GetIpBlock().Cidr)
 	assert.Equal(t, "10.0.1.0/24", result[0].Peers[1].GetIpBlock().Except[0])
 	assert.Equal(t, int32(443), result[0].Ports[0].Port)
@@ -1077,8 +1077,8 @@ func TestConvertNetworkPolicyIngressRuleToProto(t *testing.T) {
 
 	result := convertNetworkPolicyIngressRuleToProto(ingressRules)
 	assert.Equal(t, 1, len(result))
-	assert.Equal(t, "frontend", result[0].Peers[0].PodSelector.MatchLabels["app"])
-	assert.Equal(t, "frontend", result[0].Peers[1].NamespaceSelector.MatchLabels["team"])
+	assert.Equal(t, "frontend", result[0].Peers[0].GetPod().PodSelector.MatchLabels["app"])
+	assert.Equal(t, "frontend", result[0].Peers[1].GetPod().NamespaceSelector.MatchLabels["team"])
 	assert.Equal(t, int32(80), result[0].Ports[0].Port)
 	assert.Equal(t, pb.Port_PROTOCOL_TCP_UNSPECIFIED, result[0].Ports[0].Protocol)
 	assert.Equal(t, int32(8080), result[0].Ports[1].Port)
@@ -1105,7 +1105,7 @@ func TestConvertNetworkPolicyPeerToProto(t *testing.T) {
 	assert.Equal(t, 2, len(result))
 	assert.Equal(t, "192.168.0.0/16", result[0].GetIpBlock().Cidr)
 	assert.Equal(t, "192.168.1.0/24", result[0].GetIpBlock().Except[0])
-	assert.Equal(t, "backend", result[1].NamespaceSelector.MatchLabels["team"])
+	assert.Equal(t, "backend", result[1].GetPod().NamespaceSelector.MatchLabels["team"])
 }
 
 func TestConvertNetworkPolicyNamespaceSelectorToProto(t *testing.T) {
@@ -1113,7 +1113,7 @@ func TestConvertNetworkPolicyNamespaceSelectorToProto(t *testing.T) {
 		MatchLabels: map[string]string{"team": "dev"},
 	}
 
-	result := convertNetworkPolicyNamespaceSelectorToProto(labelSelector)
+	result := convertLabelSelectorToProto(labelSelector)
 	assert.NotNil(t, result)
 	assert.Equal(t, "dev", result.MatchLabels["team"])
 }
@@ -1124,18 +1124,18 @@ func TestConvertIPBlocksToProto(t *testing.T) {
 		Except: []string{"192.168.1.1"},
 	}
 
-	result := convertIPBlocksToProto(ipBlock)
+	result := convertIPBlockToProto(ipBlock)
 	assert.NotNil(t, result)
 	assert.Equal(t, "192.168.1.0/24", result.Cidr)
 	assert.Equal(t, "192.168.1.1", result.Except[0])
 }
 
-func TestConvertNetworkPolicyPodSelectorToProto(t *testing.T) {
+func TestConvertLabelSelectorToProto(t *testing.T) {
 	podSelector := &metav1.LabelSelector{
 		MatchLabels: map[string]string{"app": "test"},
 	}
 
-	result := convertNetworkPolicyPodSelectorToProto(podSelector)
+	result := convertLabelSelectorToProto(podSelector)
 	assert.NotNil(t, result)
 	assert.Equal(t, "test", result.MatchLabels["app"])
 }
@@ -1178,8 +1178,12 @@ func TestConvertNetworkPolicyToProto(t *testing.T) {
 					{
 						Peers: []*pb.Peer{
 							{
-								NamespaceSelector: &pb.LabelSelector{
-									MatchLabels: map[string]string{"team": "backend"},
+								Peer: &pb.Peer_Pod{
+									Pod: &pb.PeerSelector{
+										NamespaceSelector: &pb.LabelSelector{
+											MatchLabels: map[string]string{"team": "backend"},
+										},
+									},
 								},
 							},
 						},
@@ -1237,8 +1241,12 @@ func TestConvertNetworkPolicyToProto(t *testing.T) {
 					{
 						Peers: []*pb.Peer{
 							{
-								PodSelector: &pb.LabelSelector{
-									MatchLabels: map[string]string{"app": "frontend"},
+								Peer: &pb.Peer_Pod{
+									Pod: &pb.PeerSelector{
+										NamespaceSelector: &pb.LabelSelector{
+											MatchLabels: map[string]string{"team": "backend"},
+										},
+									},
 								},
 							},
 						},
@@ -1249,7 +1257,7 @@ func TestConvertNetworkPolicyToProto(t *testing.T) {
 					{
 						Peers: []*pb.Peer{
 							{
-								PeerType: &pb.Peer_IpBlock{
+								Peer: &pb.Peer_IpBlock{
 									IpBlock: &pb.IPBlock{
 										Cidr:   "10.0.0.0/16",
 										Except: []string{"10.0.1.0/24"},
@@ -1329,8 +1337,12 @@ func TestConvertNetworkPolicyToProto_Comprehensive(t *testing.T) {
 					{
 						Peers: []*pb.Peer{
 							{
-								NamespaceSelector: &pb.LabelSelector{
-									MatchLabels: map[string]string{"team": "backend"},
+								Peer: &pb.Peer_Pod{
+									Pod: &pb.PeerSelector{
+										NamespaceSelector: &pb.LabelSelector{
+											MatchLabels: map[string]string{"team": "backend"},
+										},
+									},
 								},
 							},
 						},
@@ -1365,7 +1377,7 @@ func TestConvertNetworkPolicyToProto_Comprehensive(t *testing.T) {
 					{
 						Peers: []*pb.Peer{
 							{
-								PeerType: &pb.Peer_IpBlock{
+								Peer: &pb.Peer_IpBlock{
 									IpBlock: &pb.IPBlock{
 										Cidr:   "10.0.0.0/16",
 										Except: []string{"10.0.1.0/24"},
@@ -1419,8 +1431,12 @@ func TestConvertNetworkPolicyToProto_Comprehensive(t *testing.T) {
 					{
 						Peers: []*pb.Peer{
 							{
-								PodSelector: &pb.LabelSelector{
-									MatchLabels: map[string]string{"app": "frontend"},
+								Peer: &pb.Peer_Pod{
+									Pod: &pb.PeerSelector{
+										PodSelector: &pb.LabelSelector{
+											MatchLabels: map[string]string{"app": "frontend"},
+										},
+									},
 								},
 							},
 						},
@@ -1430,7 +1446,7 @@ func TestConvertNetworkPolicyToProto_Comprehensive(t *testing.T) {
 					{
 						Peers: []*pb.Peer{
 							{
-								PeerType: &pb.Peer_IpBlock{
+								Peer: &pb.Peer_IpBlock{
 									IpBlock: &pb.IPBlock{
 										Cidr:   "192.168.0.0/16",
 										Except: []string{"192.168.1.0/24"},

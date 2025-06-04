@@ -97,7 +97,7 @@ message KubernetesNetworkPolicyData {
   repeated NetworkPolicyRule egress_rules = 5; // Egress rules for the policy
 }
 
-// LabelSelector defines the pod or namespace targeted by the policy.
+// LabelSelector selects a k8s resource (e.g., a pod or namespace) by its labels.
 message LabelSelector {
   map<string, string> match_labels = 1;
   repeated LabelSelectorRequirement match_expressions = 2;
@@ -117,15 +117,23 @@ message IPBlock {
   repeated string except = 2;
 }
 
-// Peer defines a network peer (pod or namespace selector).
+// Peer defines a network peer as a set of IP addresses or a set of pods.
 message Peer {
-  // Defines policy on a particular IPBlock. If this field is set, neither of the other fields can be.
-  oneof peer_type {
+  oneof peer {
+    // Defines policy on a particular IPBlock. If this field is set, neither of the other fields can be.
     IPBlock ip_block = 1;
+    PeerSelector pod = 2;
   }
-  // The following fields can be set together to select pods within namespaces.
-  optional LabelSelector namespace_selector = 2; // Selects namespaces using cluster-scoped labels.
-  optional LabelSelector pod_selector = 3; // Selects pods using label selector semantics.
+}
+
+// PeerSelector selects a set of pods.
+message PeerSelector {
+  // Selects namespaces using cluster-scoped labels.
+  // An empty selector selects all namespaces.
+  optional LabelSelector namespace_selector = 1;
+  // Selects pods in the selected namespaces using pod labels.
+  // An empty selectors selects all pods.
+  optional LabelSelector pod_selector = 2;
 }
 
 // Port defines a network port.
@@ -137,7 +145,7 @@ message Port {
   }
 
   Protocol protocol = 1;
-  int32 port = 2;
+  optional string port = 2;
   optional int32 end_port = 3;
 }
 
