@@ -254,6 +254,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 	// This ensures we don't overwhelm the k8s API server with too many concurrent watch requests
 	sharedLimiter := rate.NewLimiter(1, 5)
 	resourceManagers := make(map[string]*ResourceManager)
+	// PHASE 1: List all resources in deterministic order
 	for _, resource := range slices.Sorted(maps.Keys(resourceAPIGroupMap)) {
 		apiGroup := resourceAPIGroupMap[resource]
 		select {
@@ -262,14 +263,14 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		default:
 		}
 		// Create a new resource manager for each resource type
-		resourceManager := NewResourceManager(ResourceManagerConfig{
-			ResourceName:  resource,
+		resourceManager := ResourceManagerConfig{
+			ResourceName:  ResourceName(resource),
 			Clientset:     clientset,
 			BaseLogger:    logger,
 			DynamicClient: dynamicClient,
 			StreamManager: sm,
 			Limiter:       sharedLimiter,
-		})
+		}.New()
 		resourceManagers[resource] = resourceManager
 
 		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger, apiGroup)
