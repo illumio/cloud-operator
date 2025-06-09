@@ -1329,6 +1329,9 @@ func TestConvertNetworkPolicyToProto_Comprehensive(t *testing.T) {
 							},
 						},
 					},
+					PolicyTypes: []networkingv1.PolicyType{
+						networkingv1.PolicyTypeIngress,
+					},
 				},
 			},
 			expectedPolicy: &pb.KubernetesNetworkPolicyData{
@@ -1369,6 +1372,9 @@ func TestConvertNetworkPolicyToProto_Comprehensive(t *testing.T) {
 								},
 							},
 						},
+					},
+					PolicyTypes: []networkingv1.PolicyType{
+						networkingv1.PolicyTypeEgress,
 					},
 				},
 			},
@@ -1421,6 +1427,10 @@ func TestConvertNetworkPolicyToProto_Comprehensive(t *testing.T) {
 								},
 							},
 						},
+					},
+					PolicyTypes: []networkingv1.PolicyType{
+						networkingv1.PolicyTypeIngress,
+						networkingv1.PolicyTypeEgress,
 					},
 				},
 			},
