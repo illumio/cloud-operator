@@ -44,7 +44,7 @@ type streamClient struct {
 	conn                      *grpc.ClientConn
 	client                    pb.KubernetesInfoServiceClient
 	disableNetworkFlowsCilium bool
-	disableALPN               bool
+	tlsAuthProperties         tls.AuthProperties
 	falcoEventChan            chan string
 	flowCollector             pb.FlowCollector
 	logStream                 pb.KubernetesInfoService_SendLogsClient
@@ -406,7 +406,7 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 // findHubbleRelay returns a *CiliumFlowCollector if hubble relay is found in the given namespace
 func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger, ciliumNamespace string) *CiliumFlowCollector {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
-	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, ciliumNamespace, sm.streamClient.disableALPN)
+	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, ciliumNamespace, sm.streamClient.tlsAuthProperties)
 	if err != nil {
 		logger.Error("Failed to create Cilium flow collector", zap.Error(err))
 		return nil
@@ -426,10 +426,7 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 			err := ciliumFlowCollector.exportCiliumFlows(ctx, sm)
 			if err != nil {
 				logger.Warn("Failed to collect and export flows from Cilium Hubble Relay", zap.Error(err))
-				if errors.Is(err, tls.ErrTLSALPNHandshakeFailed) {
-					sm.streamClient.disableALPN = true
-					return err
-				}
+				err = tls.HandleTLSError(err, &sm.streamClient.tlsAuthProperties)
 				sm.streamClient.disableNetworkFlowsCilium = true
 				return err
 			}
@@ -793,7 +790,8 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_FALCO
 			} else {
 				sm.streamClient.disableNetworkFlowsCilium = false
-				sm.streamClient.disableALPN = false
+				sm.streamClient.tlsAuthProperties.DisableALPN = false
+				sm.streamClient.tlsAuthProperties.DisableTLS = false
 				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_CILIUM
 			}
 

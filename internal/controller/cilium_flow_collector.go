@@ -30,7 +30,7 @@ const (
 )
 
 // newCiliumFlowCollector connects to Cilium Hubble Relay, sets up an Observer client, and returns a new Collector using it.
-func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace string, disableALPN bool) (*CiliumFlowCollector, error) {
+func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace string, tlsAuthProperties tls.AuthProperties) (*CiliumFlowCollector, error) {
 	clientset, err := NewClientSet()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new client set: %w", err)
@@ -46,11 +46,11 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 		return nil, fmt.Errorf("failed to discover Cilium Hubble Relay address: %w", err)
 	}
 	tlsConfig, err := hubble.GetTLSConfig(ctx, clientset, logger, ciliumHubbleMTLSSecretName, ciliumHubbleRelayNamespace)
-	if err != nil {
+	if err != nil || tlsAuthProperties.DisableTLS {
 		tlsConfig = nil
 	}
 
-	conn, err := hubble.ConnectToHubbleRelay(ctx, logger, hubbleAddress, tlsConfig, disableALPN)
+	conn, err := hubble.ConnectToHubbleRelay(ctx, logger, hubbleAddress, tlsConfig, tlsAuthProperties.DisableALPN)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Cilium Hubble Relay: %w", err)
 	}
@@ -160,6 +160,10 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 		if strings.Contains(err.Error(), "missing selected ALPN property") {
 			fm.logger.Error("ALPN handshake failed, retrying with ALPN disabled")
 			return tls.ErrTLSALPNHandshakeFailed
+		}
+		if strings.Contains(err.Error(), "first record does not look like a TLS handshake") {
+			fm.logger.Error("TLS handshake failed, retrying with TLS disabled")
+			return tls.ErrNoTLSHandshake
 		}
 		fm.logger.Error("Error getting network flows", zap.Error(err))
 		return err
