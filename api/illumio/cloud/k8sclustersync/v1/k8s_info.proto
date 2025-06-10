@@ -122,7 +122,7 @@ message Peer {
   oneof peer {
     // Defines policy on a particular IPBlock. If this field is set, neither of the other fields can be.
     IPBlock ip_block = 1;
-    PeerSelector pod = 2;
+    PeerSelector pods = 2;
   }
 }
 

@@ -246,8 +246,8 @@ func convertNetworkPolicyPeerToProto(peers []networkingv1.NetworkPolicyPeer) []*
 			continue
 		}
 		protoPeers = append(protoPeers, &pb.Peer{
-			Peer: &pb.Peer_Pod{
-				Pod: &pb.PeerSelector{
+			Peer: &pb.Peer_Pods{
+				Pods: &pb.PeerSelector{
 					NamespaceSelector: convertLabelSelectorToProto(peer.NamespaceSelector),
 					PodSelector:       convertLabelSelectorToProto(peer.PodSelector),
 				},

@@ -1036,7 +1036,7 @@ type Peer struct {
 	// Types that are valid to be assigned to Peer:
 	//
 	//	*Peer_IpBlock
-	//	*Peer_Pod
+	//	*Peer_Pods
 	Peer          isPeer_Peer `protobuf_oneof:"peer"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1088,10 +1088,10 @@ func (x *Peer) GetIpBlock() *IPBlock {
 	return nil
 }
 
-func (x *Peer) GetPod() *PeerSelector {
+func (x *Peer) GetPods() *PeerSelector {
 	if x != nil {
-		if x, ok := x.Peer.(*Peer_Pod); ok {
-			return x.Pod
+		if x, ok := x.Peer.(*Peer_Pods); ok {
+			return x.Pods
 		}
 	}
 	return nil
@@ -1106,13 +1106,13 @@ type Peer_IpBlock struct {
 	IpBlock *IPBlock `protobuf:"bytes,1,opt,name=ip_block,json=ipBlock,proto3,oneof"`
 }
 
-type Peer_Pod struct {
-	Pod *PeerSelector `protobuf:"bytes,2,opt,name=pod,proto3,oneof"`
+type Peer_Pods struct {
+	Pods *PeerSelector `protobuf:"bytes,2,opt,name=pods,proto3,oneof"`
 }
 
 func (*Peer_IpBlock) isPeer_Peer() {}
 
-func (*Peer_Pod) isPeer_Peer() {}
+func (*Peer_Pods) isPeer_Peer() {}
 
 // PeerSelector selects a set of pods.
 type PeerSelector struct {
@@ -3513,10 +3513,10 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x06values\x18\x03 \x03(\tR\x06values\"5\n" +
 	"\aIPBlock\x12\x12\n" +
 	"\x04cidr\x18\x01 \x01(\tR\x04cidr\x12\x16\n" +
-	"\x06except\x18\x02 \x03(\tR\x06except\"\x98\x01\n" +
+	"\x06except\x18\x02 \x03(\tR\x06except\"\x9a\x01\n" +
 	"\x04Peer\x12E\n" +
-	"\bip_block\x18\x01 \x01(\v2(.illumio.cloud.k8sclustersync.v1.IPBlockH\x00R\aipBlock\x12A\n" +
-	"\x03pod\x18\x02 \x01(\v2-.illumio.cloud.k8sclustersync.v1.PeerSelectorH\x00R\x03podB\x06\n" +
+	"\bip_block\x18\x01 \x01(\v2(.illumio.cloud.k8sclustersync.v1.IPBlockH\x00R\aipBlock\x12C\n" +
+	"\x04pods\x18\x02 \x01(\v2-.illumio.cloud.k8sclustersync.v1.PeerSelectorH\x00R\x04podsB\x06\n" +
 	"\x04peer\"\xf2\x01\n" +
 	"\fPeerSelector\x12b\n" +
 	"\x12namespace_selector\x18\x01 \x01(\v2..illumio.cloud.k8sclustersync.v1.LabelSelectorH\x00R\x11namespaceSelector\x88\x01\x01\x12V\n" +
@@ -3795,7 +3795,7 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	49, // 12: illumio.cloud.k8sclustersync.v1.LabelSelector.match_labels:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector.MatchLabelsEntry
 	13, // 13: illumio.cloud.k8sclustersync.v1.LabelSelector.match_expressions:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelectorRequirement
 	14, // 14: illumio.cloud.k8sclustersync.v1.Peer.ip_block:type_name -> illumio.cloud.k8sclustersync.v1.IPBlock
-	16, // 15: illumio.cloud.k8sclustersync.v1.Peer.pod:type_name -> illumio.cloud.k8sclustersync.v1.PeerSelector
+	16, // 15: illumio.cloud.k8sclustersync.v1.Peer.pods:type_name -> illumio.cloud.k8sclustersync.v1.PeerSelector
 	12, // 16: illumio.cloud.k8sclustersync.v1.PeerSelector.namespace_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
 	12, // 17: illumio.cloud.k8sclustersync.v1.PeerSelector.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
 	5,  // 18: illumio.cloud.k8sclustersync.v1.Port.protocol:type_name -> illumio.cloud.k8sclustersync.v1.Port.Protocol
@@ -3871,7 +3871,7 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() {
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[2].OneofWrappers = []any{}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[9].OneofWrappers = []any{
 		(*Peer_IpBlock)(nil),
-		(*Peer_Pod)(nil),
+		(*Peer_Pods)(nil),
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[10].OneofWrappers = []any{}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[11].OneofWrappers = []any{}
