@@ -47,8 +47,8 @@ type AuthProperties struct {
 }
 
 var (
-	ErrTLSALPNHandshakeFailed = errors.New("ALPN handshake failed, retrying with ALPN disabled")
-	ErrNoTLSHandshake         = errors.New("No TLS handshake")
+	ErrTLSALPNHandshakeFailed = errors.New("alpn handshake failed, retrying with ALPN disabled")
+	ErrNoTLSHandshake         = errors.New("no TLS handshake")
 )
 
 func (c tlsCreds) Info() credentials.ProtocolInfo {
