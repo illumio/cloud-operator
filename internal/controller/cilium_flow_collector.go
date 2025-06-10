@@ -163,7 +163,7 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 		}
 		if strings.Contains(err.Error(), "first record does not look like a TLS handshake") {
 			fm.logger.Error("TLS handshake failed, retrying with TLS disabled")
-			return tls.ErrNoTLSHandshake
+			return tls.ErrNoTLSHandshakeFailed
 		}
 		fm.logger.Error("Error getting network flows", zap.Error(err))
 		return err

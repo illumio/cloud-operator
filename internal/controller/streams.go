@@ -163,6 +163,17 @@ func ServerIsHealthy() bool {
 	return true
 }
 
+func (sm *streamManager) errorHandling(err error) {
+	switch {
+	case errors.Is(err, tls.ErrTLSALPNHandshakeFailed):
+		sm.streamClient.tlsAuthProperties.DisableALPN = true
+	case errors.Is(err, tls.ErrNoTLSHandshakeFailed):
+		sm.streamClient.tlsAuthProperties.DisableTLS = true
+	default:
+		sm.streamClient.disableNetworkFlowsCilium = true
+	}
+}
+
 // buildResourceApiGroupMap creates a mapping between Kubernetes resources and their corresponding API groups.
 // It uses the discovery client to fetch all available API groups and resources, then maps the requested resources to their API groups.
 func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset *kubernetes.Clientset, logger *zap.Logger) (map[string]string, error) {
@@ -426,8 +437,7 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 			err := ciliumFlowCollector.exportCiliumFlows(ctx, sm)
 			if err != nil {
 				logger.Warn("Failed to collect and export flows from Cilium Hubble Relay", zap.Error(err))
-				err = tls.HandleTLSError(err, &sm.streamClient.tlsAuthProperties)
-				sm.streamClient.disableNetworkFlowsCilium = true
+				sm.errorHandling(err)
 				return err
 			}
 		}

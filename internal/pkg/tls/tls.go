@@ -48,7 +48,7 @@ type AuthProperties struct {
 
 var (
 	ErrTLSALPNHandshakeFailed = errors.New("alpn handshake failed, retrying with ALPN disabled")
-	ErrNoTLSHandshake         = errors.New("no TLS handshake")
+	ErrNoTLSHandshakeFailed   = errors.New("no TLS handshake")
 )
 
 func (c tlsCreds) Info() credentials.ProtocolInfo {
@@ -204,18 +204,4 @@ func applyDefaults(c *tls.Config) *tls.Config {
 		}
 	}
 	return config
-}
-
-// HandleTLSError processes specific TLS handshake errors and updates the tlsAuthProperties accordingly.
-func HandleTLSError(err error, tlsAuthProperties *AuthProperties) error {
-	switch {
-	case errors.Is(err, ErrTLSALPNHandshakeFailed):
-		tlsAuthProperties.DisableALPN = true
-	case errors.Is(err, ErrNoTLSHandshake):
-		tlsAuthProperties.DisableTLS = true
-	default:
-		// If the error is not recognized, return it as-is.
-		return err
-	}
-	return err
 }
