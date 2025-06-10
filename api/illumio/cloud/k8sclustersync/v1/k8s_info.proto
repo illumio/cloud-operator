@@ -120,7 +120,6 @@ message IPBlock {
 // Peer defines a network peer as a set of IP addresses or a set of pods.
 message Peer {
   oneof peer {
-    // Defines policy on a particular IPBlock. If this field is set, neither of the other fields can be.
     IPBlock ip_block = 1;
     PeerSelector pods = 2;
   }
