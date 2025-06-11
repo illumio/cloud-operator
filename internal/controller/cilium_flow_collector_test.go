@@ -223,7 +223,7 @@ func (suite *ControllerTestSuite) TestConvertCiliumPolicies() {
 					Namespace: "namespace2",
 					Labels:    []string{"val1", "val2"},
 					Revision:  2,
-					Kind:      "ClusterPolicy",
+					Kind:      "CiliumNetworkPolicy",
 				},
 			},
 		},
