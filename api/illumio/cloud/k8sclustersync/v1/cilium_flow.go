@@ -53,6 +53,7 @@ func (flow *CiliumFlow) Key() any {
 		key.Protocol = "UNKNOWN"
 	}
 
+
 	if flow.GetIsReply().GetValue() {
 		key = CiliumFlowKey{
 			SourceIP:           key.DestinationIP,

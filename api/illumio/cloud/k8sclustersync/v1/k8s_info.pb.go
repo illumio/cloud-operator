@@ -1102,7 +1102,6 @@ type isPeer_Peer interface {
 }
 
 type Peer_IpBlock struct {
-	// Defines policy on a particular IPBlock. If this field is set, neither of the other fields can be.
 	IpBlock *IPBlock `protobuf:"bytes,1,opt,name=ip_block,json=ipBlock,proto3,oneof"`
 }
 
@@ -2829,6 +2828,7 @@ type Policy struct {
 	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	Labels        []string               `protobuf:"bytes,3,rep,name=labels,proto3" json:"labels,omitempty"`
 	Revision      uint64                 `protobuf:"varint,4,opt,name=revision,proto3" json:"revision,omitempty"`
+	Kind          string                 `protobuf:"bytes,5,opt,name=kind,proto3" json:"kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2889,6 +2889,13 @@ func (x *Policy) GetRevision() uint64 {
 		return x.Revision
 	}
 	return 0
+}
+
+func (x *Policy) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
 }
 
 // Flow exported by the CNI plugin in the cluster.
@@ -3645,12 +3652,13 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\tworkloads\x18\x06 \x03(\v2).illumio.cloud.k8sclustersync.v1.WorkloadR\tworkloads\"2\n" +
 	"\bWorkload\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
-	"\x04kind\x18\x02 \x01(\tR\x04kind\"n\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\"\x82\x01\n" +
 	"\x06Policy\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x16\n" +
 	"\x06labels\x18\x03 \x03(\tR\x06labels\x12\x1a\n" +
-	"\brevision\x18\x04 \x01(\x04R\brevision\"\x97\x02\n" +
+	"\brevision\x18\x04 \x01(\x04R\brevision\x12\x12\n" +
+	"\x04kind\x18\x05 \x01(\tR\x04kind\"\x97\x02\n" +
 	"!SendKubernetesNetworkFlowsRequest\x12J\n" +
 	"\tkeepalive\x18\x03 \x01(\v2*.illumio.cloud.k8sclustersync.v1.KeepaliveH\x00R\tkeepalive\x12N\n" +
 	"\vcilium_flow\x18\x01 \x01(\v2+.illumio.cloud.k8sclustersync.v1.CiliumFlowH\x00R\n" +
