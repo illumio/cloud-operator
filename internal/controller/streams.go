@@ -164,10 +164,10 @@ func ServerIsHealthy() bool {
 }
 
 // disableSubsystemCausingError mutates the `streamManager`
-// receiver by inspecting the error. Thanks to HandleTLSHandshakeError(1)
+// receiver by inspecting the error. Thanks to HandleTLSHandshakeError
 // we have a nicely typed error. If we recognize the specific error,
 // then disable JUST the subsystem that caused it. If we do not
-// recognize the error, then just give up entirely on exporting Cilium flows(2)
+// recognize the error, then just give up entirely on exporting Cilium flows
 func (sm *streamManager) disableSubsystemCausingError(err error) {
 	switch {
 	case errors.Is(err, tls.ErrTLSALPNHandshakeFailed):
