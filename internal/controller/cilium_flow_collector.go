@@ -141,6 +141,7 @@ func convertCiliumPolicies(policies []*flow.Policy) []*pb.Policy {
 			Namespace: policy.GetNamespace(),
 			Labels:    policy.GetLabels(),
 			Revision:  policy.GetRevision(),
+			Kind:      policy.GetKind(),
 		}
 		protoPolicies = append(protoPolicies, protoPolicy)
 	}
