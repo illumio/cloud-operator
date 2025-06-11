@@ -163,7 +163,12 @@ func ServerIsHealthy() bool {
 	return true
 }
 
-func (sm *streamManager) errorHandling(err error) {
+// disableSubsystemCausingError mutates the `streamManager`
+// receiver by inspecting the error. Thanks to HandleTLSHandshakeError(1)
+// we have a nicely typed error. If we recognize the specific error,
+// then disable JUST the subsystem that caused it. If we do not
+// recognize the error, then just give up entirely on exporting Cilium flows(2)
+func (sm *streamManager) disableSubsystemCausingError(err error) {
 	switch {
 	case errors.Is(err, tls.ErrTLSALPNHandshakeFailed):
 		sm.streamClient.tlsAuthProperties.DisableALPN = true
