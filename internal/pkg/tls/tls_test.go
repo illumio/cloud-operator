@@ -24,6 +24,7 @@ package tls
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 	"strings"
 	"testing"
@@ -183,4 +184,37 @@ func tlsServerHandshake(conn net.Conn) (credentials.AuthInfo, error) {
 		return nil, err
 	}
 	return credentials.TLSInfo{State: serverConn.ConnectionState(), CommonAuthInfo: credentials.CommonAuthInfo{SecurityLevel: credentials.PrivacyAndIntegrity}}, nil
+}
+
+func TestHandleTLSHandshakeError(t *testing.T) {
+	tests := []struct {
+		name          string
+		inputError    error
+		expectedError error
+	}{
+		{
+			name:          "ALPN handshake error",
+			inputError:    errors.New("missing selected ALPN property"),
+			expectedError: ErrTLSALPNHandshakeFailed,
+		},
+		{
+			name:          "TLS handshake error",
+			inputError:    errors.New("first record does not look like a TLS handshake"),
+			expectedError: ErrNoTLSHandshakeFailed,
+		},
+		{
+			name:          "Unrecognized error",
+			inputError:    errors.New("some other error"),
+			expectedError: errors.New("some other error"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := HandleTLSHandshakeError(tt.inputError)
+			if result.Error() != tt.expectedError.Error() {
+				t.Errorf("expected %v, got %v", tt.expectedError, result)
+			}
+		})
+	}
 }

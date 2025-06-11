@@ -5,7 +5,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/cilium/cilium/api/v1/flow"
 	observer "github.com/cilium/cilium/api/v1/observer"
@@ -157,14 +156,7 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 	observerClient := fm.client
 	stream, err := observerClient.GetFlows(ctx, req)
 	if err != nil {
-		if strings.Contains(err.Error(), "missing selected ALPN property") {
-			fm.logger.Error("ALPN handshake failed, retrying with ALPN disabled")
-			return tls.ErrTLSALPNHandshakeFailed
-		}
-		if strings.Contains(err.Error(), "first record does not look like a TLS handshake") {
-			fm.logger.Error("TLS handshake failed, retrying with TLS disabled")
-			return tls.ErrNoTLSHandshakeFailed
-		}
+		err = tls.HandleTLSHandshakeError(err)
 		fm.logger.Error("Error getting network flows", zap.Error(err))
 		return err
 	}

@@ -26,6 +26,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"strings"
 
 	"github.com/illumio/cloud-operator/internal/pkg/tls/spiffe"
 	"github.com/illumio/cloud-operator/internal/pkg/tls/syscallconn"
@@ -204,4 +205,16 @@ func applyDefaults(c *tls.Config) *tls.Config {
 		}
 	}
 	return config
+}
+
+// HandleTLSHandshakeError maps specific error strings to their corresponding TLS handshake error constants.
+func HandleTLSHandshakeError(err error) error {
+	switch {
+	case strings.Contains(err.Error(), "missing selected ALPN property"):
+		return ErrTLSALPNHandshakeFailed
+	case strings.Contains(err.Error(), "first record does not look like a TLS handshake"):
+		return ErrNoTLSHandshakeFailed
+	default:
+		return err
+	}
 }
