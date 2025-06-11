@@ -12,12 +12,12 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/client-go/kubernetes"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 )
 
 // convertObjectToMetadata extracts the ObjectMeta from a metav1.Object interface.
@@ -93,6 +93,12 @@ func convertMetaObjectToMetadata(logger *zap.Logger, ctx context.Context, obj me
 			return objMetadata, nil
 		}
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: convertPodIPsToStrings(podIPS)}}
+	case "NetworkPolicy":
+		networkPolicy, err := getContentsOfNetworkPolicy(ctx, obj.GetName(), clientset, obj.GetNamespace())
+		if err != nil {
+			return objMetadata, nil
+		}
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_NetworkPolicy{NetworkPolicy: networkPolicy}
 	case "Node":
 		providerId, err := getProviderIdNodeSpec(ctx, clientset, obj.GetName())
 		if err != nil {
@@ -111,6 +117,204 @@ func convertMetaObjectToMetadata(logger *zap.Logger, ctx context.Context, obj me
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Service{Service: convertedServiceData}
 	}
 	return objMetadata, nil
+}
+
+// getContentsOfNetworkPolicy gets the contents of a NetworkPolicy and returns it as a KubernetesNetworkPolicyData proto message
+func getContentsOfNetworkPolicy(ctx context.Context, networkPolicyName string, clientset *kubernetes.Clientset, networkPolicyNamespace string) (*pb.KubernetesNetworkPolicyData, error) {
+	networkPolicy, err := clientset.NetworkingV1().NetworkPolicies(networkPolicyNamespace).Get(ctx, networkPolicyName, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	convertedNetworkPolicyData, err := convertNetworkPolicyToProto(networkPolicy)
+	if err != nil {
+		return nil, err
+	}
+	return convertedNetworkPolicyData, nil
+}
+
+// convertNetworkPolicyToProto converts a Kubernetes NetworkPolicy to a proto message KubernetesNetworkPolicyData
+func convertNetworkPolicyToProto(networkPolicy *networkingv1.NetworkPolicy) (*pb.KubernetesNetworkPolicyData, error) {
+	if networkPolicy == nil {
+		return nil, errors.New("networkPolicy is nil")
+	}
+
+	var ingressRules []*pb.NetworkPolicyRule
+	if len(networkPolicy.Spec.Ingress) > 0 {
+		ingressRules = convertNetworkPolicyIngressRuleToProto(networkPolicy.Spec.Ingress)
+	}
+
+	var egressRules []*pb.NetworkPolicyRule
+	if len(networkPolicy.Spec.Egress) > 0 {
+		egressRules = convertNetworkPolicyEgressRuleToProto(networkPolicy.Spec.Egress)
+	}
+
+	var podSelector *pb.LabelSelector
+	if len(networkPolicy.Spec.PodSelector.MatchLabels) > 0 || len(networkPolicy.Spec.PodSelector.MatchExpressions) > 0 {
+		podSelector = convertLabelSelectorToProto(&networkPolicy.Spec.PodSelector)
+	}
+
+	var ingressEnabled, egressEnabled bool
+	for _, policyType := range networkPolicy.Spec.PolicyTypes {
+		switch policyType {
+		case networkingv1.PolicyTypeIngress:
+			ingressEnabled = true
+		case networkingv1.PolicyTypeEgress:
+			egressEnabled = true
+		}
+	}
+
+	networkPolicyData := &pb.KubernetesNetworkPolicyData{
+		PodSelector:  podSelector,
+		IngressRules: ingressRules,
+		EgressRules:  egressRules,
+		Ingress:      ingressEnabled,
+		Egress:       egressEnabled,
+	}
+
+	return networkPolicyData, nil
+}
+
+// convertLabelSelectorToProto converts a Kubernetes LabelSelector to a proto message LabelSelector
+func convertLabelSelectorToProto(podSelector *metav1.LabelSelector) *pb.LabelSelector {
+	if podSelector == nil {
+		return nil
+	}
+	return &pb.LabelSelector{
+		MatchLabels:      podSelector.MatchLabels,
+		MatchExpressions: convertLabelSelectorRequirementsToProto(podSelector.MatchExpressions),
+	}
+}
+
+// convertLabelSelectorRequirementsToProto converts a Kubernetes LabelSelectorRequirement to a proto message LabelSelectorRequirement
+func convertLabelSelectorRequirementsToProto(requirements []metav1.LabelSelectorRequirement) []*pb.LabelSelectorRequirement {
+	if len(requirements) == 0 {
+		return nil
+	}
+	protoRequirements := make([]*pb.LabelSelectorRequirement, 0, len(requirements))
+	for _, req := range requirements {
+		protoRequirements = append(protoRequirements, &pb.LabelSelectorRequirement{
+			Key: req.Key,
+			// Operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
+			Operator: string(req.Operator),
+			Values:   req.Values,
+		})
+	}
+	return protoRequirements
+}
+
+// convertNetworkPolicyIngressRuleToProto converts a Kubernetes NetworkPolicyIngressRule to a proto message NetworkPolicyRule
+func convertNetworkPolicyIngressRuleToProto(ingressRules []networkingv1.NetworkPolicyIngressRule) []*pb.NetworkPolicyRule {
+	if len(ingressRules) == 0 {
+		return nil
+	}
+	protoRules := make([]*pb.NetworkPolicyRule, 0, len(ingressRules))
+	for _, rule := range ingressRules {
+		protoRules = append(protoRules, &pb.NetworkPolicyRule{
+			Peers: convertNetworkPolicyPeerToProto(rule.From),
+			Ports: convertNetworkPolicyPortToProto(rule.Ports),
+		})
+	}
+	return protoRules
+}
+
+// convertNetworkPolicyEgressRuleToProto converts a Kubernetes NetworkPolicyEgressRule to a proto message NetworkPolicyRule
+func convertNetworkPolicyEgressRuleToProto(egressRules []networkingv1.NetworkPolicyEgressRule) []*pb.NetworkPolicyRule {
+	if len(egressRules) == 0 {
+		return nil
+	}
+	protoRules := make([]*pb.NetworkPolicyRule, 0, len(egressRules))
+	for _, rule := range egressRules {
+		protoRules = append(protoRules, &pb.NetworkPolicyRule{
+			Peers: convertNetworkPolicyPeerToProto(rule.To),
+			Ports: convertNetworkPolicyPortToProto(rule.Ports),
+		})
+	}
+	return protoRules
+}
+
+// convertNetworkPolicyPeerToProto converts a Kubernetes NetworkPolicyPeer to a proto message Peer
+func convertNetworkPolicyPeerToProto(peers []networkingv1.NetworkPolicyPeer) []*pb.Peer {
+	if len(peers) == 0 {
+		return nil
+	}
+	protoPeers := make([]*pb.Peer, 0, len(peers))
+	for _, peer := range peers {
+		if peer.IPBlock != nil {
+			protoPeers = append(protoPeers, &pb.Peer{
+				Peer: &pb.Peer_IpBlock{IpBlock: convertIPBlockToProto(peer.IPBlock)},
+			})
+			continue
+		}
+		protoPeers = append(protoPeers, &pb.Peer{
+			Peer: &pb.Peer_Pods{
+				Pods: &pb.PeerSelector{
+					NamespaceSelector: convertLabelSelectorToProto(peer.NamespaceSelector),
+					PodSelector:       convertLabelSelectorToProto(peer.PodSelector),
+				},
+			},
+		})
+
+	}
+
+	return protoPeers
+}
+
+// convertNetworkPolicyPortToProto converts a Kubernetes NetworkPolicyPort to a proto message Port
+func convertNetworkPolicyPortToProto(ports []networkingv1.NetworkPolicyPort) []*pb.Port {
+	if len(ports) == 0 {
+		return nil
+	}
+	protoPorts := make([]*pb.Port, 0, len(ports))
+	for _, port := range ports {
+		protoPort := &pb.Port{
+			Protocol: convertProtocolToProto(port.Protocol),
+		}
+		if port.Port != nil {
+			portString := port.Port.String()
+			protoPort.Port = &portString
+		}
+		convertedEndPort := convertEndPortToProto(port.EndPort)
+		if convertedEndPort != nil {
+			protoPort.EndPort = convertedEndPort
+		}
+		protoPorts = append(protoPorts, protoPort)
+	}
+
+	return protoPorts
+}
+
+// convertProtocolToProto converts a Kubernetes Protocol to a proto Protocol object.
+func convertProtocolToProto(protocol *v1.Protocol) pb.Port_Protocol {
+	if protocol == nil {
+		return pb.Port_PROTOCOL_TCP_UNSPECIFIED
+	}
+	switch *protocol {
+	case v1.ProtocolUDP:
+		return pb.Port_PROTOCOL_UDP
+	case v1.ProtocolSCTP:
+		return pb.Port_PROTOCOL_SCTP
+	default:
+		return pb.Port_PROTOCOL_TCP_UNSPECIFIED
+	}
+}
+
+// convertEndPortToProto converts a Kubernetes EndPort to a proto EndPort object.
+func convertEndPortToProto(endPort *int32) *int32 {
+	if endPort == nil {
+		return nil
+	}
+	return endPort
+}
+
+// convertIPBlockToProto converts a Kubernetes IPBlock to a proto IPBlock object.
+func convertIPBlockToProto(iPBlock *networkingv1.IPBlock) *pb.IPBlock {
+	if iPBlock == nil {
+		return nil
+	}
+	return &pb.IPBlock{
+		Cidr:   iPBlock.CIDR,
+		Except: iPBlock.Except,
+	}
 }
 
 // getNodeIpAddresses fetches the IP addresses of a node
