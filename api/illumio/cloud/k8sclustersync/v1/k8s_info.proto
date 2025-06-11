@@ -423,6 +423,7 @@ message Policy {
   string namespace = 2;
   repeated string labels = 3;
   uint64 revision = 4;
+  string kind = 5;
 }
 
 // Flow exported by the CNI plugin in the cluster.
