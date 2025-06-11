@@ -207,8 +207,9 @@ func applyDefaults(c *tls.Config) *tls.Config {
 	return config
 }
 
-// HandleTLSHandshakeError maps specific error strings to their corresponding TLS handshake error constants.
-func HandleTLSHandshakeError(err error) error {
+// AsTLSHandshakeError maps specific error strings
+// to their corresponding TLS handshake error constants.
+func AsTLSHandshakeError(err error) error {
 	switch {
 	case strings.Contains(err.Error(), "missing selected ALPN property"):
 		return ErrTLSALPNHandshakeFailed

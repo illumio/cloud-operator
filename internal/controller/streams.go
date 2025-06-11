@@ -442,7 +442,7 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 			err := ciliumFlowCollector.exportCiliumFlows(ctx, sm)
 			if err != nil {
 				logger.Warn("Failed to collect and export flows from Cilium Hubble Relay", zap.Error(err))
-				sm.errorHandling(err)
+				sm.disableSubsystemCausingError(err)
 				return err
 			}
 		}

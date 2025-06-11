@@ -156,7 +156,7 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 	observerClient := fm.client
 	stream, err := observerClient.GetFlows(ctx, req)
 	if err != nil {
-		err = tls.HandleTLSHandshakeError(err)
+		err = tls.AsTLSHandshakeError(err)
 		fm.logger.Error("Error getting network flows", zap.Error(err))
 		return err
 	}
