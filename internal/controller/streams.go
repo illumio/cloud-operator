@@ -45,12 +45,12 @@ type streamClient struct {
 	client             pb.KubernetesInfoServiceClient
 	falcoEventChan     chan string
 	ipfixCollectorPort string
+  tlsAuthProperties         tls.AuthProperties
 	flowCollector      pb.FlowCollector
 	logStream          pb.KubernetesInfoService_SendLogsClient
 	networkFlowsStream pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 	resourceStream     pb.KubernetesInfoService_SendKubernetesResourcesClient
 	configStream       pb.KubernetesInfoService_GetConfigurationUpdatesClient
-	disableALPN        bool
 }
 
 type deadlockDetector struct {
@@ -165,6 +165,22 @@ func ServerIsHealthy() bool {
 		return false
 	}
 	return true
+}
+
+// disableSubsystemCausingError mutates the `streamManager`
+// receiver by inspecting the error. Thanks to HandleTLSHandshakeError
+// we have a nicely typed error. If we recognize the specific error,
+// then disable JUST the subsystem that caused it. If we do not
+// recognize the error, then just give up entirely on exporting Cilium flows
+func (sm *streamManager) disableSubsystemCausingError(err error) {
+	switch {
+	case errors.Is(err, tls.ErrTLSALPNHandshakeFailed):
+		sm.streamClient.tlsAuthProperties.DisableALPN = true
+	case errors.Is(err, tls.ErrNoTLSHandshakeFailed):
+		sm.streamClient.tlsAuthProperties.DisableTLS = true
+	default:
+		sm.streamClient.disableNetworkFlowsCilium = true
+	}
 }
 
 // buildResourceApiGroupMap creates a mapping between Kubernetes resources and their corresponding API groups.
@@ -410,7 +426,7 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 // findHubbleRelay returns a *CiliumFlowCollector if hubble relay is found in the given namespace
 func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger, ciliumNamespace string) *CiliumFlowCollector {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
-	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, ciliumNamespace, sm.streamClient.disableALPN)
+	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, ciliumNamespace, sm.streamClient.tlsAuthProperties)
 	if err != nil {
 		logger.Error("Failed to create Cilium flow collector", zap.Error(err))
 		return nil
@@ -430,10 +446,7 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 			err := ciliumFlowCollector.exportCiliumFlows(ctx, sm)
 			if err != nil {
 				logger.Warn("Failed to collect and export flows from Cilium Hubble Relay", zap.Error(err))
-				if errors.Is(err, tls.ErrTLSALPNHandshakeFailed) {
-					sm.streamClient.disableALPN = true
-					return err
-				}
+				sm.disableSubsystemCausingError(err)
 				return err
 			}
 		}
@@ -843,6 +856,17 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					make(chan pb.Flow, 100),
 				),
 			}
+			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
+			if ciliumFlowCollector == nil {
+				sm.streamClient.disableNetworkFlowsCilium = true
+				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_FALCO
+			} else {
+				sm.streamClient.disableNetworkFlowsCilium = false
+				sm.streamClient.tlsAuthProperties.DisableALPN = false
+				sm.streamClient.tlsAuthProperties.DisableTLS = false
+				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_CILIUM
+			}
+
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
 			configDone := make(chan struct{})
