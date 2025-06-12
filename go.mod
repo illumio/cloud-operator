@@ -8,7 +8,7 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
 	golang.org/x/oauth2 v0.30.0
-	google.golang.org/grpc v1.72.1
+	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
 	k8s.io/api v0.32.3
 	k8s.io/apimachinery v0.32.3
@@ -43,7 +43,7 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
-	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/gops v0.3.28
 	github.com/google/uuid v1.6.0 // indirect
