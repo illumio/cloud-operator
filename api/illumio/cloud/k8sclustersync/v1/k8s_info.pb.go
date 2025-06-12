@@ -1792,8 +1792,8 @@ type FiveTupleFlow struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *FalcoFlow) Reset() {
-	*x = FalcoFlow{}
+func (x *FiveTupleFlow) Reset() {
+	*x = FiveTupleFlow{}
 	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
@@ -1805,7 +1805,7 @@ func (x *FiveTupleFlow) String() string {
 
 func (*FiveTupleFlow) ProtoMessage() {}
 
-func (x *FalcoFlow) ProtoReflect() protoreflect.Message {
+func (x *FiveTupleFlow) ProtoReflect() protoreflect.Message {
 	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1817,8 +1817,8 @@ func (x *FalcoFlow) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use FalcoFlow.ProtoReflect.Descriptor instead.
-func (*FalcoFlow) Descriptor() ([]byte, []int) {
+// Deprecated: Use FiveTupleFlow.ProtoReflect.Descriptor instead.
+func (*FiveTupleFlow) Descriptor() ([]byte, []int) {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{19}
 }
 
@@ -3663,7 +3663,7 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x16\n" +
 	"\x06labels\x18\x03 \x03(\tR\x06labels\x12\x1a\n" +
 	"\brevision\x18\x04 \x01(\x04R\brevision\x12\x12\n" +
-	"\x04kind\x18\x05 \x01(\tR\x04kind\"\x97\x02\n" +
+	"\x04kind\x18\x05 \x01(\tR\x04kind\"\xa4\x02\n" +
 	"!SendKubernetesNetworkFlowsRequest\x12J\n" +
 	"\tkeepalive\x18\x03 \x01(\v2*.illumio.cloud.k8sclustersync.v1.KeepaliveH\x00R\tkeepalive\x12N\n" +
 	"\vcilium_flow\x18\x01 \x01(\v2+.illumio.cloud.k8sclustersync.v1.CiliumFlowH\x00R\n" +
@@ -3763,7 +3763,7 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_goTypes = []any{
 	(*KubernetesResourceSnapshotComplete)(nil), // 22: illumio.cloud.k8sclustersync.v1.KubernetesResourceSnapshotComplete
 	(*SendKubernetesResourcesResponse)(nil),    // 23: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesResponse
 	(*KubernetesResourceMutation)(nil),         // 24: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation
-	(*FalcoFlow)(nil),                          // 25: illumio.cloud.k8sclustersync.v1.FalcoFlow
+	(*FiveTupleFlow)(nil),                      // 25: illumio.cloud.k8sclustersync.v1.FiveTupleFlow
 	(*CiliumFlow)(nil),                         // 26: illumio.cloud.k8sclustersync.v1.CiliumFlow
 	(*Service)(nil),                            // 27: illumio.cloud.k8sclustersync.v1.Service
 	(*IP)(nil),                                 // 28: illumio.cloud.k8sclustersync.v1.IP
@@ -3823,9 +3823,9 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	7,  // 27: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation.create_resource:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
 	7,  // 28: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation.update_resource:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
 	7,  // 29: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation.delete_resource:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
-	28, // 30: illumio.cloud.k8sclustersync.v1.FalcoFlow.layer3:type_name -> illumio.cloud.k8sclustersync.v1.IP
-	29, // 31: illumio.cloud.k8sclustersync.v1.FalcoFlow.layer4:type_name -> illumio.cloud.k8sclustersync.v1.Layer4
-	51, // 32: illumio.cloud.k8sclustersync.v1.FalcoFlow.timestamp:type_name -> google.protobuf.Timestamp
+	28, // 30: illumio.cloud.k8sclustersync.v1.FiveTupleFlow.layer3:type_name -> illumio.cloud.k8sclustersync.v1.IP
+	29, // 31: illumio.cloud.k8sclustersync.v1.FiveTupleFlow.layer4:type_name -> illumio.cloud.k8sclustersync.v1.Layer4
+	51, // 32: illumio.cloud.k8sclustersync.v1.FiveTupleFlow.timestamp:type_name -> google.protobuf.Timestamp
 	51, // 33: illumio.cloud.k8sclustersync.v1.CiliumFlow.time:type_name -> google.protobuf.Timestamp
 	1,  // 34: illumio.cloud.k8sclustersync.v1.CiliumFlow.traffic_direction:type_name -> illumio.cloud.k8sclustersync.v1.TrafficDirection
 	2,  // 35: illumio.cloud.k8sclustersync.v1.CiliumFlow.verdict:type_name -> illumio.cloud.k8sclustersync.v1.Verdict
@@ -3849,7 +3849,7 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	37, // 53: illumio.cloud.k8sclustersync.v1.Endpoint.workloads:type_name -> illumio.cloud.k8sclustersync.v1.Workload
 	6,  // 54: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
 	26, // 55: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.cilium_flow:type_name -> illumio.cloud.k8sclustersync.v1.CiliumFlow
-	25, // 56: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.falco_flow:type_name -> illumio.cloud.k8sclustersync.v1.FalcoFlow
+	25, // 56: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.five_tuple_flow:type_name -> illumio.cloud.k8sclustersync.v1.FiveTupleFlow
 	6,  // 57: illumio.cloud.k8sclustersync.v1.SendLogsRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
 	41, // 58: illumio.cloud.k8sclustersync.v1.SendLogsRequest.log_entry:type_name -> illumio.cloud.k8sclustersync.v1.LogEntry
 	6,  // 59: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
@@ -3901,8 +3901,8 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() {
 		(*KubernetesResourceMutation_DeleteResource)(nil),
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[19].OneofWrappers = []any{
-		(*FalcoFlow_Time)(nil),
-		(*FalcoFlow_Timestamp)(nil),
+		(*FiveTupleFlow_Time)(nil),
+		(*FiveTupleFlow_Timestamp)(nil),
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[20].OneofWrappers = []any{}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[23].OneofWrappers = []any{

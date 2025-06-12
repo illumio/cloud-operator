@@ -40,17 +40,18 @@ const (
 )
 
 type streamClient struct {
-	ciliumNamespace    string
-	conn               *grpc.ClientConn
-	client             pb.KubernetesInfoServiceClient
-	falcoEventChan     chan string
-	ipfixCollectorPort string
-  tlsAuthProperties         tls.AuthProperties
-	flowCollector      pb.FlowCollector
-	logStream          pb.KubernetesInfoService_SendLogsClient
-	networkFlowsStream pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
-	resourceStream     pb.KubernetesInfoService_SendKubernetesResourcesClient
-	configStream       pb.KubernetesInfoService_GetConfigurationUpdatesClient
+	ciliumNamespace           string
+	conn                      *grpc.ClientConn
+	client                    pb.KubernetesInfoServiceClient
+	falcoEventChan            chan string
+	ipfixCollectorPort        string
+	disableNetworkFlowsCilium bool
+	tlsAuthProperties         tls.AuthProperties
+	flowCollector             pb.FlowCollector
+	logStream                 pb.KubernetesInfoService_SendLogsClient
+	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
+	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient
+	configStream              pb.KubernetesInfoService_GetConfigurationUpdatesClient
 }
 
 type deadlockDetector struct {
@@ -425,7 +426,6 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 
 // findHubbleRelay returns a *CiliumFlowCollector if hubble relay is found in the given namespace
 func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger, ciliumNamespace string) *CiliumFlowCollector {
-	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, ciliumNamespace, sm.streamClient.tlsAuthProperties)
 	if err != nil {
 		logger.Error("Failed to create Cilium flow collector", zap.Error(err))
@@ -767,8 +767,9 @@ func (sm *streamManager) manageStream(
 
 // determineFlowCollector determines the flow collector type and returns the flow collector type, stream function, and the corresponding done channel.
 func determineFlowCollector(ctx context.Context, logger *zap.Logger, sm *streamManager, envMap EnvironmentConfig, clientset *kubernetes.Clientset) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
-	if sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace) != nil {
-		sm.streamClient.disableALPN = false
+	if sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace) != nil && !sm.streamClient.disableNetworkFlowsCilium {
+		sm.streamClient.tlsAuthProperties.DisableALPN = false
+		sm.streamClient.tlsAuthProperties.DisableTLS = false
 		return pb.FlowCollector_FLOW_COLLECTOR_CILIUM, sm.connectAndStreamCiliumNetworkFlows, make(chan struct{})
 	} else if sm.isOVNKDeployed(ctx, logger, envMap.OVNKNamespace, clientset) {
 		return pb.FlowCollector_FLOW_COLLECTOR_OVNK, sm.connectAndStreamOVNKNetworkFlows, make(chan struct{})
@@ -855,16 +856,6 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					1000,           // TODO: Make the maxFlows capacity configurable.
 					make(chan pb.Flow, 100),
 				),
-			}
-			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
-			if ciliumFlowCollector == nil {
-				sm.streamClient.disableNetworkFlowsCilium = true
-				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_FALCO
-			} else {
-				sm.streamClient.disableNetworkFlowsCilium = false
-				sm.streamClient.tlsAuthProperties.DisableALPN = false
-				sm.streamClient.tlsAuthProperties.DisableTLS = false
-				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_CILIUM
 			}
 
 			resourceDone := make(chan struct{})
