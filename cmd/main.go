@@ -99,7 +99,7 @@ func main() {
 	bindEnv(logger, "stream_success_period_connect", "STREAM_SUCCESS_PERIOD_CONNECT")
 	bindEnv(logger, "stream_success_period_auth", "STREAM_SUCCESS_PERIOD_AUTH")
 	bindEnv(logger, "https_proxy", "HTTPS_PROXY")
-
+	bindEnv(logger, "verbose_debugging", "VERBOSE_DEBUGGING")
 	// Set default values
 	viper.SetDefault("cluster_creds", "clustercreds")
 	viper.SetDefault("cilium_namespace", "kube-system")
@@ -114,6 +114,7 @@ func main() {
 	viper.SetDefault("stream_success_period_connect", defaultStreamSuccessPeriodConnect)
 	viper.SetDefault("stream_success_period_auth", defaultStreamSuccessPeriodAuth)
 	viper.SetDefault("https_proxy", "")
+	viper.SetDefault("verbose_debugging", false)
 
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),
@@ -134,7 +135,8 @@ func main() {
 			Connect: viper.GetDuration("stream_success_period_connect"),
 			Auth:    viper.GetDuration("stream_success_period_auth"),
 		},
-		HttpsProxy: viper.GetString("https_proxy"),
+		HttpsProxy:       viper.GetString("https_proxy"),
+		VerboseDebugging: viper.GetBool("verbose_debugging"),
 	}
 
 	logger.Info("Starting application",
@@ -152,6 +154,7 @@ func main() {
 		zap.Duration("stream_success_period_connect", envConfig.StreamSuccessPeriod.Connect),
 		zap.Duration("stream_success_period_auth", envConfig.StreamSuccessPeriod.Auth),
 		zap.String("https_proxy", envConfig.HttpsProxy),
+		zap.Bool("verbose_debugging", envConfig.VerboseDebugging),
 	)
 
 	// Start the gops agent

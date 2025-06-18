@@ -74,3 +74,4 @@ env:
     connect: "1h"
     auth: "2h"
   httpsProxy: ""
+  verboseDebugging: false

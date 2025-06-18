@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
@@ -43,7 +44,7 @@ type ResourceManager struct {
 	limiter *rate.Limiter
 }
 
-// NewResourceManager creates a new ResourceManager for a specific resource type.
+// NewResourceManager creates a new [ResourceManager] for a specific resource type.
 // The logger will automatically include the resource name in all log messages.
 func NewResourceManager(config ResourceManagerConfig) *ResourceManager {
 	// Create a logger with the resource name already included
@@ -58,7 +59,7 @@ func NewResourceManager(config ResourceManagerConfig) *ResourceManager {
 	}
 }
 
-// TODO: Make a struct with the ClientSet as a field, and convertMetaObjectToMetadata, getPodIPAddresses, getProviderIdNodeSpec should be methods of that struct.
+// TODO: Make a struct with the ClientSet as a field, and [convertMetaObjectToMetadata], [getPodIPAddresses], [getProviderIdNodeSpec] should be methods of that struct.
 
 // WatchK8sResources initiates a watch stream for the specified Kubernetes resource starting from the given resourceVersion.
 // This function blocks until the watch ends or the context is canceled.
@@ -104,6 +105,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.
 			return "", err
 		}
 	}
+	r.logger.Debug("Succesfully sent K8s workloads", zap.Int("count", len(objs)))
 
 	select {
 	case <-ctx.Done():
@@ -144,7 +146,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 		logger.Error("Error setting up watch on resource", zap.Error(err))
 		return err
 	}
-
+	mutationCount := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -183,10 +185,15 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 
 			// Helper function: type gymnastics + send the KubernetesObjectData out on the wire
 			err = r.streamManager.streamMutationObjectData(logger, metadataObj, event.Type)
+			mutationCount++
 			if err != nil {
 				logger.Error("Cannot send resource mutation", zap.Error(err))
 				return err
 			}
+		case <-time.After(60 * time.Second):
+			logger.Debug("Current mutation count", zap.Int("mutation_count", mutationCount))
+			logger.Debug("Resetting mutation count")
+			mutationCount = 0
 		}
 	}
 }
