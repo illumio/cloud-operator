@@ -63,6 +63,7 @@ type streamManager struct {
 	bufferedGrpcSyncer *BufferedGrpcWriteSyncer
 	streamClient       *streamClient
 	FlowCache          *FlowCache
+	verboseDebugging   bool
 }
 
 type KeepalivePeriods struct {
@@ -107,6 +108,8 @@ type EnvironmentConfig struct {
 	StreamSuccessPeriod StreamSuccessPeriod
 	// HTTP Proxy URL
 	HttpsProxy string
+	// Whether to enable verbose debugging.
+	VerboseDebugging bool
 }
 
 // Add or delete the resource
@@ -386,7 +389,11 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 				logger.Info("Received configuration update",
 					zap.Stringer("log_level", update.UpdateConfiguration.LogLevel),
 				)
-				sm.bufferedGrpcSyncer.updateLogLevel(update.UpdateConfiguration.LogLevel)
+				if sm.verboseDebugging {
+					sm.bufferedGrpcSyncer.updateLogLevel(pb.LogLevel_LOG_LEVEL_DEBUG)
+				} else {
+					sm.bufferedGrpcSyncer.updateLogLevel(update.UpdateConfiguration.LogLevel)
+				}
 			default:
 				logger.Warn("Received unknown configuration update", zap.Any("response", resp))
 			}
@@ -404,18 +411,24 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 	return nil
 }
 
+// startFlowCacheOutReader starts a goroutine that reads flows from the flow cache and sends them to the cloud secure.
 func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *zap.Logger) error {
+	flowCount := 0
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case flow := <-sm.FlowCache.outFlows:
+			flowCount++
 			err := sm.sendNetworkFlowRequest(logger, flow)
 			if err != nil {
 				return err
 			}
+		case <-time.After(60 * time.Second):
+			logger.Debug("Still reading from flow cache and sending flows... current flow count", zap.Int("flow_count", flowCount))
+			logger.Debug("Resetting flow count")
+			flowCount = 0
 		}
-
 	}
 }
 
@@ -574,7 +587,7 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, k
 	return nil
 }
 
-// connectAndStreamResources creates resourceStream client and begins the
+// [connectAndStreamResources] creates resourceStream client and begins the
 // streaming of resources. Also starts a goroutine to send keepalives at the
 // configured period
 func (sm *streamManager) connectAndStreamResources(logger *zap.Logger, keepalivePeriod time.Duration) error {
@@ -791,6 +804,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			}
 
 			sm := &streamManager{
+				verboseDebugging:   envMap.VerboseDebugging,
 				streamClient:       streamClient,
 				bufferedGrpcSyncer: bufferedGrpcSyncer,
 				FlowCache: NewFlowCache(
