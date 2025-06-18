@@ -18,7 +18,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// [ResourceManagerConfig] holds the configuration for creating a new [ResourceManager]
+// ResourceManagerConfig holds the configuration for creating a new ResourceManager
 type ResourceManagerConfig struct {
 	ResourceName  string
 	Clientset     *kubernetes.Clientset
@@ -28,7 +28,7 @@ type ResourceManagerConfig struct {
 	Limiter       *rate.Limiter
 }
 
-// [ResourceManager] encapsulates components for listing and managing Kubernetes resources.
+// ResourceManager encapsulates components for listing and managing Kubernetes resources.
 type ResourceManager struct {
 	// resourceName identifies which resource this manager handles
 	resourceName string
@@ -61,7 +61,7 @@ func NewResourceManager(config ResourceManagerConfig) *ResourceManager {
 
 // TODO: Make a struct with the ClientSet as a field, and [convertMetaObjectToMetadata], [getPodIPAddresses], [getProviderIdNodeSpec] should be methods of that struct.
 
-// [WatchK8sResources] initiates a watch stream for the specified Kubernetes resource starting from the given resourceVersion.
+// WatchK8sResources initiates a watch stream for the specified Kubernetes resource starting from the given resourceVersion.
 // This function blocks until the watch ends or the context is canceled.
 func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.CancelFunc, apiGroup string, resourceVersion string) {
 	defer cancel()
@@ -85,7 +85,7 @@ func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.
 	}
 }
 
-// [DynamicListResources] lists a specifed resource dynamically and sends down the current gRPC stream.
+// DynamicListResources lists a specifed resource dynamically and sends down the current gRPC stream.
 func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.Logger, apiGroup string) (string, error) {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
 	objs, resourceListVersion, resourceK8sKind, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
@@ -115,7 +115,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.
 	return resourceListVersion, nil
 }
 
-// [getErrFromWatchEvent] returns an error if the watch event is of type Error.
+// getErrFromWatchEvent returns an error if the watch event is of type Error.
 // Includes the 'code', 'reason', and 'message'. If the watch event is NOT of
 // type Error then return nil
 func getErrFromWatchEvent(event watch.Event) error {
@@ -134,7 +134,7 @@ func getErrFromWatchEvent(event watch.Event) error {
 	return fmt.Errorf("code: %d, reason: %s, message: %s", status.Code, status.Reason, status.Message)
 }
 
-// [watchEvents] watches Kubernetes resources. The second part of the of the "list
+// watchEvents watches Kubernetes resources. The second part of the of the "list
 // and watch" strategy.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
 func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watchOptions metav1.ListOptions) error {
@@ -192,13 +192,14 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 				return err
 			}
 		case <-time.After(60 * time.Second):
-			logger.Info("resetting mutation count", zap.Int("mutation_count", mutationCount))
+			logger.Debug("current mutation count", zap.Int("mutation_count", mutationCount))
+			logger.Debug("resetting mutation count")
 			mutationCount = 0
 		}
 	}
 }
 
-// [FetchResources] retrieves unstructured resources from the K8s API.
+// FetchResources retrieves unstructured resources from the K8s API.
 func (r *ResourceManager) FetchResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) (*unstructured.UnstructuredList, error) {
 	unstructuredResources, err := r.dynamicClient.Resource(resource).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -216,7 +217,7 @@ func (r *ResourceManager) FetchResources(ctx context.Context, resource schema.Gr
 	return unstructuredResources, nil
 }
 
-// [ExtractObjectMetas] extracts ObjectMeta from a list of unstructured resources.
+// ExtractObjectMetas extracts ObjectMeta from a list of unstructured resources.
 func (r *ResourceManager) ExtractObjectMetas(resources *unstructured.UnstructuredList) ([]metav1.ObjectMeta, error) {
 	objectMetas := make([]metav1.ObjectMeta, 0, len(resources.Items))
 	for _, item := range resources.Items {
@@ -230,7 +231,7 @@ func (r *ResourceManager) ExtractObjectMetas(resources *unstructured.Unstructure
 	return objectMetas, nil
 }
 
-// [ListResources] fetches resources of a specified type and namespace, returning their ObjectMeta,
+// ListResources fetches resources of a specified type and namespace, returning their ObjectMeta,
 // the last resource version observed, and any error encountered.
 func (r *ResourceManager) ListResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) ([]metav1.ObjectMeta, string, string, error) {
 	unstructuredResources, err := r.FetchResources(ctx, resource, namespace)
@@ -246,7 +247,7 @@ func (r *ResourceManager) ListResources(ctx context.Context, resource schema.Gro
 	return objectMetas, unstructuredResources.GetResourceVersion(), removeListSuffix(unstructuredResources.GetKind()), nil
 }
 
-// [removeListSuffix] removes the "List" suffix from a given string
+// removeListSuffix removes the "List" suffix from a given string
 // Ex: PodList -> Pod, StafefulSetList -> StatefulSet
 func removeListSuffix(s string) string {
 	if strings.HasSuffix(s, "List") {
