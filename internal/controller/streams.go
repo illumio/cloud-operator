@@ -389,8 +389,8 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 				logger.Info("Received configuration update",
 					zap.Stringer("log_level", update.UpdateConfiguration.LogLevel),
 				)
-				logger.Info("verboseDebugging", zap.Bool("verboseDebugging", sm.verboseDebugging))
 				if sm.verboseDebugging {
+					logger.Debug("verboseDebugging is true, setting log level to debug")
 					sm.bufferedGrpcSyncer.updateLogLevel(pb.LogLevel_LOG_LEVEL_DEBUG)
 				} else {
 					sm.bufferedGrpcSyncer.updateLogLevel(update.UpdateConfiguration.LogLevel)
