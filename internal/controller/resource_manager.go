@@ -186,14 +186,13 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 			// Helper function: type gymnastics + send the KubernetesObjectData out on the wire
 			err = r.streamManager.streamMutationObjectData(logger, metadataObj, event.Type)
 			mutationCount++
-			logger.Debug("Sent resource mutation", zap.Any("resource", metadataObj), zap.Int("mutation_count", mutationCount))
 			if err != nil {
 				logger.Error("Cannot send resource mutation", zap.Error(err))
 				return err
 			}
 		case <-time.After(60 * time.Second):
-			logger.Debug("current mutation count", zap.Int("mutation_count", mutationCount))
-			logger.Debug("resetting mutation count")
+			logger.Debug("Current mutation count", zap.Int("mutation_count", mutationCount))
+			logger.Debug("Resetting mutation count")
 			mutationCount = 0
 		}
 	}
