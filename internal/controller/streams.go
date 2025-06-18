@@ -587,7 +587,7 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, k
 	return nil
 }
 
-// [connectAndStreamResources] creates resourceStream client and begins the
+// connectAndStreamResources creates resourceStream client and begins the
 // streaming of resources. Also starts a goroutine to send keepalives at the
 // configured period
 func (sm *streamManager) connectAndStreamResources(logger *zap.Logger, keepalivePeriod time.Duration) error {
