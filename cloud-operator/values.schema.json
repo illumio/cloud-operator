@@ -203,7 +203,6 @@
                     "type": "string"
                 }
             }
-
         },
         "tolerations": {
             "type": "array"
