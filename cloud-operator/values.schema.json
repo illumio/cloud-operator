@@ -2,6 +2,9 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
     "properties": {
+        "affinity": {
+            "type": "object"
+        },
         "clusterCredsSecret": {
             "type": "object",
             "properties": {
@@ -137,6 +140,9 @@
                 }
             }
         },
+        "nodeSelector": {
+            "type": "object"
+        },
         "onboardingSecret": {
             "type": "object",
             "properties": {
@@ -197,6 +203,10 @@
                     "type": "string"
                 }
             }
+
+        },
+        "tolerations": {
+            "type": "array"
         }
     }
 }
