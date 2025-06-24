@@ -109,6 +109,41 @@ helm install illumio --namespace illumio-cloud oci://ghcr.io/illumio/charts/clou
 - **gRPC Requests**:
   - All gRPC requests will also respect the `HTTPS_PROXY` environment variable.
 
+
+# IPFIX Template Sets ConfigMap
+
+## Overview
+This section explains how the binary data for the ConfigMap `ipfix-template-sets.yaml` was obtained and its purpose in the Kubernetes cluster.
+
+## Purpose
+The ConfigMap `ipfix-template-sets.yaml` contains binary data required for IPFIX (IP Flow Information Export) processing. This binary data is used by the cloud operator to decode IPFIX packets and process network flows immediatly upon recieving packets. (Do not need to wait 10 minutes)
+
+## Steps to Obtain the Binary Data
+
+1. **Generate the Binary File**:
+   - Modify the OVN-K collector code manually to output the IPFIX message that contains the template set received from Open vSwitch to a local volume mount.
+   - Configure OVN-K to export flows to the collector.
+
+2. **Save the Binary File**:
+   - The extracted binary data was saved to a file named `openvswitch.bin`.
+
+3. **Create the ConfigMap**:
+   - Encode the contents of the file in base-64 and add it into the ConfigMap as the `binaryData` field.
+   - Example ConfigMap YAML:
+     ```yaml
+     apiVersion: v1
+     kind: ConfigMap
+     metadata:
+       name: ipfix-template-sets
+     binaryData:
+       openvswitch.bin: <data>
+     ```
+
+
+## Usage
+The ConfigMap is mounted as a volume in the cloud operator pod. The operator reads the binary data from the mounted volume at startup time and uses it to decode IPFIX messages.
+
+
 ## License
 
 Copyright 2024 Illumio, Inc. All Rights Reserved.
