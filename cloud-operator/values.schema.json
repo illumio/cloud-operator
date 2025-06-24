@@ -67,6 +67,9 @@
                 },
                 "tokenEndpoint": {
                     "type": "string"
+                },
+                "verboseDebugging": {
+                    "type": "boolean"
                 }
             }
         },
