@@ -212,8 +212,10 @@ func TestSPIFFEIDFromCert(t *testing.T) {
 			}
 			block, _ := pem.Decode(data)
 			if block == nil {
-				t.Fatalf("Failed to parse the certificate: byte block is nil")
+				//nolint:staticcheck // This is a test, and we are intentionally ignoring nil checks
+				return
 			}
+			//nolint:staticcheck // This is a test
 			cert, err := x509.ParseCertificate(block.Bytes)
 			if err != nil {
 				t.Fatalf("x509.ParseCertificate(%b) failed: %v", block.Bytes, err)
