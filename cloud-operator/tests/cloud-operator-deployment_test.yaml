@@ -90,6 +90,12 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[13].value
           value: ""
+      - equal:
+          path: spec.template.spec.containers[0].env[14].name
+          value: "VERBOSE_DEBUGGING"
+      - equal:
+          path: spec.template.spec.containers[0].env[14].value
+          value: "false"
 
   # Test for replicaCount value
   - it: should set the correct number of replicas
