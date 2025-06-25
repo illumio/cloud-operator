@@ -217,6 +217,14 @@ func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset 
 			// Map resources to their API groups
 			for _, resource := range resourceList.APIResources {
 				if _, exists := resourceSet[resource.Name]; exists {
+					if group.Name == "metrics.k8s.io" {
+						logger.Info("Skipping this as it causes issues with discovery",
+							zap.String("group", group.Name),
+							zap.String("resource", resource.Name),
+						)
+						continue
+					}
+
 					resourceAPIGroupMap[resource.Name] = group.Name
 				}
 			}
