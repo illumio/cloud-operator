@@ -1,7 +1,7 @@
 cloud.google.com/go/compute/metadata v0.6.0 h1:A6hENjEsCDtC1k8byVsgwvVcioamEHvZ4j01OwKxG9I=
 cloud.google.com/go/compute/metadata v0.6.0/go.mod h1:FjyFAW1MW0C203CEOMDTu3Dk1FlqW3Rga40jzHL4hfg=
-github.com/cilium/cilium v1.17.4 h1:fO1VBbBLU69wbhN2csULVLPs7gR3qr0IrnYmI2SwU40=
-github.com/cilium/cilium v1.17.4/go.mod h1:wVAXueJW11HUvZo0c+szVo7zeCLZ5yOCgNHP0lwiS8g=
+github.com/cilium/cilium v1.17.5 h1:jFg2fXN4edyE0jqd7NAs15jozmiBDRDslEX7mi0jPBg=
+github.com/cilium/cilium v1.17.5/go.mod h1:YPUGcL7DPin0BZm6Y0TLzFdj+6jDUmekhxIonc1EdEE=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
