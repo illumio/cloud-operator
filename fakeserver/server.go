@@ -210,6 +210,26 @@ func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConf
 
 func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
 	logger.Info("SendKubernetesNetworkFlows stream started")
+
+	// Configurable window size
+	windowSize := uint32(300) // Example: Allow 100 messages per window
+
+	// Send initial ServerWindow message
+	initialResponse := &pb.SendKubernetesNetworkFlowsResponse{
+		Response: &pb.SendKubernetesNetworkFlowsResponse_ServerWindow{
+			ServerWindow: &pb.ServerWindow{
+				AllowedMessages: windowSize,
+			},
+		},
+	}
+	if err := stream.Send(initialResponse); err != nil {
+		logger.Error("Error sending initial ServerWindow response", zap.Error(err))
+		return err
+	}
+	logger.Info("Sent initial ServerWindow message", zap.Uint32("allowed_messages", windowSize))
+
+	messagesReceived := uint32(0) // Track the number of messages received
+
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
@@ -222,10 +242,34 @@ func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_Send
 		}
 
 		switch req.Request.(type) {
+		case *pb.SendKubernetesNetworkFlowsRequest_Keepalive:
+			logger.Info("Received network flows keepalive")
+			continue // Do not count keepalives in messagesReceived
 		case *pb.SendKubernetesNetworkFlowsRequest_CiliumFlow:
+			time.Sleep(10 * time.Millisecond) // Simulate slow server
 			logger.Info("Received CiliumFlow")
 		case *pb.SendKubernetesNetworkFlowsRequest_FalcoFlow:
 			logger.Info("Received FalcoFlow")
+		}
+		logger.Info("Received request", zap.Any("request", req))
+
+		messagesReceived++
+
+		// Send a ServerWindow message only after the window is satisfied
+		if messagesReceived >= windowSize {
+			response := &pb.SendKubernetesNetworkFlowsResponse{
+				Response: &pb.SendKubernetesNetworkFlowsResponse_ServerWindow{
+					ServerWindow: &pb.ServerWindow{
+						AllowedMessages: windowSize,
+					},
+				},
+			}
+			if err := stream.Send(response); err != nil {
+				logger.Error("Error sending ServerWindow response", zap.Error(err))
+				return err
+			}
+			logger.Info("Sent ServerWindow message", zap.Uint32("allowed_messages", windowSize))
+			messagesReceived = 0 // Reset the counter for the next window
 		}
 	}
 }

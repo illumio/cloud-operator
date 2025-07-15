@@ -48,9 +48,13 @@ type streamClient struct {
 	falcoEventChan            chan string
 	flowCollector             pb.FlowCollector
 	logStream                 pb.KubernetesInfoService_SendLogsClient
+	logStreamMutex            sync.Mutex
 	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
+	networkFlowsStreamMutex   sync.Mutex
 	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient
+	resourceStreamMutex       sync.Mutex
 	configStream              pb.KubernetesInfoService_GetConfigurationUpdatesClient
+	configStreamMutex         sync.Mutex
 }
 
 type deadlockDetector struct {
@@ -235,7 +239,7 @@ func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset 
 }
 
 // StreamResources handles the resource stream.
-func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger, cancel context.CancelFunc) error {
+func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger, cancel context.CancelFunc, snapshotCommitSignal chan struct{}) error {
 	defer cancel()
 	defer func() {
 		dd.processingResources = false
@@ -322,6 +326,9 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		return err
 	}
 	logger.Info("Successfully sent resource snapshot")
+
+	// Signal that the snapshot commit has been sent
+	close(snapshotCommitSignal)
 
 	// PHASE 3: Start watchers concurrently
 	for _, info := range allWatchInfos {
@@ -421,24 +428,54 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 }
 
 // startFlowCacheOutReader starts a goroutine that reads flows from the flow cache and sends them to the cloud secure.
-func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *zap.Logger) error {
+func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *zap.Logger, networkFlowStreamOpen chan struct{}) error {
 	flowCount := 0
-	ticker := time.NewTicker(60 * time.Second) // Create a ticker that triggers every 60 seconds
-	defer ticker.Stop()                        // Ensure the ticker is stopped when the function exits
+	allowedFlows := 1000                          // Initialize allowed flows to some default value IE 1000, This value is set by the server in the ServerWindow message
+	logger.Info("Starting flow cache out reader") // Ensure the ticker is stopped when the function exits
+
+	// Goroutine to read ServerWindow messages from the network flow stream
+	go func() {
+		<-networkFlowStreamOpen // Wait for network flow stream to be open
+		for {
+			resp, err := sm.streamClient.networkFlowsStream.Recv()
+			if err == io.EOF {
+				logger.Info("Server has closed the network flows stream")
+				return
+			}
+			if err != nil {
+				logger.Error("Error receiving response from network flows stream", zap.Error(err))
+				return
+			}
+
+			if serverWindow, ok := resp.Response.(*pb.SendKubernetesNetworkFlowsResponse_ServerWindow); ok {
+				allowedFlows = int(serverWindow.ServerWindow.AllowedMessages)
+				logger.Debug("Received ServerWindow message", zap.Int("allowed_flows", allowedFlows))
+				flowCount = 0 // Reset flowCount when a new ServerWindow message is received
+			}
+		}
+	}()
+
+	once := &sync.Once{} // Ensure networkFlowStreamOpen is triggered only once
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case flow := <-sm.FlowCache.outFlows:
+			if flowCount >= allowedFlows {
+				continue // Wait for a new ServerWindow message
+			}
+
 			err := sm.sendNetworkFlowRequest(logger, flow)
 			if err != nil {
+				logger.Error("Failed to send network flow", zap.Error(err))
 				return err
 			}
 			flowCount++
-		case <-ticker.C: // Triggered every 60 seconds
-			logger.Debug("Reading from flow cache and sending flows... current flow count", zap.Int("flow_count", flowCount))
-			logger.Debug("Resetting flow count")
-			flowCount = 0
+			once.Do(func() {
+				networkFlowStreamOpen <- struct{}{}
+				logger.Info("Network flow stream opened")
+			})
 		}
 	}
 }
@@ -601,7 +638,7 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, k
 // connectAndStreamResources creates resourceStream client and begins the
 // streaming of resources. Also starts a goroutine to send keepalives at the
 // configured period
-func (sm *streamManager) connectAndStreamResources(logger *zap.Logger, keepalivePeriod time.Duration) error {
+func (sm *streamManager) connectAndStreamResources(logger *zap.Logger, keepalivePeriod time.Duration, snapshotCommitSignal chan struct{}) error {
 	resourceCtx, resourceCancel := context.WithCancel(context.Background())
 	defer resourceCancel()
 
@@ -620,7 +657,7 @@ func (sm *streamManager) connectAndStreamResources(logger *zap.Logger, keepalive
 		resourceCancel()
 	}()
 
-	err = sm.StreamResources(resourceCtx, logger, resourceCancel)
+	err = sm.StreamResources(resourceCtx, logger, resourceCancel, snapshotCommitSignal)
 	if err != nil {
 		logger.Error("Failed to bootup and stream resources", zap.Error(err))
 		return err
@@ -839,12 +876,16 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			logDone := make(chan struct{})
 			var ciliumDone, falcoDone chan struct{}
 			configDone := make(chan struct{})
+			snapshotCommitSignal := make(chan struct{})
+			networkFlowStreamOpen := make(chan struct{})
 
 			sm.bufferedGrpcSyncer.done = logDone
 
 			go sm.manageStream(
 				logger.With(zap.String("stream", "SendKubernetesResources")),
-				sm.connectAndStreamResources,
+				func(logger *zap.Logger, keepalivePeriod time.Duration) error {
+					return sm.connectAndStreamResources(logger, keepalivePeriod, snapshotCommitSignal)
+				},
 				resourceDone,
 				envMap.KeepalivePeriods.KubernetesResources,
 				envMap.StreamSuccessPeriod,
@@ -878,28 +919,36 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			// Only start network flows stream if not disabled
 			if !sm.streamClient.disableNetworkFlowsCilium {
 				ciliumDone = make(chan struct{})
-				go sm.manageStream(
-					logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
-					sm.connectAndStreamCiliumNetworkFlows,
-					ciliumDone,
-					envMap.KeepalivePeriods.KubernetesNetworkFlows,
-					envMap.StreamSuccessPeriod,
-				)
+				go func() {
+					logger.Info("Waiting for snapshot commit signal")
+					<-snapshotCommitSignal // Wait for snapshot commit signal
+					logger.Info("Received snapshot commit signal")
+					sm.manageStream(
+						logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
+						sm.connectAndStreamCiliumNetworkFlows,
+						ciliumDone,
+						envMap.KeepalivePeriods.KubernetesNetworkFlows,
+						envMap.StreamSuccessPeriod,
+					)
+				}()
 			}
 
 			if sm.streamClient.disableNetworkFlowsCilium {
 				falcoDone := make(chan struct{})
-				go sm.manageStream(
-					logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
-					sm.connectAndStreamFalcoNetworkFlows,
-					falcoDone,
-					envMap.KeepalivePeriods.KubernetesNetworkFlows,
-					envMap.StreamSuccessPeriod,
-				)
+				go func() {
+					<-snapshotCommitSignal // Wait for snapshot commit signal
+					sm.manageStream(
+						logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
+						sm.connectAndStreamFalcoNetworkFlows,
+						falcoDone,
+						envMap.KeepalivePeriods.KubernetesNetworkFlows,
+						envMap.StreamSuccessPeriod,
+					)
+				}()
 			}
 			go func() {
 				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(ctx)
-				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger)
+				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger, networkFlowStreamOpen)
 				if err != nil {
 					logger.Info("Failed to send network flow from cache", zap.Error(err))
 				}
