@@ -158,12 +158,12 @@
             }
         },
         "openshift": {
+            "type": "object",
             "properties": {
                 "ovnk_namespace": {
                     "type": "string"
                 }
-            },
-            "type": "object"
+            }
         },
         "priorityClassName": {
             "type": "string"
@@ -199,12 +199,12 @@
             }
         },
         "service": {
+            "type": "object",
             "properties": {
                 "clusterIP": {
                     "type": "string"
                 }
-            },
-            "type": "object"
+            }
         },
         "serviceAccount": {
             "type": "object",
