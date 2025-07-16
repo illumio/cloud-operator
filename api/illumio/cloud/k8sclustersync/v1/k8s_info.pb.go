@@ -37,6 +37,8 @@ const (
 	FlowCollector_FLOW_COLLECTOR_CILIUM FlowCollector = 2
 	// Indicates that Falco is deployed and configured for collecting network flows.
 	FlowCollector_FLOW_COLLECTOR_FALCO FlowCollector = 3
+	// Indicates that OVN-Kubernetes is deployed and configured for collecting network flows.
+	FlowCollector_FLOW_COLLECTOR_OVNK FlowCollector = 4
 )
 
 // Enum value maps for FlowCollector.
@@ -46,12 +48,14 @@ var (
 		1: "FLOW_COLLECTOR_DISABLED",
 		2: "FLOW_COLLECTOR_CILIUM",
 		3: "FLOW_COLLECTOR_FALCO",
+		4: "FLOW_COLLECTOR_OVNK",
 	}
 	FlowCollector_value = map[string]int32{
 		"FLOW_COLLECTOR_UNSPECIFIED": 0,
 		"FLOW_COLLECTOR_DISABLED":    1,
 		"FLOW_COLLECTOR_CILIUM":      2,
 		"FLOW_COLLECTOR_FALCO":       3,
+		"FLOW_COLLECTOR_OVNK":        4,
 	}
 )
 
@@ -1772,8 +1776,8 @@ func (*KubernetesResourceMutation_UpdateResource) isKubernetesResourceMutation_M
 
 func (*KubernetesResourceMutation_DeleteResource) isKubernetesResourceMutation_Mutation() {}
 
-// A flow received from Falco using custom rules
-type FalcoFlow struct {
+// A flow with a simple 5-tuple flow key received from a CNI plugin
+type FiveTupleFlow struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// layer3 IP layer, source, destination and ip_version
 	Layer3 *IP `protobuf:"bytes,1,opt,name=layer3,proto3" json:"layer3,omitempty"`
@@ -1781,27 +1785,27 @@ type FalcoFlow struct {
 	Layer4 *Layer4 `protobuf:"bytes,2,opt,name=layer4,proto3" json:"layer4,omitempty"`
 	// Types that are valid to be assigned to Ts:
 	//
-	//	*FalcoFlow_Time
-	//	*FalcoFlow_Timestamp
-	Ts            isFalcoFlow_Ts `protobuf_oneof:"ts"`
+	//	*FiveTupleFlow_Time
+	//	*FiveTupleFlow_Timestamp
+	Ts            isFiveTupleFlow_Ts `protobuf_oneof:"ts"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *FalcoFlow) Reset() {
-	*x = FalcoFlow{}
+func (x *FiveTupleFlow) Reset() {
+	*x = FiveTupleFlow{}
 	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *FalcoFlow) String() string {
+func (x *FiveTupleFlow) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*FalcoFlow) ProtoMessage() {}
+func (*FiveTupleFlow) ProtoMessage() {}
 
-func (x *FalcoFlow) ProtoReflect() protoreflect.Message {
+func (x *FiveTupleFlow) ProtoReflect() protoreflect.Message {
 	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1813,26 +1817,26 @@ func (x *FalcoFlow) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use FalcoFlow.ProtoReflect.Descriptor instead.
-func (*FalcoFlow) Descriptor() ([]byte, []int) {
+// Deprecated: Use FiveTupleFlow.ProtoReflect.Descriptor instead.
+func (*FiveTupleFlow) Descriptor() ([]byte, []int) {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{19}
 }
 
-func (x *FalcoFlow) GetLayer3() *IP {
+func (x *FiveTupleFlow) GetLayer3() *IP {
 	if x != nil {
 		return x.Layer3
 	}
 	return nil
 }
 
-func (x *FalcoFlow) GetLayer4() *Layer4 {
+func (x *FiveTupleFlow) GetLayer4() *Layer4 {
 	if x != nil {
 		return x.Layer4
 	}
 	return nil
 }
 
-func (x *FalcoFlow) GetTs() isFalcoFlow_Ts {
+func (x *FiveTupleFlow) GetTs() isFiveTupleFlow_Ts {
 	if x != nil {
 		return x.Ts
 	}
@@ -1840,42 +1844,42 @@ func (x *FalcoFlow) GetTs() isFalcoFlow_Ts {
 }
 
 // Deprecated: Marked as deprecated in illumio/cloud/k8sclustersync/v1/k8s_info.proto.
-func (x *FalcoFlow) GetTime() string {
+func (x *FiveTupleFlow) GetTime() string {
 	if x != nil {
-		if x, ok := x.Ts.(*FalcoFlow_Time); ok {
+		if x, ok := x.Ts.(*FiveTupleFlow_Time); ok {
 			return x.Time
 		}
 	}
 	return ""
 }
 
-func (x *FalcoFlow) GetTimestamp() *timestamppb.Timestamp {
+func (x *FiveTupleFlow) GetTimestamp() *timestamppb.Timestamp {
 	if x != nil {
-		if x, ok := x.Ts.(*FalcoFlow_Timestamp); ok {
+		if x, ok := x.Ts.(*FiveTupleFlow_Timestamp); ok {
 			return x.Timestamp
 		}
 	}
 	return nil
 }
 
-type isFalcoFlow_Ts interface {
-	isFalcoFlow_Ts()
+type isFiveTupleFlow_Ts interface {
+	isFiveTupleFlow_Ts()
 }
 
-type FalcoFlow_Time struct {
-	// time contains the unparsed timestamp string received from Falco; parse it and set timestamp instead
+type FiveTupleFlow_Time struct {
+	// time contains the unparsed timestamp string received from a CNI plugin; parse it and set timestamp instead
 	//
 	// Deprecated: Marked as deprecated in illumio/cloud/k8sclustersync/v1/k8s_info.proto.
 	Time string `protobuf:"bytes,3,opt,name=time,proto3,oneof"`
 }
 
-type FalcoFlow_Timestamp struct {
+type FiveTupleFlow_Timestamp struct {
 	Timestamp *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=timestamp,proto3,oneof"`
 }
 
-func (*FalcoFlow_Time) isFalcoFlow_Ts() {}
+func (*FiveTupleFlow_Time) isFiveTupleFlow_Ts() {}
 
-func (*FalcoFlow_Timestamp) isFalcoFlow_Ts() {}
+func (*FiveTupleFlow_Timestamp) isFiveTupleFlow_Ts() {}
 
 // A flow received from Cilium Hubble Relay using the Observer service's GetFlows RPC.
 // https://github.com/cilium/cilium/blob/main/api/v1/observer/observer.proto
@@ -2905,7 +2909,7 @@ type SendKubernetesNetworkFlowsRequest struct {
 	//
 	//	*SendKubernetesNetworkFlowsRequest_Keepalive
 	//	*SendKubernetesNetworkFlowsRequest_CiliumFlow
-	//	*SendKubernetesNetworkFlowsRequest_FalcoFlow
+	//	*SendKubernetesNetworkFlowsRequest_FiveTupleFlow
 	Request       isSendKubernetesNetworkFlowsRequest_Request `protobuf_oneof:"request"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2966,10 +2970,10 @@ func (x *SendKubernetesNetworkFlowsRequest) GetCiliumFlow() *CiliumFlow {
 	return nil
 }
 
-func (x *SendKubernetesNetworkFlowsRequest) GetFalcoFlow() *FalcoFlow {
+func (x *SendKubernetesNetworkFlowsRequest) GetFiveTupleFlow() *FiveTupleFlow {
 	if x != nil {
-		if x, ok := x.Request.(*SendKubernetesNetworkFlowsRequest_FalcoFlow); ok {
-			return x.FalcoFlow
+		if x, ok := x.Request.(*SendKubernetesNetworkFlowsRequest_FiveTupleFlow); ok {
+			return x.FiveTupleFlow
 		}
 	}
 	return nil
@@ -2987,15 +2991,16 @@ type SendKubernetesNetworkFlowsRequest_CiliumFlow struct {
 	CiliumFlow *CiliumFlow `protobuf:"bytes,1,opt,name=cilium_flow,json=ciliumFlow,proto3,oneof"`
 }
 
-type SendKubernetesNetworkFlowsRequest_FalcoFlow struct {
-	FalcoFlow *FalcoFlow `protobuf:"bytes,2,opt,name=falco_flow,json=falcoFlow,proto3,oneof"`
+type SendKubernetesNetworkFlowsRequest_FiveTupleFlow struct {
+	FiveTupleFlow *FiveTupleFlow `protobuf:"bytes,2,opt,name=five_tuple_flow,json=fiveTupleFlow,proto3,oneof"`
 }
 
 func (*SendKubernetesNetworkFlowsRequest_Keepalive) isSendKubernetesNetworkFlowsRequest_Request() {}
 
 func (*SendKubernetesNetworkFlowsRequest_CiliumFlow) isSendKubernetesNetworkFlowsRequest_Request() {}
 
-func (*SendKubernetesNetworkFlowsRequest_FalcoFlow) isSendKubernetesNetworkFlowsRequest_Request() {}
+func (*SendKubernetesNetworkFlowsRequest_FiveTupleFlow) isSendKubernetesNetworkFlowsRequest_Request() {
+}
 
 // Message sent to the operator in a SendKubernetesNetworkFlows response stream.
 type SendKubernetesNetworkFlowsResponse struct {
@@ -3572,8 +3577,8 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x0fupdate_resource\x18\x02 \x01(\v25.illumio.cloud.k8sclustersync.v1.KubernetesObjectDataH\x00R\x0eupdateResource\x12`\n" +
 	"\x0fdelete_resource\x18\x03 \x01(\v25.illumio.cloud.k8sclustersync.v1.KubernetesObjectDataH\x00R\x0edeleteResourceB\n" +
 	"\n" +
-	"\bmutation\"\xe5\x01\n" +
-	"\tFalcoFlow\x12;\n" +
+	"\bmutation\"\xe9\x01\n" +
+	"\rFiveTupleFlow\x12;\n" +
 	"\x06layer3\x18\x01 \x01(\v2#.illumio.cloud.k8sclustersync.v1.IPR\x06layer3\x12?\n" +
 	"\x06layer4\x18\x02 \x01(\v2'.illumio.cloud.k8sclustersync.v1.Layer4R\x06layer4\x12\x18\n" +
 	"\x04time\x18\x03 \x01(\tB\x02\x18\x01H\x00R\x04time\x12:\n" +
@@ -3658,13 +3663,12 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x16\n" +
 	"\x06labels\x18\x03 \x03(\tR\x06labels\x12\x1a\n" +
 	"\brevision\x18\x04 \x01(\x04R\brevision\x12\x12\n" +
-	"\x04kind\x18\x05 \x01(\tR\x04kind\"\x97\x02\n" +
+	"\x04kind\x18\x05 \x01(\tR\x04kind\"\xa4\x02\n" +
 	"!SendKubernetesNetworkFlowsRequest\x12J\n" +
 	"\tkeepalive\x18\x03 \x01(\v2*.illumio.cloud.k8sclustersync.v1.KeepaliveH\x00R\tkeepalive\x12N\n" +
 	"\vcilium_flow\x18\x01 \x01(\v2+.illumio.cloud.k8sclustersync.v1.CiliumFlowH\x00R\n" +
-	"ciliumFlow\x12K\n" +
-	"\n" +
-	"falco_flow\x18\x02 \x01(\v2*.illumio.cloud.k8sclustersync.v1.FalcoFlowH\x00R\tfalcoFlowB\t\n" +
+	"ciliumFlow\x12X\n" +
+	"\x0ffive_tuple_flow\x18\x02 \x01(\v2..illumio.cloud.k8sclustersync.v1.FiveTupleFlowH\x00R\rfiveTupleFlowB\t\n" +
 	"\arequest\"$\n" +
 	"\"SendKubernetesNetworkFlowsResponse\"-\n" +
 	"\bLogEntry\x12!\n" +
@@ -3682,12 +3686,13 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\rConfiguration\x12F\n" +
 	"\tlog_level\x18\x01 \x01(\x0e2).illumio.cloud.k8sclustersync.v1.LogLevelR\blogLevelB\n" +
 	"\n" +
-	"\bresponse*\x81\x01\n" +
+	"\bresponse*\x9a\x01\n" +
 	"\rFlowCollector\x12\x1e\n" +
 	"\x1aFLOW_COLLECTOR_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17FLOW_COLLECTOR_DISABLED\x10\x01\x12\x19\n" +
 	"\x15FLOW_COLLECTOR_CILIUM\x10\x02\x12\x18\n" +
-	"\x14FLOW_COLLECTOR_FALCO\x10\x03*\x8c\x01\n" +
+	"\x14FLOW_COLLECTOR_FALCO\x10\x03\x12\x17\n" +
+	"\x13FLOW_COLLECTOR_OVNK\x10\x04*\x8c\x01\n" +
 	"\x10TrafficDirection\x12;\n" +
 	"7TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19TRAFFIC_DIRECTION_INGRESS\x10\x01\x12\x1c\n" +
@@ -3758,7 +3763,7 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_goTypes = []any{
 	(*KubernetesResourceSnapshotComplete)(nil), // 22: illumio.cloud.k8sclustersync.v1.KubernetesResourceSnapshotComplete
 	(*SendKubernetesResourcesResponse)(nil),    // 23: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesResponse
 	(*KubernetesResourceMutation)(nil),         // 24: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation
-	(*FalcoFlow)(nil),                          // 25: illumio.cloud.k8sclustersync.v1.FalcoFlow
+	(*FiveTupleFlow)(nil),                      // 25: illumio.cloud.k8sclustersync.v1.FiveTupleFlow
 	(*CiliumFlow)(nil),                         // 26: illumio.cloud.k8sclustersync.v1.CiliumFlow
 	(*Service)(nil),                            // 27: illumio.cloud.k8sclustersync.v1.Service
 	(*IP)(nil),                                 // 28: illumio.cloud.k8sclustersync.v1.IP
@@ -3818,9 +3823,9 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	7,  // 27: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation.create_resource:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
 	7,  // 28: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation.update_resource:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
 	7,  // 29: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation.delete_resource:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
-	28, // 30: illumio.cloud.k8sclustersync.v1.FalcoFlow.layer3:type_name -> illumio.cloud.k8sclustersync.v1.IP
-	29, // 31: illumio.cloud.k8sclustersync.v1.FalcoFlow.layer4:type_name -> illumio.cloud.k8sclustersync.v1.Layer4
-	51, // 32: illumio.cloud.k8sclustersync.v1.FalcoFlow.timestamp:type_name -> google.protobuf.Timestamp
+	28, // 30: illumio.cloud.k8sclustersync.v1.FiveTupleFlow.layer3:type_name -> illumio.cloud.k8sclustersync.v1.IP
+	29, // 31: illumio.cloud.k8sclustersync.v1.FiveTupleFlow.layer4:type_name -> illumio.cloud.k8sclustersync.v1.Layer4
+	51, // 32: illumio.cloud.k8sclustersync.v1.FiveTupleFlow.timestamp:type_name -> google.protobuf.Timestamp
 	51, // 33: illumio.cloud.k8sclustersync.v1.CiliumFlow.time:type_name -> google.protobuf.Timestamp
 	1,  // 34: illumio.cloud.k8sclustersync.v1.CiliumFlow.traffic_direction:type_name -> illumio.cloud.k8sclustersync.v1.TrafficDirection
 	2,  // 35: illumio.cloud.k8sclustersync.v1.CiliumFlow.verdict:type_name -> illumio.cloud.k8sclustersync.v1.Verdict
@@ -3844,7 +3849,7 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	37, // 53: illumio.cloud.k8sclustersync.v1.Endpoint.workloads:type_name -> illumio.cloud.k8sclustersync.v1.Workload
 	6,  // 54: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
 	26, // 55: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.cilium_flow:type_name -> illumio.cloud.k8sclustersync.v1.CiliumFlow
-	25, // 56: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.falco_flow:type_name -> illumio.cloud.k8sclustersync.v1.FalcoFlow
+	25, // 56: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.five_tuple_flow:type_name -> illumio.cloud.k8sclustersync.v1.FiveTupleFlow
 	6,  // 57: illumio.cloud.k8sclustersync.v1.SendLogsRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
 	41, // 58: illumio.cloud.k8sclustersync.v1.SendLogsRequest.log_entry:type_name -> illumio.cloud.k8sclustersync.v1.LogEntry
 	6,  // 59: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
@@ -3896,8 +3901,8 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() {
 		(*KubernetesResourceMutation_DeleteResource)(nil),
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[19].OneofWrappers = []any{
-		(*FalcoFlow_Time)(nil),
-		(*FalcoFlow_Timestamp)(nil),
+		(*FiveTupleFlow_Time)(nil),
+		(*FiveTupleFlow_Timestamp)(nil),
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[20].OneofWrappers = []any{}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[23].OneofWrappers = []any{
@@ -3910,7 +3915,7 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() {
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[33].OneofWrappers = []any{
 		(*SendKubernetesNetworkFlowsRequest_Keepalive)(nil),
 		(*SendKubernetesNetworkFlowsRequest_CiliumFlow)(nil),
-		(*SendKubernetesNetworkFlowsRequest_FalcoFlow)(nil),
+		(*SendKubernetesNetworkFlowsRequest_FiveTupleFlow)(nil),
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[36].OneofWrappers = []any{
 		(*SendLogsRequest_Keepalive)(nil),
