@@ -429,9 +429,10 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 // startFlowCacheOutReader starts a goroutine that reads flows from the flow cache and sends them to the cloud secure.
 func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *zap.Logger, networkFlowStreamOpen chan struct{}) error {
 	flowCount := 0
-	allowedFlows := 1000                          // Initialize allowed flows to some default value IE 1000, This value is set by the server in the ServerWindow message
+	allowedFlows := 200                           // Initialize allowed flows to some default value IE 200, This value is set by the server in the ServerWindow message
 	logger.Info("Starting flow cache out reader") // Ensure the ticker is stopped when the function exits
-
+	ticker := time.NewTicker(60 * time.Second)    // Create a ticker that triggers every 60 seconds
+	defer ticker.Stop()                           // Ensure the ticker is stopped when the function exits
 	// Goroutine to read ServerWindow messages from the network flow stream
 	go func() {
 		<-networkFlowStreamOpen // Wait for network flow stream to be open
@@ -475,6 +476,8 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 				networkFlowStreamOpen <- struct{}{}
 				logger.Info("Network flow stream opened")
 			})
+		case <-ticker.C: // Triggered every 60 seconds
+			logger.Debug("Reading from flow cache and sending flows... current flow count + granted server window", zap.Int("flow_count", flowCount), zap.Int("allowed_flows", allowedFlows))
 		}
 	}
 }
