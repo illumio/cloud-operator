@@ -13,6 +13,8 @@ import (
 
 // Helper function to send a request to the resource stream
 func (sm *streamManager) sendToResourceStream(logger *zap.Logger, request *pb.SendKubernetesResourcesRequest) error {
+	sm.streamClient.resourceStreamMutex.Lock()
+	defer sm.streamClient.resourceStreamMutex.Unlock()
 	if err := sm.streamClient.resourceStream.Send(request); err != nil {
 		logger.Error("Failed to send request", zap.Stringer("request", request), zap.Error(err))
 		return err
@@ -51,6 +53,8 @@ func (sm *streamManager) sendNetworkFlowRequest(logger *zap.Logger, flow interfa
 	default:
 		return fmt.Errorf("unsupported flow type: %T", flow)
 	}
+	sm.streamClient.networkFlowsStreamMutex.Lock()
+	defer sm.streamClient.networkFlowsStreamMutex.Unlock()
 	if err := sm.streamClient.networkFlowsStream.Send(request); err != nil {
 		logger.Error("Failed to send network flow", zap.Error(err))
 		return err
@@ -136,24 +140,32 @@ func (sm *streamManager) sendKeepalive(logger *zap.Logger, st StreamType) error 
 
 	switch st {
 	case STREAM_NETWORK_FLOWS:
+		sm.streamClient.networkFlowsStreamMutex.Lock()
+		defer sm.streamClient.networkFlowsStreamMutex.Unlock()
 		err = sm.streamClient.networkFlowsStream.Send(&pb.SendKubernetesNetworkFlowsRequest{
 			Request: &pb.SendKubernetesNetworkFlowsRequest_Keepalive{
 				Keepalive: &pb.Keepalive{},
 			},
 		})
 	case STREAM_RESOURCES:
+		sm.streamClient.resourceStreamMutex.Lock()
+		defer sm.streamClient.resourceStreamMutex.Unlock()
 		err = sm.streamClient.resourceStream.Send(&pb.SendKubernetesResourcesRequest{
 			Request: &pb.SendKubernetesResourcesRequest_Keepalive{
 				Keepalive: &pb.Keepalive{},
 			},
 		})
 	case STREAM_LOGS:
+		sm.bufferedGrpcSyncer.mutex.Lock()
+		defer sm.bufferedGrpcSyncer.mutex.Unlock()
 		err = sm.streamClient.logStream.Send(&pb.SendLogsRequest{
 			Request: &pb.SendLogsRequest_Keepalive{
 				Keepalive: &pb.Keepalive{},
 			},
 		})
 	case STREAM_CONFIGURATION:
+		sm.streamClient.configStreamMutex.Lock()
+		defer sm.streamClient.configStreamMutex.Unlock()
 		err = sm.streamClient.configStream.Send(&pb.GetConfigurationUpdatesRequest{
 			Request: &pb.GetConfigurationUpdatesRequest_Keepalive{
 				Keepalive: &pb.Keepalive{},

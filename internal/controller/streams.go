@@ -51,6 +51,9 @@ type streamClient struct {
 	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient
 	configStream              pb.KubernetesInfoService_GetConfigurationUpdatesClient
+	networkFlowsStreamMutex   sync.Mutex
+	resourceStreamMutex       sync.Mutex
+	configStreamMutex         sync.Mutex
 }
 
 type deadlockDetector struct {
