@@ -38,6 +38,12 @@ onboardingSecret:
   clientId: ""
   clientSecret: ""
 
+service:
+  clusterIP: ""
+
+openshift:
+  ovnk_namespace: "openshift-ovn-kubernetes"
+
 falco:
   enabled: false
   namespace: falco
@@ -80,4 +86,5 @@ env:
     connect: "1h"
     auth: "2h"
   httpsProxy: ""
+  ipfixCollectorPort: 4739
   verboseDebugging: false
