@@ -48,7 +48,6 @@ type streamClient struct {
 	falcoEventChan            chan string
 	flowCollector             pb.FlowCollector
 	logStream                 pb.KubernetesInfoService_SendLogsClient
-	logStreamMutex            sync.Mutex
 	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
 	networkFlowsStreamMutex   sync.Mutex
 	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient

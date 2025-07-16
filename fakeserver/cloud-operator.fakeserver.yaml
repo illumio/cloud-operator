@@ -1,11 +1,3 @@
-image:
- repository: "illumioevanj80/operator"
- tag: "latest"
- pullPolicy: Always
-
-imagePullSecrets:
- - name: regcred
-
 # Copyright 2024 Illumio, Inc. All Rights Reserved.
 
 # fakeserver authenticates properly when your onboardingSecret matches these:

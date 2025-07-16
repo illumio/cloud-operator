@@ -136,7 +136,7 @@ func main() {
 			Auth:    viper.GetDuration("stream_success_period_auth"),
 		},
 		HttpsProxy:       viper.GetString("https_proxy"),
-		VerboseDebugging: true,
+		VerboseDebugging: viper.GetBool("verbose_debugging"),
 	}
 
 	logger.Info("Starting application",

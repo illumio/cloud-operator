@@ -188,10 +188,27 @@ func (b *BufferedGrpcWriteSyncer) sendLogEntry(jsonMessage string) error {
 // UpdateClient updates the gRPC connection and connection in the BufferedGrpcWriteSyncer.
 func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_SendLogsClient, conn ClientConnInterface) {
 	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	b.client = client
 	b.conn = conn
 	b.flush()
-	b.mutex.Unlock()
+}
+
+// SendKeepalive sends a keepalive message to the log stream.
+// It acquires a lock to ensure no contention on the stream.
+func (b *BufferedGrpcWriteSyncer) SendKeepalive() error {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	if b.client == nil || b.conn == nil || b.conn.GetState() != connectivity.Ready {
+		return fmt.Errorf("cannot send keepalive, stream is not ready")
+	}
+
+	return b.client.Send(&pb.SendLogsRequest{
+		Request: &pb.SendLogsRequest_Keepalive{
+			Keepalive: &pb.Keepalive{},
+		},
+	})
 }
 
 // updateLogLevel sets the logger's log level based on the response from the server.

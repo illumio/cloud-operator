@@ -155,13 +155,9 @@ func (sm *streamManager) sendKeepalive(logger *zap.Logger, st StreamType) error 
 			},
 		})
 	case STREAM_LOGS:
-		sm.streamClient.logStreamMutex.Lock()
-		defer sm.streamClient.logStreamMutex.Unlock()
-		err = sm.streamClient.logStream.Send(&pb.SendLogsRequest{
-			Request: &pb.SendLogsRequest_Keepalive{
-				Keepalive: &pb.Keepalive{},
-			},
-		})
+		// Log stream is handled by the BufferedGrpcWriteSyncer
+		// BufferedGrpcWriteSyncer has its own mutex
+		err = sm.bufferedGrpcSyncer.SendKeepalive()
 	case STREAM_CONFIGURATION:
 		sm.streamClient.configStreamMutex.Lock()
 		defer sm.streamClient.configStreamMutex.Unlock()
