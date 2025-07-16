@@ -246,7 +246,7 @@ func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_Send
 			logger.Info("Received network flows keepalive")
 			continue // Do not count keepalives in messagesReceived
 		case *pb.SendKubernetesNetworkFlowsRequest_CiliumFlow:
-			time.Sleep(10 * time.Millisecond) // Simulate slow server
+			time.Sleep(1 * time.Second) // Simulate slow server, useful for testing the window size
 			logger.Info("Received CiliumFlow")
 		case *pb.SendKubernetesNetworkFlowsRequest_FalcoFlow:
 			logger.Info("Received FalcoFlow")
