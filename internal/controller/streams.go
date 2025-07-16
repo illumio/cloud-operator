@@ -977,18 +977,16 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 
 			flowCollector, streamFunc, doneChannel := determineFlowCollector(ctx, logger, sm, envMap, clientset)
 			sm.streamClient.flowCollector = flowCollector
-      					<-snapshotCommitSignal // Wait for snapshot commit signal
-
-      go func () {
-        	<-snapshotCommitSignal // Wait for snapshot commit signal
-          sm.manageStream(
-          logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
-          streamFunc,
-          doneChannel,
-          envMap.KeepalivePeriods.KubernetesNetworkFlows,
-          envMap.StreamSuccessPeriod,
-        )
-      }
+			go func() {
+				<-snapshotCommitSignal // Wait for snapshot commit signal
+				sm.manageStream(
+					logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
+					streamFunc,
+					doneChannel,
+					envMap.KeepalivePeriods.KubernetesNetworkFlows,
+					envMap.StreamSuccessPeriod,
+				)
+			}()
 
 			go func() {
 				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(ctx)
