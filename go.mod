@@ -1,6 +1,6 @@
 module github.com/illumio/cloud-operator
 
-go 1.24.2
+go 1.24.4
 
 require (
 	github.com/cilium/cilium v1.17.4
@@ -11,9 +11,9 @@ require (
 	golang.org/x/oauth2 v0.30.0
 	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
-	k8s.io/api v0.33.1
-	k8s.io/apimachinery v0.33.1
-	k8s.io/client-go v0.33.1
+	k8s.io/api v0.33.2
+	k8s.io/apimachinery v0.33.2
+	k8s.io/client-go v0.33.2
 )
 
 require (

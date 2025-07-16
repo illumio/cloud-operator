@@ -97,6 +97,8 @@ spec:
               value: "{{ .Values.openshift.ovnk_namespace }}"
             - name: IPFIX_COLLECTOR_PORT
               value: "{{ .Values.env.ipfixCollectorPort }}"
+            - name: VERBOSE_DEBUGGING
+              value: "{{ .Values.env.verboseDebugging }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
@@ -104,6 +106,18 @@ spec:
               mountPath: /var/run/gops
             - name: ipfix-template-sets
               mountPath: /ipfix-template-sets
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       volumes:
         - name: gops-volume
           emptyDir:

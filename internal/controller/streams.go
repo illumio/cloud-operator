@@ -64,6 +64,7 @@ type streamManager struct {
 	bufferedGrpcSyncer *BufferedGrpcWriteSyncer
 	streamClient       *streamClient
 	FlowCache          *FlowCache
+	verboseDebugging   bool
 }
 
 type KeepalivePeriods struct {
@@ -112,6 +113,8 @@ type EnvironmentConfig struct {
 	StreamSuccessPeriod StreamSuccessPeriod
 	// HTTP Proxy URL
 	HttpsProxy string
+	// Whether to enable verbose debugging.
+	VerboseDebugging bool
 }
 
 // Add or delete the resource
@@ -219,6 +222,14 @@ func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset 
 			// Map resources to their API groups
 			for _, resource := range resourceList.APIResources {
 				if _, exists := resourceSet[resource.Name]; exists {
+					if group.Name == "metrics.k8s.io" {
+						logger.Info("Skipping this as it causes issues with discovery",
+							zap.String("group", group.Name),
+							zap.String("resource", resource.Name),
+						)
+						continue
+					}
+
 					resourceAPIGroupMap[resource.Name] = group.Name
 				}
 			}
@@ -391,7 +402,12 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 				logger.Info("Received configuration update",
 					zap.Stringer("log_level", update.UpdateConfiguration.LogLevel),
 				)
-				sm.bufferedGrpcSyncer.updateLogLevel(update.UpdateConfiguration.LogLevel)
+				if sm.verboseDebugging {
+					logger.Debug("verboseDebugging is true, setting log level to debug")
+					sm.bufferedGrpcSyncer.updateLogLevel(pb.LogLevel_LOG_LEVEL_DEBUG)
+				} else {
+					sm.bufferedGrpcSyncer.updateLogLevel(update.UpdateConfiguration.LogLevel)
+				}
 			default:
 				logger.Warn("Received unknown configuration update", zap.Any("response", resp))
 			}
@@ -409,7 +425,11 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 	return nil
 }
 
+// startFlowCacheOutReader starts a goroutine that reads flows from the flow cache and sends them to the cloud secure.
 func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *zap.Logger) error {
+	flowCount := 0
+	ticker := time.NewTicker(60 * time.Second) // Create a ticker that triggers every 60 seconds
+	defer ticker.Stop()                        // Ensure the ticker is stopped when the function exits
 	for {
 		select {
 		case <-ctx.Done():
@@ -419,8 +439,12 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 			if err != nil {
 				return err
 			}
+			flowCount++
+		case <-ticker.C: // Triggered every 60 seconds
+			logger.Debug("Reading from flow cache and sending flows... current flow count", zap.Int("flow_count", flowCount))
+			logger.Debug("Resetting flow count")
+			flowCount = 0
 		}
-
 	}
 }
 
@@ -544,7 +568,7 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 		}
 		ciliumCancel()
 	}()
-
+	logger.Debug("Starting to stream cilium network flows")
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, logger, sm.streamClient.ciliumNamespace)
 	if err != nil {
 		if errors.Is(err, hubble.ErrHubbleNotFound) || errors.Is(err, hubble.ErrNoPortsAvailable) {
@@ -738,7 +762,7 @@ func (sm *streamManager) manageStream(
 		}, f)
 	}
 
-	// If reapated attempts to connect fail, that is, the "SevereErrorThreshold"
+	// If repeated attempts to connect fail, that is, the "SevereErrorThreshold"
 	// in the above backoff is triggered, then wait and try again. By setting
 	// ExponentialFactor to 1, we will wait the same amount of time between every
 	// attempt. This is desirable
@@ -849,6 +873,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			}
 
 			sm := &streamManager{
+				verboseDebugging:   envMap.VerboseDebugging,
 				streamClient:       streamClient,
 				bufferedGrpcSyncer: bufferedGrpcSyncer,
 				FlowCache: NewFlowCache(

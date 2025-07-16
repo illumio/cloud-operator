@@ -8,6 +8,12 @@ image:
   tag: "0.0.1"
   pullPolicy: IfNotPresent
 
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
 serviceAccount:
   create: true
   name: "illumio-cloud-sa"
@@ -81,3 +87,4 @@ env:
     auth: "2h"
   httpsProxy: ""
   ipfixCollectorPort: 4739
+  verboseDebugging: false
