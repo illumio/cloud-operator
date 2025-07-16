@@ -248,8 +248,8 @@ func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_Send
 		case *pb.SendKubernetesNetworkFlowsRequest_CiliumFlow:
 			time.Sleep(1 * time.Second) // Simulate slow server, useful for testing the window size
 			logger.Info("Received CiliumFlow")
-		case *pb.SendKubernetesNetworkFlowsRequest_FalcoFlow:
-			logger.Info("Received FalcoFlow")
+		case *pb.SendKubernetesNetworkFlowsRequest_FiveTupleFlow:
+			logger.Info("Received FiveTupleFlow")
 		}
 		logger.Info("Received request", zap.Any("request", req))
 

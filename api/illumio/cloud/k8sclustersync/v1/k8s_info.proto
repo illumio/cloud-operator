@@ -191,6 +191,8 @@ enum FlowCollector {
   FLOW_COLLECTOR_CILIUM = 2;
   // Indicates that Falco is deployed and configured for collecting network flows.
   FLOW_COLLECTOR_FALCO = 3;
+  // Indicates that OVN-Kubernetes is deployed and configured for collecting network flows.
+  FLOW_COLLECTOR_OVNK = 4;
 }
 
 // Message sent by the operator in a KubernetesResources request stream.
@@ -242,15 +244,15 @@ message KubernetesResourceMutation {
   }
 }
 
-// A flow received from Falco using custom rules
-message FalcoFlow {
+// A flow with a simple 5-tuple flow key received from a CNI plugin
+message FiveTupleFlow {
   // layer3 IP layer, source, destination and ip_version
   IP layer3 = 1;
   // Proto contains protocol used
   Layer4 layer4 = 2;
 
   oneof ts {
-    // time contains the unparsed timestamp string received from Falco; parse it and set timestamp instead
+    // time contains the unparsed timestamp string received from a CNI plugin; parse it and set timestamp instead
     string time = 3 [deprecated = true];
     google.protobuf.Timestamp timestamp = 4;
   }
@@ -432,7 +434,7 @@ message SendKubernetesNetworkFlowsRequest {
     Keepalive keepalive = 3;
 
     CiliumFlow cilium_flow = 1;
-    FalcoFlow falco_flow = 2;
+    FiveTupleFlow five_tuple_flow = 2;
   }
 }
 
