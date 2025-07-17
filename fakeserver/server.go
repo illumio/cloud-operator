@@ -212,21 +212,15 @@ func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_Send
 	logger.Info("SendKubernetesNetworkFlows stream started")
 
 	// Configurable window size
-	windowSize := uint32(300) // Example: Allow 100 messages per window
+	windowSize := uint32(300) // Example: Allow 300 messages per window
+	sw := ServerWindow{
+		AllowedMessages: windowSize,
+	}
 
 	// Send initial ServerWindow message
-	initialResponse := &pb.SendKubernetesNetworkFlowsResponse{
-		Response: &pb.SendKubernetesNetworkFlowsResponse_ServerWindow{
-			ServerWindow: &pb.ServerWindow{
-				AllowedMessages: windowSize,
-			},
-		},
-	}
-	if err := stream.Send(initialResponse); err != nil {
-		logger.Error("Error sending initial ServerWindow response", zap.Error(err))
+	if err := sw.SendInitialServerWindow(stream, windowSize, logger); err != nil {
 		return err
 	}
-	logger.Info("Sent initial ServerWindow message", zap.Uint32("allowed_messages", windowSize))
 
 	messagesReceived := uint32(0) // Track the number of messages received
 
@@ -254,10 +248,9 @@ func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_Send
 		logger.Info("Received request", zap.Any("request", req))
 
 		messagesReceived++ // Increment the counter for the next window
-		sw := ServerWindow{
-			AllowedMessages: windowSize,
+		if err := sw.SendPeriodicServerWindow(stream, &messagesReceived, windowSize, logger); err != nil {
+			return err
 		}
-		sw.SendServerWindow(stream, &messagesReceived, windowSize, logger)
 	}
 }
 
