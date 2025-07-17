@@ -253,24 +253,11 @@ func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_Send
 		}
 		logger.Info("Received request", zap.Any("request", req))
 
-		messagesReceived++
-
-		// Send a ServerWindow message only after the window is satisfied
-		if messagesReceived >= windowSize {
-			response := &pb.SendKubernetesNetworkFlowsResponse{
-				Response: &pb.SendKubernetesNetworkFlowsResponse_ServerWindow{
-					ServerWindow: &pb.ServerWindow{
-						AllowedMessages: windowSize,
-					},
-				},
-			}
-			if err := stream.Send(response); err != nil {
-				logger.Error("Error sending ServerWindow response", zap.Error(err))
-				return err
-			}
-			logger.Info("Sent ServerWindow message", zap.Uint32("allowed_messages", windowSize))
-			messagesReceived = 0 // Reset the counter for the next window
+		messagesReceived++ // Increment the counter for the next window
+		sw := ServerWindow{
+			AllowedMessages: windowSize,
 		}
+		sw.SendServerWindow(stream, &messagesReceived, windowSize, logger)
 	}
 }
 
