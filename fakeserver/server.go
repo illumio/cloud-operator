@@ -210,6 +210,20 @@ func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConf
 
 func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
 	logger.Info("SendKubernetesNetworkFlows stream started")
+
+	// Configurable window size
+	windowSize := uint32(300) // Example: Allow 300 messages per window
+	sw := ServerWindow{
+		AllowedMessages: windowSize,
+	}
+
+	// Send initial ServerWindow message
+	if err := sw.SendInitialServerWindow(stream, windowSize, logger); err != nil {
+		return err
+	}
+
+	messagesReceived := uint32(0) // Track the number of messages received
+
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
@@ -222,10 +236,20 @@ func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_Send
 		}
 
 		switch req.Request.(type) {
+		case *pb.SendKubernetesNetworkFlowsRequest_Keepalive:
+			logger.Info("Received network flows keepalive")
+			continue // Do not count keepalives in messagesReceived
 		case *pb.SendKubernetesNetworkFlowsRequest_CiliumFlow:
+			time.Sleep(1 * time.Second) // Simulate slow server, useful for testing the window size
 			logger.Info("Received CiliumFlow")
 		case *pb.SendKubernetesNetworkFlowsRequest_FiveTupleFlow:
 			logger.Info("Received FiveTupleFlow")
+		}
+		logger.Info("Received request", zap.Any("request", req))
+
+		messagesReceived++ // Increment the counter for the next window
+		if err := sw.SendPeriodicServerWindow(stream, &messagesReceived, windowSize, logger); err != nil {
+			return err
 		}
 	}
 }
