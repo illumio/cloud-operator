@@ -3005,7 +3005,7 @@ func (*SendKubernetesNetworkFlowsRequest_FiveTupleFlow) isSendKubernetesNetworkF
 // Message sent by the server to the operator to define the rate-limiting window.
 type ServerWindow struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	AllowedMessages uint32                 `protobuf:"varint,1,opt,name=allowed_messages,json=allowedMessages,proto3" json:"allowed_messages,omitempty"` // Number of messages the operator is allowed to send.
+	AllowedMessages uint32                 `protobuf:"varint,1,opt,name=allowed_messages,json=allowedMessages,proto3" json:"allowed_messages,omitempty"` // Number of messages the operator is allowed to send until it must wait for the window to be increased again.
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }

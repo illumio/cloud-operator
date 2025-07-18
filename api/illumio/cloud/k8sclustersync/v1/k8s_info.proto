@@ -440,7 +440,7 @@ message SendKubernetesNetworkFlowsRequest {
 
 // Message sent by the server to the operator to define the rate-limiting window.
 message ServerWindow {
-  uint32 allowed_messages = 1; // Number of messages the operator is allowed to send.
+  uint32 allowed_messages = 1; // Number of messages the operator is allowed to send until it must wait for the window to be increased again.
 }
 
 // Message sent to the operator in a SendKubernetesNetworkFlows response stream.
