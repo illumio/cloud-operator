@@ -243,7 +243,7 @@ func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset 
 }
 
 // StreamResources handles the resource stream.
-func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger, cancel context.CancelFunc, snapshotCommitSignal chan struct{}) error {
+func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger, cancel context.CancelFunc) error {
 	defer cancel()
 	defer func() {
 		dd.processingResources = false
@@ -330,9 +330,6 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		return err
 	}
 	logger.Info("Successfully sent resource snapshot")
-
-	// Signal that the snapshot commit has been sent
-	close(snapshotCommitSignal)
 
 	// PHASE 3: Start watchers concurrently
 	for _, info := range allWatchInfos {
@@ -730,7 +727,7 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, k
 // connectAndStreamResources creates resourceStream client and begins the
 // streaming of resources. Also starts a goroutine to send keepalives at the
 // configured period
-func (sm *streamManager) connectAndStreamResources(logger *zap.Logger, keepalivePeriod time.Duration, snapshotCommitSignal chan struct{}) error {
+func (sm *streamManager) connectAndStreamResources(logger *zap.Logger, keepalivePeriod time.Duration) error {
 	resourceCtx, resourceCancel := context.WithCancel(context.Background())
 	defer resourceCancel()
 
@@ -749,7 +746,7 @@ func (sm *streamManager) connectAndStreamResources(logger *zap.Logger, keepalive
 		resourceCancel()
 	}()
 
-	err = sm.StreamResources(resourceCtx, logger, resourceCancel, snapshotCommitSignal)
+	err = sm.StreamResources(resourceCtx, logger, resourceCancel)
 	if err != nil {
 		logger.Error("Failed to bootup and stream resources", zap.Error(err))
 		return err
@@ -1020,14 +1017,13 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
 			configDone := make(chan struct{})
-			snapshotCommitSignal := make(chan struct{})
 
 			sm.bufferedGrpcSyncer.done = logDone
 
 			go sm.manageStream(
 				logger.With(zap.String("stream", "SendKubernetesResources")),
 				func(logger *zap.Logger, keepalivePeriod time.Duration) error {
-					return sm.connectAndStreamResources(logger, keepalivePeriod, snapshotCommitSignal)
+					return sm.connectAndStreamResources(logger, keepalivePeriod)
 				},
 				resourceDone,
 				envMap.KeepalivePeriods.KubernetesResources,
@@ -1068,7 +1064,6 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 
 			networkFlowsDone := make(chan struct{})
 			go func() {
-				<-snapshotCommitSignal // Wait for snapshot commit signal
 				_, streamFunc, doneChannel := determineFlowCollector(ctx, logger, sm, envMap, clientset)
 				sm.manageStream(
 					logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
