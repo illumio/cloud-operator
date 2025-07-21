@@ -440,6 +440,8 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 	logger.Info("Starting flow cache out reader")
 	ticker := time.NewTicker(60 * time.Second) // Create a ticker that triggers every 60 seconds
 	defer ticker.Stop()                        // Ensure the ticker is stopped when the function exits
+
+	errCh := make(chan error, 1)
 	// Goroutine to read ServerWindow messages from the network flow stream
 	go func() {
 		select {
@@ -449,14 +451,14 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 		}
 		for {
 			resp, err := sm.streamClient.networkFlowsStream.Recv()
-			if err == io.EOF {
-				logger.Info("Server has closed the network flows stream")
-				cond.Broadcast()
-				return
-			}
 			if err != nil {
-				logger.Error("Error receiving response from network flows stream", zap.Error(err))
+				if err == io.EOF {
+					logger.Info("Server has closed the network flows stream")
+				} else {
+					logger.Error("Error receiving response from network flows stream", zap.Error(err))
+				}
 				cond.Broadcast()
+				errCh <- err
 				return
 			}
 
@@ -480,6 +482,8 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 
 	for {
 		select {
+		case err := <-errCh:
+			return err
 		case <-ctx.Done():
 			return ctx.Err()
 		case flow := <-sm.FlowCache.outFlows:
@@ -631,21 +635,43 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 		return err
 	}
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
+
+	networkFlowStreamOpen := make(chan struct{}, 1)
+	errCh := make(chan error, 3) // Three goroutines can return errors
+
 	go func() {
 		err := sm.StreamKeepalives(ciliumCtx, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
 		if err != nil {
 			logger.Error("Failed to send keepalives; canceling stream", zap.Error(err))
 		}
-		ciliumCancel()
+		errCh <- err
 	}()
-	logger.Debug("Starting to stream cilium network flows")
-	err = sm.StreamCiliumNetworkFlows(ciliumCtx, logger, sm.streamClient.ciliumNamespace)
-	if err != nil {
-		if errors.Is(err, hubble.ErrHubbleNotFound) || errors.Is(err, hubble.ErrNoPortsAvailable) {
-			logger.Warn("Disabling Cilium flow collection", zap.Error(err))
-			return ErrStopRetries
+
+	go func() {
+		logger.Debug("Starting to stream cilium network flows")
+		err := sm.StreamCiliumNetworkFlows(ciliumCtx, logger, sm.streamClient.ciliumNamespace)
+		if err != nil {
+			if errors.Is(err, hubble.ErrHubbleNotFound) || errors.Is(err, hubble.ErrNoPortsAvailable) {
+				logger.Warn("Disabling Cilium flow collection", zap.Error(err))
+				errCh <- ErrStopRetries
+			} else {
+				errCh <- err
+			}
+		} else {
+			errCh <- nil
 		}
-		return err
+	}()
+
+	go func() {
+		errCh <- sm.startFlowCacheOutReader(ciliumCtx, logger, networkFlowStreamOpen)
+	}()
+
+	// Wait for an error from any of the goroutines
+	for i := 0; i < 3; i++ {
+		if err := <-errCh; err != nil {
+			ciliumCancel() // Ensure all goroutines are stopped
+			return err
+		}
 	}
 
 	return nil
@@ -665,18 +691,37 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, k
 	}
 	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
 
+	networkFlowStreamOpen := make(chan struct{}, 1)
+	errCh := make(chan error, 3) // Three goroutines can return errors
+
 	go func() {
 		err := sm.StreamKeepalives(falcoCtx, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
 		if err != nil {
 			logger.Error("Failed to send keepalives; canceling stream", zap.Error(err))
 		}
-		falcoCancel()
+		errCh <- err
 	}()
 
-	err = sm.StreamFalcoNetworkFlows(falcoCtx, logger)
-	if err != nil {
-		logger.Error("Failed to stream Falco network flows", zap.Error(err))
-		return err
+	go func() {
+		err := sm.StreamFalcoNetworkFlows(falcoCtx, logger)
+		if err != nil {
+			logger.Error("Failed to stream Falco network flows", zap.Error(err))
+			errCh <- err
+		} else {
+			errCh <- nil
+		}
+	}()
+
+	go func() {
+		errCh <- sm.startFlowCacheOutReader(falcoCtx, logger, networkFlowStreamOpen)
+	}()
+
+	// Wait for an error from any of the goroutines
+	for i := 0; i < 3; i++ {
+		if err := <-errCh; err != nil {
+			falcoCancel() // Ensure all goroutines are stopped
+			return err
+		}
 	}
 
 	return nil
@@ -786,18 +831,37 @@ func (sm *streamManager) connectAndStreamOVNKNetworkFlows(logger *zap.Logger, ke
 	}
 	sm.streamClient.networkFlowsStream = sendOVNKNetworkFlows
 
+	networkFlowStreamOpen := make(chan struct{}, 1)
+	errCh := make(chan error, 3) // Three goroutines can return errors
+
 	go func() {
 		err := sm.StreamKeepalives(ovnkContext, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
 		if err != nil {
 			logger.Error("Failed to send keepalives; canceling stream", zap.Error(err))
 		}
-		ovnkCancel()
+		errCh <- err
 	}()
 
-	err = sm.StreamOVNKNetworkFlows(ovnkContext, logger)
-	if err != nil {
-		logger.Error("Failed to stream OVN-K network flows", zap.Error(err))
-		return err
+	go func() {
+		err := sm.StreamOVNKNetworkFlows(ovnkContext, logger)
+		if err != nil {
+			logger.Error("Failed to stream OVN-K network flows", zap.Error(err))
+			errCh <- err
+		} else {
+			errCh <- nil
+		}
+	}()
+
+	go func() {
+		errCh <- sm.startFlowCacheOutReader(ovnkContext, logger, networkFlowStreamOpen)
+	}()
+
+	// Wait for an error from any of the goroutines
+	for i := 0; i < 3; i++ {
+		if err := <-errCh; err != nil {
+			ovnkCancel() // Ensure all goroutines are stopped
+			return err
+		}
 	}
 
 	return nil
@@ -957,7 +1021,6 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			logDone := make(chan struct{})
 			configDone := make(chan struct{})
 			snapshotCommitSignal := make(chan struct{})
-			networkFlowStreamOpen := make(chan struct{})
 
 			sm.bufferedGrpcSyncer.done = logDone
 
@@ -996,9 +1059,6 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				ctxCancelFlowCacheRun()
 			}()
 
-			ovnkDone := make(chan struct{})
-			falcoDone := make(chan struct{})
-			ciliumDone := make(chan struct{})
 			clientset, err := NewClientSet()
 			if err != nil {
 				logger.Error("Failed to create clientset", zap.Error(err))
@@ -1006,10 +1066,10 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				return
 			}
 
-			flowCollector, streamFunc, doneChannel := determineFlowCollector(ctx, logger, sm, envMap, clientset)
-			sm.streamClient.flowCollector = flowCollector
+			networkFlowsDone := make(chan struct{})
 			go func() {
 				<-snapshotCommitSignal // Wait for snapshot commit signal
+				_, streamFunc, doneChannel := determineFlowCollector(ctx, logger, sm, envMap, clientset)
 				sm.manageStream(
 					logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
 					streamFunc,
@@ -1017,33 +1077,21 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					envMap.KeepalivePeriods.KubernetesNetworkFlows,
 					envMap.StreamSuccessPeriod,
 				)
-			}()
-
-			go func() {
-				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(ctx)
-				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger, networkFlowStreamOpen)
-				if err != nil {
-					logger.Info("Failed to send network flow from cache", zap.Error(err))
-				}
-				ctxCancelFlowCacheOutReader()
+				close(networkFlowsDone)
 			}()
 
 			// Block until one of the streams fail. Then we will jump to the top of
 			// this loop & try again: authenticate and open the streams.
 			logger.Info("All streams are open and running")
 			select {
-			case <-ciliumDone:
-				failureReason = "Cilium network flow stream closed"
-			case <-falcoDone:
-				failureReason = "Falco network flow stream closed"
+			case <-networkFlowsDone:
+				failureReason = "Network flow stream closed"
 			case <-resourceDone:
 				failureReason = "Resource stream closed"
 			case <-logDone:
 				failureReason = "Log stream closed"
 			case <-configDone:
 				failureReason = "Configuration update stream closed"
-			case <-ovnkDone:
-				failureReason = "OVN-K network flow stream closed"
 			}
 			authConContextCancel()
 		}
