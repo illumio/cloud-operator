@@ -433,31 +433,47 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 
 // startFlowCacheOutReader starts a goroutine that reads flows from the flow cache and sends them to the cloud secure.
 func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *zap.Logger, networkFlowStreamOpen chan struct{}) error {
+	var mu sync.Mutex
+	cond := sync.NewCond(&mu)
 	flowCount := 0
-	allowedFlows := 200 // Initialize allowed flows to some default value IE 200, This value is set by the server in the ServerWindow message
+	allowedFlows := 0 // Initialize allowed flows to some default value IE 1, This value is set by the server in the ServerWindow message
 	logger.Info("Starting flow cache out reader")
 	ticker := time.NewTicker(60 * time.Second) // Create a ticker that triggers every 60 seconds
 	defer ticker.Stop()                        // Ensure the ticker is stopped when the function exits
 	// Goroutine to read ServerWindow messages from the network flow stream
 	go func() {
-		<-networkFlowStreamOpen // Wait for network flow stream to be open
+		select {
+		case <-ctx.Done():
+			return
+		case <-networkFlowStreamOpen: // Wait for network flow stream to be ready
+		}
 		for {
 			resp, err := sm.streamClient.networkFlowsStream.Recv()
 			if err == io.EOF {
 				logger.Info("Server has closed the network flows stream")
+				cond.Broadcast()
 				return
 			}
 			if err != nil {
 				logger.Error("Error receiving response from network flows stream", zap.Error(err))
+				cond.Broadcast()
 				return
 			}
 
 			if serverWindow, ok := resp.Response.(*pb.SendKubernetesNetworkFlowsResponse_ServerWindow); ok {
+				mu.Lock()
 				allowedFlows = int(serverWindow.ServerWindow.AllowedMessages)
 				logger.Debug("Received ServerWindow message", zap.Int("allowed_flows", allowedFlows))
 				flowCount = 0 // Reset flowCount when a new ServerWindow message is received
+				mu.Unlock()
+				cond.Broadcast()
 			}
 		}
+	}()
+
+	go func() {
+		<-ctx.Done()
+		cond.Broadcast()
 	}()
 
 	once := &sync.Once{} // Ensure networkFlowStreamOpen is triggered only once
@@ -467,8 +483,19 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 		case <-ctx.Done():
 			return ctx.Err()
 		case flow := <-sm.FlowCache.outFlows:
-			if flowCount >= allowedFlows {
-				continue // Wait for a new ServerWindow message
+			mu.Lock()
+			for flowCount >= allowedFlows {
+				if ctx.Err() != nil {
+					mu.Unlock()
+					return ctx.Err()
+				}
+				// This releases the lock and waits for a broadcast from the server window message
+				cond.Wait()
+			}
+			mu.Unlock()
+
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
 
 			err := sm.sendNetworkFlowRequest(logger, flow)
@@ -476,13 +503,17 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 				logger.Error("Failed to send network flow", zap.Error(err))
 				return err
 			}
+			mu.Lock()
 			flowCount++
+			mu.Unlock()
 			once.Do(func() {
 				networkFlowStreamOpen <- struct{}{}
 				logger.Info("Network flow stream opened")
 			})
 		case <-ticker.C: // Triggered every 60 seconds
+			mu.Lock()
 			logger.Debug("Reading from flow cache and sending flows... current flow count + granted server window", zap.Int("flow_count", flowCount), zap.Int("allowed_flows", allowedFlows))
+			mu.Unlock()
 		}
 	}
 }
