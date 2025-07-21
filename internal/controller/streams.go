@@ -429,7 +429,7 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 }
 
 // startFlowCacheOutReader starts a goroutine that reads flows from the flow cache and sends them to the cloud secure.
-func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *zap.Logger, networkFlowStreamOpen chan struct{}) error {
+func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *zap.Logger) error {
 	var mu sync.Mutex
 	cond := sync.NewCond(&mu)
 	flowCount := 0
@@ -444,7 +444,7 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 		select {
 		case <-ctx.Done():
 			return
-		case <-networkFlowStreamOpen: // Wait for network flow stream to be ready
+		default: // Wait for network flow stream to be ready
 		}
 		for {
 			resp, err := sm.streamClient.networkFlowsStream.Recv()
@@ -508,7 +508,6 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 			flowCount++
 			mu.Unlock()
 			once.Do(func() {
-				networkFlowStreamOpen <- struct{}{}
 				logger.Info("Network flow stream opened")
 			})
 		case <-ticker.C: // Triggered every 60 seconds
@@ -633,7 +632,6 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 	}
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
 
-	networkFlowStreamOpen := make(chan struct{}, 1)
 	errCh := make(chan error, 3) // Three goroutines can return errors
 
 	go func() {
@@ -660,7 +658,7 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 	}()
 
 	go func() {
-		errCh <- sm.startFlowCacheOutReader(ciliumCtx, logger, networkFlowStreamOpen)
+		errCh <- sm.startFlowCacheOutReader(ciliumCtx, logger)
 	}()
 
 	// Wait for an error from any of the goroutines
@@ -688,7 +686,6 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, k
 	}
 	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
 
-	networkFlowStreamOpen := make(chan struct{}, 1)
 	errCh := make(chan error, 3) // Three goroutines can return errors
 
 	go func() {
@@ -710,7 +707,7 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, k
 	}()
 
 	go func() {
-		errCh <- sm.startFlowCacheOutReader(falcoCtx, logger, networkFlowStreamOpen)
+		errCh <- sm.startFlowCacheOutReader(falcoCtx, logger)
 	}()
 
 	// Wait for an error from any of the goroutines
@@ -828,7 +825,6 @@ func (sm *streamManager) connectAndStreamOVNKNetworkFlows(logger *zap.Logger, ke
 	}
 	sm.streamClient.networkFlowsStream = sendOVNKNetworkFlows
 
-	networkFlowStreamOpen := make(chan struct{}, 1)
 	errCh := make(chan error, 3) // Three goroutines can return errors
 
 	go func() {
@@ -850,7 +846,7 @@ func (sm *streamManager) connectAndStreamOVNKNetworkFlows(logger *zap.Logger, ke
 	}()
 
 	go func() {
-		errCh <- sm.startFlowCacheOutReader(ovnkContext, logger, networkFlowStreamOpen)
+		errCh <- sm.startFlowCacheOutReader(ovnkContext, logger)
 	}()
 
 	// Wait for an error from any of the goroutines
