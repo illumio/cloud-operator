@@ -224,8 +224,8 @@ func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_Send
 		switch req.Request.(type) {
 		case *pb.SendKubernetesNetworkFlowsRequest_CiliumFlow:
 			logger.Info("Received CiliumFlow")
-		case *pb.SendKubernetesNetworkFlowsRequest_FalcoFlow:
-			logger.Info("Received FalcoFlow")
+		case *pb.SendKubernetesNetworkFlowsRequest_FiveTupleFlow:
+			logger.Info("Received FiveTupleFlow")
 		}
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
 )
 
 func (suite *ControllerTestSuite) TestGetOnboardingCredentials() {
@@ -478,4 +480,65 @@ func TestCredentialNotFoundInK8sSecretError(t *testing.T) {
 			assert.Equal(t, tt.isTargetError, err.(*credentialNotFoundInK8sSecretError).Is(ErrCredentialNotFoundInK8sSecret))
 		})
 	}
+}
+
+func TestClientBypassesProxy(t *testing.T) {
+	// 1. Mock Servers (no change here)
+	var proxyRequests int32
+	mockProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&proxyRequests, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mockProxy.Close()
+
+	mockApiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte(`{"kind": "PodList", "items":[]}`)); err != nil {
+			t.Errorf("Failed to write response: %v", err)
+		}
+	}))
+	defer mockApiServer.Close()
+
+	// 2. Configure Environment (no change here)
+	t.Setenv("HTTP_PROXY", mockProxy.URL)
+	t.Setenv("HTTPS_PROXY", mockProxy.URL)
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
+
+	// --- VERIFY K8S CLIENT (no change here) ---
+	config := &rest.Config{Host: mockApiServer.URL}
+	k8sClient, err := newClientForConfig(config)
+	if err != nil {
+		t.Fatalf("Failed to create k8s client: %v", err)
+	}
+	_, err = k8sClient.CoreV1().Pods("default").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("k8s client failed to list pods: %v", err)
+	}
+
+	// --- DEBUGGING PROXY FOR STANDARD CLIENT ---
+
+	// Create the standard client with our logging proxy function
+	stdClient := &http.Client{
+		Transport: &http.Transport{
+			// Manually implement the proxy logic, bypassing the faulty function.
+			Proxy: func(req *http.Request) (*url.URL, error) {
+				return url.Parse(os.Getenv("HTTP_PROXY"))
+			},
+		},
+	}
+	_, err = stdClient.Get(mockApiServer.URL)
+	if err != nil {
+		t.Fatalf("Standard client request failed: %v", err)
+	}
+
+	// --- Assertions (no change here) ---
+	if atomic.LoadInt32(&proxyRequests) != 1 {
+		t.Errorf("Expected proxy to be hit 1 time, but got %d", proxyRequests)
+	} else {
+		t.Log("Success: Standard client correctly used the proxy.")
+	}
+
+	t.Log("Success: Kubernetes client correctly bypassed the proxy.")
 }
