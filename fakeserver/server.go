@@ -116,6 +116,8 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 			return err
 		}
 		switch req.Request.(type) {
+		case *pb.SendKubernetesResourcesRequest_Keepalive:
+			logger.Info("Received Keepalive for resources stream")
 		case *pb.SendKubernetesResourcesRequest_ClusterMetadata:
 			logger.Info("Cluster metadata received")
 		case *pb.SendKubernetesResourcesRequest_ResourceData:
@@ -222,7 +224,10 @@ func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_Send
 		}
 
 		switch req.Request.(type) {
+		case *pb.SendKubernetesNetworkFlowsRequest_Keepalive:
+			logger.Info("Received Keepalive for flows stream")
 		case *pb.SendKubernetesNetworkFlowsRequest_CiliumFlow:
+			time.Sleep(300 * time.Millisecond)
 			logger.Info("Received CiliumFlow")
 		case *pb.SendKubernetesNetworkFlowsRequest_FiveTupleFlow:
 			logger.Info("Received FiveTupleFlow")
