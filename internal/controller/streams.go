@@ -390,9 +390,6 @@ func (sm *streamManager) StreamLogs(ctx context.Context, logger *zap.Logger, kee
 		}
 	}()
 
-	ticker := time.NewTicker(jitterTime(keepalivePeriod, 0.10))
-	defer ticker.Stop()
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -402,11 +399,6 @@ func (sm *streamManager) StreamLogs(ctx context.Context, logger *zap.Logger, kee
 				return err
 			}
 			return nil
-		case <-ticker.C:
-			err := sm.sendKeepalive(logger, STREAM_LOGS)
-			if err != nil {
-				return err
-			}
 		}
 	}
 }
@@ -818,12 +810,13 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 		failureReason := ""
 		attempt++
 		logger.Debug("Trying to authenticate and open streams", zap.Int("attempt", attempt))
-
+		logger.Info("ABOUT TO ENTER SELECT IN FOR LOOP")
 		select {
 		case <-ctx.Done():
 			logger.Warn("Context canceled while trying to authenticate and open streams")
 			return
 		case <-resetTimer.C:
+			logger.Info("ABOUT TO ENTER AUTH CONTEXT")
 			authConContext, authConContextCancel := context.WithCancel(ctx)
 			authConn, client, err := NewAuthenticatedConnection(authConContext, logger, envMap)
 			if err != nil {
@@ -835,6 +828,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				break
 			}
 
+			logger.Info("ABOUT TO ENTER STREAM CLIENT")
 			streamClient := &streamClient{
 				conn:               authConn,
 				client:             client,
@@ -886,11 +880,12 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			ovnkDone := make(chan struct{})
 			falcoDone := make(chan struct{})
 			ciliumDone := make(chan struct{})
+			flowCacheRunDone := make(chan struct{})
 			flowCacheOutReaderDone := make(chan struct{})
 
 			go func() {
-				defer close(flowCacheOutReaderDone)
-				ctxFlowCacheRun, ctxCancelFlowCacheRun := context.WithCancel(ctx)
+				defer close(flowCacheRunDone)
+				ctxFlowCacheRun, ctxCancelFlowCacheRun := context.WithCancel(authConContext)
 				defer ctxCancelFlowCacheRun()
 				err := sm.FlowCache.Run(ctxFlowCacheRun, logger)
 				if err != nil {
@@ -919,7 +914,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 
 			go func() {
 				defer close(flowCacheOutReaderDone)
-				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(ctx)
+				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(authConContext)
 				defer ctxCancelFlowCacheOutReader()
 				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger, envMap.KeepalivePeriods.KubernetesNetworkFlows)
 				if err != nil {
@@ -946,6 +941,8 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				failureReason = "OVN-K network flow stream closed"
 			case <-flowCacheOutReaderDone:
 				failureReason = "Flow cache reader failed"
+			case <-flowCacheRunDone:
+				failureReason = "Flow cache running process failed"
 			}
 			authConContextCancel()
 		}
