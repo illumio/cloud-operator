@@ -240,7 +240,7 @@ func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset 
 }
 
 // StreamResources handles the resource stream.
-func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger, cancel context.CancelFunc) error {
+func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger, cancel context.CancelFunc, keepalivePeriod time.Duration) error {
 	defer cancel()
 	defer func() {
 		dd.processingResources = false
@@ -341,12 +341,24 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 	dd.processingResources = false
 	dd.mutex.Unlock()
 
-	<-ctx.Done()
-	return ctx.Err()
+	ticker := time.NewTicker(jitterTime(keepalivePeriod, 0.10))
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			err := sm.sendKeepalive(logger, STREAM_RESOURCES)
+			if err != nil {
+				return err
+			}
+		}
+	}
 }
 
 // StreamLogs handles the log stream.
-func (sm *streamManager) StreamLogs(ctx context.Context, logger *zap.Logger) error {
+func (sm *streamManager) StreamLogs(ctx context.Context, logger *zap.Logger, keepalivePeriod time.Duration) error {
 	errCh := make(chan error, 1)
 	defer close(errCh)
 
@@ -366,19 +378,29 @@ func (sm *streamManager) StreamLogs(ctx context.Context, logger *zap.Logger) err
 		}
 	}()
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-errCh:
-		if err != nil {
-			return err
+	ticker := time.NewTicker(jitterTime(keepalivePeriod, 0.10))
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-errCh:
+			if err != nil {
+				return err
+			}
+			return nil
+		case <-ticker.C:
+			err := sm.sendKeepalive(logger, STREAM_LOGS)
+			if err != nil {
+				return err
+			}
 		}
 	}
-	return nil
 }
 
 // StreamConfigurationUpdates streams configuration updates and applies them dynamically.
-func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger *zap.Logger) error {
+func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger *zap.Logger, keepalivePeriod time.Duration) error {
 	errCh := make(chan error, 1)
 	defer close(errCh)
 
@@ -414,15 +436,25 @@ func (sm *streamManager) StreamConfigurationUpdates(ctx context.Context, logger 
 		}
 	}()
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-errCh:
-		if err != nil {
-			return err
+	ticker := time.NewTicker(jitterTime(keepalivePeriod, 0.10))
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-errCh:
+			if err != nil {
+				return err
+			}
+			return nil
+		case <-ticker.C:
+			err := sm.sendKeepalive(logger, STREAM_CONFIGURATION)
+			if err != nil {
+				return err
+			}
 		}
 	}
-	return nil
 }
 
 // startFlowCacheOutReader starts a goroutine that reads flows from the flow cache and sends them to the cloud secure.
@@ -459,18 +491,39 @@ func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger
 }
 
 // StreamCiliumNetworkFlows handles the cilium network flow stream.
-func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *zap.Logger, ciliumNamespace string) error {
+func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *zap.Logger, ciliumNamespace string, keepalivePeriod time.Duration) error {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, ciliumNamespace)
 	if ciliumFlowCollector == nil {
 		logger.Info("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector")
 		return errors.New("hubble relay cannot be found")
-	} else {
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
 		for {
 			err := ciliumFlowCollector.exportCiliumFlows(ctx, sm)
 			if err != nil {
 				logger.Warn("Failed to collect and export flows from Cilium Hubble Relay", zap.Error(err))
 				sm.disableSubsystemCausingError(err)
+				errCh <- err
+				return
+			}
+		}
+	}()
+
+	ticker := time.NewTicker(jitterTime(keepalivePeriod, 0.10))
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-errCh:
+			return err
+		case <-ticker.C:
+			err := sm.sendKeepalive(logger, STREAM_NETWORK_FLOWS)
+			if err != nil {
 				return err
 			}
 		}
@@ -478,7 +531,10 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 }
 
 // StreamFalcoNetworkFlows handles the falco network flow stream.
-func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *zap.Logger) error {
+func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *zap.Logger, keepalivePeriod time.Duration) error {
+	ticker := time.NewTicker(jitterTime(keepalivePeriod, 0.10))
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -509,48 +565,46 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 				logger.Error("Failed to cache flow", zap.Error(err))
 				return err
 			}
+		case <-ticker.C:
+			err := sm.sendKeepalive(logger, STREAM_NETWORK_FLOWS)
+			if err != nil {
+				return err
+			}
 		}
 	}
 }
 
 // StreamOVNKNetworkFlows handles the OVN-K network flow stream.
-func (sm *streamManager) StreamOVNKNetworkFlows(ctx context.Context, logger *zap.Logger) error {
-	err := sm.startOVNKIPFIXCollector(ctx, logger)
-	if err != nil {
-		logger.Error("Failed to listen for OVN-K IPFIX flows", zap.Error(err))
-		return err
-	}
-	return nil
-}
+func (sm *streamManager) StreamOVNKNetworkFlows(ctx context.Context, logger *zap.Logger, keepalivePeriod time.Duration) error {
+	errCh := make(chan error, 1)
+	go func() {
+		err := sm.startOVNKIPFIXCollector(ctx, logger)
+		if err != nil {
+			logger.Error("Failed to listen for OVN-K IPFIX flows", zap.Error(err))
+			errCh <- err
+		}
+	}()
 
-// StreamKeepalives loops infinitely as long as the keepalives are working. This
-// should be run inside a goroutine in every `connectAndStream*` function
-func (sm *streamManager) StreamKeepalives(
-	ctx context.Context,
-	logger *zap.Logger,
-	period time.Duration,
-	streamType StreamType,
-) error {
-	timer := time.NewTimer(jitterTime(period, 0.10))
-	defer timer.Stop()
+	ticker := time.NewTicker(jitterTime(keepalivePeriod, 0.10))
+	defer ticker.Stop()
 
 	for {
 		select {
-		case <-timer.C:
-			err := sm.sendKeepalive(logger, streamType)
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-errCh:
+			return err
+		case <-ticker.C:
+			err := sm.sendKeepalive(logger, STREAM_NETWORK_FLOWS)
 			if err != nil {
 				return err
 			}
-			timer.Reset(jitterTime(period, 0.10))
-		case <-ctx.Done():
-			return ctx.Err()
 		}
 	}
 }
 
 // connectAndStreamCiliumNetworkFlows creates networkFlowsStream client and
-// begins the streaming of network flows. Also starts a goroutine to send
-// keepalives at the configured period
+// begins the streaming of network flows.
 func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, keepalivePeriod time.Duration) error {
 	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
 	defer ciliumCancel()
@@ -561,15 +615,9 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 		return err
 	}
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
-	go func() {
-		err := sm.StreamKeepalives(ciliumCtx, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
-		if err != nil {
-			logger.Error("Failed to send keepalives; canceling stream", zap.Error(err))
-		}
-		ciliumCancel()
-	}()
+
 	logger.Debug("Starting to stream cilium network flows")
-	err = sm.StreamCiliumNetworkFlows(ciliumCtx, logger, sm.streamClient.ciliumNamespace)
+	err = sm.StreamCiliumNetworkFlows(ciliumCtx, logger, sm.streamClient.ciliumNamespace, keepalivePeriod)
 	if err != nil {
 		if errors.Is(err, hubble.ErrHubbleNotFound) || errors.Is(err, hubble.ErrNoPortsAvailable) {
 			logger.Warn("Disabling Cilium flow collection", zap.Error(err))
@@ -595,15 +643,7 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, k
 	}
 	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
 
-	go func() {
-		err := sm.StreamKeepalives(falcoCtx, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
-		if err != nil {
-			logger.Error("Failed to send keepalives; canceling stream", zap.Error(err))
-		}
-		falcoCancel()
-	}()
-
-	err = sm.StreamFalcoNetworkFlows(falcoCtx, logger)
+	err = sm.StreamFalcoNetworkFlows(falcoCtx, logger, keepalivePeriod)
 	if err != nil {
 		logger.Error("Failed to stream Falco network flows", zap.Error(err))
 		return err
@@ -626,15 +666,7 @@ func (sm *streamManager) connectAndStreamResources(logger *zap.Logger, keepalive
 	}
 	sm.streamClient.resourceStream = sendKubernetesResourcesStream
 
-	go func() {
-		err := sm.StreamKeepalives(resourceCtx, logger, keepalivePeriod, STREAM_RESOURCES)
-		if err != nil {
-			logger.Error("Failed to send keepalives; canceling stream", zap.Error(err))
-		}
-		resourceCancel()
-	}()
-
-	err = sm.StreamResources(resourceCtx, logger, resourceCancel)
+	err = sm.StreamResources(resourceCtx, logger, resourceCancel, keepalivePeriod)
 	if err != nil {
 		logger.Error("Failed to bootup and stream resources", zap.Error(err))
 		return err
@@ -657,15 +689,7 @@ func (sm *streamManager) connectAndStreamLogs(logger *zap.Logger, keepalivePerio
 	sm.streamClient.logStream = sendLogsStream
 	sm.bufferedGrpcSyncer.UpdateClient(sm.streamClient.logStream, sm.streamClient.conn)
 
-	go func() {
-		err := sm.StreamKeepalives(logCtx, logger, keepalivePeriod, STREAM_LOGS)
-		if err != nil {
-			logger.Error("Failed to send keepalives; canceling stream", zap.Error(err))
-		}
-		logCancel()
-	}()
-
-	err = sm.StreamLogs(logCtx, logger)
+	err = sm.StreamLogs(logCtx, logger, keepalivePeriod)
 	if err != nil {
 		logger.Error("Failed to bootup and stream logs", zap.Error(err))
 		return err
@@ -686,15 +710,7 @@ func (sm *streamManager) connectAndStreamConfigurationUpdates(logger *zap.Logger
 	}
 	sm.streamClient.configStream = getConfigurationUpdatesStream
 
-	go func() {
-		err := sm.StreamKeepalives(configCtx, logger, keepalivePeriod, STREAM_CONFIGURATION)
-		if err != nil {
-			logger.Error("Failed to send keepalives; canceling stream", zap.Error(err))
-		}
-		configCancel()
-	}()
-
-	err = sm.StreamConfigurationUpdates(configCtx, logger)
+	err = sm.StreamConfigurationUpdates(configCtx, logger, keepalivePeriod)
 	if err != nil {
 		logger.Error("Configuration update stream encountered an error", zap.Error(err))
 		return err
@@ -703,8 +719,7 @@ func (sm *streamManager) connectAndStreamConfigurationUpdates(logger *zap.Logger
 }
 
 // connectAndStreamOVNKNetworkFlows creates OVN-K networkFlowsStream client and
-// begins the streaming of OVN-K network flows. Also starts a goroutine to send
-// keepalives at the configured period
+// begins the streaming of OVN-K network flows.
 func (sm *streamManager) connectAndStreamOVNKNetworkFlows(logger *zap.Logger, keepalivePeriod time.Duration) error {
 	ovnkContext, ovnkCancel := context.WithCancel(context.Background())
 	defer ovnkCancel()
@@ -716,15 +731,7 @@ func (sm *streamManager) connectAndStreamOVNKNetworkFlows(logger *zap.Logger, ke
 	}
 	sm.streamClient.networkFlowsStream = sendOVNKNetworkFlows
 
-	go func() {
-		err := sm.StreamKeepalives(ovnkContext, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
-		if err != nil {
-			logger.Error("Failed to send keepalives; canceling stream", zap.Error(err))
-		}
-		ovnkCancel()
-	}()
-
-	err = sm.StreamOVNKNetworkFlows(ovnkContext, logger)
+	err = sm.StreamOVNKNetworkFlows(ovnkContext, logger, keepalivePeriod)
 	if err != nil {
 		logger.Error("Failed to stream OVN-K network flows", zap.Error(err))
 		return err
@@ -914,17 +921,18 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			)
 
 			go func() {
-				ctxFlowCacheRun, ctxCancelFlowCacheRun := context.WithCancel(ctx)
+				ctxFlowCacheRun, ctxCancelFlowCacheRun := context.WithCancel(authConContext)
+				defer ctxCancelFlowCacheRun()
 				err := sm.FlowCache.Run(ctxFlowCacheRun, logger)
 				if err != nil {
 					logger.Info("Failed to execute flow caching and eviction", zap.Error(err))
 				}
-				ctxCancelFlowCacheRun()
 			}()
 
 			ovnkDone := make(chan struct{})
 			falcoDone := make(chan struct{})
 			ciliumDone := make(chan struct{})
+			flowCacheOutReaderDone := make(chan struct{})
 			clientset, err := NewClientSet()
 			if err != nil {
 				logger.Error("Failed to create clientset", zap.Error(err))
@@ -944,12 +952,13 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			)
 
 			go func() {
-				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(ctx)
+				defer close(flowCacheOutReaderDone)
+				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(authConContext)
+				defer ctxCancelFlowCacheOutReader()
 				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger)
 				if err != nil {
 					logger.Info("Failed to send network flow from cache", zap.Error(err))
 				}
-				ctxCancelFlowCacheOutReader()
 			}()
 
 			// Block until one of the streams fail. Then we will jump to the top of
@@ -968,6 +977,8 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				failureReason = "Configuration update stream closed"
 			case <-ovnkDone:
 				failureReason = "OVN-K network flow stream closed"
+			case <-flowCacheOutReaderDone:
+				failureReason = "Flow cache reader failed"
 			}
 			authConContextCancel()
 		}
