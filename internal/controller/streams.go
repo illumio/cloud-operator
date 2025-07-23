@@ -883,20 +883,22 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				envMap.KeepalivePeriods.Configuration,
 				envMap.StreamSuccessPeriod,
 			)
-
-			go func() {
-				ctxFlowCacheRun, ctxCancelFlowCacheRun := context.WithCancel(authConContext)
-				defer ctxCancelFlowCacheRun()
-				err := sm.FlowCache.Run(ctxFlowCacheRun, logger)
-				if err != nil {
-					logger.Info("Failed to execute flow caching and eviction", zap.Error(err))
-				}
-			}()
-
 			ovnkDone := make(chan struct{})
 			falcoDone := make(chan struct{})
 			ciliumDone := make(chan struct{})
 			flowCacheOutReaderDone := make(chan struct{})
+
+			go func() {
+				defer close(flowCacheOutReaderDone)
+				ctxFlowCacheRun, ctxCancelFlowCacheRun := context.WithCancel(ctx)
+				defer ctxCancelFlowCacheRun()
+				err := sm.FlowCache.Run(ctxFlowCacheRun, logger)
+				if err != nil {
+					logger.Info("Failed to execute flow caching and eviction", zap.Error(err))
+					return
+				}
+			}()
+
 			clientset, err := NewClientSet()
 			if err != nil {
 				logger.Error("Failed to create clientset", zap.Error(err))
@@ -917,11 +919,12 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 
 			go func() {
 				defer close(flowCacheOutReaderDone)
-				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(authConContext)
+				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(ctx)
 				defer ctxCancelFlowCacheOutReader()
 				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger, envMap.KeepalivePeriods.KubernetesNetworkFlows)
 				if err != nil {
 					logger.Info("Failed to send network flow from cache", zap.Error(err))
+					return
 				}
 			}()
 
