@@ -950,6 +950,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			zap.String("failureReason", failureReason),
 			zap.Int("attempt", attempt),
 		)
+		resetTimer.Reset(jitterTime(5*time.Second, 0.20))
 	}
 }
 
