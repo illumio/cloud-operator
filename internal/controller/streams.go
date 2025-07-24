@@ -334,9 +334,9 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 	for _, info := range allWatchInfos {
 		resourceManager := resourceManagers[info.resource]
 		watcherWaitGroup.Add(1)
-
 		go func(info watcherInfo, manager *ResourceManager) {
-			manager.WatchK8sResources(ctx, cancel, info.apiGroup, info.resourceVersion, mutationChan, &watcherWaitGroup)
+			defer watcherWaitGroup.Done()
+			manager.WatchK8sResources(ctx, cancel, info.apiGroup, info.resourceVersion, mutationChan)
 		}(info, resourceManager)
 	}
 	dd.mutex.Lock()
@@ -557,11 +557,10 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 
 // StreamOVNKNetworkFlows handles the OVN-K network flow stream.
 func (sm *streamManager) StreamOVNKNetworkFlows(ctx context.Context, logger *zap.Logger) error {
-	errCh := make(chan error, 1)
 	err := sm.startOVNKIPFIXCollector(ctx, logger)
 	if err != nil {
 		logger.Error("Failed to listen for OVN-K IPFIX flows", zap.Error(err))
-		errCh <- err
+		return err
 	}
 	return nil
 }
