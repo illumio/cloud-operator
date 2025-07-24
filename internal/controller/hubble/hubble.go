@@ -182,6 +182,7 @@ func ConnectToHubbleRelay(ctx context.Context, logger *zap.Logger, hubbleAddress
 	conn, err := grpc.NewClient(
 		hubbleAddress,
 		grpc.WithTransportCredentials(creds),
+		grpc.WithNoProxy(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Cilium Hubble Relay: %w", err)

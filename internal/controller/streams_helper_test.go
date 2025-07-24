@@ -151,7 +151,6 @@ func TestSendNetworkFlowRequest(t *testing.T) {
 }
 
 func TestStreamMutationObjectData(t *testing.T) {
-	logger := zap.NewNop()
 	mockStream := &mockResourceStream{}
 	sm := &streamManager{
 		streamClient: &streamClient{
@@ -167,44 +166,32 @@ func TestStreamMutationObjectData(t *testing.T) {
 	testCases := []struct {
 		name      string
 		eventType watch.EventType
-		expected  *pb.SendKubernetesResourcesRequest
+		expected  *pb.KubernetesResourceMutation
 	}{
 		{
 			name:      "added event",
 			eventType: watch.Added,
-			expected: &pb.SendKubernetesResourcesRequest{
-				Request: &pb.SendKubernetesResourcesRequest_KubernetesResourceMutation{
-					KubernetesResourceMutation: &pb.KubernetesResourceMutation{
-						Mutation: &pb.KubernetesResourceMutation_CreateResource{
-							CreateResource: metadata,
-						},
-					},
+			expected: &pb.KubernetesResourceMutation{
+				Mutation: &pb.KubernetesResourceMutation_CreateResource{
+					CreateResource: metadata,
 				},
 			},
 		},
 		{
 			name:      "modified event",
 			eventType: watch.Modified,
-			expected: &pb.SendKubernetesResourcesRequest{
-				Request: &pb.SendKubernetesResourcesRequest_KubernetesResourceMutation{
-					KubernetesResourceMutation: &pb.KubernetesResourceMutation{
-						Mutation: &pb.KubernetesResourceMutation_UpdateResource{
-							UpdateResource: metadata,
-						},
-					},
+			expected: &pb.KubernetesResourceMutation{
+				Mutation: &pb.KubernetesResourceMutation_UpdateResource{
+					UpdateResource: metadata,
 				},
 			},
 		},
 		{
 			name:      "deleted event",
 			eventType: watch.Deleted,
-			expected: &pb.SendKubernetesResourcesRequest{
-				Request: &pb.SendKubernetesResourcesRequest_KubernetesResourceMutation{
-					KubernetesResourceMutation: &pb.KubernetesResourceMutation{
-						Mutation: &pb.KubernetesResourceMutation_DeleteResource{
-							DeleteResource: metadata,
-						},
-					},
+			expected: &pb.KubernetesResourceMutation{
+				Mutation: &pb.KubernetesResourceMutation_DeleteResource{
+					DeleteResource: metadata,
 				},
 			},
 		},
@@ -212,9 +199,9 @@ func TestStreamMutationObjectData(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := sm.streamMutationObjectData(logger, metadata, tc.eventType)
+			mutation, err := sm.createMutationObject(metadata, tc.eventType)
 			require.NoError(t, err)
-			assert.Equal(t, tc.expected, mockStream.lastRequest)
+			assert.Equal(t, tc.expected, mutation)
 		})
 	}
 }

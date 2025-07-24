@@ -144,7 +144,6 @@ func main() {
 			Connect: viper.GetDuration("stream_success_period_connect"),
 			Auth:    viper.GetDuration("stream_success_period_auth"),
 		},
-		HttpsProxy:       viper.GetString("https_proxy"),
 		VerboseDebugging: viper.GetBool("verbose_debugging"),
 	}
 

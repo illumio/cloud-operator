@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -63,9 +64,8 @@ func NewResourceManager(config ResourceManagerConfig) *ResourceManager {
 
 // WatchK8sResources initiates a watch stream for the specified Kubernetes resource starting from the given resourceVersion.
 // This function blocks until the watch ends or the context is canceled.
-func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.CancelFunc, apiGroup string, resourceVersion string) {
+func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.CancelFunc, apiGroup string, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation) {
 	defer cancel()
-
 	// Here intiatate the watch event
 	watchOptions := metav1.ListOptions{
 		Watch:           true,
@@ -78,7 +78,7 @@ func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.
 		return
 	}
 
-	err = r.watchEvents(ctx, apiGroup, watchOptions)
+	err = r.watchEvents(ctx, apiGroup, watchOptions, mutationChan)
 	if err != nil {
 		r.logger.Error("Watch failed", zap.Error(err))
 		return
@@ -137,7 +137,7 @@ func getErrFromWatchEvent(event watch.Event) error {
 // watchEvents watches Kubernetes resources. The second part of the of the "list
 // and watch" strategy.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
-func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watchOptions metav1.ListOptions) error {
+func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watchOptions metav1.ListOptions, mutationChan chan *pb.KubernetesResourceMutation) error {
 	logger := r.logger.With(zap.String("api_group", apiGroup))
 
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
@@ -183,13 +183,19 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 				return err
 			}
 
-			// Helper function: type gymnastics + send the KubernetesObjectData out on the wire
-			err = r.streamManager.streamMutationObjectData(logger, metadataObj, event.Type)
-			mutationCount++
+			// Helper function: type gymnastics + send the KubernetesObjectData on the mutation channel
+			mutation, err := r.streamManager.createMutationObject(metadataObj, event.Type)
 			if err != nil {
 				logger.Error("Cannot send resource mutation", zap.Error(err))
 				return err
 			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case mutationChan <- mutation:
+			}
+			mutationCount++
+
 		case <-time.After(60 * time.Second):
 			logger.Debug("Current mutation count", zap.Int("mutation_count", mutationCount))
 			logger.Debug("Resetting mutation count")
