@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -64,9 +65,9 @@ func NewResourceManager(config ResourceManagerConfig) *ResourceManager {
 
 // WatchK8sResources initiates a watch stream for the specified Kubernetes resource starting from the given resourceVersion.
 // This function blocks until the watch ends or the context is canceled.
-func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.CancelFunc, apiGroup string, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation) {
+func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.CancelFunc, apiGroup string, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation, watcherWaitGroup *sync.WaitGroup) {
 	defer cancel()
-
+	defer watcherWaitGroup.Done()
 	// Here intiatate the watch event
 	watchOptions := metav1.ListOptions{
 		Watch:           true,
@@ -190,7 +191,11 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 				logger.Error("Cannot send resource mutation", zap.Error(err))
 				return err
 			}
-			mutationChan <- mutation
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case mutationChan <- mutation:
+			}
 			mutationCount++
 
 		case <-time.After(60 * time.Second):

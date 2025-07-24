@@ -329,23 +329,29 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 	logger.Info("Successfully sent resource snapshot")
 
 	mutationChan := make(chan *pb.KubernetesResourceMutation)
-
+	watcherWaitGroup := sync.WaitGroup{}
 	// PHASE 3: Start watchers concurrently
 	for _, info := range allWatchInfos {
 		resourceManager := resourceManagers[info.resource]
+		watcherWaitGroup.Add(1)
 
 		go func(info watcherInfo, manager *ResourceManager) {
-			manager.WatchK8sResources(ctx, cancel, info.apiGroup, info.resourceVersion, mutationChan)
+			manager.WatchK8sResources(ctx, cancel, info.apiGroup, info.resourceVersion, mutationChan, &watcherWaitGroup)
 		}(info, resourceManager)
 	}
-
 	dd.mutex.Lock()
 	dd.processingResources = false
 	dd.mutex.Unlock()
 
 	ticker := time.NewTicker(jitterTime(keepalivePeriod, 0.10))
 	defer ticker.Stop()
-
+	go func() {
+		// Wait for all watchers to finish before we can close the mutation channel
+		// If a watcher crashes for some reason all watchers context will be cancelled
+		// This will allow us to close the mutation channel and prevent a channel leak
+		watcherWaitGroup.Wait()
+		close(mutationChan)
+	}()
 	for {
 		select {
 		case <-ctx.Done():
@@ -810,13 +816,11 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 		failureReason := ""
 		attempt++
 		logger.Debug("Trying to authenticate and open streams", zap.Int("attempt", attempt))
-		logger.Info("ABOUT TO ENTER SELECT IN FOR LOOP")
 		select {
 		case <-ctx.Done():
 			logger.Warn("Context canceled while trying to authenticate and open streams")
 			return
 		case <-resetTimer.C:
-			logger.Info("ABOUT TO ENTER AUTH CONTEXT")
 			authConContext, authConContextCancel := context.WithCancel(ctx)
 			authConn, client, err := NewAuthenticatedConnection(authConContext, logger, envMap)
 			if err != nil {
@@ -828,7 +832,6 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				break
 			}
 
-			logger.Info("ABOUT TO ENTER STREAM CLIENT")
 			streamClient := &streamClient{
 				conn:               authConn,
 				client:             client,
