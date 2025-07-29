@@ -143,10 +143,7 @@ func (b *BufferedGrpcWriteSyncer) run() {
 		case <-keepAliveTicker.C:
 			b.mutex.Lock()
 			if b.client != nil {
-				err := b.sendLogsKeepalive()
-				if err != nil {
-					b.logger.Error("Failed to send logs keepalive", zap.Error(err))
-				}
+				b.sendLogsKeepalive()
 			}
 			b.mutex.Unlock()
 		case <-b.done:
