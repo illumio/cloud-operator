@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"testing"
+	"time"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/mock"
@@ -114,7 +115,7 @@ func (suite *ConfigStreamTestSuite) TestLogLevelUpdate() {
 		},
 	}
 
-	err := sm.StreamConfigurationUpdates(context.TODO(), suite.mockLogger)
+	err := sm.StreamConfigurationUpdates(context.TODO(), suite.mockLogger, 1*time.Second)
 	suite.NoError(err)
 
 	// Verify that log level was updated
@@ -136,7 +137,7 @@ func (suite *ConfigStreamTestSuite) TestStreamEOF() {
 		},
 	}
 
-	err := sm.StreamConfigurationUpdates(context.TODO(), suite.mockLogger)
+	err := sm.StreamConfigurationUpdates(context.TODO(), suite.mockLogger, 1*time.Second)
 	suite.NoError(err)
 
 	// Ensure the function exited cleanly
@@ -155,7 +156,7 @@ func (suite *ConfigStreamTestSuite) TestStreamError() {
 		},
 	}
 
-	err := sm.StreamConfigurationUpdates(context.TODO(), suite.mockLogger)
+	err := sm.StreamConfigurationUpdates(context.TODO(), suite.mockLogger, 1*time.Second)
 
 	// Ensure function returned an error
 	suite.Error(err, "Expected ListenToConfigurationStream to return an error on unexpected EOF")
@@ -182,7 +183,7 @@ func (suite *ConfigStreamTestSuite) TestUnknownConfigurationUpdate() {
 		},
 	}
 
-	err := sm.StreamConfigurationUpdates(context.TODO(), suite.mockLogger)
+	err := sm.StreamConfigurationUpdates(context.TODO(), suite.mockLogger, 1*time.Second)
 	suite.NoError(err)
 
 	// Ensure all expectations were met

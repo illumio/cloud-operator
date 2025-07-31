@@ -53,8 +53,8 @@ func parseFalcoTimestamp(value string) (*timestamppb.Timestamp, error) {
 	return timestamppb.New(t), nil
 }
 
-// parsePodNetworkInfo parses the input string to extract network information into a FalcoFlow message.
-func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
+// parsePodNetworkInfo parses the input string to extract network information into a FiveTupleFlow message.
+func parsePodNetworkInfo(input string) (*pb.FiveTupleFlow, error) {
 	var info FalcoEvent
 	// Regular expression to extract the key-value pairs from the input string
 	matches := reParsePodNetworkInfo.FindAllStringSubmatch(input, -1)
@@ -107,10 +107,10 @@ func parsePodNetworkInfo(input string) (*pb.FalcoFlow, error) {
 		return nil, err
 	}
 
-	flow := &pb.FalcoFlow{
+	flow := &pb.FiveTupleFlow{
 		Layer3: layer3Message,
 		Layer4: layer4Message,
-		Ts: &pb.FalcoFlow_Timestamp{
+		Ts: &pb.FiveTupleFlow_Timestamp{
 			Timestamp: info.Timestamp,
 		},
 	}
@@ -148,9 +148,9 @@ func filterIllumioTraffic(body string) bool {
 }
 
 func createLayer3Message(source string, destination string, ipVersion string) (*pb.IP, error) {
-	if ipVersion == "ipv4" {
+	if ipVersion == IPv4 {
 		return &pb.IP{Source: source, Destination: destination, IpVersion: pb.IPVersion_IP_VERSION_IPV4}, nil
-	} else if ipVersion == "ipv6" {
+	} else if ipVersion == IPv6 {
 		return &pb.IP{Source: source, Destination: destination, IpVersion: pb.IPVersion_IP_VERSION_IPV6}, nil
 	}
 	// If this is IPVersion_IP_VERSION_IP_NOT_USED_UNSPECIFIED we want to drop this packet.
@@ -160,7 +160,7 @@ func createLayer3Message(source string, destination string, ipVersion string) (*
 // createLayer4Message converts event protocol and ports to a Layer4 proto message
 func createLayer4Message(proto string, srcPort, dstPort uint32, ipVersion string) (*pb.Layer4, error) {
 	switch proto {
-	case "tcp":
+	case TCP:
 		return &pb.Layer4{
 			Protocol: &pb.Layer4_Tcp{
 				Tcp: &pb.TCP{
@@ -170,7 +170,7 @@ func createLayer4Message(proto string, srcPort, dstPort uint32, ipVersion string
 				},
 			},
 		}, nil
-	case "udp":
+	case UDP:
 		return &pb.Layer4{
 			Protocol: &pb.Layer4_Udp{
 				Udp: &pb.UDP{
@@ -179,14 +179,14 @@ func createLayer4Message(proto string, srcPort, dstPort uint32, ipVersion string
 				},
 			},
 		}, nil
-	case "icmp":
-		if ipVersion == "ipv4" {
+	case ICMP:
+		if ipVersion == IPv4 {
 			return &pb.Layer4{
 				Protocol: &pb.Layer4_Icmpv4{
 					Icmpv4: &pb.ICMPv4{},
 				},
 			}, nil
-		} else if ipVersion == "ipv6" {
+		} else if ipVersion == IPv6 {
 			return &pb.Layer4{
 				Protocol: &pb.Layer4_Icmpv6{
 					Icmpv6: &pb.ICMPv6{},

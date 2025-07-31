@@ -17,6 +17,7 @@ import (
 const (
 	logMaxBufferSize = 2048
 	logFlushInterval = 5 * time.Second
+	keepAlivePeriod  = 10 * time.Second
 )
 
 type ClientConnInterface interface {
@@ -37,6 +38,7 @@ type BufferedGrpcWriteSyncer struct {
 	encoder             zapcore.Encoder
 	lostLogEntriesCount int
 	lostLogEntriesErr   error
+	keepAlivePeriod     time.Duration
 }
 
 // NewBufferedGrpcWriteSyncer returns a new BufferedGrpcWriteSyncer
@@ -47,6 +49,7 @@ func NewBufferedGrpcWriteSyncer() *BufferedGrpcWriteSyncer {
 		buffer:              make([]string, 0, logMaxBufferSize),
 		done:                make(chan struct{}),
 		lostLogEntriesCount: 0,
+		keepAlivePeriod:     keepAlivePeriod,
 	}
 	go bws.run()
 	return bws
@@ -116,17 +119,37 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	}
 }
 
+// sendLogsKeepalive sends a keepalive ping on the logs stream
+func (b *BufferedGrpcWriteSyncer) sendLogsKeepalive() error {
+	return b.client.Send(&pb.SendLogsRequest{
+		Request: &pb.SendLogsRequest_Keepalive{
+			Keepalive: &pb.Keepalive{},
+		},
+	})
+}
+
 // run flushes the buffer at the configured interval until Stop is called.
 func (b *BufferedGrpcWriteSyncer) run() {
 	ticker := time.NewTicker(logFlushInterval)
 	defer ticker.Stop()
-
+	keepAliveTicker := time.NewTicker(jitterTime(keepAlivePeriod, 0.10))
+	defer keepAliveTicker.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			b.mutex.Lock()
 			b.flush()
 			b.mutex.Unlock()
+		case <-keepAliveTicker.C:
+			b.mutex.Lock()
+			var err error
+			if b.client != nil {
+				err = b.sendLogsKeepalive()
+			}
+			b.mutex.Unlock()
+			if err != nil {
+				b.logger.Error("Failed to send logs keepalive", zap.Error(err))
+			}
 		case <-b.done:
 			return
 		}
