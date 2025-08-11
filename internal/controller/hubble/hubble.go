@@ -108,7 +108,7 @@ func loadMTLSConfigFromData(logger *zap.Logger, caCertData, clientCertData, clie
 func GetTLSConfig(ctx context.Context, clientset kubernetes.Interface,
 	logger *zap.Logger, secretName string, namespaces ...string) (*tls.Config, error) {
 
-	var lastErr, lastErr1 error
+	var lastErr, aggregatedErrors error
 
 	// Try each namespace in order
 	for _, namespace := range namespaces {
@@ -126,17 +126,17 @@ func GetTLSConfig(ctx context.Context, clientset kubernetes.Interface,
 				return tlsConfig, nil
 			}
 			lastErr = fmt.Errorf("failed to load mTLS credentials from namespace %s: %w", namespace, loadErr)
-			lastErr1 = errors.Join(lastErr1, lastErr)
+			aggregatedErrors = errors.Join(aggregatedErrors, lastErr)
 		} else {
 			lastErr = fmt.Errorf("failed to fetch mTLS certificates from namespace %s: %w", namespace, fetchErr)
-			lastErr1 = errors.Join(lastErr1, lastErr)
+			aggregatedErrors = errors.Join(aggregatedErrors, lastErr)
 		}
 		logger.Debug("Could not load TLS certificates from namespace, trying next",
 			zap.String("namespace", namespace),
 			zap.Error(fetchErr))
 	}
 
-	return nil, lastErr1
+	return nil, aggregatedErrors
 }
 
 // isValidPEM validates if the given data is properly PEM-encoded.
