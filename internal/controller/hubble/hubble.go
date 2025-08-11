@@ -104,23 +104,39 @@ func loadMTLSConfigFromData(logger *zap.Logger, caCertData, clientCertData, clie
 }
 
 // GetTLSConfig reads TLS config to connect to Hubble from the given Secret.
+// It tries multiple namespaces if the first one fails.
 func GetTLSConfig(ctx context.Context, clientset kubernetes.Interface,
-	logger *zap.Logger, secretName, namespace string) (*tls.Config, error) {
-	// Fetch mTLS certificates
-	caData, clientCertData, clientKeyData, fetchErr := getMTLSCertificatesFromSecret(
-		ctx, clientset, logger, secretName, namespace,
-	)
-	if fetchErr != nil {
-		return nil, fmt.Errorf("failed to fetch mTLS certificates: %w", fetchErr)
+	logger *zap.Logger, secretName string, namespaces ...string) (*tls.Config, error) {
+
+	var lastErr, lastErr1 error
+
+	// Try each namespace in order
+	for _, namespace := range namespaces {
+		// Fetch mTLS certificates
+		caData, clientCertData, clientKeyData, fetchErr := getMTLSCertificatesFromSecret(
+			ctx, clientset, logger, secretName, namespace,
+		)
+		if fetchErr == nil {
+			// Load config
+			tlsConfig, loadErr := loadMTLSConfigFromData(logger, caData, clientCertData, clientKeyData)
+			if loadErr == nil {
+				logger.Info("Successfully loaded TLS certificates",
+					zap.String("secretName", secretName),
+					zap.String("namespace", namespace))
+				return tlsConfig, nil
+			}
+			lastErr = fmt.Errorf("failed to load mTLS credentials from namespace %s: %w", namespace, loadErr)
+			lastErr1 = errors.Join(lastErr1, lastErr)
+		} else {
+			lastErr = fmt.Errorf("failed to fetch mTLS certificates from namespace %s: %w", namespace, fetchErr)
+			lastErr1 = errors.Join(lastErr1, lastErr)
+		}
+		logger.Debug("Could not load TLS certificates from namespace, trying next",
+			zap.String("namespace", namespace),
+			zap.Error(fetchErr))
 	}
 
-	// Load config
-	tlsConfig, loadErr := loadMTLSConfigFromData(logger, caData, clientCertData, clientKeyData)
-	if loadErr != nil {
-		return nil, fmt.Errorf("failed to load mTLS credentials: %w", loadErr)
-	}
-
-	return tlsConfig, nil
+	return nil, lastErr1
 }
 
 // isValidPEM validates if the given data is properly PEM-encoded.
@@ -130,13 +146,22 @@ func isValidPEM(data []byte) bool {
 }
 
 // DiscoverCiliumHubbleRelay uses a kubernetes clientset in order to discover the address of the hubble-relay service.
-func DiscoverCiliumHubbleRelay(ctx context.Context, ciliumNamespace string, clientset kubernetes.Interface) (*v1.Service, error) {
+// It tries multiple namespaces if the first one fails.
+func DiscoverCiliumHubbleRelay(ctx context.Context, ciliumNamespace string, clientset kubernetes.Interface, additionalNamespaces ...string) (*v1.Service, error) {
+	// Try the primary namespace first
 	service, err := clientset.CoreV1().Services(ciliumNamespace).Get(ctx, ciliumHubbleRelayServiceName, metav1.GetOptions{})
-	if err != nil {
-		return nil, ErrHubbleNotFound
+	if err == nil {
+		return service, nil
 	}
 
-	return service, nil
+	for _, namespace := range additionalNamespaces {
+		service, err := clientset.CoreV1().Services(namespace).Get(ctx, ciliumHubbleRelayServiceName, metav1.GetOptions{})
+		if err == nil {
+			return service, nil
+		}
+	}
+
+	return nil, ErrHubbleNotFound
 }
 
 // GetAddressFromService returns the address of the given service to connect a gRPC client to.

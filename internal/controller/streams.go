@@ -41,6 +41,7 @@ const (
 
 type streamClient struct {
 	ciliumNamespace           string
+	ciliumGKENamespace        string
 	conn                      *grpc.ClientConn
 	client                    pb.KubernetesInfoServiceClient
 	falcoEventChan            chan string
@@ -86,8 +87,10 @@ type watcherInfo struct {
 }
 
 type EnvironmentConfig struct {
-	// Namspace of Cilium.
+	// Namespace of Cilium.
 	CiliumNamespace string
+	// GKE Namespace of Cilium
+	CiliumGKENamespace string
 	// K8s cluster secret name.
 	ClusterCreds string
 	// Client ID for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
@@ -492,7 +495,7 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 
 // findHubbleRelay returns a *CiliumFlowCollector if hubble relay is found in the given namespace
 func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger, ciliumNamespace string) *CiliumFlowCollector {
-	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, ciliumNamespace, sm.streamClient.tlsAuthProperties)
+	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, ciliumNamespace, sm.streamClient.ciliumGKENamespace, sm.streamClient.tlsAuthProperties)
 	if err != nil {
 		logger.Error("Failed to create Cilium flow collector", zap.Error(err))
 		return nil
@@ -832,9 +835,10 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			}
 
 			streamClient := &streamClient{
-				conn:               authConn,
-				client:             client,
-				ciliumNamespace:    envMap.CiliumNamespace,
+				conn:                authConn,
+				client:              client,
+				ciliumNamespace:     envMap.CiliumNamespace,
+				ciliumGKENamespace: envMap.CiliumGKENamespace,
 				falcoEventChan:     falcoEventChan,
 				ipfixCollectorPort: envMap.IPFIXCollectorPort,
 			}

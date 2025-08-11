@@ -29,13 +29,14 @@ const (
 )
 
 // newCiliumFlowCollector connects to Cilium Hubble Relay, sets up an Observer client, and returns a new Collector using it.
-func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace string, tlsAuthProperties tls.AuthProperties) (*CiliumFlowCollector, error) {
+func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace string, ciliumGKENamespace string, tlsAuthProperties tls.AuthProperties) (*CiliumFlowCollector, error) {
 	clientset, err := NewClientSet()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new client set: %w", err)
 	}
 
-	service, err := hubble.DiscoverCiliumHubbleRelay(ctx, ciliumNamespace, clientset)
+	// Try to discover Hubble Relay in multiple namespaces
+	service, err := hubble.DiscoverCiliumHubbleRelay(ctx, ciliumNamespace, clientset, ciliumGKENamespace)
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover Cilium Hubble Relay service: %w", err)
 	}
@@ -44,8 +45,12 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover Cilium Hubble Relay address: %w", err)
 	}
-	tlsConfig, err := hubble.GetTLSConfig(ctx, clientset, logger, ciliumHubbleMTLSSecretName, ciliumHubbleRelayNamespace)
+
+	// Try to get TLS config from multiple namespaces
+	tlsConfig, err := hubble.GetTLSConfig(ctx, clientset, logger, ciliumHubbleMTLSSecretName,
+		ciliumNamespace, ciliumGKENamespace)
 	if err != nil || tlsAuthProperties.DisableTLS {
+		logger.Warn("Failed to get TLS config or TLS is disabled", zap.Error(err))
 		tlsConfig = nil
 	}
 

@@ -86,6 +86,7 @@ func main() {
 	// Bind specific environment variables to keys
 	bindEnv(logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
 	bindEnv(logger, "cilium_namespace", "CILIUM_NAMESPACE")
+	bindEnv(logger, "cilium_gke_namespace", "CILIUM_GKE_NAMESPACE")
 	bindEnv(logger, "https_proxy", "HTTPS_PROXY")
 	bindEnv(logger, "ipfix_collector_port", "IPFIX_COLLECTOR_PORT")
 	bindEnv(logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
@@ -106,6 +107,7 @@ func main() {
 	// Set default values
 	viper.SetDefault("cluster_creds", "clustercreds")
 	viper.SetDefault("cilium_namespace", "kube-system")
+	viper.SetDefault("cilium_gke_namespace", "gke-managed-dpv2-observability")
 	viper.SetDefault("https_proxy", "")
 	viper.SetDefault("ipfix_collector_port", "4739")
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
@@ -125,6 +127,7 @@ func main() {
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),
 		CiliumNamespace:        viper.GetString("cilium_namespace"),
+		CiliumGKENamespace:     viper.GetString("cilium_gke_namespace"),
 		HttpsProxy:             viper.GetString("https_proxy"),
 		IPFIXCollectorPort:     viper.GetString("ipfix_collector_port"),
 		OnboardingClientId:     viper.GetString("onboarding_client_id"),
@@ -150,6 +153,7 @@ func main() {
 	logger.Info("Starting application",
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
 		zap.String("cilium_namespace", envConfig.CiliumNamespace),
+		zap.String("cilium_gke_namespace", envConfig.CiliumGKENamespace),
 		zap.String("https_proxy", envConfig.HttpsProxy),
 		zap.String("onboarding_client_id", envConfig.OnboardingClientId),
 		zap.String("onboarding_endpoint", envConfig.OnboardingEndpoint),
