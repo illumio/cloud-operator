@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -495,7 +496,13 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 
 // findHubbleRelay returns a *CiliumFlowCollector if hubble relay is found in the given namespace
 func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger, ciliumNamespace string) *CiliumFlowCollector {
-	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, ciliumNamespace, sm.streamClient.ciliumGKENamespace, sm.streamClient.tlsAuthProperties)
+	namespaces := []string{ciliumNamespace}
+
+	// Only add ciliumGKENamespace if it's a valid non-empty value
+	if ns := strings.TrimSpace(sm.streamClient.ciliumGKENamespace); ns != "" {
+		namespaces = append(namespaces, ns)
+	}
+	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, namespaces, sm.streamClient.tlsAuthProperties)
 	if err != nil {
 		logger.Error("Failed to create Cilium flow collector", zap.Error(err))
 		return nil
@@ -835,9 +842,9 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			}
 
 			streamClient := &streamClient{
-				conn:                authConn,
-				client:              client,
-				ciliumNamespace:     envMap.CiliumNamespace,
+				conn:               authConn,
+				client:             client,
+				ciliumNamespace:    envMap.CiliumNamespace,
 				ciliumGKENamespace: envMap.CiliumGKENamespace,
 				falcoEventChan:     falcoEventChan,
 				ipfixCollectorPort: envMap.IPFIXCollectorPort,
