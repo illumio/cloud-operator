@@ -63,40 +63,40 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v4.2.0
         with:
-            version: "v3.16.4"
+          version: "v3.18.5"
 
       - name: Package Helm chart
         run: |
-            helm package cloud-operator && kubectl create ns illumio-cloud
+          helm package cloud-operator && kubectl create ns illumio-cloud
 
       - name: Install Integration Test Dependencies
         run: |
-            cd ./fakeserver && go mod tidy && go mod download
+          cd ./fakeserver && go mod tidy && go mod download
 
       - name: Install Helm chart and Deploy Operator
         env:
-            ONBOARDING_CLIENT_ID: "client_id_1"
-            ONBOARDING_CLIENT_SECRET: "client_secret_1"
-            TLS_SKIP_VERIFY: true
-            ONBOARDING_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/onboard"
-            TOKEN_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/authenticate"
+          ONBOARDING_CLIENT_ID: "client_id_1"
+          ONBOARDING_CLIENT_SECRET: "client_secret_1"
+          TLS_SKIP_VERIFY: true
+          ONBOARDING_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/onboard"
+          TOKEN_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/authenticate"
         run: |
-            helm upgrade --install illumio cloud-operator-*.tgz \
-            --namespace illumio-cloud \
-            --create-namespace \
-            --set image.repository=ghcr.io/${{ github.repository }} \
-            --set image.tag=${{ steps.meta.outputs.tags }} \
-            --set image.pullPolicy=Always \
-            --set onboardingSecret.clientId=$ONBOARDING_CLIENT_ID \
-            --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET \
-            --set env.onboardingEndpoint=$ONBOARDING_ENDPOINT \
-            --set env.tokenEndpoint=$TOKEN_ENDPOINT \
-            --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
+          helm upgrade --install illumio cloud-operator-*.tgz \
+          --namespace illumio-cloud \
+          --create-namespace \
+          --set image.repository=ghcr.io/${{ github.repository }} \
+          --set image.tag=${{ steps.meta.outputs.tags }} \
+          --set image.pullPolicy=Always \
+          --set onboardingSecret.clientId=$ONBOARDING_CLIENT_ID \
+          --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET \
+          --set env.onboardingEndpoint=$ONBOARDING_ENDPOINT \
+          --set env.tokenEndpoint=$TOKEN_ENDPOINT \
+          --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
 
-      - name:  Run Integration Tests
+      - name: Run Integration Tests
         run: |
-         # Run your test against the fake server
-          kubectl wait --for=condition=ready pod -l app=cloud-operator -n illumio-cloud --timeout=300s && go test -v ./fakeserver/...
+          # Run your test against the fake server
+           kubectl wait --for=condition=ready pod -l app=cloud-operator -n illumio-cloud --timeout=300s && go test -v ./fakeserver/...
 
       - name: Fetch Kubernetes Pod logs
         if: success() || failure()
