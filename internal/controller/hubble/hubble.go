@@ -102,7 +102,6 @@ func loadMTLSConfigFromData(logger *zap.Logger, caCertData, clientCertData, clie
 	}
 	logger.Debug("CA certificate appended to pool from data.")
 
-	// write code to get gke server name from the and build the hubbleRelayExpectedServerNames <svcName>.<namespace>.svc.cluster.local
 	serverName := expectedServerName(namespace, ciliumHubbleRelayServiceName)
 
 	tlsConfig := &tls.Config{
