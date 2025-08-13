@@ -1,7 +1,7 @@
 ARG VARIANT=1.24-bookworm
 FROM mcr.microsoft.com/vscode/devcontainers/go:${VARIANT}
 
-ARG BUF_VERSION=v1.30.0
+ARG BUF_VERSION=v1.56.0
 ARG GOLANGCI_VERSION=v1.60.2
 ARG HELM_VERSION=v3.15.4
 ARG KIND_VERSION=v0.26.0
@@ -20,8 +20,6 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin ${GOLANGCI_VERSION}
-
 # Install kubectl
 RUN curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
     install -o root -g root -m 0755 /tmp/kubectl /usr/local/bin/kubectl && \
@@ -38,8 +36,9 @@ RUN curl -fsSL -o /tmp/helm.tar.gz https://get.helm.sh/helm-${HELM_VERSION}-linu
 
 USER vscode
 
-RUN go install github.com/bufbuild/buf/cmd/buf@${BUF_VERSION}
-RUN go install sigs.k8s.io/kind@${KIND_VERSION}
+RUN go install github.com/bufbuild/buf/cmd/buf@${BUF_VERSION} \
+    && go install sigs.k8s.io/kind@${KIND_VERSION} \
+    && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VERSION}
 
 USER root
 
