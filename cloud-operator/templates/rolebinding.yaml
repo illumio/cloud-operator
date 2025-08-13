@@ -27,17 +27,19 @@ roleRef:
   kind: Role
   name: hubble-client-certs-reader
   apiGroup: rbac.authorization.k8s.io
+{{- if (lookup "v1" "Namespace" "gke-managed-dpv2-observability" "") }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: illumio-cloud-operator-secret-reader-binding
+  name: cloud-operator-read-hubble-client-certs
   namespace: gke-managed-dpv2-observability
 subjects:
 - kind: ServiceAccount
   name: {{ .Values.serviceAccount.name }}
-  namespace: {{ .Values.defaultNamespace | default .Release.Namespace }}
+  namespace: {{ .Release.Namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: illumio-cloud-operator-secret-reader
+  name: hubble-client-certs-reader
+{{- end }}

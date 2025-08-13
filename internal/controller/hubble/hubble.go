@@ -21,14 +21,18 @@ import (
 )
 
 const (
-	ciliumHubbleRelayExpectedServerName     = "ui.hubble-relay.cilium.io"
-	gkeManagedHubbleRelayExpectedServerName = "hubble-relay.gke-managed-dpv2-observability.svc.cluster.local"
-	ciliumHubbleRelayServiceName            = "hubble-relay"
+	ciliumHubbleRelayExpectedServerName = "ui.hubble-relay.cilium.io"
+	ciliumHubbleRelayServiceName        = "hubble-relay"
 )
 
-var hubbleRelayExpectedServerNames = map[string]string{
-	"kube-system":                    ciliumHubbleRelayExpectedServerName,
-	"gke-managed-dpv2-observability": gkeManagedHubbleRelayExpectedServerName,
+// expectedServerName returns the TLS ServerName to use when connecting to Hubble Relay.
+// For the default Cilium deployment in kube-system, the certificate uses a special DNS name.
+// For all other namespaces, use the standard Kubernetes service FQDN.
+func expectedServerName(namespace, serviceName string) string {
+	if namespace == "kube-system" {
+		return ciliumHubbleRelayExpectedServerName
+	}
+	return fmt.Sprintf("%s.%s.svc.cluster.local", serviceName, namespace)
 }
 
 var (
@@ -98,8 +102,11 @@ func loadMTLSConfigFromData(logger *zap.Logger, caCertData, clientCertData, clie
 	}
 	logger.Debug("CA certificate appended to pool from data.")
 
+	// write code to get gke server name from the and build the hubbleRelayExpectedServerNames <svcName>.<namespace>.svc.cluster.local
+	serverName := expectedServerName(namespace, ciliumHubbleRelayServiceName)
+
 	tlsConfig := &tls.Config{
-		ServerName:         hubbleRelayExpectedServerNames[namespace],
+		ServerName:         serverName,
 		Certificates:       []tls.Certificate{cert},
 		RootCAs:            certPool,
 		InsecureSkipVerify: false,

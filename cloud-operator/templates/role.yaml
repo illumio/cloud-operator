@@ -22,14 +22,17 @@ rules:
   resources: ["secrets"]
   resourceNames: ["hubble-relay-client-certs"] # Name of the Secret
   verbs: ["get"]
+{{- if (lookup "v1" "Namespace" "gke-managed-dpv2-observability" "") }}
 ---
 # Role to read secrets in the GKE managed observability namespace
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: illumio-cloud-operator-secret-reader
+  name: hubble-client-certs-reader
   namespace: gke-managed-dpv2-observability
 rules:
 - apiGroups: [""]
   resources: ["secrets"]
-  verbs: ["get", "list"]
+  resourceNames: ["hubble-relay-client-certs"]
+  verbs: ["get"]
+{{- end }}

@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -85,8 +86,7 @@ func main() {
 
 	// Bind specific environment variables to keys
 	bindEnv(logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
-	bindEnv(logger, "cilium_namespace", "CILIUM_NAMESPACE")
-	bindEnv(logger, "cilium_gke_namespace", "CILIUM_GKE_NAMESPACE")
+	bindEnv(logger, "cilium_namespaces", "CILIUM_NAMESPACES")
 	bindEnv(logger, "https_proxy", "HTTPS_PROXY")
 	bindEnv(logger, "ipfix_collector_port", "IPFIX_COLLECTOR_PORT")
 	bindEnv(logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
@@ -106,8 +106,7 @@ func main() {
 	bindEnv(logger, "verbose_debugging", "VERBOSE_DEBUGGING")
 	// Set default values
 	viper.SetDefault("cluster_creds", "clustercreds")
-	viper.SetDefault("cilium_namespace", "kube-system")
-	viper.SetDefault("cilium_gke_namespace", "gke-managed-dpv2-observability")
+	viper.SetDefault("cilium_namespaces", "kube-system,gke-managed-dpv2-observability")
 	viper.SetDefault("https_proxy", "")
 	viper.SetDefault("ipfix_collector_port", "4739")
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
@@ -126,7 +125,7 @@ func main() {
 
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),
-		CiliumNamespaces:       []string{viper.GetString("cilium_namespace"), viper.GetString("cilium_gke_namespace")},
+		CiliumNamespaces:       strings.Split(viper.GetString("cilium_namespaces"), ","),
 		HttpsProxy:             viper.GetString("https_proxy"),
 		IPFIXCollectorPort:     viper.GetString("ipfix_collector_port"),
 		OnboardingClientId:     viper.GetString("onboarding_client_id"),

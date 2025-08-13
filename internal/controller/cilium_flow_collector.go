@@ -44,7 +44,7 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 		// Step 1: Try to discover Hubble Relay
 		service, err := hubble.DiscoverCiliumHubbleRelay(ctx, ciliumNamespace, clientset)
 		if err != nil {
-			logger.Warn("Failed to discover Cilium Hubble Relay service",
+			logger.Debug("Failed to discover Cilium Hubble Relay service",
 				zap.String("namespace", ciliumNamespace), zap.Error(err))
 			discoveryErr = err
 			continue
