@@ -78,7 +78,7 @@ func getMTLSCertificatesFromSecret(
 }
 
 // loadMTLSConfigFromData loads mTLS credentials from byte slice.
-func loadMTLSConfigFromData(logger *zap.Logger, caCertData, clientCertData, clientKeyData []byte, nameSpace string) (*tls.Config, error) {
+func loadMTLSConfigFromData(logger *zap.Logger, caCertData, clientCertData, clientKeyData []byte, namespace string) (*tls.Config, error) {
 	// Validate PEM data
 	if !isValidPEM(caCertData) || !isValidPEM(clientCertData) || !isValidPEM(clientKeyData) {
 		return nil, errors.New("invalid PEM data: ensure proper headers and formatting")
@@ -99,7 +99,7 @@ func loadMTLSConfigFromData(logger *zap.Logger, caCertData, clientCertData, clie
 	logger.Debug("CA certificate appended to pool from data.")
 
 	tlsConfig := &tls.Config{
-		ServerName:         hubbleRelayExpectedServerNames[nameSpace],
+		ServerName:         hubbleRelayExpectedServerNames[namespace],
 		Certificates:       []tls.Certificate{cert},
 		RootCAs:            certPool,
 		InsecureSkipVerify: false,
@@ -121,9 +121,9 @@ func GetTLSConfig(ctx context.Context, clientset kubernetes.Interface,
 	}
 
 	// Load config
-	tlsConfig, aggregatedErrors := loadMTLSConfigFromData(logger, caData, clientCertData, clientKeyData, namespace)
-	if aggregatedErrors != nil {
-		return nil, fmt.Errorf("failed to load mTLS credentials: %w", aggregatedErrors)
+	tlsConfig, loadErr := loadMTLSConfigFromData(logger, caData, clientCertData, clientKeyData, namespace)
+	if loadErr != nil {
+		return nil, fmt.Errorf("failed to load mTLS credentials: %w", loadErr)
 	}
 
 	return tlsConfig, nil

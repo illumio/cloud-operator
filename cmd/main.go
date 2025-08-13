@@ -126,8 +126,7 @@ func main() {
 
 	envConfig := controller.EnvironmentConfig{
 		ClusterCreds:           viper.GetString("cluster_creds"),
-		CiliumNamespace:        viper.GetString("cilium_namespace"),
-		CiliumGKENamespace:     viper.GetString("cilium_gke_namespace"),
+		CiliumNamespaces:       []string{viper.GetString("cilium_namespace"), viper.GetString("cilium_gke_namespace")},
 		HttpsProxy:             viper.GetString("https_proxy"),
 		IPFIXCollectorPort:     viper.GetString("ipfix_collector_port"),
 		OnboardingClientId:     viper.GetString("onboarding_client_id"),
@@ -152,8 +151,7 @@ func main() {
 
 	logger.Info("Starting application",
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
-		zap.String("cilium_namespace", envConfig.CiliumNamespace),
-		zap.String("cilium_gke_namespace", envConfig.CiliumGKENamespace),
+		zap.Strings("cilium_namespaces", envConfig.CiliumNamespaces),
 		zap.String("https_proxy", envConfig.HttpsProxy),
 		zap.String("onboarding_client_id", envConfig.OnboardingClientId),
 		zap.String("onboarding_endpoint", envConfig.OnboardingEndpoint),
