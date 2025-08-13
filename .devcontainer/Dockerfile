@@ -2,7 +2,7 @@ ARG VARIANT=1.24-bookworm
 FROM mcr.microsoft.com/vscode/devcontainers/go:${VARIANT}
 
 ARG BUF_VERSION=v1.56.0
-ARG GOLANGCI_VERSION=v1.60.2
+ARG GOLANGCI_VERSION=v2.3.1
 ARG HELM_VERSION=v3.15.4
 ARG KIND_VERSION=v0.26.0
 
@@ -37,8 +37,8 @@ RUN curl -fsSL -o /tmp/helm.tar.gz https://get.helm.sh/helm-${HELM_VERSION}-linu
 USER vscode
 
 RUN go install github.com/bufbuild/buf/cmd/buf@${BUF_VERSION} \
-    && go install sigs.k8s.io/kind@${KIND_VERSION} \
-    && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VERSION}
+    && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VERSION} \
+    && go install sigs.k8s.io/kind@${KIND_VERSION}
 
 USER root
 
