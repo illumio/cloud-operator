@@ -4,7 +4,7 @@ package controller
 
 import (
 	"context"
-	cryptoTls "crypto/tls"
+	cryptotls "crypto/tls"
 	"fmt"
 
 	"github.com/cilium/cilium/api/v1/flow"
@@ -37,7 +37,7 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 		return nil, fmt.Errorf("failed to create new client set: %w", err)
 	}
 	var hubbleAddress string
-	var tlsConfig *cryptoTls.Config
+	var tlsConfig *cryptotls.Config
 	var discoveryErr error
 
 	for _, ciliumNamespace := range ciliumNamespaces {
