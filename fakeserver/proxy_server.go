@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -24,61 +25,75 @@ type ProxyServer struct {
 }
 
 // NewProxyServer creates and initializes a new ProxyServer.
-func NewProxyServer(httpAddress string, logger *zap.Logger) (*ProxyServer, error) {
+func NewProxyServer(httpAddress string, logger *zap.Logger) *ProxyServer {
 	httpServer := &http.Server{
-		Addr: httpAddress,
+		Addr:              httpAddress,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       10 * time.Second,
 	}
 	proxyServer := &ProxyServer{
 		httpServer: httpServer,
 		logger:     logger,
 	}
 	httpServer.Handler = proxyServer
-	return proxyServer, nil
+
+	return proxyServer
 }
 
 // Start launches the ProxyServer's HTTP listener.
-func (p *ProxyServer) Start() error {
+func (p *ProxyServer) Start() {
 	p.logger.Info("Starting Simplified ProxyServer (with Hijack fix)...")
 	p.wg.Add(1)
+
 	go func() {
 		defer p.wg.Done()
+
 		p.logger.Info("Proxy HTTP server starting", zap.String("address", p.httpServer.Addr))
+
 		if err := p.httpServer.ListenAndServe(); err != http.ErrServerClosed {
 			p.logger.Error("Proxy HTTP server error", zap.Error(err))
 		}
+
 		p.logger.Info("Proxy HTTP server stopped")
 	}()
+
 	p.logger.Info("Simplified ProxyServer ready: HTTP Proxy for CONNECT on", zap.String("address", p.httpServer.Addr))
-	return nil
 }
 
 // Stop gracefully shuts down the ProxyServer.
 func (p *ProxyServer) Stop() error {
 	p.logger.Info("Stopping Simplified ProxyServer...")
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
 	if err := p.httpServer.Shutdown(ctx); err != nil {
 		p.logger.Error("Proxy HTTP server shutdown error", zap.Error(err))
 	}
+
 	p.wg.Wait()
 	p.logger.Info("Simplified ProxyServer stopped.")
+
 	return nil
 }
 
 // ServeHTTP is the entry point for all HTTP requests made to the proxy server.
 func (p *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.logger.Info("Proxy ServeHTTP", zap.String("method", r.Method), zap.String("url", r.URL.String()), zap.String("host", r.Host), zap.String("remoteAddr", r.RemoteAddr), zap.String("proto", r.Proto))
+
 	if r.Method == http.MethodConnect {
 		p.logger.Info("Handling HTTPS CONNECT request", zap.String("target", r.Host))
 		p.handleConnect(w, r)
+
 		return
 	}
+
 	p.logger.Info("Proxy ServeHTTP: Received non-CONNECT method", zap.String("method", r.Method), zap.String("proxy", "This proxy only handles CONNECT."))
 	http.Error(w, "This proxy only handles HTTP CONNECT requests", http.StatusMethodNotAllowed)
 }
 
 // handleConnect handles HTTP CONNECT requests.
-func (p *ProxyServer) handleConnect(w http.ResponseWriter, r *http.Request) {
+func (p *ProxyServer) handleConnect(w http.ResponseWriter, r *http.Request) { //nolint:gocognit
 	originalTargetHost := r.Host
 	effectiveTargetHost := r.Host
 
@@ -90,25 +105,39 @@ func (p *ProxyServer) handleConnect(w http.ResponseWriter, r *http.Request) {
 	} else {
 		p.logger.Error("Target is missing an explicit port", zap.String("target", originalTargetHost), zap.String("client", r.RemoteAddr))
 		http.Error(w, fmt.Sprintf("Target %s is missing an explicit port", originalTargetHost), http.StatusBadRequest)
+
 		return
 	}
 
 	if strings.HasPrefix(effectiveTargetHost, "host.docker.internal:") ||
 		(strings.HasPrefix(effectiveTargetHost, "192.168.65.") && (strings.HasSuffix(effectiveTargetHost, ":50051") || strings.HasSuffix(effectiveTargetHost, ":50053"))) {
-		newDialTarget := fmt.Sprintf("127.0.0.1:%s", targetPort)
+		newDialTarget := "127.0.0.1:" + targetPort
 		p.logger.Info("Remapping target", zap.String("originalTarget", originalTargetHost), zap.String("newTarget", newDialTarget))
 		effectiveTargetHost = newDialTarget
 	}
 
 	p.logger.Info("Proxy handleConnect: Effective Target for Dial", zap.String("target", effectiveTargetHost), zap.String("client", r.RemoteAddr))
-	destConn, err := net.DialTimeout("tcp", effectiveTargetHost, 15*time.Second)
+
+	dialer := net.Dialer{
+		Timeout: 15 * time.Second,
+	}
+
+	destConn, err := dialer.DialContext(r.Context(), "tcp", effectiveTargetHost)
 	if err != nil {
 		errMsgBody := fmt.Sprintf("Failed to connect to destination %s (dialed as %s): %v", originalTargetHost, effectiveTargetHost, err)
 		http.Error(w, errMsgBody, http.StatusServiceUnavailable)
 		p.logger.Error("Dial error", zap.String("target", originalTargetHost), zap.String("dialedAs", effectiveTargetHost), zap.String("client", r.RemoteAddr), zap.Error(err))
+
 		return
 	}
-	defer destConn.Close()
+
+	defer func() {
+		err := destConn.Close()
+		p.logger.Error(
+			"Proxy handleConnect: Failed to close connection to destination",
+			zap.Error(err),
+		)
+	}()
 
 	p.logger.Info("Proxy handleConnect: TCP connected to target", zap.String("target", originalTargetHost), zap.String("dialedAs", effectiveTargetHost), zap.String("client", r.RemoteAddr))
 	w.WriteHeader(http.StatusOK)
@@ -116,6 +145,7 @@ func (p *ProxyServer) handleConnect(w http.ResponseWriter, r *http.Request) {
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
 		p.logger.Error("Hijacking not supported", zap.String("target", originalTargetHost), zap.String("client", r.RemoteAddr))
+
 		return
 	}
 	// Hijack the connection. clientUnderlyingConn is the raw TCP connection.
@@ -123,10 +153,18 @@ func (p *ProxyServer) handleConnect(w http.ResponseWriter, r *http.Request) {
 	// bytes already read from clientUnderlyingConn (e.g., the start of the TLS ClientHello).
 	clientUnderlyingConn, clientRW, err := hijacker.Hijack()
 	if err != nil {
-		p.logger.Error("Hijack error", zap.String("target", originalTargetHost), zap.String("client", r.RemoteAddr), zap.Error(err))
+		p.logger.Error("Proxy handleConnect: Hijack error", zap.String("target", originalTargetHost), zap.String("client", r.RemoteAddr), zap.Error(err))
+
 		return
 	}
-	defer clientUnderlyingConn.Close() // Ensure the underlying connection is closed.
+
+	defer func() {
+		err := clientUnderlyingConn.Close()
+		p.logger.Error(
+			"Proxy handleConnect: Failed to close underlying connection to destination",
+			zap.Error(err),
+		)
+	}()
 
 	p.logger.Info("Proxy handleConnect: Hijacked connection", zap.String("clientRemote", clientUnderlyingConn.RemoteAddr().String()), zap.String("clientLocal", clientUnderlyingConn.LocalAddr().String()), zap.String("destRemote", destConn.RemoteAddr().String()), zap.String("destLocal", destConn.LocalAddr().String()))
 	p.logger.Info("Proxy handleConnect: Tunneling data", zap.String("client", r.RemoteAddr), zap.String("target", originalTargetHost))
@@ -136,32 +174,42 @@ func (p *ProxyServer) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		defer tunnelWg.Done()
+
 		buf := make([]byte, 4096) // Or smaller buffer
+
 		for {
 			p.logger.Info("Proxy handleConnect: Client->Target attempting read...")
-			nr, er := clientRW.Reader.Read(buf)
+
+			nr, err := clientRW.Read(buf)
 			if nr > 0 {
 				p.logger.Info("Proxy handleConnect: Client->Target read", zap.Int("bytes", nr))
 				nw, ew := destConn.Write(buf[0:nr])
 				p.logger.Info("Proxy handleConnect: Client->Target wrote", zap.Int("bytes", nw))
+
 				if ew != nil {
 					p.logger.Error("Client->Target write error", zap.Error(ew))
+
 					break
 				}
+
 				if nr != nw {
 					p.logger.Error("Client->Target short write", zap.Error(io.ErrShortWrite))
+
 					break
 				}
 			}
-			if er != nil {
-				if er != io.EOF {
-					p.logger.Error("Client->Target read error", zap.Error(er))
-				} else {
+
+			if err != nil {
+				if errors.Is(err, io.EOF) {
 					p.logger.Info("Client->Target read EOF")
+				} else {
+					p.logger.Error("Client->Target read error", zap.Error(err))
 				}
+
 				break
 			}
 		}
+
 		p.logger.Info("Proxy handleConnect: Client->Target loop finished")
 		// ... CloseWrite logic ...
 	}()
@@ -172,13 +220,15 @@ func (p *ProxyServer) handleConnect(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer tunnelWg.Done()
 		// Using clientRW.Writer which wraps clientUnderlyingConn.
-		bytesCopied, copyErr := io.Copy(clientRW.Writer, destConn)
+		bytesCopied, copyErr := io.Copy(clientRW, destConn)
 		if copyErr == nil { // Only flush if copy was successful or EOF
-			if err := clientRW.Writer.Flush(); err != nil {
+			if err := clientRW.Flush(); err != nil {
 				p.logger.Error("Flushing to client writer error", zap.Error(err))
 			}
 		}
+
 		p.logger.Info("Target->Client data copied", zap.String("target", originalTargetHost), zap.String("dialedAs", effectiveTargetHost), zap.Int64("bytes", bytesCopied), zap.Error(copyErr))
+
 		if tcpConn, ok := clientUnderlyingConn.(*net.TCPConn); ok { // Though CloseWrite on client side is less common
 			_ = tcpConn.CloseWrite()
 		}

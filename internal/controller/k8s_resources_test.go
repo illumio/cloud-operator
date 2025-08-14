@@ -10,11 +10,10 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
-
 	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
@@ -25,31 +24,24 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 // ptrBool is a helper function to create pointers to bool values (used in metav1.OwnerReference)
-// Used to simulate the nil behavior of the optional fields
+// Used to simulate the nil behavior of the optional fields.
 func ptrBool(b bool) *bool {
 	return &b
 }
 
 // ptrString is a helper function to create pointers to string values
-// Used to simulate the nil behavior of the optional fields
+// Used to simulate the nil behavior of the optional fields.
 func ptrString(s string) *string {
 	return &s
 }
 
-// int32ToUint32 converts *int32 to *uint32
-func ptrInt32ToUint32(i *int32) *uint32 {
-	if i == nil {
-		return nil
-	}
-	val := uint32(*i)
-	return &val
-}
-
 // ptrUint32 is a helper function to create pointers to int32 values
-// Used to simulate the nil behavior of the optional fields
+// Used to simulate the nil behavior of the optional fields.
 func ptrUint32(n uint32) *uint32 {
 	return &n
 }
@@ -62,13 +54,14 @@ func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 		ResourceVersion: "test-version",
 	}
 	logger := zap.NewNop()
+
 	clientset, err := NewClientSet()
 	if err != nil {
 		logger.Error("Failed to create clientset", zap.Error(err))
 		suite.T().Error("could not create clientset")
 	}
 	// Execute the function under test.
-	got, _ := convertMetaObjectToMetadata(logger, context.Background(), configMap, clientset, "configMap")
+	got := convertMetaObjectToMetadata(context.Background(), configMap, clientset, "configMap")
 
 	// Define what you expect to get.
 	want := metav1.ObjectMeta{
@@ -79,7 +72,7 @@ func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 	}
 
 	// Compare the result with the expected outcome.
-	if got.Name != want.Name || got.Namespace != want.Namespace || string(got.GetUid()) != string(want.UID) || got.ResourceVersion != want.ResourceVersion {
+	if got.GetName() != want.Name || got.GetNamespace() != want.Namespace || got.GetUid() != string(want.UID) || got.GetResourceVersion() != want.ResourceVersion {
 		suite.T().Errorf("convertObjectToMetadata() = %#v, want %#v", got, want)
 	}
 }
@@ -141,6 +134,7 @@ func TestGetObjectMetadataFromRuntimeObject(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
+
 	if metaData.Name != "test-pod" {
 		t.Errorf("Expected Name to be 'test-pod', got '%s'", metaData.Name)
 	}
@@ -208,24 +202,19 @@ func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 	}
 
 	// Ensure proper error handling
-	result, err := convertMetaObjectToMetadata(logger, context.Background(), objMeta, clientset, resource)
-	if err != nil {
-		suite.T().Fatalf("Error converting MetaObject to Metadata: %v", err)
-	}
+	result := convertMetaObjectToMetadata(context.Background(), objMeta, clientset, resource)
 
-	assert.Equal(suite.T(), expected, result)
+	suite.Equal(expected, result)
 }
 
 func (suite *ControllerTestSuite) TestConvertOwnerReferences() {
 	tests := map[string]struct {
 		ownerReferences []metav1.OwnerReference
 		expectedRefs    []*pb.KubernetesOwnerReference
-		expectedError   bool
 	}{
 		"empty slice": {
 			ownerReferences: []metav1.OwnerReference{},
 			expectedRefs:    nil,
-			expectedError:   false,
 		},
 		"single OwnerReference with all fields set": {
 			ownerReferences: []metav1.OwnerReference{
@@ -248,7 +237,6 @@ func (suite *ControllerTestSuite) TestConvertOwnerReferences() {
 					Uid:                "uid-1234",
 				},
 			},
-			expectedError: false,
 		},
 		"OwnerReference with nil BlockOwnerDeletion and Controller": {
 			ownerReferences: []metav1.OwnerReference{
@@ -271,7 +259,6 @@ func (suite *ControllerTestSuite) TestConvertOwnerReferences() {
 					Uid:                "uid-5678",
 				},
 			},
-			expectedError: false,
 		},
 		"multiple OwnerReferences": {
 			ownerReferences: []metav1.OwnerReference{
@@ -310,22 +297,14 @@ func (suite *ControllerTestSuite) TestConvertOwnerReferences() {
 					Uid:                "uid-8888",
 				},
 			},
-			expectedError: false,
 		},
 	}
 
 	for name, tt := range tests {
-		suite.T().Run(name, func(t *testing.T) {
-			result, err := convertOwnerReferences(tt.ownerReferences)
+		suite.Run(name, func() {
+			result := convertOwnerReferences(tt.ownerReferences)
 
-			// Check for errors
-			if tt.expectedError {
-				assert.Error(t, err, "expected error for test: %s", name)
-			} else {
-				assert.NoError(t, err, "unexpected error for test: %s", name)
-				// Compare the result
-				assert.Equal(t, tt.expectedRefs, result, "test failed: %s", name)
-			}
+			suite.Equal(tt.expectedRefs, result, "test failed: %s", name)
 		})
 	}
 }
@@ -378,7 +357,6 @@ func TestConvertPodIPsToStrings(t *testing.T) {
 }
 
 func (suite *ControllerTestSuite) TestGetProviderIdNodeSpec() {
-
 	tests := map[string]struct {
 		nodeName       string
 		node           *v1.Node
@@ -424,15 +402,15 @@ func (suite *ControllerTestSuite) TestGetProviderIdNodeSpec() {
 			clientset, _ := NewClientSet()
 			if tt.node != nil {
 				_, err := clientset.CoreV1().Nodes().Create(context.TODO(), tt.node, metav1.CreateOptions{})
-				assert.NoError(suite.T(), err)
+				suite.Require().NoError(err)
 			}
 
 			id, err := getProviderIdNodeSpec(context.TODO(), clientset, tt.nodeName)
 			if tt.expectedErrMsg != "" {
-				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
+				suite.EqualError(err, tt.expectedErrMsg)
 			} else {
-				assert.NoError(suite.T(), err)
-				assert.Equal(suite.T(), tt.expectedID, id)
+				suite.Require().NoError(err)
+				suite.Equal(tt.expectedID, id)
 			}
 		})
 	}
@@ -517,15 +495,15 @@ func (suite *ControllerTestSuite) TestGetNodeIpAddresses() {
 			clientset, _ := NewClientSet()
 			if tt.node != nil {
 				_, err := clientset.CoreV1().Nodes().Create(context.TODO(), tt.node, metav1.CreateOptions{})
-				assert.NoError(suite.T(), err)
+				suite.Require().NoError(err)
 			}
 
 			ips, err := getNodeIpAddresses(context.TODO(), clientset, tt.nodeName)
 			if tt.expectedErrMsg != "" {
-				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
+				suite.EqualError(err, tt.expectedErrMsg)
 			} else {
-				assert.NoError(suite.T(), err)
-				assert.Equal(suite.T(), tt.expectedIPs, ips)
+				suite.Require().NoError(err)
+				suite.Equal(tt.expectedIPs, ips)
 			}
 		})
 	}
@@ -541,31 +519,27 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 	}{
 		// TODO: Create happy test case for pod IP that is not spotty.
 		"pod not found": {
-			podName:        "nonexistent-pod",
-			namespace:      "default",
-			pod:            nil,
-			expectedIPs:    0,
-			expectedErrMsg: "",
+			podName:     "nonexistent-pod",
+			namespace:   "default",
+			pod:         nil,
+			expectedIPs: 0,
 		},
 	}
+
 	clientset, err := NewClientSet()
 	if err != nil {
 		suite.T().Fatal("Failed to get client set " + err.Error())
 	}
+
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			if tt.pod != nil {
 				_, err := clientset.CoreV1().Pods(tt.namespace).Create(context.TODO(), tt.pod, metav1.CreateOptions{})
-				assert.NoError(suite.T(), err)
+				suite.Require().NoError(err)
 			}
 
-			ips, err := getPodIPAddresses(context.TODO(), tt.podName, clientset, tt.namespace)
-			if tt.expectedErrMsg != "" {
-				assert.EqualError(suite.T(), err, tt.expectedErrMsg)
-			} else {
-				assert.NoError(suite.T(), err)
-				assert.Equal(suite.T(), tt.expectedIPs, len(ips))
-			}
+			ips := getPodIPAddresses(context.TODO(), tt.podName, clientset, tt.namespace)
+			suite.Len(ips, tt.expectedIPs)
 		})
 	}
 }
@@ -578,15 +552,18 @@ func (suite *ControllerTestSuite) TestFetchResources() {
 	} else {
 		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
 	}
+
 	flag.Parse()
 
 	clusterConfig, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
 	if err != nil {
 		suite.T().Fatal("Could not get config", "error", err)
 	}
+
 	if err != nil {
 		suite.T().Fatal("Error creating cluster config", "error", err)
 	}
+
 	dynamicClient, err := dynamic.NewForConfig(clusterConfig)
 	if err != nil {
 		suite.T().Fatal("Error creating dynamic client", "error", err)
@@ -621,14 +598,16 @@ func (suite *ControllerTestSuite) TestFetchResources() {
 	for name, tc := range tests {
 		suite.Run(name, func() {
 			ctx := context.Background()
+
 			resources, err := resourceManager.FetchResources(ctx, tc.resource, tc.namespace)
 			if tc.expectErr {
-				assert.Error(suite.T(), err)
+				suite.Error(err)
 			} else {
-				assert.NoError(suite.T(), err)
-				assert.NotNil(suite.T(), resources)
+				suite.Require().NoError(err)
+				suite.NotNil(resources)
+
 				if name == "invalid namespace" {
-					assert.Empty(suite.T(), resources.Items)
+					suite.Empty(resources.Items)
 				}
 			}
 		})
@@ -686,7 +665,7 @@ func (suite *ControllerTestSuite) TestExtractObjectMetas() {
 						Object: map[string]interface{}{
 							"apiVersion": "v1",
 							"kind":       "Pod",
-							"metadata_mispelled": map[string]interface{}{
+							"metadata_misspelled": map[string]interface{}{
 								"name":      "test-pod1",
 								"namespace": "test-namespace",
 								"labels": map[string]string{
@@ -725,11 +704,11 @@ func (suite *ControllerTestSuite) TestExtractObjectMetas() {
 			}
 			// Assert the results
 			if tc.expectedError {
-				assert.Error(suite.T(), err)
-				assert.EqualError(suite.T(), err, tc.expectedErrMsg)
+				suite.Require().Error(err)
+				suite.EqualError(err, tc.expectedErrMsg)
 			} else {
-				assert.NoError(suite.T(), err)
-				assert.Equal(suite.T(), tc.expectedMetas, objectMetas)
+				suite.Require().NoError(err)
+				suite.Equal(tc.expectedMetas, objectMetas)
 			}
 		})
 	}
@@ -773,14 +752,16 @@ func (suite *ControllerTestSuite) TestConvertIngressToStringList() {
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			result := convertIngressToStringList(tt.ingress)
-			assert.Equal(suite.T(), tt.expectedResult, result)
+			suite.Equal(tt.expectedResult, result)
 		})
 	}
 }
 
 func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
-	var nodePort int32 = int32(30000)
-	var nodePort2 int32 = int32(30001)
+	var nodePort = int32(30000)
+
+	var nodePort2 = int32(30001)
+
 	tests := map[string]struct {
 		servicePorts   []v1.ServicePort
 		expectedResult []*pb.KubernetesServiceData_ServicePort
@@ -790,7 +771,7 @@ func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 30000, Port: 80, Protocol: v1.ProtocolTCP},
 			},
 			expectedResult: []*pb.KubernetesServiceData_ServicePort{
-				{NodePort: ptrInt32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
+				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
 			},
 		},
 		"multiple service ports with node ports": {
@@ -799,8 +780,8 @@ func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 30001, Port: 443, Protocol: v1.ProtocolTCP},
 			},
 			expectedResult: []*pb.KubernetesServiceData_ServicePort{
-				{NodePort: ptrInt32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
-				{NodePort: ptrInt32ToUint32(&nodePort2), Port: 443, Protocol: "TCP"},
+				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
+				{NodePort: int32ToUint32(&nodePort2), Port: 443, Protocol: "TCP"},
 			},
 		},
 		"service port without node port": {
@@ -816,7 +797,7 @@ func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 30000, Port: 80},
 			},
 			expectedResult: []*pb.KubernetesServiceData_ServicePort{
-				{NodePort: ptrInt32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
+				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
 			},
 		},
 		"mix of service ports with and without node ports": {
@@ -825,7 +806,7 @@ func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 0, Port: 443, Protocol: v1.ProtocolTCP},
 			},
 			expectedResult: []*pb.KubernetesServiceData_ServicePort{
-				{NodePort: ptrInt32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
+				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
 				{Port: 443, Protocol: "TCP"},
 			},
 		},
@@ -838,7 +819,7 @@ func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			result := convertServicePortsToPorts(tt.servicePorts)
-			assert.Equal(suite.T(), tt.expectedResult, result)
+			suite.Equal(tt.expectedResult, result)
 		})
 	}
 }
@@ -891,7 +872,7 @@ func (suite *ControllerTestSuite) TestCombineIPAddresses() {
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			result := combineIPAddresses(tt.clusterIps, tt.externalIps, tt.loadBalancerIngresses, tt.loadBalancerIp)
-			assert.Equal(suite.T(), tt.expectedResult, result)
+			suite.Equal(tt.expectedResult, result)
 		})
 	}
 }
@@ -973,19 +954,20 @@ func (suite *ControllerTestSuite) TestConvertToKubernetesServiceData() {
 				if err != nil && !k8sErrors.IsNotFound(err) {
 					suite.T().Fatal("Failed to delete service: " + err.Error())
 				}
+
 				time.Sleep(100 * time.Millisecond) // Wait for deletion to propagate
 			}
 
 			if tt.service != nil {
 				_, err := suite.clientset.CoreV1().Services(tt.service.Namespace).Create(ctx, tt.service, metav1.CreateOptions{})
-				assert.NoError(suite.T(), err)
+				suite.Require().NoError(err)
 			}
 
 			result, err := convertToKubernetesServiceData(ctx, "test-service", suite.clientset, "default")
 			if tt.expectedError != nil {
-				assert.EqualError(suite.T(), err, tt.expectedError.Error())
+				suite.EqualError(err, tt.expectedError.Error())
 			} else {
-				assert.NoError(suite.T(), err)
+				suite.Require().NoError(err)
 				// Custom comparison ignoring IpAddresses field since KIND can mess with them.
 				assertEqualKubernetesServiceData(suite.T(), tt.expectedResult, result)
 			}
@@ -994,10 +976,12 @@ func (suite *ControllerTestSuite) TestConvertToKubernetesServiceData() {
 }
 
 func assertEqualKubernetesServiceData(t *testing.T, expected, actual *pb.KubernetesServiceData) {
-	assert.Equal(t, expected.Ports, actual.Ports)
-	assert.Equal(t, expected.Type, actual.Type)
-	assert.Equal(t, expected.ExternalName, actual.ExternalName)
-	assert.Equal(t, expected.LoadBalancerClass, actual.LoadBalancerClass)
+	t.Helper()
+
+	assert.Equal(t, expected.GetPorts(), actual.GetPorts())
+	assert.Equal(t, expected.GetType(), actual.GetType())
+	assert.Equal(t, expected.GetExternalName(), actual.GetExternalName())
+	assert.Equal(t, expected.GetLoadBalancerClass(), actual.GetLoadBalancerClass())
 }
 
 func TestConvertNetworkPolicyEgressRuleToProto(t *testing.T) {
@@ -1021,6 +1005,7 @@ func TestConvertNetworkPolicyEgressRuleToProto(t *testing.T) {
 					Port: &intstr.IntOrString{IntVal: 443},
 					Protocol: func() *v1.Protocol {
 						proto := v1.ProtocolTCP
+
 						return &proto
 					}(),
 				},
@@ -1030,12 +1015,12 @@ func TestConvertNetworkPolicyEgressRuleToProto(t *testing.T) {
 	port := "443"
 
 	result := convertNetworkPolicyEgressRuleToProto(egressRules)
-	assert.Equal(t, 1, len(result))
-	assert.Equal(t, "backend", result[0].Peers[0].GetPods().NamespaceSelector.MatchLabels["team"])
-	assert.Equal(t, "10.0.0.0/16", result[0].Peers[1].GetIpBlock().Cidr)
-	assert.Equal(t, "10.0.1.0/24", result[0].Peers[1].GetIpBlock().Except[0])
-	assert.Equal(t, &port, result[0].Ports[0].Port)
-	assert.Equal(t, pb.Port_PROTOCOL_TCP_UNSPECIFIED, result[0].Ports[0].Protocol)
+	assert.Len(t, result, 1)
+	assert.Equal(t, "backend", result[0].GetPeers()[0].GetPods().GetNamespaceSelector().GetMatchLabels()["team"])
+	assert.Equal(t, "10.0.0.0/16", result[0].GetPeers()[1].GetIpBlock().GetCidr())
+	assert.Equal(t, "10.0.1.0/24", result[0].GetPeers()[1].GetIpBlock().GetExcept()[0])
+	assert.Equal(t, port, result[0].GetPorts()[0].GetPort())
+	assert.Equal(t, pb.Port_PROTOCOL_TCP_UNSPECIFIED, result[0].GetPorts()[0].GetProtocol())
 }
 
 func TestConvertNetworkPolicyIngressRuleToProto(t *testing.T) {
@@ -1058,6 +1043,7 @@ func TestConvertNetworkPolicyIngressRuleToProto(t *testing.T) {
 					Port: &intstr.IntOrString{IntVal: 80},
 					Protocol: func() *v1.Protocol {
 						proto := v1.ProtocolTCP
+
 						return &proto
 					}(),
 				},
@@ -1065,10 +1051,12 @@ func TestConvertNetworkPolicyIngressRuleToProto(t *testing.T) {
 					Port: &intstr.IntOrString{IntVal: 8080},
 					EndPort: func() *int32 {
 						endPort := int32(8090)
+
 						return &endPort
 					}(),
 					Protocol: func() *v1.Protocol {
 						proto := v1.ProtocolTCP
+
 						return &proto
 					}(),
 				},
@@ -1079,14 +1067,14 @@ func TestConvertNetworkPolicyIngressRuleToProto(t *testing.T) {
 	port2 := "8080"
 
 	result := convertNetworkPolicyIngressRuleToProto(ingressRules)
-	assert.Equal(t, 1, len(result))
-	assert.Equal(t, "frontend", result[0].Peers[0].GetPods().PodSelector.MatchLabels["app"])
-	assert.Equal(t, "frontend", result[0].Peers[1].GetPods().NamespaceSelector.MatchLabels["team"])
-	assert.Equal(t, &port1, result[0].Ports[0].Port)
-	assert.Equal(t, pb.Port_PROTOCOL_TCP_UNSPECIFIED, result[0].Ports[0].Protocol)
-	assert.Equal(t, &port2, result[0].Ports[1].Port)
-	assert.Equal(t, int32(8090), *result[0].Ports[1].EndPort)
-	assert.Equal(t, pb.Port_PROTOCOL_TCP_UNSPECIFIED, result[0].Ports[1].Protocol)
+	assert.Len(t, result, 1)
+	assert.Equal(t, "frontend", result[0].GetPeers()[0].GetPods().GetPodSelector().GetMatchLabels()["app"])
+	assert.Equal(t, "frontend", result[0].GetPeers()[1].GetPods().GetNamespaceSelector().GetMatchLabels()["team"])
+	assert.Equal(t, port1, result[0].GetPorts()[0].GetPort())
+	assert.Equal(t, pb.Port_PROTOCOL_TCP_UNSPECIFIED, result[0].GetPorts()[0].GetProtocol())
+	assert.Equal(t, port2, result[0].GetPorts()[1].GetPort())
+	assert.Equal(t, int32(8090), result[0].GetPorts()[1].GetEndPort())
+	assert.Equal(t, pb.Port_PROTOCOL_TCP_UNSPECIFIED, result[0].GetPorts()[1].GetProtocol())
 }
 
 func TestConvertNetworkPolicyPeerToProto(t *testing.T) {
@@ -1105,10 +1093,10 @@ func TestConvertNetworkPolicyPeerToProto(t *testing.T) {
 	}
 
 	result := convertNetworkPolicyPeerToProto(peers)
-	assert.Equal(t, 2, len(result))
-	assert.Equal(t, "192.168.0.0/16", result[0].GetIpBlock().Cidr)
-	assert.Equal(t, "192.168.1.0/24", result[0].GetIpBlock().Except[0])
-	assert.Equal(t, "backend", result[1].GetPods().NamespaceSelector.MatchLabels["team"])
+	assert.Len(t, result, 2)
+	assert.Equal(t, "192.168.0.0/16", result[0].GetIpBlock().GetCidr())
+	assert.Equal(t, "192.168.1.0/24", result[0].GetIpBlock().GetExcept()[0])
+	assert.Equal(t, "backend", result[1].GetPods().GetNamespaceSelector().GetMatchLabels()["team"])
 }
 
 func TestConvertNetworkPolicyNamespaceSelectorToProto(t *testing.T) {
@@ -1118,7 +1106,7 @@ func TestConvertNetworkPolicyNamespaceSelectorToProto(t *testing.T) {
 
 	result := convertLabelSelectorToProto(labelSelector)
 	assert.NotNil(t, result)
-	assert.Equal(t, "dev", result.MatchLabels["team"])
+	assert.Equal(t, "dev", result.GetMatchLabels()["team"])
 }
 
 func TestConvertIPBlocksToProto(t *testing.T) {
@@ -1129,8 +1117,8 @@ func TestConvertIPBlocksToProto(t *testing.T) {
 
 	result := convertIPBlockToProto(ipBlock)
 	assert.NotNil(t, result)
-	assert.Equal(t, "192.168.1.0/24", result.Cidr)
-	assert.Equal(t, "192.168.1.1", result.Except[0])
+	assert.Equal(t, "192.168.1.0/24", result.GetCidr())
+	assert.Equal(t, "192.168.1.1", result.GetExcept()[0])
 }
 
 func TestConvertLabelSelectorToProto(t *testing.T) {
@@ -1140,7 +1128,7 @@ func TestConvertLabelSelectorToProto(t *testing.T) {
 
 	result := convertLabelSelectorToProto(podSelector)
 	assert.NotNil(t, result)
-	assert.Equal(t, "test", result.MatchLabels["app"])
+	assert.Equal(t, "test", result.GetMatchLabels()["app"])
 }
 
 func TestConvertNetworkPolicyToProto(t *testing.T) {
@@ -1288,7 +1276,7 @@ func TestConvertNetworkPolicyToProto(t *testing.T) {
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expectedPolicy, result)
 			}
 		})
@@ -1510,7 +1498,7 @@ func TestConvertNetworkPolicyToProto_Comprehensive(t *testing.T) {
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expectedPolicy, result)
 			}
 		})

@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"os"
 
-	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,49 +30,48 @@ func (suite *ControllerTestSuite) TestOnboard() {
 	logger = logger.With(zap.String("name", "test"))
 
 	tests := map[string]struct {
-		clientID         string
-		clientSecret     string
-		serverHandler    http.HandlerFunc
-		requestURL       string
-		expectedResponse OnboardResponse
-		expectedError    bool
-		expectedErrMsg   string
+		onboardingClientID          string
+		onboardingClientSecret      string
+		serverHandler               http.HandlerFunc
+		requestURL                  string
+		expectedClusterClientID     string
+		expectedClusterClientSecret string
+		expectedError               bool
+		expectedErrMsg              string
 	}{
 		"success": {
-			clientID:     "test-client-id",
-			clientSecret: "test-client-secret",
+			onboardingClientID:     "test-client-id",
+			onboardingClientSecret: "test-client-secret",
 			serverHandler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(suite.T(), "application/json", r.Header.Get("Content-Type"))
+				suite.Equal("application/json", r.Header.Get("Content-Type"))
 
 				var requestData map[string]string
 				err := json.NewDecoder(r.Body).Decode(&requestData)
-				assert.NoError(suite.T(), err)
-				assert.Equal(suite.T(), "test-client-id", requestData["onboardingClientId"])
-				assert.Equal(suite.T(), "test-client-secret", requestData["onboardingClientSecret"])
+				suite.NoError(err)
+				suite.Equal("test-client-id", requestData["onboardingClientId"])
+				suite.Equal("test-client-secret", requestData["onboardingClientSecret"])
 
 				w.Header().Set("Content-Type", "application/json")
 				err = json.NewEncoder(w).Encode(OnboardResponse{
-					ClusterClientId:     "test-client-id",
+					ClusterClientID:     "test-client-id",
 					ClusterClientSecret: "test-client-secret",
 				})
 				if err != nil {
 					suite.T().Fatal("Failed to encode response in creds manager test " + err.Error())
 				}
 			},
-			requestURL: "http://example.com",
-			expectedResponse: OnboardResponse{
-				ClusterClientId:     "test-client-id",
-				ClusterClientSecret: "test-client-secret",
-			},
-			expectedError: false,
+			requestURL:                  "http://example.com",
+			expectedClusterClientID:     "test-client-id",
+			expectedClusterClientSecret: "test-client-secret",
+			expectedError:               false,
 		},
 		"request-url-error": {
-			clientID:       "test-client-id",
-			clientSecret:   "test-client-secret",
-			serverHandler:  nil,
-			requestURL:     "http://example.com/\x00",
-			expectedError:  true,
-			expectedErrMsg: "parse \"http://example.com/\\x00\": net/url: invalid control character in URL",
+			onboardingClientID:     "test-client-id",
+			onboardingClientSecret: "test-client-secret",
+			serverHandler:          nil,
+			requestURL:             "http://example.com/\x00",
+			expectedError:          true,
+			expectedErrMsg:         "parse \"http://example.com/\\x00\": net/url: invalid control character in URL",
 		},
 	}
 
@@ -82,21 +80,17 @@ func (suite *ControllerTestSuite) TestOnboard() {
 			if tt.serverHandler != nil {
 				server := httptest.NewServer(tt.serverHandler)
 				defer server.Close()
+
 				tt.requestURL = server.URL
 			}
 
-			credentials := Credentials{
-				ClientID:     tt.clientID,
-				ClientSecret: tt.clientSecret,
-			}
-
-			response, err := Onboard(ctx, true, tt.requestURL, credentials, logger)
+			gotClusterClientID, gotClusterClientSecret, err := OnboardCluster(ctx, true, tt.requestURL, tt.onboardingClientID, tt.onboardingClientSecret, logger)
 			if tt.expectedError {
-				assert.Error(suite.T(), err)
-				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
+				suite.EqualErrorf(err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
 			} else {
-				assert.NoError(suite.T(), err)
-				assert.Equal(suite.T(), tt.expectedResponse, response)
+				suite.Require().NoError(err)
+				suite.Equal(tt.expectedClusterClientID, gotClusterClientID)
+				suite.Equal(tt.expectedClusterClientSecret, gotClusterClientSecret)
 			}
 		})
 	}
@@ -152,11 +146,11 @@ func (suite *ControllerTestSuite) TestGetFirstAudience() {
 		suite.Run(name, func() {
 			got, err := getFirstAudience(suite.logger, tt.claims)
 			if tt.expectedError {
-				assert.Error(suite.T(), err)
-				assert.EqualErrorf(suite.T(), err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
+				suite.Error(err)
+				suite.EqualErrorf(err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
 			} else {
-				assert.NoError(suite.T(), err)
-				assert.Equal(suite.T(), tt.expected, got, "Expected audience: %v, got: %v", tt.expected, got)
+				suite.NoError(err)
+				suite.Equal(tt.expected, got, "Expected audience: %v, got: %v", tt.expected, got)
 			}
 		})
 	}
@@ -169,19 +163,20 @@ func (suite *ControllerTestSuite) TestGetClusterID() {
 
 	// Manually retrieve the expected UID of the kube-system namespace
 	clientset, err := NewClientSet()
-	assert.NoError(suite.T(), err)
+	suite.NoError(err)
 
 	namespace, err := clientset.CoreV1().Namespaces().Get(ctx, "kube-system", v1.GetOptions{})
-	assert.NoError(suite.T(), err)
+	suite.NoError(err)
+
 	expectedUID := string(namespace.UID)
 
 	// Call the GetClusterID function
 	clusterID, err := GetClusterID(ctx, logger)
-	assert.NoError(suite.T(), err)
-	assert.NotEmpty(suite.T(), clusterID)
+	suite.NoError(err)
+	suite.NotEmpty(clusterID)
 
 	// Check if the returned UID matches the expected UID
-	assert.Equal(suite.T(), expectedUID, clusterID)
+	suite.Equal(expectedUID, clusterID)
 
 	// Log the cluster ID for verification
 	suite.T().Logf("Cluster ID: %s", clusterID)

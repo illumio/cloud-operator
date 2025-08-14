@@ -8,22 +8,24 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/metadata"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-// MockSendLogsClient mocks the SendLogsClient gRPC interface
+// MockSendLogsClient mocks the SendLogsClient gRPC interface.
 type MockSendLogsClient struct {
 	mock.Mock
 }
 
 func (m *MockSendLogsClient) Send(req *pb.SendLogsRequest) error {
 	args := m.Called(req)
+
 	return args.Error(0)
 }
 
@@ -32,11 +34,13 @@ func (m *MockSendLogsClient) Recv() (*pb.SendLogsResponse, error) {
 	if resp, ok := args.Get(0).(*pb.SendLogsResponse); ok {
 		return resp, args.Error(1)
 	}
+
 	return nil, args.Error(1)
 }
 
 func (m *MockSendLogsClient) CloseSend() error {
 	args := m.Called()
+
 	return args.Error(0)
 }
 
@@ -49,6 +53,7 @@ func (m *MockSendLogsClient) Header() (metadata.MD, error) {
 	if header, ok := args.Get(0).(metadata.MD); ok {
 		return header, args.Error(1)
 	}
+
 	return nil, args.Error(1)
 }
 
@@ -57,43 +62,49 @@ func (m *MockSendLogsClient) Trailer() metadata.MD {
 	if trailer, ok := args.Get(0).(metadata.MD); ok {
 		return trailer
 	}
+
 	return nil
 }
 
 func (m *MockSendLogsClient) SendMsg(msg interface{}) error {
 	args := m.Called(msg)
+
 	return args.Error(0)
 }
 
 func (m *MockSendLogsClient) RecvMsg(msg interface{}) error {
 	args := m.Called(msg)
+
 	return args.Error(0)
 }
 
-// MockClientConn mocks ClientConnInterface
+// MockClientConn mocks ClientConnInterface.
 type MockClientConn struct {
 	mock.Mock
 }
 
 func (m *MockClientConn) GetState() connectivity.State {
 	args := m.Called()
-	return args.Get(0).(connectivity.State)
+
+	return args.Get(0).(connectivity.State) //nolint:forcetypeassert
 }
 
 func (m *MockClientConn) Close() error {
 	args := m.Called()
+
 	return args.Error(0)
 }
 
-// BufferedGrpcWriteSyncerTestSuite is a test suite for BufferedGrpcWriteSyncer
+// BufferedGrpcWriteSyncerTestSuite is a test suite for BufferedGrpcWriteSyncer.
 type BufferedGrpcWriteSyncerTestSuite struct {
 	suite.Suite
+
 	grpcSyncer *BufferedGrpcWriteSyncer
 	mockClient *MockSendLogsClient
 	mockConn   *MockClientConn
 }
 
-// TestBufferedGrpcWriteSyncerTestSuite runs the test suite
+// TestBufferedGrpcWriteSyncerTestSuite runs the test suite.
 func TestBufferedGrpcWriteSyncerTestSuite(t *testing.T) {
 	suite.Run(t, new(BufferedGrpcWriteSyncerTestSuite))
 }
@@ -156,10 +167,10 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestUpdateLogLevel() {
 	}
 }
 
-// TestSendLogEntry tests the sendLogEntry method to ensure proper formatting and encoding
+// TestSendLogEntry tests the sendLogEntry method to ensure proper formatting and encoding.
 func (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLogEntry() {
 	ts, err := time.Parse(time.RFC3339, "2025-02-28T11:56:05Z")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 
 	entry := zapcore.Entry{
 		Level: zapcore.InfoLevel,
@@ -175,7 +186,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLogEntry() {
 	}
 
 	jsonMessage, err := encodeLogEntry(suite.grpcSyncer.encoder, entry, fields)
-	suite.NoError(err)
+	suite.Require().NoError(err)
 
 	expectedLogEntry := &pb.LogEntry{
 		JsonMessage: `{"level":"info","ts":1740743765,"msg":"The Message","field1":"a string","field2":10}`,
@@ -188,7 +199,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestSendLogEntry() {
 	}).Return(nil).Once()
 
 	err = suite.grpcSyncer.sendLogEntry(jsonMessage)
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.mockClient.AssertExpectations(suite.T())
 }
 
@@ -210,7 +221,7 @@ func (c *mockZapClock) NewTicker(duration time.Duration) *time.Ticker {
 // TestZapCoreWrapper tests the gRPC logger end-to-end.
 func (suite *BufferedGrpcWriteSyncerTestSuite) TestZapCoreWrapper() {
 	ts, err := time.Parse(time.RFC3339, "2025-02-28T11:56:05Z")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 
 	mockClock := &mockZapClock{
 		now: ts,
@@ -244,7 +255,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestZapCoreWrapper() {
 // TestWriteBuffering tests the gRPC logger's buffering when the connection is not established.
 func (suite *BufferedGrpcWriteSyncerTestSuite) TestWriteBuffering() {
 	ts, err := time.Parse(time.RFC3339, "2025-02-28T11:56:05Z")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 
 	mockClock := &mockZapClock{
 		now: ts,
@@ -258,7 +269,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestWriteBuffering() {
 
 	expectedLostLogEntriesCount := 0
 
-	for i := 0; i < logMaxBufferSize+10; i += 1 {
+	for i := range logMaxBufferSize + 10 {
 		suite.Run(fmt.Sprintf("Message %d", i), func() {
 			logger.Info("The Message",
 				zap.Int("num", i),
@@ -266,10 +277,11 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestWriteBuffering() {
 
 			if i < logMaxBufferSize {
 				expectedJsonMessage := fmt.Sprintf(`{"level":"info","ts":"2025-02-28T11:56:05Z","msg":"The Message","num":%d}`, i)
-				suite.Equal(i+1, len(suite.grpcSyncer.buffer))
-				suite.Equal(expectedJsonMessage, suite.grpcSyncer.buffer[i])
+				suite.Len(suite.grpcSyncer.buffer, i+1)
+				suite.JSONEq(expectedJsonMessage, suite.grpcSyncer.buffer[i])
 			} else {
-				suite.Equal(logMaxBufferSize, len(suite.grpcSyncer.buffer))
+				suite.Len(suite.grpcSyncer.buffer, logMaxBufferSize)
+
 				expectedLostLogEntriesCount += 1
 				suite.Equal(expectedLostLogEntriesCount, suite.grpcSyncer.lostLogEntriesCount)
 			}
@@ -295,13 +307,13 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestFlushSuccess() {
 		// Send the 'Lost logs' message
 		case regexp.MustCompile(
 			`^{"level":"error","ts":[^,]*,"msg":"Lost logs due to buffer overflow","error":"some buffer overflow error","lost_log_entries":1234}$`,
-		).MatchString(req.Request.(*pb.SendLogsRequest_LogEntry).LogEntry.JsonMessage):
+		).MatchString(req.GetRequest().(*pb.SendLogsRequest_LogEntry).LogEntry.GetJsonMessage()): //nolint:forcetypeassert
 			return true
 
 		// Send all buffered messages
 		case regexp.MustCompile(
 			`^{"level":"info","msg":"Buffered log entry [12345]"}$`,
-		).MatchString(req.Request.(*pb.SendLogsRequest_LogEntry).LogEntry.JsonMessage):
+		).MatchString(req.GetRequest().(*pb.SendLogsRequest_LogEntry).LogEntry.GetJsonMessage()): //nolint:forcetypeassert
 			return true
 
 		default:
@@ -314,8 +326,8 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestFlushSuccess() {
 
 	// Assert that lostLogEntriesCount is reset
 	suite.Equal(0, suite.grpcSyncer.lostLogEntriesCount, "lostLogEntriesCount should be reset after successfully sending 'Lost logs' message")
-	suite.Empty(suite.grpcSyncer.buffer, "Buffer should be empty after succesful flush")
-	suite.Nil(suite.grpcSyncer.lostLogEntriesErr, "lostLogEntriesErr should be nil after successfully sending 'Lost logs' message and no subsequent failure")
+	suite.Empty(suite.grpcSyncer.buffer, "Buffer should be empty after successful flush")
+	suite.NoError(suite.grpcSyncer.lostLogEntriesErr, "lostLogEntriesErr should be nil after successfully sending 'Lost logs' message and no subsequent failure")
 }
 
 func (suite *BufferedGrpcWriteSyncerTestSuite) TestFlushPartialSuccess() {
@@ -336,13 +348,13 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestFlushPartialSuccess() {
 		// Send the 'Lost logs' message
 		case regexp.MustCompile(
 			`^{"level":"error","ts":[^,]*,"msg":"Lost logs due to buffer overflow","error":"some buffer overflow error","lost_log_entries":1234}$`,
-		).MatchString(req.Request.(*pb.SendLogsRequest_LogEntry).LogEntry.JsonMessage):
+		).MatchString(req.GetRequest().(*pb.SendLogsRequest_LogEntry).LogEntry.GetJsonMessage()): //nolint:forcetypeassert
 			return true
 
 		// Send buffered messages 1 and 2
 		case regexp.MustCompile(
 			`^{"level":"info","msg":"Buffered log entry [12]"}$`,
-		).MatchString(req.Request.(*pb.SendLogsRequest_LogEntry).LogEntry.JsonMessage):
+		).MatchString(req.GetRequest().(*pb.SendLogsRequest_LogEntry).LogEntry.GetJsonMessage()): //nolint:forcetypeassert
 			return true
 
 		default:
@@ -355,7 +367,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestFlushPartialSuccess() {
 		// Fail buffered messages 3, 4, and 5
 		case regexp.MustCompile(
 			`^{"level":"info","msg":"Buffered log entry [345]"}$`,
-		).MatchString(req.Request.(*pb.SendLogsRequest_LogEntry).LogEntry.JsonMessage):
+		).MatchString(req.GetRequest().(*pb.SendLogsRequest_LogEntry).LogEntry.GetJsonMessage()): //nolint:forcetypeassert
 			return true
 
 		default:
@@ -390,7 +402,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestFlushSendLostLogsFailed() {
 		// Fail the 'Lost logs' message
 		case regexp.MustCompile(
 			`^{"level":"error","ts":[^,]*,"msg":"Lost logs due to buffer overflow","error":"some buffer overflow error","lost_log_entries":1234}$`,
-		).MatchString(req.Request.(*pb.SendLogsRequest_LogEntry).LogEntry.JsonMessage):
+		).MatchString(req.GetRequest().(*pb.SendLogsRequest_LogEntry).LogEntry.GetJsonMessage()): //nolint:forcetypeassert
 			return true
 
 		default:
@@ -409,7 +421,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestFlushSendLostLogsFailed() {
 
 func (suite *BufferedGrpcWriteSyncerTestSuite) TestLostLogEntriesCountIncrementOnBufferOverflow() {
 	// Fill the buffer to its capacity
-	for i := 0; i < logMaxBufferSize; i++ {
+	for i := range logMaxBufferSize {
 		suite.grpcSyncer.buffer = append(suite.grpcSyncer.buffer, fmt.Sprintf(`{"level":"info","msg":"Buffered log entry %d"}`, i+1))
 	}
 
@@ -419,21 +431,20 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestLostLogEntriesCountIncrementO
 
 	// Assert that lostLogEntriesCount is incremented
 	suite.Equal(1, suite.grpcSyncer.lostLogEntriesCount, "lostLogEntriesCount should be incremented on buffer overflow")
-	suite.Equal(logMaxBufferSize, len(suite.grpcSyncer.buffer), "Buffer should remain at max capacity")
+	suite.Len(len(suite.grpcSyncer.buffer), logMaxBufferSize, "Buffer should remain at max capacity")
 	suite.ErrorContains(suite.grpcSyncer.lostLogEntriesErr, "send error", "lostLogEntriesErr should contain the last Send error")
 }
 
-// TestNewBufferedGrpcWriteSyncer tests the constructor
+// TestNewBufferedGrpcWriteSyncer tests the constructor.
 func (suite *BufferedGrpcWriteSyncerTestSuite) TestNewBufferedGrpcWriteSyncer() {
 	bws := NewBufferedGrpcWriteSyncer()
 	suite.NotNil(bws)
-	suite.NotNil(bws.buffer)
-	suite.Equal(0, len(bws.buffer))
+	suite.Empty(bws.buffer)
 	suite.Equal(logMaxBufferSize, cap(bws.buffer))
 	suite.NotNil(bws.done)
 }
 
-// mockSyncer is a mock implementation of zapcore.WriteSyncer
+// mockSyncer is a mock implementation of zapcore.WriteSyncer.
 type mockSyncer struct{}
 
 func (m *mockSyncer) Write(p []byte) (n int, err error) {
@@ -444,7 +455,7 @@ func (m *mockSyncer) Sync() error {
 	return nil
 }
 
-// TestZapCoreWrapperMethods tests the zapCoreWrapper methods
+// TestZapCoreWrapperMethods tests the zapCoreWrapper methods.
 func (suite *BufferedGrpcWriteSyncerTestSuite) TestZapCoreWrapperMethods() {
 	// Create a test core with a mock syncer instead of stdout
 	mockSyncer := &mockSyncer{}
@@ -467,7 +478,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestZapCoreWrapperMethods() {
 	suite.True(wrapper.Enabled(zapcore.InfoLevel))
 	suite.False(wrapper.Enabled(zapcore.DebugLevel))
 
-	suite.NoError(wrapper.Sync())
+	suite.Require().NoError(wrapper.Sync())
 
 	fields := []zapcore.Field{zap.String("test", "value")}
 	newWrapper := wrapper.With(fields)
@@ -475,7 +486,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestZapCoreWrapperMethods() {
 	suite.NotEqual(wrapper, newWrapper)
 }
 
-// TestClose tests the Close method
+// TestClose tests the Close method.
 func (suite *BufferedGrpcWriteSyncerTestSuite) TestClose() {
 	// Set up expectations
 	suite.mockConn.On("GetState").Return(connectivity.Ready)
@@ -485,7 +496,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestClose() {
 	suite.grpcSyncer.buffer = append(suite.grpcSyncer.buffer, "test message")
 
 	err := suite.grpcSyncer.Close()
-	suite.NoError(err)
+	suite.Require().NoError(err)
 
 	select {
 	case <-suite.grpcSyncer.done:
@@ -498,7 +509,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestClose() {
 	suite.mockClient.AssertExpectations(suite.T())
 }
 
-// TestRun tests the run method
+// TestRun tests the run method.
 func (suite *BufferedGrpcWriteSyncerTestSuite) TestRun() {
 	// Create a new syncer for this test with proper initialization
 	bws := &BufferedGrpcWriteSyncer{
@@ -519,21 +530,22 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestRun() {
 	// Close the syncer after a short delay
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		bws.Close()
+
+		_ = bws.Close()
 	}()
 
 	go bws.run()
 
 	time.Sleep(200 * time.Millisecond)
 
-	suite.Equal(0, len(bws.buffer))
+	suite.Empty(bws.buffer)
 
 	// Verify all expectations were met
 	suite.mockConn.AssertExpectations(suite.T())
 	suite.mockClient.AssertExpectations(suite.T())
 }
 
-// TestNewProductionGRPCLogger tests the NewProductionGRPCLogger function
+// TestNewProductionGRPCLogger tests the NewProductionGRPCLogger function.
 func (suite *BufferedGrpcWriteSyncerTestSuite) TestNewProductionGRPCLogger() {
 	logger := NewProductionGRPCLogger(suite.grpcSyncer)
 	suite.NotNil(logger)

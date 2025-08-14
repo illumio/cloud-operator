@@ -20,8 +20,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
-	// to ensure that exec-entrypoint and run can make use of them.
+	"time"
 
 	"github.com/go-logr/zapr"
 	"github.com/google/gops/agent"
@@ -31,7 +30,6 @@ import (
 	"k8s.io/klog/v2"
 
 	controller "github.com/illumio/cloud-operator/internal/controller"
-	//+kubebuilder:scaffold:imports
 )
 
 const (
@@ -46,7 +44,8 @@ const (
 	defaultStreamSuccessPeriodAuth    = "2h"
 )
 
-// newHealthHandler returns an HTTP HandlerFunc that checks the health of the server by calling the given function and returns a status code accordingly
+// newHealthHandler returns an HTTP HandlerFunc that checks the health of the
+// server by calling the given function and returns a status code accordingly.
 func newHealthHandler(checkFunc func() bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if checkFunc() {
@@ -71,6 +70,7 @@ func main() {
 	// Create a buffered grpc write syncer without a valid gRPC connection initially
 	// Using nil for the `pb.KubernetesInfoService_KubernetesLogsClient`.
 	bufferedGrpcSyncer := controller.NewBufferedGrpcWriteSyncer()
+
 	logger := controller.NewProductionGRPCLogger(bufferedGrpcSyncer)
 	defer logger.Sync() //nolint:errcheck
 
@@ -126,7 +126,7 @@ func main() {
 		CiliumNamespaces:       viper.GetStringSlice("cilium_namespaces"),
 		HttpsProxy:             viper.GetString("https_proxy"),
 		IPFIXCollectorPort:     viper.GetString("ipfix_collector_port"),
-		OnboardingClientId:     viper.GetString("onboarding_client_id"),
+		OnboardingClientID:     viper.GetString("onboarding_client_id"),
 		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
 		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
 		OVNKNamespace:          viper.GetString("ovnk_namespace"),
@@ -150,7 +150,7 @@ func main() {
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
 		zap.Strings("cilium_namespaces", envConfig.CiliumNamespaces),
 		zap.String("https_proxy", envConfig.HttpsProxy),
-		zap.String("onboarding_client_id", envConfig.OnboardingClientId),
+		zap.String("onboarding_client_id", envConfig.OnboardingClientID),
 		zap.String("onboarding_endpoint", envConfig.OnboardingEndpoint),
 		zap.String("ovnk_namespace", envConfig.OVNKNamespace),
 		zap.String("ipfix_collector_port", envConfig.IPFIXCollectorPort),
@@ -173,12 +173,17 @@ func main() {
 	}
 
 	http.HandleFunc("/healthz", newHealthHandler(controller.ServerIsHealthy))
-	healthChecker := &http.Server{Addr: ":8080"}
+	healthChecker := &http.Server{
+		Addr:              ":8080",
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       10 * time.Second,
+	}
 
 	errChan := make(chan error, 1)
 
 	go func() {
 		errChan <- healthChecker.ListenAndServe()
+
 		err := <-errChan
 		logger.Fatal("healthz check server failed", zap.Error(err))
 	}()
