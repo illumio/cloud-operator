@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	cryptotls "crypto/tls"
 	"fmt"
 
 	"github.com/cilium/cilium/api/v1/flow"
@@ -28,32 +29,63 @@ const (
 	ciliumHubbleRelayNamespace string = "kube-system"
 )
 
-// newCiliumFlowCollector connects to Cilium Hubble Relay, sets up an Observer client, and returns a new Collector using it.
-func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace string, tlsAuthProperties tls.AuthProperties) (*CiliumFlowCollector, error) {
+// newCiliumFlowCollector connects to Cilium Hubble Relay, sets up an Observer client,
+// and returns a new Collector using it. It tries namespaces until discovery succeeds.
+func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespaces []string, tlsAuthProperties tls.AuthProperties) (*CiliumFlowCollector, error) {
 	clientset, err := NewClientSet()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new client set: %w", err)
 	}
+	var hubbleAddress string
+	var tlsConfig *cryptotls.Config
+	var discoveryErr error
 
-	service, err := hubble.DiscoverCiliumHubbleRelay(ctx, ciliumNamespace, clientset)
-	if err != nil {
-		return nil, fmt.Errorf("failed to discover Cilium Hubble Relay service: %w", err)
+	for _, ciliumNamespace := range ciliumNamespaces {
+		// Step 1: Try to discover Hubble Relay
+		service, err := hubble.DiscoverCiliumHubbleRelay(ctx, ciliumNamespace, clientset)
+		if err != nil {
+			logger.Debug("Failed to discover Cilium Hubble Relay service",
+				zap.String("namespace", ciliumNamespace), zap.Error(err))
+			discoveryErr = err
+			continue
+		}
+
+		// Step 2: Get Relay address
+		hubbleAddress, err = hubble.GetAddressFromService(service)
+		if err != nil {
+			return nil, fmt.Errorf("failed to discover Cilium Hubble Relay address: %w", err)
+		}
+
+		// Step 3: Get TLS config (unless disabled)
+		tlsConfig, err = hubble.GetTLSConfig(ctx, clientset, logger, ciliumHubbleMTLSSecretName, ciliumNamespace)
+		if err != nil {
+			logger.Warn("Failed to get TLS config", zap.String("namespace", ciliumNamespace), zap.Error(err))
+			tlsConfig = nil
+		}
+		if tlsAuthProperties.DisableTLS {
+			logger.Info("TLS is disabled via configuration")
+			tlsConfig = nil
+		}
+
+		// Found a working namespace — stop checking
+		logger.Info("Cilium Hubble Relay discovered successfully",
+			zap.String("namespace", ciliumNamespace),
+			zap.String("address", hubbleAddress))
+		break
 	}
 
-	hubbleAddress, err := hubble.GetAddressFromService(service)
-	if err != nil {
-		return nil, fmt.Errorf("failed to discover Cilium Hubble Relay address: %w", err)
-	}
-	tlsConfig, err := hubble.GetTLSConfig(ctx, clientset, logger, ciliumHubbleMTLSSecretName, ciliumHubbleRelayNamespace)
-	if err != nil || tlsAuthProperties.DisableTLS {
-		tlsConfig = nil
+	if hubbleAddress == "" {
+		return nil, fmt.Errorf("failed to find Cilium Hubble Relay: %w", discoveryErr)
 	}
 
+	// Step 4: Connect to Relay
 	conn, err := hubble.ConnectToHubbleRelay(ctx, logger, hubbleAddress, tlsConfig, tlsAuthProperties.DisableALPN)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Cilium Hubble Relay: %w", err)
 	}
-	logger.Info("Successfully connected to Cilium Hubble Relay", zap.String("address", hubbleAddress))
+
+	logger.Info("Successfully connected to Cilium Hubble Relay",
+		zap.String("address", hubbleAddress))
 
 	hubbleClient := observer.NewObserverClient(conn)
 	return &CiliumFlowCollector{logger: logger, client: hubbleClient}, nil

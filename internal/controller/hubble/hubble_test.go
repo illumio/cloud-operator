@@ -225,7 +225,7 @@ func (suite *HubbleSuite) TestLoadMTLSConfigFromData() {
 	clientCertData := []byte(clientCertPEM)
 	clientKeyData := []byte(clientKeyPEM)
 
-	tlsConfig, err := loadMTLSConfigFromData(logger, caCertData, clientCertData, clientKeyData)
+	tlsConfig, err := loadMTLSConfigFromData(logger, caCertData, clientCertData, clientKeyData, "kube-system")
 	suite.NoError(err)
 	suite.NotNil(tlsConfig)
 
