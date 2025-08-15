@@ -5,9 +5,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -16,8 +19,20 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// ResourceManagerConfig holds the configuration for creating a new ResourceManager
+type ResourceManagerConfig struct {
+	ResourceName  string
+	Clientset     *kubernetes.Clientset
+	BaseLogger    *zap.Logger
+	DynamicClient dynamic.Interface
+	StreamManager *streamManager
+	Limiter       *rate.Limiter
+}
+
 // ResourceManager encapsulates components for listing and managing Kubernetes resources.
 type ResourceManager struct {
+	// resourceName identifies which resource this manager handles
+	resourceName string
 	// Clientset providing accees to k8s api.
 	clientset *kubernetes.Clientset
 	// Logger provides strucuted logging interface.
@@ -30,13 +45,27 @@ type ResourceManager struct {
 	limiter *rate.Limiter
 }
 
-// TODO: Make a struct with the ClientSet as a field, and convertMetaObjectToMetadata, getPodIPAddresses, getProviderIdNodeSpec should be methods of that struct.
+// NewResourceManager creates a new [ResourceManager] for a specific resource type.
+// The logger will automatically include the resource name in all log messages.
+func NewResourceManager(config ResourceManagerConfig) *ResourceManager {
+	// Create a logger with the resource name already included
+	logger := config.BaseLogger.With(zap.String("resource", config.ResourceName))
+	return &ResourceManager{
+		resourceName:  config.ResourceName,
+		clientset:     config.Clientset,
+		logger:        logger,
+		dynamicClient: config.DynamicClient,
+		streamManager: config.StreamManager,
+		limiter:       config.Limiter,
+	}
+}
+
+// TODO: Make a struct with the ClientSet as a field, and [convertMetaObjectToMetadata], [getPodIPAddresses], [getProviderIdNodeSpec] should be methods of that struct.
 
 // WatchK8sResources initiates a watch stream for the specified Kubernetes resource starting from the given resourceVersion.
 // This function blocks until the watch ends or the context is canceled.
-func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.CancelFunc, resource string, apiGroup string, resourceVersion string) {
+func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.CancelFunc, apiGroup string, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation) {
 	defer cancel()
-
 	// Here intiatate the watch event
 	watchOptions := metav1.ListOptions{
 		Watch:           true,
@@ -49,20 +78,21 @@ func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.
 		return
 	}
 
-	err = r.watchEvents(ctx, resource, apiGroup, watchOptions)
+	err = r.watchEvents(ctx, apiGroup, watchOptions, mutationChan)
 	if err != nil {
-		r.logger.Error("Watch failed", zap.String("resource", resource), zap.Error(err))
+		r.logger.Error("Watch failed", zap.Error(err))
 		return
 	}
 }
 
 // DynamicListResources lists a specifed resource dynamically and sends down the current gRPC stream.
-func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.Logger, resource string, apiGroup string) (string, error) {
-	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
+func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.Logger, apiGroup string) (string, error) {
+	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
 	objs, resourceListVersion, resourceK8sKind, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
 		return "", err
 	}
+
 	for _, obj := range objs {
 		metadataObj, err := convertMetaObjectToMetadata(logger, ctx, obj, r.clientset, resourceK8sKind)
 		if err != nil {
@@ -75,6 +105,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.
 			return "", err
 		}
 	}
+	r.logger.Debug("Succesfully sent K8s workloads", zap.Int("count", len(objs)))
 
 	select {
 	case <-ctx.Done():
@@ -106,19 +137,16 @@ func getErrFromWatchEvent(event watch.Event) error {
 // watchEvents watches Kubernetes resources. The second part of the of the "list
 // and watch" strategy.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
-func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiGroup string, watchOptions metav1.ListOptions) error {
-	logger := r.logger.With(
-		zap.String("api_group", apiGroup),
-		zap.String("resource", resource),
-	)
+func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watchOptions metav1.ListOptions, mutationChan chan *pb.KubernetesResourceMutation) error {
+	logger := r.logger.With(zap.String("api_group", apiGroup))
 
-	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: resource}
+	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
 	watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
 		logger.Error("Error setting up watch on resource", zap.Error(err))
 		return err
 	}
-
+	mutationCount := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -155,12 +183,23 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 				return err
 			}
 
-			// Helper function: type gymnastics + send the KubernetesObjectData out on the wire
-			err = r.streamManager.streamMutationObjectData(logger, metadataObj, event.Type)
+			// Helper function: type gymnastics + send the KubernetesObjectData on the mutation channel
+			mutation, err := r.streamManager.createMutationObject(metadataObj, event.Type)
 			if err != nil {
 				logger.Error("Cannot send resource mutation", zap.Error(err))
 				return err
 			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case mutationChan <- mutation:
+			}
+			mutationCount++
+
+		case <-time.After(60 * time.Second):
+			logger.Debug("Current mutation count", zap.Int("mutation_count", mutationCount))
+			logger.Debug("Resetting mutation count")
+			mutationCount = 0
 		}
 	}
 }
@@ -169,6 +208,14 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resource string, apiG
 func (r *ResourceManager) FetchResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) (*unstructured.UnstructuredList, error) {
 	unstructuredResources, err := r.dynamicClient.Resource(resource).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
+		// Check if the error is related to forbidden access
+		if apierrors.IsForbidden(err) {
+			r.logger.Warn("Access forbidden for resource", zap.Stringer("kind", resource), zap.Error(err))
+			// Gracefully handle forbidden errors by returning the wrapped error
+			return nil, fmt.Errorf("access forbidden for resource %s: %w", resource.Resource, err)
+		}
+
+		// Log and return other errors as usual
 		r.logger.Error("Cannot list resource", zap.Stringer("kind", resource), zap.Error(err))
 		return nil, err
 	}

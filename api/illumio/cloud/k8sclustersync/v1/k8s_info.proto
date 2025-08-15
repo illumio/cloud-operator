@@ -44,6 +44,7 @@ message KubernetesObjectData {
     KubernetesPodData pod = 100;
     KubernetesNodeData node = 101;
     KubernetesServiceData service = 102;
+    KubernetesNetworkPolicyData network_policy = 103;
   }
 }
 
@@ -87,6 +88,72 @@ message KubernetesPodData {
   repeated string ip_addresses = 1;
 }
 
+// KubernetesNetworkPolicyData contains information specific to a NetworkPolicy object.
+message KubernetesNetworkPolicyData {
+  bool ingress = 1; // True if Ingress policy is enabled
+  bool egress = 2; // True if Egress policy is enabled
+  LabelSelector pod_selector = 3; // Pod selector for the policy
+  repeated NetworkPolicyRule ingress_rules = 4; // Ingress rules for the policy
+  repeated NetworkPolicyRule egress_rules = 5; // Egress rules for the policy
+}
+
+// LabelSelector selects a k8s resource (e.g., a pod or namespace) by its labels.
+message LabelSelector {
+  map<string, string> match_labels = 1;
+  repeated LabelSelectorRequirement match_expressions = 2;
+}
+
+// LabelSelectorRequirement is a selector that contains values, a key, and an operator that relates the key and values.
+message LabelSelectorRequirement {
+  string key = 1;
+  // operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
+  string operator = 2;
+  repeated string values = 3;
+}
+
+// IPBlock defines a particular CIDR (Ex: 10.10.10.0/24).
+message IPBlock {
+  string cidr = 1;
+  repeated string except = 2;
+}
+
+// Peer defines a network peer as a set of IP addresses or a set of pods.
+message Peer {
+  oneof peer {
+    IPBlock ip_block = 1;
+    PeerSelector pods = 2;
+  }
+}
+
+// PeerSelector selects a set of pods.
+message PeerSelector {
+  // Selects namespaces using cluster-scoped labels.
+  // An empty selector selects all namespaces.
+  optional LabelSelector namespace_selector = 1;
+  // Selects pods in the selected namespaces using pod labels.
+  // An empty selectors selects all pods.
+  optional LabelSelector pod_selector = 2;
+}
+
+// Port defines a network port.
+message Port {
+  enum Protocol {
+    PROTOCOL_TCP_UNSPECIFIED = 0; // Default value in Kubernetes
+    PROTOCOL_UDP = 1;
+    PROTOCOL_SCTP = 2;
+  }
+
+  Protocol protocol = 1;
+  optional string port = 2;
+  optional int32 end_port = 3;
+}
+
+// NetworkPolicyRule defines a single ingress or egress rule.
+message NetworkPolicyRule {
+  repeated Peer peers = 1;
+  repeated Port ports = 2;
+}
+
 // Information identifying an object owning a Kubernetes resource.
 // https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#ownerreference-v1-meta
 message KubernetesOwnerReference {
@@ -124,8 +191,10 @@ enum FlowCollector {
   FLOW_COLLECTOR_CILIUM = 2;
   // Indicates that Falco is deployed and configured for collecting network flows.
   FLOW_COLLECTOR_FALCO = 3;
+  // Indicates that OVN-Kubernetes is deployed and configured for collecting network flows.
+  FLOW_COLLECTOR_OVNK = 4;
   // Indicates that Calico CNI plugin is deployed and is used for collecting network flows.
-  FLOW_COLLECTOR_CALICO = 4;
+  FLOW_COLLECTOR_CALICO = 5;
 }
 
 // Message sent by the operator in a KubernetesResources request stream.
@@ -177,15 +246,15 @@ message KubernetesResourceMutation {
   }
 }
 
-// A flow received from Falco using custom rules
-message FalcoFlow {
+// A flow with a simple 5-tuple flow key received from a CNI plugin
+message FiveTupleFlow {
   // layer3 IP layer, source, destination and ip_version
   IP layer3 = 1;
   // Proto contains protocol used
   Layer4 layer4 = 2;
 
   oneof ts {
-    // time contains the unparsed timestamp string received from Falco; parse it and set timestamp instead
+    // time contains the unparsed timestamp string received from a CNI plugin; parse it and set timestamp instead
     string time = 3 [deprecated = true];
     google.protobuf.Timestamp timestamp = 4;
   }
@@ -358,6 +427,7 @@ message Policy {
   string namespace = 2;
   repeated string labels = 3;
   uint64 revision = 4;
+  string kind = 5;
 }
 
 // A flow received from Calico using the Felix API.
@@ -400,7 +470,7 @@ message SendKubernetesNetworkFlowsRequest {
     Keepalive keepalive = 3;
 
     CiliumFlow cilium_flow = 1;
-    FalcoFlow falco_flow = 2;
+    FiveTupleFlow five_tuple_flow = 2;
     CalicoFlow calico_flow = 4;
   }
 }

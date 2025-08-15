@@ -17,3 +17,10 @@ spec:
             operator: In
             values:
               - {{ .Values.falco.namespace }}
+  - from:
+    - namespaceSelector:
+        matchExpressions:
+          - key: kubernetes.io/metadata.name
+            operator: In
+            values:
+              - {{ .Values.openshift.ovnk_namespace }}

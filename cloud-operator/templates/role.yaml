@@ -10,3 +10,29 @@ rules:
   resources: ["secrets"]
   # resourceNames: ["onboardingcreds", "clustercreds"]
   verbs: ["get", "list", "patch", "update", "watch"]
+---
+# Role for reading the hubble-relay-client-certs secret in the kube-system namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: kube-system # Namespace where the Secret exists
+  name: hubble-client-certs-reader
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["hubble-relay-client-certs"] # Name of the Secret
+  verbs: ["get"]
+{{- if (lookup "v1" "Namespace" "" "gke-managed-dpv2-observability") }}
+---
+# Role to read secrets in the GKE managed observability namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hubble-client-certs-reader
+  namespace: gke-managed-dpv2-observability
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["hubble-relay-client-certs"]
+  verbs: ["get"]
+{{- end }}

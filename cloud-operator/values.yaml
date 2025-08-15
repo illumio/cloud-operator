@@ -8,6 +8,12 @@ image:
   tag: "0.0.1"
   pullPolicy: IfNotPresent
 
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
 serviceAccount:
   create: true
   name: "illumio-cloud-sa"
@@ -31,6 +37,12 @@ clusterCredsSecret:
 onboardingSecret:
   clientId: ""
   clientSecret: ""
+
+service:
+  clusterIP: ""
+
+openshift:
+  ovnk_namespace: "openshift-ovn-kubernetes"
 
 falco:
   enabled: false
@@ -76,3 +88,5 @@ env:
     connect: "1h"
     auth: "2h"
   httpsProxy: ""
+  ipfixCollectorPort: 4739
+  verboseDebugging: false

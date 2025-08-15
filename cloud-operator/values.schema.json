@@ -1,7 +1,12 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
     "properties": {
+        "affinity": {
+            "type": "object"
+        },
         "clusterCredsSecret": {
+            "type": "object",
             "properties": {
                 "clientId": {
                     "type": "string"
@@ -15,13 +20,13 @@
                 "forceSecretCreation": {
                     "type": "boolean"
                 }
-            },
-            "type": "object"
+            }
         },
         "defaultNamespace": {
             "type": "string"
         },
         "env": {
+            "type": "object",
             "properties": {
                 "calicoNamespace": {
                     "type": "string"
@@ -29,10 +34,14 @@
                 "httpsProxy": {
                     "type": "string"
                 },
+                "ipfixCollectorPort": {
+                    "type": "integer"
+                },
                 "onboardingEndpoint": {
                     "type": "string"
                 },
                 "streamKeepalivePeriods": {
+                    "type": "object",
                     "properties": {
                         "configuration": {
                             "type": "string"
@@ -46,10 +55,10 @@
                         "logs": {
                             "type": "string"
                         }
-                    },
-                    "type": "object"
+                    }
                 },
                 "streamSuccessPeriods": {
+                    "type": "object",
                     "properties": {
                         "auth": {
                             "type": "string"
@@ -57,37 +66,41 @@
                         "connect": {
                             "type": "string"
                         }
-                    },
-                    "type": "object"
+                    }
                 },
                 "tlsSkipVerify": {
                     "type": "boolean"
                 },
                 "tokenEndpoint": {
                     "type": "string"
+                },
+                "verboseDebugging": {
+                    "type": "boolean"
                 }
-            },
-            "type": "object"
+            }
         },
         "falco": {
+            "type": "object",
             "properties": {
                 "customRules": {
+                    "type": "object",
                     "properties": {
                         "rules-networking.yaml": {
                             "type": "string"
                         }
-                    },
-                    "type": "object"
+                    }
                 },
                 "enabled": {
                     "type": "boolean"
                 },
                 "falco": {
+                    "type": "object",
                     "properties": {
                         "buffered_outputs": {
                             "type": "boolean"
                         },
                         "http_output": {
+                            "type": "object",
                             "properties": {
                                 "enabled": {
                                     "type": "boolean"
@@ -101,8 +114,7 @@
                                 "url": {
                                     "type": "string"
                                 }
-                            },
-                            "type": "object"
+                            }
                         },
                         "json_include_output_property": {
                             "type": "boolean"
@@ -113,16 +125,15 @@
                         "json_output": {
                             "type": "boolean"
                         }
-                    },
-                    "type": "object"
+                    }
                 },
                 "namespace": {
                     "type": "string"
                 }
-            },
-            "type": "object"
+            }
         },
         "image": {
+            "type": "object",
             "properties": {
                 "pullPolicy": {
                     "type": "string"
@@ -133,10 +144,13 @@
                 "tag": {
                     "type": "string"
                 }
-            },
+            }
+        },
+        "nodeSelector": {
             "type": "object"
         },
         "onboardingSecret": {
+            "type": "object",
             "properties": {
                 "clientId": {
                     "type": "string"
@@ -144,8 +158,15 @@
                 "clientSecret": {
                     "type": "string"
                 }
-            },
-            "type": "object"
+            }
+        },
+        "openshift": {
+            "type": "object",
+            "properties": {
+                "ovnk_namespace": {
+                    "type": "string"
+                }
+            }
         },
         "priorityClassName": {
             "type": "string"
@@ -154,8 +175,10 @@
             "type": "integer"
         },
         "resources": {
+            "type": "object",
             "properties": {
                 "limits": {
+                    "type": "object",
                     "properties": {
                         "cpu": {
                             "type": "string"
@@ -163,10 +186,10 @@
                         "memory": {
                             "type": "string"
                         }
-                    },
-                    "type": "object"
+                    }
                 },
                 "requests": {
+                    "type": "object",
                     "properties": {
                         "cpu": {
                             "type": "string"
@@ -174,16 +197,22 @@
                         "memory": {
                             "type": "string"
                         }
-                    },
-                    "type": "object"
+                    }
                 }
-            },
-            "type": "object"
+            }
+        },
+        "service": {
+            "type": "object",
+            "properties": {
+                "clusterIP": {
+                    "type": "string"
+                }
+            }
         },
         "serviceAccount": {
+            "type": "object",
             "properties": {
                 "annotations": {
-                    "properties": {},
                     "type": "object"
                 },
                 "automount": {
@@ -195,9 +224,10 @@
                 "name": {
                     "type": "string"
                 }
-            },
-            "type": "object"
+            }
+        },
+        "tolerations": {
+            "type": "array"
         }
-    },
-    "type": "object"
+    }
 }

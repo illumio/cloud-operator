@@ -13,3 +13,33 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: cloud-operator-secret-manager
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: kube-system # Namespace where the Secret and Role exist
+  name: cloud-operator-read-hubble-client-certs
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.serviceAccount.name }}
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: hubble-client-certs-reader
+  apiGroup: rbac.authorization.k8s.io
+{{- if (lookup "v1" "Namespace" "" "gke-managed-dpv2-observability") }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cloud-operator-read-hubble-client-certs
+  namespace: gke-managed-dpv2-observability
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.serviceAccount.name }}
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: hubble-client-certs-reader
+{{- end }}

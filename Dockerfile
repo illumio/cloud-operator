@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.24.2 AS builder
+FROM golang:1.24.4 AS builder
 ARG VERSION=dev
 ARG TARGETOS
 ARG TARGETARCH
@@ -15,6 +15,7 @@ RUN go mod download
 # Copy the Go source
 COPY cmd/main.go cmd/main.go
 COPY internal/controller/ internal/controller/
+COPY internal/pkg/ internal/pkg/
 COPY internal/version/ internal/version/
 COPY api/ api/
 

@@ -36,10 +36,10 @@ func (sm *streamManager) sendNetworkFlowRequest(logger *zap.Logger, flow interfa
 	var request *pb.SendKubernetesNetworkFlowsRequest
 
 	switch f := flow.(type) {
-	case *pb.FalcoFlow:
+	case *pb.FiveTupleFlow:
 		request = &pb.SendKubernetesNetworkFlowsRequest{
-			Request: &pb.SendKubernetesNetworkFlowsRequest_FalcoFlow{
-				FalcoFlow: f,
+			Request: &pb.SendKubernetesNetworkFlowsRequest_FiveTupleFlow{
+				FiveTupleFlow: f,
 			},
 		}
 	case *pb.CiliumFlow:
@@ -58,11 +58,11 @@ func (sm *streamManager) sendNetworkFlowRequest(logger *zap.Logger, flow interfa
 	return nil
 }
 
-// streamMutationObjectData does type gymnastics then sends the result over the
+// createMutationObject does type gymnastics then sends the result over the
 // wire. It "upgrades" a KubernetesObjectData into a KubernetesResourceMutation
 // (which can be sent over the wire). It needs to use information from the
 // watch.EventType to accomplish this
-func (sm *streamManager) streamMutationObjectData(logger *zap.Logger, metadata *pb.KubernetesObjectData, eventType watch.EventType) error {
+func (sm *streamManager) createMutationObject(metadata *pb.KubernetesObjectData, eventType watch.EventType) (*pb.KubernetesResourceMutation, error) {
 	var mutation *pb.KubernetesResourceMutation
 	switch eventType {
 	case watch.Added:
@@ -84,12 +84,7 @@ func (sm *streamManager) streamMutationObjectData(logger *zap.Logger, metadata *
 			},
 		}
 	}
-	request := &pb.SendKubernetesResourcesRequest{
-		Request: &pb.SendKubernetesResourcesRequest_KubernetesResourceMutation{
-			KubernetesResourceMutation: mutation,
-		},
-	}
-	return sm.sendToResourceStream(logger, request)
+	return mutation, nil
 }
 
 // sendClusterMetadata sends a message to indicate current cluster metadata
