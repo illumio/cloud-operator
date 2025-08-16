@@ -1,0 +1,57 @@
+# Visit https://golangci-lint.run/ for usage documentation
+# and information on other useful linters
+version: "2"
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  default: all
+  disable:
+    - cyclop
+    - depguard
+    - dogsled
+    - dupl
+    - err113
+    - exhaustruct
+    - funcorder
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - godox
+    - ireturn
+    - lll
+    - mnd
+    - noinlineerr
+    - nonamedreturns
+    - paralleltest
+    - revive
+    - tagliatelle
+    - testpackage
+    - varnamelen
+    - wrapcheck
+    - wsl
+  settings:
+    gosec:
+      config:
+        G302: "0644" # Allow creating file with mode 0644
+  exclusions:
+    paths:
+      # Files in package internal/pkg/tls were copied from the gRPC package.
+      # Ignore issues in those files.
+      - "internal/pkg/tls/.*\\.go"
+
+formatters:
+  enable:
+    - gci
+    - gofmt
+    # - gofumpt
+    - goimports
+    # - golines
+  settings:
+    gci:
+      custom-order: true
+      sections:
+        - standard
+        - default
+        - prefix(github.com/illumio/cloud-operator)

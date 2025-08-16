@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -35,8 +36,8 @@ func TestNewFlowCache(t *testing.T) {
 	assert.Equal(t, 100, c.maxFlows)
 	assert.Equal(t, 10*time.Second, c.activeTimeout)
 	assert.Equal(t, c.outFlows, outFlows)
-	assert.Len(t, c.cache, 0)
-	assert.Equal(t, c.queue.Len(), 0)
+	assert.Empty(t, c.cache)
+	assert.Equal(t, 0, c.queue.Len())
 }
 
 func TestFlowCache_Close(t *testing.T) {
@@ -44,7 +45,7 @@ func TestFlowCache_Close(t *testing.T) {
 	c := NewFlowCache(10*time.Second, 100, outFlows)
 
 	err := c.Close()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	_, ok := <-c.inFlows
 	assert.False(t, ok, "inFlows channel should be closed")
@@ -61,7 +62,7 @@ func TestFlowCache_CacheFlow(t *testing.T) {
 	flow := &MockFlow{startTimestamp: time.Now(), key: "flow1"}
 
 	err := c.CacheFlow(ctx, flow)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	receivedFlow := <-c.inFlows
 	assert.Equal(t, flow, receivedFlow)
@@ -81,10 +82,11 @@ func TestFlowCache_EvictExpiredFlows(t *testing.T) {
 	c.cache[activeFlow.Key()] = activeFlow
 
 	ctx := context.Background()
-	c.evictExpiredFlows(ctx)
+	logger, _ := zap.NewDevelopment()
+	c.evictExpiredFlows(ctx, logger)
 
 	assert.Len(t, c.cache, 1)
-	assert.Equal(t, c.queue.Len(), 1)
+	assert.Equal(t, 1, c.queue.Len())
 	assert.Equal(t, activeFlow, c.queue.Front().Value)
 
 	evictedFlow := <-c.outFlows
@@ -105,7 +107,7 @@ func TestFlowCache_ShouldEvictOldest(t *testing.T) {
 	outFlows := make(chan pb.Flow, 10)
 	c := NewFlowCache(10*time.Second, 100, outFlows)
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		flow := &MockFlow{startTimestamp: time.Now(), key: "flow" + strconv.Itoa(i)}
 		c.queue.PushBack(flow)
 		c.cache[flow.Key()] = flow
@@ -122,7 +124,7 @@ func TestFlowCache_AddFlowToCache(t *testing.T) {
 	c.addFlowToCache(flow)
 
 	assert.Len(t, c.cache, 1)
-	assert.Equal(t, c.queue.Len(), 1)
+	assert.Equal(t, 1, c.queue.Len())
 	assert.Equal(t, flow, c.queue.Front().Value)
 }
 
@@ -142,7 +144,8 @@ func TestFlowCache_ResetTimerForNextExpiration(t *testing.T) {
 	expectedTime := flow.StartTimestamp().Add(c.activeTimeout)
 
 	// Reset the timer based on the next flow's expiration.
-	c.resetTimerForNextExpiration(timer)
+	logger, _ := zap.NewDevelopment()
+	c.resetTimerForNextExpiration(timer, logger)
 
 	remainingTime := time.Until(expectedTime)
 	actualRemainingTime := time.Until(time.Now().Add(remainingTime))
@@ -159,10 +162,11 @@ func TestFlowCache_EvictOldestFlow(t *testing.T) {
 	c.addFlowToCache(flow)
 
 	ctx := context.Background()
-	err := c.evictOldestFlow(ctx)
-	assert.NoError(t, err)
+	logger, _ := zap.NewDevelopment()
+	err := c.evictOldestFlow(ctx, logger)
+	require.NoError(t, err)
 
-	assert.Len(t, c.cache, 0)
+	assert.Empty(t, c.cache)
 	assert.Equal(t, 0, c.queue.Len())
 
 	evictedFlow := <-c.outFlows
@@ -174,6 +178,7 @@ func TestFlowCache_Run(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 
 	c := NewFlowCache(10*time.Second, 100, outFlows)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -184,6 +189,6 @@ func TestFlowCache_Run(t *testing.T) {
 
 	// Test termination of Run loop when context is cancelled
 	err := c.Run(ctx, logger)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, context.Canceled, err)
 }

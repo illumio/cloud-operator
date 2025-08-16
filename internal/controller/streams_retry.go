@@ -1,12 +1,13 @@
 package controller
 
 import (
+	"cmp"
+	"errors"
 	"fmt"
 	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"golang.org/x/exp/constraints"
 )
 
 type backoffOpts struct {
@@ -32,6 +33,7 @@ func (a backoffOpts) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddFloat64("exponential_factor", a.ExponentialFactor)
 	enc.AddFloat64("max_jitter_pct", a.MaxJitterPct)
 	enc.AddInt("severe_error_threshold", a.SevereErrorThreshold)
+
 	return nil
 }
 
@@ -45,14 +47,16 @@ type Action func() error
 //	clamp(1, 0, 3) // returns 1
 //	clamp(1, 4, 3) // returns 3
 //
-// It is a more semantic way to spell a composition of max/min
-func clamp[T constraints.Ordered](minimum, val, maximum T) T {
+// It is a more semantic way to spell a composition of max/min.
+func clamp[T cmp.Ordered](minimum, val, maximum T) T {
 	if val < minimum {
 		return minimum
 	}
+
 	if val > maximum {
 		return maximum
 	}
+
 	return val
 }
 
@@ -75,10 +79,11 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 
 	for range s.timer.C {
 		startTime := time.Now()
-		err := action()
 
+		err := action()
 		if err == nil {
 			s.HappyPathResetBackoff()
+
 			continue
 		}
 
@@ -97,10 +102,12 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 
 		// Give up after failing more than SevereErrorThreshold times
 		givingUp := s.consecutiveFailures >= opts.SevereErrorThreshold
+
 		lg := opts.Logger.Debug
 		if givingUp {
 			lg = opts.Logger.Error
 		}
+
 		lg("Error in backoff function",
 			zap.Bool("severe_failure", givingUp),
 			zap.Int("consecutive_failures", s.consecutiveFailures),
@@ -109,15 +116,17 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 
 		if !givingUp {
 			s.AddBackoff(1)
+
 			continue
 		}
 
 		s.UnhappyPathResetBackoff()
+
 		return fmt.Errorf("failed %d times", s.consecutiveFailures)
 	}
 
 	// unreachable
-	return fmt.Errorf("broke out of backoff loop")
+	return errors.New("broke out of backoff loop")
 }
 
 func (s *state) AddBackoff(count int) {

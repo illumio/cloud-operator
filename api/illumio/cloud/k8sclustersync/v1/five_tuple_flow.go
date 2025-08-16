@@ -21,8 +21,8 @@ func (flow *FiveTupleFlow) StartTimestamp() time.Time {
 func (flow *FiveTupleFlow) Key() any {
 	if flow == nil {
 		return nil
-
 	}
+
 	key := FiveTupleFlowKey{
 		SourceIP:      flow.GetLayer3().GetSource(),
 		DestinationIP: flow.GetLayer3().GetDestination(),
@@ -47,6 +47,6 @@ func (flow *FiveTupleFlow) Key() any {
 	default:
 		key.Protocol = "UNKNOWN"
 	}
-	return key
 
+	return key
 }

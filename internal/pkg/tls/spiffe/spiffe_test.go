@@ -172,6 +172,7 @@ func TestSPIFFEIDFromState(t *testing.T) {
 		logger := zaptest.NewLogger(t)
 		t.Run(tt.name, func(t *testing.T) {
 			state := tls.ConnectionState{PeerCertificates: []*x509.Certificate{{URIs: tt.urls}}}
+
 			id := SPIFFEIDFromState(state, logger)
 			if got, want := id != nil, tt.wantID; got != want {
 				t.Errorf("want wantID = %v, but SPIFFE ID is %v", want, id)
@@ -210,20 +211,22 @@ func TestSPIFFEIDFromCert(t *testing.T) {
 			if err != nil {
 				t.Fatalf("os.ReadFile(%s) failed: %v", testdata.Path(tt.dataPath), err)
 			}
+
 			block, _ := pem.Decode(data)
 			if block == nil {
-				//nolint:staticcheck // This is a test, and we are intentionally ignoring nil checks
 				return
 			}
-			//nolint:staticcheck // This is a test
+
 			cert, err := x509.ParseCertificate(block.Bytes)
 			if err != nil {
 				t.Fatalf("x509.ParseCertificate(%b) failed: %v", block.Bytes, err)
 			}
+
 			uri := SPIFFEIDFromCert(cert, logger)
 			if (uri != nil) != tt.wantID {
 				t.Fatalf("wantID got and want mismatch, got %t, want %t", uri != nil, tt.wantID)
 			}
+
 			if uri != nil && uri.String() != wantURI {
 				t.Fatalf("SPIFFE ID not expected, got %s, want %s", uri.String(), wantURI)
 			}

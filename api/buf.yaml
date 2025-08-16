@@ -1,6 +1,6 @@
 # Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-version: v1
+version: v2
 lint:
   use:
     - STANDARD

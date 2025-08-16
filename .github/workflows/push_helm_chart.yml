@@ -10,29 +10,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-        - name: Checkout code
-          uses: actions/checkout@v4
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.18.5"
 
-        - name: Set up Helm
-          uses: azure/setup-helm@v4
-          with:
-              version: "v3.16.4"
+      - name: Log in to GitHub Container Registry for Helm
+        run: echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
 
-        - name: Log in to GitHub Container Registry for Helm
-          run: echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
+      - name: Update Helm chart version
+        run: |
+          # Update the version in Chart.yaml
+          sed -i "s/^version:.*/version: ${{ github.ref_name }}/" cloud-operator/Chart.yaml
+          # Update the tag in values.yaml
+          sed -i "s/^  tag:.*/  tag: ${{ github.ref_name }}/" cloud-operator/values.yaml
 
-        - name: Update Helm chart version
-          run: |
-            # Update the version in Chart.yaml
-            sed -i "s/^version:.*/version: ${{ github.ref_name }}/" cloud-operator/Chart.yaml
-            # Update the tag in values.yaml
-            sed -i "s/^  tag:.*/  tag: ${{ github.ref_name }}/" cloud-operator/values.yaml
+      - name: Package Helm chart
+        run: helm package cloud-operator/ --version ${{ github.ref_name }}
 
-        - name: Package Helm chart
-          run: helm package cloud-operator/ --version ${{ github.ref_name }}
-
-        - name: Push Helm chart to GHCR
-          run: |
-            CHART_NAME=$(basename cloud-operator)
-            helm push ${CHART_NAME}-${{ github.ref_name }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+      - name: Push Helm chart to GHCR
+        run: |
+          CHART_NAME=$(basename cloud-operator)
+          helm push ${CHART_NAME}-${{ github.ref_name }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts

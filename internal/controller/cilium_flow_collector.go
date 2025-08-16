@@ -9,10 +9,11 @@ import (
 
 	"github.com/cilium/cilium/api/v1/flow"
 	observer "github.com/cilium/cilium/api/v1/observer"
+	"go.uber.org/zap"
+
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/hubble"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
-	"go.uber.org/zap"
 )
 
 // CiliumFlowCollector collects flows from Cilium Hubble Relay running in this cluster.
@@ -24,8 +25,8 @@ type CiliumFlowCollector struct {
 const (
 	ciliumHubbleRelayMaxFlowCount uint64 = 100
 
-	// Constants for fetching the mTLS secret
-	ciliumHubbleMTLSSecretName string = "hubble-relay-client-certs"
+	// Constants for fetching the mTLS secret.
+	ciliumHubbleMTLSSecretName string = "hubble-relay-client-certs" //nolint:gosec
 	ciliumHubbleRelayNamespace string = "kube-system"
 )
 
@@ -36,8 +37,11 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new client set: %w", err)
 	}
+
 	var hubbleAddress string
+
 	var tlsConfig *cryptotls.Config
+
 	var discoveryErr error
 
 	for _, ciliumNamespace := range ciliumNamespaces {
@@ -47,6 +51,7 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 			logger.Debug("Failed to discover Cilium Hubble Relay service",
 				zap.String("namespace", ciliumNamespace), zap.Error(err))
 			discoveryErr = err
+
 			continue
 		}
 
@@ -60,10 +65,13 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 		tlsConfig, err = hubble.GetTLSConfig(ctx, clientset, logger, ciliumHubbleMTLSSecretName, ciliumNamespace)
 		if err != nil {
 			logger.Warn("Failed to get TLS config", zap.String("namespace", ciliumNamespace), zap.Error(err))
+
 			tlsConfig = nil
 		}
+
 		if tlsAuthProperties.DisableTLS {
 			logger.Info("TLS is disabled via configuration")
+
 			tlsConfig = nil
 		}
 
@@ -71,11 +79,12 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 		logger.Info("Cilium Hubble Relay discovered successfully",
 			zap.String("namespace", ciliumNamespace),
 			zap.String("address", hubbleAddress))
+
 		break
 	}
 
 	if hubbleAddress == "" {
-		return nil, fmt.Errorf("failed to find Cilium Hubble Relay: %w", discoveryErr)
+		return nil, fmt.Errorf("failed to discover Cilium Hubble Relay: %w", discoveryErr)
 	}
 
 	// Step 4: Connect to Relay
@@ -88,18 +97,20 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 		zap.String("address", hubbleAddress))
 
 	hubbleClient := observer.NewObserverClient(conn)
+
 	return &CiliumFlowCollector{logger: logger, client: hubbleClient}, nil
 }
 
 // convertCiliumIP converts a flow.IP object to a pb.IP object.
-func convertCiliumIP(IP *flow.IP) *pb.IP {
-	if IP == nil {
+func convertCiliumIP(ipAddress *flow.IP) *pb.IP {
+	if ipAddress == nil {
 		return nil
 	}
+
 	return &pb.IP{
-		Source:      IP.GetSource(),
-		Destination: IP.GetDestination(),
-		IpVersion:   pb.IPVersion(IP.GetIpVersion()),
+		Source:      ipAddress.GetSource(),
+		Destination: ipAddress.GetDestination(),
+		IpVersion:   pb.IPVersion(ipAddress.GetIpVersion()),
 	}
 }
 
@@ -108,41 +119,43 @@ func convertCiliumLayer4(l4 *flow.Layer4) *pb.Layer4 {
 	if l4 == nil {
 		return nil
 	}
+
 	layer4 := &pb.Layer4{}
-	switch protocol := l4.Protocol.(type) {
+
+	switch protocol := l4.GetProtocol().(type) {
 	case *flow.Layer4_TCP:
 		layer4.Protocol = &pb.Layer4_Tcp{
 			Tcp: &pb.TCP{
-				SourcePort:      protocol.TCP.SourcePort,
-				DestinationPort: protocol.TCP.DestinationPort,
+				SourcePort:      protocol.TCP.GetSourcePort(),
+				DestinationPort: protocol.TCP.GetDestinationPort(),
 			},
 		}
 	case *flow.Layer4_UDP:
 		layer4.Protocol = &pb.Layer4_Udp{
 			Udp: &pb.UDP{
-				SourcePort:      protocol.UDP.SourcePort,
-				DestinationPort: protocol.UDP.DestinationPort,
+				SourcePort:      protocol.UDP.GetSourcePort(),
+				DestinationPort: protocol.UDP.GetDestinationPort(),
 			},
 		}
 	case *flow.Layer4_ICMPv4:
 		layer4.Protocol = &pb.Layer4_Icmpv4{
 			Icmpv4: &pb.ICMPv4{
-				Type: protocol.ICMPv4.Type,
-				Code: protocol.ICMPv4.Code,
+				Type: protocol.ICMPv4.GetType(),
+				Code: protocol.ICMPv4.GetCode(),
 			},
 		}
 	case *flow.Layer4_ICMPv6:
 		layer4.Protocol = &pb.Layer4_Icmpv6{
 			Icmpv6: &pb.ICMPv6{
-				Type: protocol.ICMPv6.Type,
-				Code: protocol.ICMPv6.Code,
+				Type: protocol.ICMPv6.GetType(),
+				Code: protocol.ICMPv6.GetCode(),
 			},
 		}
 	case *flow.Layer4_SCTP:
 		layer4.Protocol = &pb.Layer4_Sctp{
 			Sctp: &pb.SCTP{
-				SourcePort:      protocol.SCTP.SourcePort,
-				DestinationPort: protocol.SCTP.DestinationPort,
+				SourcePort:      protocol.SCTP.GetSourcePort(),
+				DestinationPort: protocol.SCTP.GetDestinationPort(),
 			},
 		}
 	default:
@@ -161,6 +174,7 @@ func convertCiliumWorkflows(workloads []*flow.Workload) []*pb.Workload {
 		}
 		protoWorkloads = append(protoWorkloads, protoWorkload)
 	}
+
 	return protoWorkloads
 }
 
@@ -177,6 +191,7 @@ func convertCiliumPolicies(policies []*flow.Policy) []*pb.Policy {
 		}
 		protoPolicies = append(protoPolicies, protoPolicy)
 	}
+
 	return protoPolicies
 }
 
@@ -187,43 +202,53 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 		Follow: true,
 	}
 	observerClient := fm.client
+
 	stream, err := observerClient.GetFlows(ctx, req)
 	if err != nil {
 		err = tls.AsTLSHandshakeError(err)
 		fm.logger.Error("Error getting network flows", zap.Error(err))
+
 		return err
 	}
+
 	defer func() {
 		err = stream.CloseSend()
 		if err != nil {
 			fm.logger.Error("Error closing observerClient stream", zap.Error(err))
 		}
 	}()
+
 	for {
 		select {
 		case <-ctx.Done():
 			fm.logger.Warn("Context cancelled, stopping flow export")
+
 			return ctx.Err()
 		default:
 		}
+
 		flow, err := stream.Recv()
 		if err != nil {
 			fm.logger.Warn("Failed to get flow log from stream", zap.Error(err))
+
 			return err
 		}
+
 		ciliumFlow := convertCiliumFlow(flow)
 		if ciliumFlow == nil {
 			continue
 		}
+
 		err = sm.FlowCache.CacheFlow(ctx, ciliumFlow)
 		if err != nil {
 			fm.logger.Error("Failed to cache flow", zap.Error(err))
+
 			return err
 		}
 	}
 }
 
-// convertCiliumFlow converts a GetFlowsResponse object to a CiliumFlow object
+// convertCiliumFlow converts a GetFlowsResponse object to a CiliumFlow object.
 func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 	flowObj := flow.GetFlow()
 	// Check for nil fields
@@ -261,6 +286,7 @@ func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 			Workloads:   convertCiliumWorkflows(flowObj.GetSource().GetWorkloads()),
 		}
 	}
+
 	if flowObj.GetDestination() != nil {
 		ciliumFlow.DestinationEndpoint = &pb.Endpoint{
 			Uid:         flowObj.GetDestination().GetID(),
@@ -271,5 +297,6 @@ func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 			Workloads:   convertCiliumWorkflows(flowObj.GetDestination().GetWorkloads()),
 		}
 	}
+
 	return ciliumFlow
 }

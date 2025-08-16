@@ -9,18 +9,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/illumio/cloud-operator/internal/controller/testhelper"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/illumio/cloud-operator/internal/controller/testhelper"
 )
 
 type ControllerTestSuite struct {
 	suite.Suite
-	ctx       context.Context
+
 	clientset *kubernetes.Clientset
 	logger    *zap.Logger
 }
@@ -31,8 +32,9 @@ func TestGenerateTestSuite(t *testing.T) {
 
 func (suite *ControllerTestSuite) SetupSuite() {
 	suite.logger = newCustomLogger(suite.T())
-	suite.ctx = context.Background()
+
 	var err error
+
 	err = testhelper.SetupTestCluster()
 	if err != nil {
 		suite.T().Fatal("Failed to set up test cluster " + err.Error())
@@ -42,7 +44,6 @@ func (suite *ControllerTestSuite) SetupSuite() {
 	if err != nil {
 		suite.T().Fatal("Failed to get client set " + err.Error())
 	}
-
 }
 
 func (suite *ControllerTestSuite) TearDownSuite() {
@@ -58,7 +59,8 @@ func (suite *ControllerTestSuite) TearDownSuite() {
 	}
 
 	// Verify cluster deletion
-	cmd := exec.Command("kind", "get", "clusters")
+	cmd := exec.CommandContext(context.Background(), "kind", "get", "clusters")
+
 	output, err := cmd.Output()
 	if err != nil {
 		suite.T().Fatal("Failed to verify cluster deletion: " + err.Error())
@@ -72,6 +74,7 @@ func (suite *ControllerTestSuite) TearDownSuite() {
 func (suite *ControllerTestSuite) SetupTest() {
 	// Delete the illumio-cloud namespace if it exists
 	var gracePeriod int64 = 0
+
 	err := suite.clientset.CoreV1().Namespaces().Delete(context.TODO(), "illumio-cloud", metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod})
 	if err != nil && !errors.IsNotFound(err) {
 		suite.T().Fatal("Failed to delete illumio-cloud namespace " + err.Error())
@@ -82,17 +85,19 @@ func (suite *ControllerTestSuite) SetupTest() {
 		if errors.IsNotFound(err) {
 			break
 		}
+
 		time.Sleep(1 * time.Second)
 	}
 }
 
-// LogWriter is a writer that writes to a custom function
+// LogWriter is a writer that writes to a custom function.
 type LogWriter struct {
 	logFunc func(string, ...interface{})
 }
 
 func (w *LogWriter) Write(p []byte) (n int, err error) {
 	w.logFunc("%s", p)
+
 	return len(p), nil
 }
 
@@ -101,6 +106,8 @@ func (w *LogWriter) Sync() error {
 }
 
 func newCustomLogger(t *testing.T) *zap.Logger {
+	t.Helper()
+
 	logWriter := &LogWriter{
 		logFunc: t.Logf,
 	}

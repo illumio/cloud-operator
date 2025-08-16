@@ -8,10 +8,11 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc/connectivity"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 const (
@@ -26,7 +27,7 @@ type ClientConnInterface interface {
 }
 
 // BufferedGrpcWriteSyncer is a custom zap writesync that writes to a grpc stream
-// In case stream is not connected it will buffer to memory
+// In case stream is not connected it will buffer to memory.
 type BufferedGrpcWriteSyncer struct {
 	client              pb.KubernetesInfoService_SendLogsClient
 	conn                ClientConnInterface
@@ -41,7 +42,7 @@ type BufferedGrpcWriteSyncer struct {
 	keepAlivePeriod     time.Duration
 }
 
-// NewBufferedGrpcWriteSyncer returns a new BufferedGrpcWriteSyncer
+// NewBufferedGrpcWriteSyncer returns a new BufferedGrpcWriteSyncer.
 func NewBufferedGrpcWriteSyncer() *BufferedGrpcWriteSyncer {
 	bws := &BufferedGrpcWriteSyncer{
 		client:              nil,
@@ -52,6 +53,7 @@ func NewBufferedGrpcWriteSyncer() *BufferedGrpcWriteSyncer {
 		keepAlivePeriod:     keepAlivePeriod,
 	}
 	go bws.run()
+
 	return bws
 }
 
@@ -59,6 +61,7 @@ func NewBufferedGrpcWriteSyncer() *BufferedGrpcWriteSyncer {
 func (b *BufferedGrpcWriteSyncer) Close() error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
+
 	b.flush()
 	// Close the channel if not already closed.
 	select {
@@ -67,7 +70,9 @@ func (b *BufferedGrpcWriteSyncer) Close() error {
 		return nil
 	default:
 	}
+
 	close(b.done)
+
 	return b.conn.Close()
 }
 
@@ -94,19 +99,24 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 		if err == nil {
 			if err := b.sendLogEntry(lostLogsMessage); err != nil {
 				b.lostLogEntriesErr = err
+
 				return
 			}
+
 			b.lostLogEntriesCount = 0
 			b.lostLogEntriesErr = nil
 		}
 	}
 
 	sentMessageCount := 0
+
 	for _, jsonMessage := range b.buffer {
 		if err := b.sendLogEntry(jsonMessage); err != nil {
 			b.lostLogEntriesErr = err
+
 			break
 		}
+
 		sentMessageCount += 1
 	}
 
@@ -119,7 +129,7 @@ func (b *BufferedGrpcWriteSyncer) flush() {
 	}
 }
 
-// sendLogsKeepalive sends a keepalive ping on the logs stream
+// sendLogsKeepalive sends a keepalive ping on the logs stream.
 func (b *BufferedGrpcWriteSyncer) sendLogsKeepalive() error {
 	return b.client.Send(&pb.SendLogsRequest{
 		Request: &pb.SendLogsRequest_Keepalive{
@@ -132,8 +142,10 @@ func (b *BufferedGrpcWriteSyncer) sendLogsKeepalive() error {
 func (b *BufferedGrpcWriteSyncer) run() {
 	ticker := time.NewTicker(logFlushInterval)
 	defer ticker.Stop()
+
 	keepAliveTicker := time.NewTicker(jitterTime(keepAlivePeriod, 0.10))
 	defer keepAliveTicker.Stop()
+
 	for {
 		select {
 		case <-ticker.C:
@@ -142,11 +154,14 @@ func (b *BufferedGrpcWriteSyncer) run() {
 			b.mutex.Unlock()
 		case <-keepAliveTicker.C:
 			b.mutex.Lock()
+
 			var err error
 			if b.client != nil {
 				err = b.sendLogsKeepalive()
 			}
+
 			b.mutex.Unlock()
+
 			if err != nil {
 				b.logger.Error("Failed to send logs keepalive", zap.Error(err))
 			}
@@ -183,6 +198,7 @@ func (b *BufferedGrpcWriteSyncer) write(jsonMessage string) {
 	} else {
 		// Flush buffered logs
 		b.flush()
+
 		if err := b.sendLogEntry(jsonMessage); err != nil {
 			shouldBuffer = true
 		}
@@ -220,6 +236,9 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_S
 // updateLogLevel sets the logger's log level based on the response from the server.
 func (b *BufferedGrpcWriteSyncer) updateLogLevel(level pb.LogLevel) {
 	switch level {
+	case pb.LogLevel_LOG_LEVEL_UNSPECIFIED:
+		b.logger.Warn("Unspecified log level received, defaulting to INFO")
+		b.logLevel.SetLevel(zapcore.InfoLevel)
 	case pb.LogLevel_LOG_LEVEL_DEBUG:
 		b.logger.Info("Set to DEBUG level log")
 		b.logLevel.SetLevel(zapcore.DebugLevel)
@@ -238,7 +257,7 @@ func (b *BufferedGrpcWriteSyncer) updateLogLevel(level pb.LogLevel) {
 	}
 }
 
-// zapCoreWrapper wraps a zapcore.Core to duplicate log entries into a BufferedGrpcWriteSyncer
+// zapCoreWrapper wraps a zapcore.Core to duplicate log entries into a BufferedGrpcWriteSyncer.
 type zapCoreWrapper struct {
 	core       zapcore.Core
 	encoder    zapcore.Encoder
@@ -251,6 +270,7 @@ func (w *zapCoreWrapper) Check(entry zapcore.Entry, ce *zapcore.CheckedEntry) *z
 	if downstream := w.core.Check(entry, ce); downstream != nil {
 		return downstream.AddCore(entry, w)
 	}
+
 	return ce
 }
 
@@ -271,6 +291,7 @@ func (w *zapCoreWrapper) With(fields []zapcore.Field) zapcore.Core {
 	for i := range fields {
 		fields[i].AddTo(newWrapper.encoder)
 	}
+
 	return newWrapper
 }
 
@@ -288,7 +309,7 @@ func (w *zapCoreWrapper) Write(entry zapcore.Entry, fields []zapcore.Field) erro
 }
 
 // NewGRPCLogger creates a Zap logger with multiple writesyncs:
-// one to stdout and one for GRPC writestream
+// one to stdout and one for GRPC writestream.
 func NewGRPCLogger(grpcSyncer *BufferedGrpcWriteSyncer, addCaller bool, clock zapcore.Clock) *zap.Logger {
 	// Create a production encoder config
 	encoderConfig := zap.NewProductionEncoderConfig()
@@ -324,6 +345,7 @@ func NewGRPCLogger(grpcSyncer *BufferedGrpcWriteSyncer, addCaller bool, clock za
 	grpcSyncer.logger = logger
 	grpcSyncer.logLevel = atomicLevel
 	grpcSyncer.encoder = encoder
+
 	return logger
 }
 

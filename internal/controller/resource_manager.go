@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,9 +16,11 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-// ResourceManagerConfig holds the configuration for creating a new ResourceManager
+// ResourceManagerConfig holds the configuration for creating a new ResourceManager.
 type ResourceManagerConfig struct {
 	ResourceName  string
 	Clientset     *kubernetes.Clientset
@@ -50,6 +51,7 @@ type ResourceManager struct {
 func NewResourceManager(config ResourceManagerConfig) *ResourceManager {
 	// Create a logger with the resource name already included
 	logger := config.BaseLogger.With(zap.String("resource", config.ResourceName))
+
 	return &ResourceManager{
 		resourceName:  config.ResourceName,
 		clientset:     config.Clientset,
@@ -75,53 +77,57 @@ func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.
 	err := r.limiter.Wait(ctx)
 	if err != nil {
 		r.logger.Error("Cannot wait using rate limiter", zap.Error(err))
+
 		return
 	}
 
 	err = r.watchEvents(ctx, apiGroup, watchOptions, mutationChan)
 	if err != nil {
 		r.logger.Error("Watch failed", zap.Error(err))
+
 		return
 	}
 }
 
-// DynamicListResources lists a specifed resource dynamically and sends down the current gRPC stream.
+// DynamicListResources lists a specified resource dynamically and sends down the current gRPC stream.
 func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.Logger, apiGroup string) (string, error) {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
+
 	objs, resourceListVersion, resourceK8sKind, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
 		return "", err
 	}
 
 	for _, obj := range objs {
-		metadataObj, err := convertMetaObjectToMetadata(logger, ctx, obj, r.clientset, resourceK8sKind)
-		if err != nil {
-			r.logger.Error("Cannot convert object metadata", zap.Error(err))
-			return "", err
-		}
+		metadataObj := convertMetaObjectToMetadata(ctx, obj, r.clientset, resourceK8sKind)
+
 		err = r.streamManager.sendObjectData(logger, metadataObj)
 		if err != nil {
 			r.logger.Error("Cannot send object metadata", zap.Error(err))
+
 			return "", err
 		}
 	}
-	r.logger.Debug("Succesfully sent K8s workloads", zap.Int("count", len(objs)))
+
+	r.logger.Debug("Successfully sent k8s workloads", zap.Int("count", len(objs)))
 
 	select {
 	case <-ctx.Done():
 		return "", err
 	default:
 	}
+
 	return resourceListVersion, nil
 }
 
 // getErrFromWatchEvent returns an error if the watch event is of type Error.
 // Includes the 'code', 'reason', and 'message'. If the watch event is NOT of
-// type Error then return nil
+// type Error then return nil.
 func getErrFromWatchEvent(event watch.Event) error {
 	if event.Object == nil {
 		return nil
 	}
+
 	if event.Type != watch.Error {
 		return nil
 	}
@@ -141,18 +147,23 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 	logger := r.logger.With(zap.String("api_group", apiGroup))
 
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
+
 	watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
 		logger.Error("Error setting up watch on resource", zap.Error(err))
+
 		return err
 	}
+
 	mutationCount := 0
+
 	for {
 		select {
 		case <-ctx.Done():
 			logger.Debug("Disconnected from CloudSecure",
 				zap.String("reason", "context cancelled"),
 			)
+
 			return ctx.Err()
 
 		case event := <-watcher.ResultChan():
@@ -161,12 +172,14 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 			case watch.Error:
 				err := getErrFromWatchEvent(event)
 				logger.Error("Watcher event has returned an error", zap.Error(err))
+
 				return err
 			case watch.Bookmark:
 				continue
 			case watch.Added, watch.Modified, watch.Deleted:
 			default:
 				logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
+
 				continue
 			}
 
@@ -174,31 +187,29 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 			convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
 			if err != nil {
 				logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
-				return err
-			}
-			resource := event.Object.GetObjectKind().GroupVersionKind().Kind
-			metadataObj, err := convertMetaObjectToMetadata(logger, ctx, *convertedData, r.clientset, resource)
-			if err != nil {
-				logger.Error("Cannot convert object metadata", zap.Error(err))
+
 				return err
 			}
 
+			resource := event.Object.GetObjectKind().GroupVersionKind().Kind
+
+			metadataObj := convertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resource)
+
 			// Helper function: type gymnastics + send the KubernetesObjectData on the mutation channel
-			mutation, err := r.streamManager.createMutationObject(metadataObj, event.Type)
-			if err != nil {
-				logger.Error("Cannot send resource mutation", zap.Error(err))
-				return err
-			}
+			mutation := r.streamManager.createMutationObject(metadataObj, event.Type)
+
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			case mutationChan <- mutation:
 			}
+
 			mutationCount++
 
 		case <-time.After(60 * time.Second):
 			logger.Debug("Current mutation count", zap.Int("mutation_count", mutationCount))
 			logger.Debug("Resetting mutation count")
+
 			mutationCount = 0
 		}
 	}
@@ -217,8 +228,10 @@ func (r *ResourceManager) FetchResources(ctx context.Context, resource schema.Gr
 
 		// Log and return other errors as usual
 		r.logger.Error("Cannot list resource", zap.Stringer("kind", resource), zap.Error(err))
+
 		return nil, err
 	}
+
 	return unstructuredResources, nil
 }
 
@@ -229,10 +242,13 @@ func (r *ResourceManager) ExtractObjectMetas(resources *unstructured.Unstructure
 		objMeta, err := getMetadatafromResource(r.logger, item)
 		if err != nil {
 			r.logger.Error("Cannot get Metadata from resource", zap.Error(err))
+
 			return nil, err
 		}
+
 		objectMetas = append(objectMetas, *objMeta)
 	}
+
 	return objectMetas, nil
 }
 
@@ -252,11 +268,12 @@ func (r *ResourceManager) ListResources(ctx context.Context, resource schema.Gro
 	return objectMetas, unstructuredResources.GetResourceVersion(), removeListSuffix(unstructuredResources.GetKind()), nil
 }
 
-// removeListSuffix removes the "List" suffix from a given string
-// Ex: PodList -> Pod, StafefulSetList -> StatefulSet
+// removeListSuffix removes the "List" suffix from a given string, e.g.,
+// PodList -> Pod, StafefulSetList -> StatefulSet.
 func removeListSuffix(s string) string {
 	if strings.HasSuffix(s, "List") {
 		return s[:len(s)-4] // Remove the last 4 characters ("List")
 	}
+
 	return s
 }

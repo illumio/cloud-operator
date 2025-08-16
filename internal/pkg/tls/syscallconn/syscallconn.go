@@ -53,6 +53,7 @@ func WrapSyscallConn(rawConn, newConn net.Conn) net.Conn {
 	if !ok {
 		return newConn
 	}
+
 	return &syscallConn{
 		Conn:    newConn,
 		sysConn: sysConn,

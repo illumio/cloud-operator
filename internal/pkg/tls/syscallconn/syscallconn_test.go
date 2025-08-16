@@ -53,6 +53,7 @@ func TestWrapSyscallConnNoWrap(t *testing.T) {
 	if _, ok := wrapConn.(syscall.Conn); ok {
 		t.Errorf("returned conn (type %T) implements syscall.Conn, want not implement", wrapConn)
 	}
+
 	if wrapConn != nsc {
 		t.Errorf("returned conn is %p, want %p (the passed-in newConn)", wrapConn, nsc)
 	}

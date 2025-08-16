@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
@@ -36,6 +35,7 @@ func TestHubbleSuite(t *testing.T) {
 
 func init() {
 	var err error
+
 	caCertPEM, clientCertPEM, clientKeyPEM, err = GenerateTestCerts()
 	if err != nil {
 		panic("Failed to generate test certificates: " + err.Error())
@@ -144,14 +144,14 @@ func (suite *HubbleSuite) TestGetTLSConfig() {
 			if tt.expectedErr != nil {
 				suite.ErrorIs(err, tt.expectedErr)
 			} else {
-				suite.NoError(err)
+				suite.Require().NoError(err)
 				suite.NotNil(tlsConfig)
-			}
 
-			if tt.expectedCredsExist {
-				suite.NotNil(tlsConfig)
-			} else {
-				suite.Nil(tlsConfig)
+				if tt.expectedCredsExist {
+					suite.NotNil(tlsConfig)
+				} else {
+					suite.Nil(tlsConfig)
+				}
 			}
 		})
 	}
@@ -210,7 +210,7 @@ func (suite *HubbleSuite) TestGetHubbleMTLSCertificatesFromSecret() {
 			if tt.expectedErr != nil {
 				suite.ErrorIs(err, tt.expectedErr)
 			} else {
-				suite.NoError(err)
+				suite.Require().NoError(err)
 				suite.Equal(caCertPEM, string(caData))
 				suite.Equal(clientCertPEM, string(clientCertData))
 				suite.Equal(clientKeyPEM, string(clientKeyData))
@@ -226,7 +226,7 @@ func (suite *HubbleSuite) TestLoadMTLSConfigFromData() {
 	clientKeyData := []byte(clientKeyPEM)
 
 	tlsConfig, err := loadMTLSConfigFromData(logger, caCertData, clientCertData, clientKeyData, "kube-system")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.NotNil(tlsConfig)
 
 	// Validate specific fields in the tls.Config object
@@ -249,7 +249,7 @@ func (suite *HubbleSuite) TestGetHubbleMTLSCertificatesFromSecret_MissingData() 
 	})
 
 	_, _, _, err := getMTLSCertificatesFromSecret(ctx, clientset, logger, "hubble-relay-client-certs", "kube-system")
-	suite.Error(err)
+	suite.Require().Error(err)
 	suite.ErrorIs(err, ErrCertDataMissingInSecret)
 }
 
@@ -352,8 +352,8 @@ func (suite *HubbleSuite) TestDiscoverHubbleRelay() {
 			clientset := fake.NewSimpleClientset()
 			if tt.serviceToCreate != nil {
 				// Create the service in the namespace defined within its ObjectMeta
-				_, err := clientset.CoreV1().Services(tt.serviceToCreate.ObjectMeta.Namespace).Create(context.TODO(), tt.serviceToCreate, metav1.CreateOptions{})
-				assert.NoError(suite.T(), err, "Failed to create service for test setup")
+				_, err := clientset.CoreV1().Services(tt.serviceToCreate.ObjectMeta.Namespace).Create(ctx, tt.serviceToCreate, metav1.CreateOptions{})
+				suite.Require().NoError(err, "Failed to create service for test setup")
 			}
 
 			discoveredService, err := DiscoverCiliumHubbleRelay(ctx, tt.namespaceToQuery, clientset)
@@ -364,15 +364,15 @@ func (suite *HubbleSuite) TestDiscoverHubbleRelay() {
 			// If tt.expectedService is nil, discoveredService should also be nil.
 			// If there are issues with complex fields (like TypeMeta, ResourceVersion),
 			// you might need to use a more specific comparison (e.g., equality.Semantic.DeepEqual or field-by-field).
-			assert.Equal(suite.T(), tt.expectedService, discoveredService)
+			suite.Equal(tt.expectedService, discoveredService)
 
 			// Compare the error
 			if tt.expectedError != nil {
-				assert.ErrorIs(suite.T(), err, tt.expectedError)
+				suite.ErrorIs(err, tt.expectedError)
 				// You could also check the exact error message if needed, but ErrorIs is generally preferred.
-				// assert.EqualError(suite.T(), err, tt.expectedError.Error())
+				// suite.EqualError(err, tt.expectedError.Error())
 			} else {
-				assert.NoError(suite.T(), err)
+				suite.NoError(err)
 			}
 		})
 	}
@@ -437,12 +437,12 @@ func (suite *HubbleSuite) TestGetHubbleRelayAddress() {
 		suite.Run(name, func() {
 			addr, err := GetAddressFromService(tt.service)
 
-			assert.Equal(suite.T(), tt.expectedAddr, addr)
+			suite.Equal(tt.expectedAddr, addr)
 
 			if tt.expectedErr != nil {
-				assert.EqualError(suite.T(), err, tt.expectedErr.Error())
+				suite.EqualError(err, tt.expectedErr.Error())
 			} else {
-				assert.NoError(suite.T(), err)
+				suite.NoError(err)
 			}
 		})
 	}
@@ -458,6 +458,7 @@ func (suite *HubbleSuite) TestConnectToHubbleRelay() {
 	}{
 		"successful mTLS connection": {
 			tlsConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
 				ServerName: "ui.hubble-relay.cilium.io",
 			},
 			hubbleAddress: "10.0.0.1:8080",
@@ -467,6 +468,7 @@ func (suite *HubbleSuite) TestConnectToHubbleRelay() {
 		},
 		"ALPN error and retry": {
 			tlsConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
 				ServerName: "ui.hubble-relay.cilium.io",
 			},
 			hubbleAddress: "10.0.0.1:8080",
@@ -494,6 +496,7 @@ func (suite *HubbleSuite) TestConnectToHubbleRelay() {
 				suite.ErrorIs(err, tt.expectedErr)
 			} else {
 				suite.NoError(err)
+
 				if tt.expectedConn {
 					suite.NotNil(conn)
 				} else {
@@ -523,6 +526,7 @@ func (suite *HubbleSuite) TestGenerateTransportCredentials() {
 		suite.Run(name, func() {
 			logger := zap.NewExample()
 			tlsConfig := &tls.Config{
+				MinVersion: tls.VersionTLS12,
 				ServerName: "ui.hubble-relay.cilium.io",
 			}
 

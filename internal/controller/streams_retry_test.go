@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -35,7 +36,7 @@ func TestClamp(t *testing.T) {
 
 func TestMarshalLogObject(t *testing.T) {
 	logger, err := zap.NewDevelopment()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	opts := backoffOpts{
 		InitialBackoff:       1 * time.Second,
@@ -48,13 +49,13 @@ func TestMarshalLogObject(t *testing.T) {
 
 	enc := zapcore.NewMapObjectEncoder()
 	err = opts.MarshalLogObject(enc)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify all fields are correctly marshaled
 	assert.Equal(t, opts.InitialBackoff, enc.Fields["initial_backoff"])
 	assert.Equal(t, opts.MaxBackoff, enc.Fields["max_backoff"])
-	assert.Equal(t, opts.ExponentialFactor, enc.Fields["exponential_factor"])
-	assert.Equal(t, opts.MaxJitterPct, enc.Fields["max_jitter_pct"])
+	assert.InEpsilon(t, opts.ExponentialFactor, enc.Fields["exponential_factor"], 0, 01)
+	assert.InEpsilon(t, opts.MaxJitterPct, enc.Fields["max_jitter_pct"], 0.01)
 	assert.Equal(t, opts.SevereErrorThreshold, enc.Fields["severe_error_threshold"])
 	// Logger field is not marshaled as it's not a basic type
 }
