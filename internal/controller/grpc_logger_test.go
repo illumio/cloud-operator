@@ -431,7 +431,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestLostLogEntriesCountIncrementO
 
 	// Assert that lostLogEntriesCount is incremented
 	suite.Equal(1, suite.grpcSyncer.lostLogEntriesCount, "lostLogEntriesCount should be incremented on buffer overflow")
-	suite.Len(len(suite.grpcSyncer.buffer), logMaxBufferSize, "Buffer should remain at max capacity")
+	suite.Len(suite.grpcSyncer.buffer, logMaxBufferSize, "Buffer should remain at max capacity")
 	suite.ErrorContains(suite.grpcSyncer.lostLogEntriesErr, "send error", "lostLogEntriesErr should contain the last Send error")
 }
 

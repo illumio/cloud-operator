@@ -367,7 +367,7 @@ func (suite *ControllerTestSuite) TestGetProviderIdNodeSpec() {
 			nodeName:       "nonexistent-node",
 			node:           nil,
 			expectedID:     "",
-			expectedErrMsg: "",
+			expectedErrMsg: "nodes \"nonexistent-node\" not found",
 		},
 		"node with providerID": {
 			nodeName: "test-node",

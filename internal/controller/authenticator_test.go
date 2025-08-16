@@ -58,21 +58,23 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 		"secret-not-found": {
 			secretName:     "non-existent-secret",
 			expectedError:  true,
-			expectedErrMsg: "secrets \"non-existent-secret\" not found",
+			expectedErrMsg: "failed to read cluster credentials from k8s secret: secrets \"non-existent-secret\" not found",
 		},
 		"client-id-not-found": {
 			secretName: "test-secret-no-client-id",
 			secretData: map[string][]byte{
 				SecretFieldClientSecret: []byte("test-client-secret"),
 			},
-			expectedError: false,
+			expectedError:        false,
+			expectedClientSecret: "test-client-secret",
 		},
 		"client-secret-not-found": {
 			secretName: "test-secret-no-client-secret-id",
 			secretData: map[string][]byte{
 				SecretFieldClientID: []byte("test-client-id"),
 			},
-			expectedError: false,
+			expectedError:    false,
+			expectedClientID: "test-client-id",
 		},
 	}
 
@@ -125,7 +127,7 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() { //nolint:gocognit
 			clusterClientSecret: "test-client-secret",
 			secretName:          "test-secret",
 			expectedError:       true,
-			expectedErrMsg:      "secrets \"test-secret\" not found",
+			expectedErrMsg:      "failed to read cluster credentials from k8s secret for update: secrets \"test-secret\" not found",
 		},
 		"success": {
 			namespaceExists:     true,
@@ -405,5 +407,5 @@ func TestClientBypassesProxy(t *testing.T) {
 	err = resp.Body.Close()
 	require.NoError(t, err)
 
-	assert.Equal(t, 1, atomic.LoadInt32(&proxyRequests))
+	assert.Equal(t, int32(1), atomic.LoadInt32(&proxyRequests))
 }
