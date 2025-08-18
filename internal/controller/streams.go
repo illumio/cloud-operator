@@ -40,7 +40,7 @@ const (
 )
 
 type streamClient struct {
-	ciliumNamespace           string
+	ciliumNamespaces          []string
 	conn                      *grpc.ClientConn
 	client                    pb.KubernetesInfoServiceClient
 	falcoEventChan            chan string
@@ -86,8 +86,8 @@ type watcherInfo struct {
 }
 
 type EnvironmentConfig struct {
-	// Namspace of Cilium.
-	CiliumNamespace string
+	// Namespaces of Cilium.
+	CiliumNamespaces []string
 	// K8s cluster secret name.
 	ClusterCreds string
 	// Client ID for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
@@ -491,8 +491,8 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 }
 
 // findHubbleRelay returns a *CiliumFlowCollector if hubble relay is found in the given namespace
-func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger, ciliumNamespace string) *CiliumFlowCollector {
-	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, ciliumNamespace, sm.streamClient.tlsAuthProperties)
+func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger) *CiliumFlowCollector {
+	ciliumFlowCollector, err := newCiliumFlowCollector(ctx, logger, sm.streamClient.ciliumNamespaces, sm.streamClient.tlsAuthProperties)
 	if err != nil {
 		logger.Error("Failed to create Cilium flow collector", zap.Error(err))
 		return nil
@@ -501,9 +501,9 @@ func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger
 }
 
 // StreamCiliumNetworkFlows handles the cilium network flow stream.
-func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *zap.Logger, ciliumNamespace string) error {
+func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *zap.Logger) error {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
-	ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, ciliumNamespace)
+	ciliumFlowCollector := sm.findHubbleRelay(ctx, logger)
 	if ciliumFlowCollector == nil {
 		logger.Info("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector")
 		return errors.New("hubble relay cannot be found")
@@ -579,7 +579,7 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
 
 	logger.Debug("Starting to stream cilium network flows")
-	err = sm.StreamCiliumNetworkFlows(ciliumCtx, logger, sm.streamClient.ciliumNamespace)
+	err = sm.StreamCiliumNetworkFlows(ciliumCtx, logger)
 	if err != nil {
 		if errors.Is(err, hubble.ErrHubbleNotFound) || errors.Is(err, hubble.ErrNoPortsAvailable) {
 			logger.Warn("Disabling Cilium flow collection", zap.Error(err))
@@ -759,7 +759,7 @@ func (sm *streamManager) manageStream(
 
 // determineFlowCollector determines the flow collector type and returns the flow collector type, stream function, and the corresponding done channel.
 func determineFlowCollector(ctx context.Context, logger *zap.Logger, sm *streamManager, envMap EnvironmentConfig, clientset *kubernetes.Clientset) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
-	if sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace) != nil && !sm.streamClient.disableNetworkFlowsCilium {
+	if sm.findHubbleRelay(ctx, logger) != nil && !sm.streamClient.disableNetworkFlowsCilium {
 		sm.streamClient.tlsAuthProperties.DisableALPN = false
 		sm.streamClient.tlsAuthProperties.DisableTLS = false
 		return pb.FlowCollector_FLOW_COLLECTOR_CILIUM, sm.connectAndStreamCiliumNetworkFlows, make(chan struct{})
@@ -834,7 +834,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			streamClient := &streamClient{
 				conn:               authConn,
 				client:             client,
-				ciliumNamespace:    envMap.CiliumNamespace,
+				ciliumNamespaces:   envMap.CiliumNamespaces,
 				falcoEventChan:     falcoEventChan,
 				ipfixCollectorPort: envMap.IPFIXCollectorPort,
 			}

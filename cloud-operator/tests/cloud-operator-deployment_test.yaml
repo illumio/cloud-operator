@@ -104,7 +104,6 @@ tests:
           value: "4739"
       - equal:
           path: spec.template.spec.containers[0].env[16].name
-          value: "4739"
           value: "VERBOSE_DEBUGGING"
       - equal:
           path: spec.template.spec.containers[0].env[16].value
