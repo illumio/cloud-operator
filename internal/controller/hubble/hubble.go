@@ -25,6 +25,16 @@ const (
 	ciliumHubbleRelayServiceName        = "hubble-relay"
 )
 
+// expectedServerName returns the TLS ServerName to use when connecting to Hubble Relay.
+// For the default Cilium deployment in kube-system, the certificate uses a special DNS name.
+// For all other namespaces, use the standard Kubernetes service FQDN.
+func expectedServerName(namespace, serviceName string) string {
+	if namespace == "kube-system" {
+		return ciliumHubbleRelayExpectedServerName
+	}
+	return fmt.Sprintf("%s.%s.svc.cluster.local", serviceName, namespace)
+}
+
 var (
 	ErrCertDataMissingInSecret = errors.New("required certificate data (ca.crt, tls.crt, or tls.key) not found in secret")
 	ErrHubbleNotFound          = errors.New("cilium Hubble Relay service not found; disabling Cilium flow collection")
@@ -72,7 +82,7 @@ func getMTLSCertificatesFromSecret(
 }
 
 // loadMTLSConfigFromData loads mTLS credentials from byte slice.
-func loadMTLSConfigFromData(logger *zap.Logger, caCertData, clientCertData, clientKeyData []byte) (*tls.Config, error) {
+func loadMTLSConfigFromData(logger *zap.Logger, caCertData, clientCertData, clientKeyData []byte, namespace string) (*tls.Config, error) {
 	// Validate PEM data
 	if !isValidPEM(caCertData) || !isValidPEM(clientCertData) || !isValidPEM(clientKeyData) {
 		return nil, errors.New("invalid PEM data: ensure proper headers and formatting")
@@ -92,8 +102,10 @@ func loadMTLSConfigFromData(logger *zap.Logger, caCertData, clientCertData, clie
 	}
 	logger.Debug("CA certificate appended to pool from data.")
 
+	serverName := expectedServerName(namespace, ciliumHubbleRelayServiceName)
+
 	tlsConfig := &tls.Config{
-		ServerName:         ciliumHubbleRelayExpectedServerName,
+		ServerName:         serverName,
 		Certificates:       []tls.Certificate{cert},
 		RootCAs:            certPool,
 		InsecureSkipVerify: false,
@@ -115,7 +127,7 @@ func GetTLSConfig(ctx context.Context, clientset kubernetes.Interface,
 	}
 
 	// Load config
-	tlsConfig, loadErr := loadMTLSConfigFromData(logger, caData, clientCertData, clientKeyData)
+	tlsConfig, loadErr := loadMTLSConfigFromData(logger, caData, clientCertData, clientKeyData, namespace)
 	if loadErr != nil {
 		return nil, fmt.Errorf("failed to load mTLS credentials: %w", loadErr)
 	}
