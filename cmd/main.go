@@ -152,7 +152,7 @@ func main() {
 	logger.Info("Starting application",
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
 		zap.Strings("cilium_namespaces", envConfig.CiliumNamespaces),
-		CalicoNamespace:        viper.GetString("calico_namespace"),
+		zap.String("calico_namespace", envConfig.CalicoNamespace),
 		zap.String("https_proxy", envConfig.HttpsProxy),
 		zap.String("onboarding_client_id", envConfig.OnboardingClientId),
 		zap.String("onboarding_endpoint", envConfig.OnboardingEndpoint),

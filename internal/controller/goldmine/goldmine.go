@@ -1,1 +1,5 @@
-package Goldmine
+package goldmine
+
+const (
+	goldmineServiceName = "goldmine"
+)

@@ -47,6 +47,7 @@ type streamClient struct {
 	falcoEventChan            chan string
 	ipfixCollectorPort        string
 	disableNetworkFlowsCilium bool
+	disableNetworkFlowsCalico bool
 	tlsAuthProperties         tls.AuthProperties
 	flowCollector             pb.FlowCollector
 	logStream                 pb.KubernetesInfoService_SendLogsClient
@@ -503,7 +504,7 @@ func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger
 	return ciliumFlowCollector
 }
 
-func (sm *streamManager) findCalico(ctx context.Context, logger *zap.Logger, calicoNamespace string) *CalicoFlowCollector {
+func (sm *streamManager) findGoldmine(ctx context.Context, logger *zap.Logger, calicoNamespace string) *CalicoFlowCollector {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
 	calicoFlowCollector, err := newCalicoFlowCollector(ctx, logger, calicoNamespace)
 	if err != nil {
@@ -534,7 +535,7 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 // StreamCalicoNetworkFlows handles the calico network flow stream.
 func (sm *streamManager) StreamCalicoNetworkFlows(ctx context.Context, logger *zap.Logger, calicoNamespace string) error {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
-	calicoFlowCollector := sm.findCalico(ctx, logger, calicoNamespace)
+	calicoFlowCollector := sm.findGoldmine(ctx, logger, calicoNamespace)
 	if calicoFlowCollector == nil {
 		logger.Info("Failed to initialize Calico flow collector; disabling flow collector")
 		return errors.New("calico cannot be found")
@@ -635,13 +636,6 @@ func (sm *streamManager) connectAndStreamCalicoNetworkFlows(logger *zap.Logger, 
 		return err
 	}
 	sm.streamClient.networkFlowsStream = sendCalicoNetworkFlowsStream
-	go func() {
-		err := sm.StreamKeepalives(calicoCtx, logger, keepalivePeriod, STREAM_NETWORK_FLOWS)
-		if err != nil {
-			logger.Error("Failed to send keepalives; canceling stream", zap.Error(err))
-		}
-		calicoCancel()
-	}()
 
 	err = sm.StreamCalicoNetworkFlows(calicoCtx, logger, sm.streamClient.calicoNamespace)
 	if err != nil {
@@ -899,7 +893,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				conn:               authConn,
 				client:             client,
 				ciliumNamespaces:   envMap.CiliumNamespaces,
-				calicoNamespace:           envMap.CalicoNamespace,
+				calicoNamespace:    envMap.CalicoNamespace,
 				falcoEventChan:     falcoEventChan,
 				ipfixCollectorPort: envMap.IPFIXCollectorPort,
 			}
@@ -915,23 +909,17 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				),
 			}
 			// Try to find Cilium first
-			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger, sm.streamClient.ciliumNamespace)
+			ciliumFlowCollector := sm.findHubbleRelay(ctx, logger)
 			if ciliumFlowCollector != nil {
 				sm.streamClient.disableNetworkFlowsCilium = false
 				sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_CILIUM
 			} else {
 				sm.streamClient.disableNetworkFlowsCilium = true
-
 				// Try to find Calico next
-				calicoFlowCollector := sm.findCalico(ctx, logger, sm.streamClient.calicoNamespace)
+				calicoFlowCollector := sm.findGoldmine(ctx, logger, sm.streamClient.calicoNamespace)
 				if calicoFlowCollector != nil {
-					sm.streamClient.disableNetworkFlowsCalico = false
-					// After regenerating the protobuf code, this would be:
-					// sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_CALICO
-					// For now, we'll use FLOW_COLLECTOR_DISABLED as a placeholder
-					sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_DISABLED
+					sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_CALICO
 				} else {
-					sm.streamClient.disableNetworkFlowsCalico = true
 					// Fall back to Falco if neither Cilium nor Calico is available
 					sm.streamClient.flowCollector = pb.FlowCollector_FLOW_COLLECTOR_FALCO
 				}
@@ -969,6 +957,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			ovnkDone := make(chan struct{})
 			falcoDone := make(chan struct{})
 			ciliumDone := make(chan struct{})
+			calicoDone := make(chan struct{})
 			flowCacheRunDone := make(chan struct{})
 			flowCacheOutReaderDone := make(chan struct{})
 

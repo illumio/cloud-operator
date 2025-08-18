@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 
-	// This import will be used after regenerating the protobuf code
-	_ "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	//pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	//"github.com/illumio/cloud-operator/internal/controller/goldmine"
+	//"github.com/illumio/cloud-operator/internal/pkg/tls"
+	//"github.com/projectcalico/calico/v3/lib/clientv3"
 	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -16,18 +18,18 @@ import (
 
 // CalicoFlowCollector collects flows from Calico running in this cluster.
 type CalicoFlowCollector struct {
-	logger *zap.Logger
-	client kubernetes.Interface
+	logger          *zap.Logger
+	client          kubernetes.Interface
 	calicoNamespace string
 }
 
 const (
-	calicoServiceName  string = "calico-typha"
+	calicoServiceName string = "calico-typha"
 )
 
 var (
-	ErrCalicoNotFound          = errors.New("calico service not found; disabling Calico flow collection")
-	ErrCalicoNoPortsAvailable  = errors.New("calico service has no ports; disabling Calico flow collection")
+	ErrCalicoNotFound         = errors.New("calico service not found; disabling Calico flow collection")
+	ErrCalicoNoPortsAvailable = errors.New("calico service has no ports; disabling Calico flow collection")
 )
 
 // discoverCalicoAddress uses a kubernetes clientset in order to discover the address of the calico-typha service.
@@ -52,22 +54,15 @@ func newCalicoFlowCollector(ctx context.Context, logger *zap.Logger, calicoNames
 		return nil, fmt.Errorf("failed to create new client set: %w", err)
 	}
 
-	// In a real implementation, we would discover the Calico address and connect to it
-	// For example:
-	// calicoAddress, err := discoverCalicoAddress(ctx, calicoNamespace, config)
-	// if err != nil {
-	//     return nil, err
-	// }
-	// conn, err := grpc.NewClient(calicoAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	// if err != nil {
-	//     return nil, fmt.Errorf("failed to connect to Calico: %w", err)
-	// }
+	// Try to discover the Calico Typha service to ensure Calico is present
+	if _, err := discoverCalicoAddress(ctx, calicoNamespace, config); err != nil {
+		// Propagate well-typed discovery errors so callers can decide whether to disable Calico
+		return nil, err
+	}
 
-	// In a real implementation, we would initialize a Calico client here
-	// For now, we'll just return a collector with the logger and kubernetes client
 	return &CalicoFlowCollector{
-		logger: logger, 
-		client: config,
+		logger:          logger,
+		client:          config,
 		calicoNamespace: calicoNamespace,
 	}, nil
 }
