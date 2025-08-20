@@ -7,10 +7,6 @@ import (
 	"errors"
 	"fmt"
 
-	//pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	//"github.com/illumio/cloud-operator/internal/controller/goldmine"
-	//"github.com/illumio/cloud-operator/internal/pkg/tls"
-	//"github.com/projectcalico/calico/v3/lib/clientv3"
 	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -47,25 +43,29 @@ func discoverCalicoAddress(ctx context.Context, calicoNamespace string, clientse
 	return address, nil
 }
 
-// newCalicoFlowCollector connects to Calico, sets up a client, and returns a new Collector using it.
+// newCalicoFlowCollector verifies Calico service availability and returns a collector.
 func newCalicoFlowCollector(ctx context.Context, logger *zap.Logger, calicoNamespace string) (*CalicoFlowCollector, error) {
-	config, err := NewClientSet()
+	clientset, err := NewClientSet()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create new client set: %w", err)
+		return nil, fmt.Errorf("failed to create client set: %w", err)
 	}
 
-	// Try to discover the Calico Typha service to ensure Calico is present
-	if _, err := discoverCalicoAddress(ctx, calicoNamespace, config); err != nil {
-		// Propagate well-typed discovery errors so callers can decide whether to disable Calico
-		return nil, err
+	// Ensure calico-typha service exists and has ports; this allows caller to decide disabling.
+	svc, err := clientset.CoreV1().Services(calicoNamespace).Get(ctx, calicoServiceName, metav1.GetOptions{})
+	if err != nil {
+		return nil, ErrCalicoNotFound
+	}
+	if len(svc.Spec.Ports) == 0 {
+		return nil, ErrCalicoNoPortsAvailable
 	}
 
 	return &CalicoFlowCollector{
 		logger:          logger,
-		client:          config,
+		client:          clientset,
 		calicoNamespace: calicoNamespace,
 	}, nil
 }
+
 
 // convertCalicoFlow converts a Calico flow to a CalicoFlow object
 // Note: After regenerating the protobuf code, this will return *pb.CalicoFlow
