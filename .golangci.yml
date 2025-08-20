@@ -45,9 +45,7 @@ formatters:
   enable:
     - gci
     - gofmt
-    # - gofumpt
     - goimports
-    # - golines
   settings:
     gci:
       custom-order: true
