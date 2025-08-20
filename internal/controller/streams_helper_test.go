@@ -14,11 +14,13 @@ import (
 
 type mockResourceStream struct {
 	grpc.ClientStream
+
 	lastRequest *pb.SendKubernetesResourcesRequest
 }
 
 func (m *mockResourceStream) Send(req *pb.SendKubernetesResourcesRequest) error {
 	m.lastRequest = req
+
 	return nil
 }
 
@@ -32,11 +34,13 @@ func (m *mockResourceStream) CloseSend() error {
 
 type mockNetworkFlowsStream struct {
 	grpc.ClientStream
+
 	lastRequest *pb.SendKubernetesNetworkFlowsRequest
 }
 
 func (m *mockNetworkFlowsStream) Send(req *pb.SendKubernetesNetworkFlowsRequest) error {
 	m.lastRequest = req
+
 	return nil
 }
 
@@ -199,8 +203,7 @@ func TestStreamMutationObjectData(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			mutation, err := sm.createMutationObject(metadata, tc.eventType)
-			require.NoError(t, err)
+			mutation := sm.createMutationObject(metadata, tc.eventType)
 			assert.Equal(t, tc.expected, mutation)
 		})
 	}
