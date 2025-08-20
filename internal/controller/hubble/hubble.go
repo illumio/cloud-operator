@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 
-	exp_credentials "github.com/illumio/cloud-operator/internal/pkg/tls"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -18,6 +17,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+
+	exp_credentials "github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
 const (
@@ -32,6 +33,7 @@ func expectedServerName(namespace, serviceName string) string {
 	if namespace == "kube-system" {
 		return ciliumHubbleRelayExpectedServerName
 	}
+
 	return fmt.Sprintf("%s.%s.svc.cluster.local", serviceName, namespace)
 }
 
@@ -50,7 +52,6 @@ func getMTLSCertificatesFromSecret(
 	secretName string,
 	secretNamespace string,
 ) (caData, clientCertData, clientKeyData []byte, err error) {
-
 	logger.Debug("Fetching mTLS certificates from Kubernetes secret",
 		zap.String("name", secretName),
 		zap.String("namespace", secretNamespace))
@@ -64,18 +65,21 @@ func getMTLSCertificatesFromSecret(
 	if !ok || len(caData) == 0 {
 		return nil, nil, nil, fmt.Errorf("%w: 'ca.crt' key", ErrCertDataMissingInSecret)
 	}
+
 	logger.Debug("Successfully retrieved ca.crt from secret.")
 
 	clientCertData, ok = secret.Data["tls.crt"]
 	if !ok || len(clientCertData) == 0 {
 		return nil, nil, nil, fmt.Errorf("%w: 'tls.crt' key (client certificate)", ErrCertDataMissingInSecret)
 	}
+
 	logger.Debug("Successfully retrieved tls.crt (client certificate) from secret.")
 
 	clientKeyData, ok = secret.Data["tls.key"]
 	if !ok || len(clientKeyData) == 0 {
 		return nil, nil, nil, fmt.Errorf("%w: 'tls.key' key (client key)", ErrCertDataMissingInSecret)
 	}
+
 	logger.Debug("Successfully retrieved tls.key (client key) from secret.")
 
 	return caData, clientCertData, clientKeyData, nil
@@ -93,6 +97,7 @@ func loadMTLSConfigFromData(logger *zap.Logger, caCertData, clientCertData, clie
 	if err != nil {
 		return nil, fmt.Errorf("failed to load client certificate and key from data: %w", err)
 	}
+
 	logger.Debug("Client certificate and key loaded from data.")
 
 	// Load CA certificate from byte slice
@@ -100,16 +105,17 @@ func loadMTLSConfigFromData(logger *zap.Logger, caCertData, clientCertData, clie
 	if !certPool.AppendCertsFromPEM(caCertData) {
 		return nil, errors.New("failed to append CA certificate to pool from data")
 	}
+
 	logger.Debug("CA certificate appended to pool from data.")
 
 	serverName := expectedServerName(namespace, ciliumHubbleRelayServiceName)
 
 	tlsConfig := &tls.Config{
-		ServerName:         serverName,
 		Certificates:       []tls.Certificate{cert},
-		RootCAs:            certPool,
 		InsecureSkipVerify: false,
 		MinVersion:         tls.VersionTLS12,
+		RootCAs:            certPool,
+		ServerName:         serverName,
 	}
 
 	return tlsConfig, nil
@@ -138,6 +144,7 @@ func GetTLSConfig(ctx context.Context, clientset kubernetes.Interface,
 // isValidPEM validates if the given data is properly PEM-encoded.
 func isValidPEM(data []byte) bool {
 	block, _ := pem.Decode(data)
+
 	return block != nil
 }
 
@@ -158,12 +165,14 @@ func GetAddressFromService(service *v1.Service) (string, error) {
 	}
 
 	address := fmt.Sprintf("%s:%d", service.Spec.ClusterIP, service.Spec.Ports[0].Port)
+
 	return address, nil
 }
 
 // generateTransportCredentials generates TransportCredentials from TLS config.
 func generateTransportCredentials(tlsConfig *tls.Config, logger *zap.Logger, disableALPN bool) credentials.TransportCredentials {
 	var cred credentials.TransportCredentials
+
 	if disableALPN {
 		logger.Info("Disabling ALPN for MTLS connections to Cilium Hubble Relay")
 		cred = exp_credentials.NewTLSWithALPNDisabled(tlsConfig, logger)
@@ -174,12 +183,13 @@ func generateTransportCredentials(tlsConfig *tls.Config, logger *zap.Logger, dis
 	return cred
 }
 
-// ConnectToHubbleRelay handles the connection logic for Hubble Relay
+// ConnectToHubbleRelay handles the connection logic for Hubble Relay.
 func ConnectToHubbleRelay(ctx context.Context, logger *zap.Logger, hubbleAddress string, tlsConfig *tls.Config, disableALPN bool) (*grpc.ClientConn, error) {
 	var creds credentials.TransportCredentials
 
 	if tlsConfig != nil {
 		logger.Debug("Attempting mTLS connection to Cilium Hubble Relay", zap.String("address", hubbleAddress))
+
 		if disableALPN {
 			logger.Info("Disabling ALPN for mTLS connection")
 			creds = exp_credentials.NewTLSWithALPNDisabled(tlsConfig, logger)
@@ -188,6 +198,7 @@ func ConnectToHubbleRelay(ctx context.Context, logger *zap.Logger, hubbleAddress
 		}
 	} else {
 		logger.Debug("Using insecure connection to Cilium Hubble Relay", zap.String("address", hubbleAddress))
+
 		creds = insecure.NewCredentials()
 	}
 

@@ -4,6 +4,7 @@ package integrationtesting
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -53,12 +54,13 @@ func NewHTTPClient() *http.Client {
 func getAuthorizationHeader(key, secret string) string {
 	credentials := fmt.Sprintf("%s:%s", key, secret)
 	encodedCredentials := base64.StdEncoding.EncodeToString([]byte(credentials))
-	return fmt.Sprintf("Basic %s", encodedCredentials)
+
+	return "Basic " + encodedCredentials
 }
 
 // newRequest creates a new HTTP request with common headers.
 func newRequest(method, url string, body io.Reader, config Config) (*http.Request, error) {
-	req, err := http.NewRequest(method, url, body)
+	req, err := http.NewRequestWithContext(context.Background(), method, url, body)
 	if err != nil {
 		return nil, err
 	}
@@ -91,11 +93,15 @@ func fetchClusters(config Config) ([]Cluster, error) {
 	}
 
 	client := NewHTTPClient()
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("request failed with status: %v", resp.Status)
@@ -124,20 +130,24 @@ func offboardCluster(config Config, clusterIds []string) error {
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		return fmt.Errorf("failed to marshal JSON body: %v", err)
+		return fmt.Errorf("failed to marshal JSON body: %w", err)
 	}
 
 	req, err := newRequest("PUT", offBoardURL, bytes.NewBuffer(jsonBody), config)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %v", err)
+		return fmt.Errorf("failed to create request: %w", err)
 	}
 
 	client := NewHTTPClient()
+
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to do request: %v", err)
+		return fmt.Errorf("failed to do request: %w", err)
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("request failed with status: %v", resp.Status)
@@ -146,12 +156,13 @@ func offboardCluster(config Config, clusterIds []string) error {
 	return nil
 }
 
-// Function to extract UUIDs from the list of clusters
+// Function to extract UUIDs from the list of clusters.
 func getClusterIDs(clusters []Cluster) []string {
 	clusterIDs := make([]string, 0, len(clusters))
 	for _, cluster := range clusters {
 		clusterIDs = append(clusterIDs, cluster.ID)
 	}
+
 	return clusterIDs
 }
 
@@ -185,5 +196,4 @@ func TestClusterIsOnboarded(t *testing.T) {
 	if err := offboardCluster(config, uuids); err != nil {
 		t.Fatalf("Failed to offboard cluster: %v", err)
 	}
-
 }

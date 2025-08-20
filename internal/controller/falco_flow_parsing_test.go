@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
@@ -87,17 +87,15 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 		suite.Run(name, func() {
 			result, err := parsePodNetworkInfo(tt.input)
 			if tt.err != nil {
-				assert.NotNil(suite.T(), err)
-				assert.Equal(suite.T(), tt.err.Error(), err.Error())
+				suite.ErrorIs(err, tt.err)
 			} else {
-				assert.Nil(suite.T(), err)
+				suite.Equal(tt.expected, result)
 			}
-			assert.Equal(suite.T(), tt.expected, result)
 		})
 	}
 }
 
-// TestFilterIllumioTraffic tests the filterIllumioTraffic function
+// TestFilterIllumioTraffic tests the filterIllumioTraffic function.
 func (suite *ControllerTestSuite) TestFilterIllumioTraffic() {
 	tests := map[string]struct {
 		input    string
@@ -128,7 +126,7 @@ func (suite *ControllerTestSuite) TestFilterIllumioTraffic() {
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			result := filterIllumioTraffic(tt.input)
-			assert.Equal(suite.T(), tt.expected, result)
+			suite.Equal(tt.expected, result)
 		})
 	}
 }
@@ -211,12 +209,10 @@ func (suite *ControllerTestSuite) TestCreateLayer4Message() {
 		suite.Run(name, func() {
 			result, err := createLayer4Message(tt.proto, tt.srcPort, tt.dstPort, tt.ipVersion)
 			if err != nil {
-				assert.NotNil(suite.T(), err)
-				assert.Equal(suite.T(), tt.expectedErr.Error(), err.Error())
+				suite.ErrorIs(err, tt.expectedErr)
 			} else {
-				assert.Nil(suite.T(), err)
+				suite.Equal(tt.expected, result)
 			}
-			assert.Equal(suite.T(), tt.expected, result)
 		})
 	}
 }
@@ -264,12 +260,10 @@ func (suite *ControllerTestSuite) TestCreateLayer3Message() {
 		suite.Run(name, func() {
 			result, err := createLayer3Message(tt.source, tt.destination, tt.ipVersion)
 			if err != nil {
-				assert.NotNil(suite.T(), err)
-				assert.Equal(suite.T(), tt.expectedError.Error(), err.Error())
+				suite.ErrorIs(err, tt.expectedError)
 			} else {
-				assert.Nil(suite.T(), err)
+				suite.Equal(tt.expected, result)
 			}
-			assert.Equal(suite.T(), tt.expected, result)
 		})
 	}
 }
@@ -304,7 +298,7 @@ func (suite *ControllerTestSuite) TestRemoveTrailingTab() {
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			result := removeTrailingTab(tt.input)
-			assert.Equal(suite.T(), tt.expected, result)
+			suite.Equal(tt.expected, result)
 		})
 	}
 }
@@ -329,14 +323,13 @@ func (suite *ControllerTestSuite) TestConvertStringToTimestamp() {
 		suite.Run(name, func() {
 			result, err := parseFalcoTimestamp(tt.input)
 			if tt.expected == nil {
-				assert.NotNil(suite.T(), err, "Expected an error but got nil")
+				suite.Error(err, "Expected an error but got nil")
 			} else {
-				assert.Nil(suite.T(), err, "Unexpected error occurred")
-				assert.Equal(suite.T(), tt.expected, result)
+				suite.Require().NoError(err, "Unexpected error occurred")
+				suite.Equal(tt.expected, result)
 			}
 		})
 	}
-
 }
 
 func (suite *ControllerTestSuite) TestNewFalcoEventHandler() {
@@ -363,20 +356,20 @@ func (suite *ControllerTestSuite) TestNewFalcoEventHandler() {
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			// Create a test request
-			req := httptest.NewRequest("POST", "/", strings.NewReader(tt.body))
+			req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
 
 			rr := httptest.NewRecorder()
 
 			handler.ServeHTTP(rr, req)
 
-			assert.Equal(suite.T(), tt.expectedStatus, rr.Code)
+			suite.Equal(tt.expectedStatus, rr.Code)
 
 			// If we expect a successful response, check the event channel
 			if tt.expectedStatus == http.StatusOK {
 				select {
 				case event := <-eventChan:
-					assert.Equal(suite.T(), tt.expectedEvent, event)
+					suite.Equal(tt.expectedEvent, event)
 				case <-time.After(100 * time.Millisecond):
 					suite.T().Error("Expected event not received")
 				}
