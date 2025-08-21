@@ -7,10 +7,9 @@ require (
 	github.com/go-logr/zapr v1.3.0
 	github.com/netsampler/goflow2 v1.3.7
 	go.uber.org/zap v1.27.0
-	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
 	golang.org/x/oauth2 v0.30.0
 	google.golang.org/grpc v1.74.2
-	google.golang.org/protobuf v1.36.7
+	google.golang.org/protobuf v1.36.8
 	k8s.io/api v0.33.4
 	k8s.io/apimachinery v0.33.4
 	k8s.io/client-go v0.33.4
