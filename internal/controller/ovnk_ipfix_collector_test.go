@@ -9,9 +9,9 @@ import (
 
 	netflows "github.com/netsampler/goflow2/decoders/netflow"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
-
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -39,7 +39,7 @@ func (suite *ControllerTestSuite) TestIsOVNKDeployed() {
 						Name: "openshift-ovn-kubernetes",
 					},
 				}, metav1.CreateOptions{})
-				assert.NoError(suite.T(), err)
+				suite.Require().NoError(err)
 			} else {
 				// Add polling logic to ensure namespace deletion
 				for {
@@ -47,9 +47,11 @@ func (suite *ControllerTestSuite) TestIsOVNKDeployed() {
 					if errors.IsNotFound(err) {
 						break // Namespace is deleted
 					}
+
 					if err != nil {
 						suite.T().Fatal("Error while checking namespace deletion: " + err.Error())
 					}
+
 					time.Sleep(100 * time.Millisecond) // Wait before retrying
 				}
 			}
@@ -57,7 +59,7 @@ func (suite *ControllerTestSuite) TestIsOVNKDeployed() {
 			logger := zap.NewNop()
 			sm := &streamManager{}
 			result := sm.isOVNKDeployed(context.TODO(), logger, "openshift-ovn-kubernetes", suite.clientset)
-			assert.Equal(suite.T(), tt.expectedResult, result)
+			suite.Equal(tt.expectedResult, result)
 		})
 	}
 }
@@ -101,7 +103,7 @@ func TestConvertProtocol(t *testing.T) {
 			if tt.err {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expected, result)
 			}
 		})
@@ -132,7 +134,7 @@ func TestParseIPv4Address(t *testing.T) {
 			if tt.err {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expected, result)
 			}
 		})
@@ -163,7 +165,7 @@ func TestParseIPv6Address(t *testing.T) {
 			if tt.err {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expected, result)
 			}
 		})
@@ -194,7 +196,7 @@ func TestParsePort(t *testing.T) {
 			if tt.err {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expected, result)
 			}
 		})
@@ -225,7 +227,7 @@ func TestParseProtocol(t *testing.T) {
 			if tt.err {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expected, result)
 			}
 		})
@@ -256,7 +258,7 @@ func TestParseIPVersion(t *testing.T) {
 			if tt.err {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expected, result)
 			}
 		})
@@ -307,7 +309,7 @@ func TestProcessDataRecord(t *testing.T) {
 			if tt.err {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expected, result)
 			}
 		})

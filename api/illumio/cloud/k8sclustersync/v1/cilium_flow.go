@@ -26,10 +26,10 @@ func (flow *CiliumFlow) Key() any {
 	}
 
 	key := CiliumFlowKey{
-		SourceIP:           flow.Layer3.GetSource(),
-		DestinationIP:      flow.Layer3.GetDestination(),
-		SourceK8sMeta:      flow.SourceEndpoint.GetUid(),
-		DestinationK8sMeta: flow.DestinationEndpoint.GetUid(),
+		SourceIP:           flow.GetLayer3().GetSource(),
+		DestinationIP:      flow.GetLayer3().GetDestination(),
+		SourceK8sMeta:      flow.GetSourceEndpoint().GetUid(),
+		DestinationK8sMeta: flow.GetDestinationEndpoint().GetUid(),
 	}
 	// Ports + Protocol
 	switch l4 := flow.GetLayer4().GetProtocol().(type) {
@@ -64,5 +64,6 @@ func (flow *CiliumFlow) Key() any {
 			DestinationK8sMeta: key.SourceK8sMeta,
 		}
 	}
+
 	return key
 }

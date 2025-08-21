@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
@@ -31,11 +31,11 @@ func createSignedToken() string {
 	if err != nil {
 		logger.Error("Token could not be signed with fake secret key")
 	}
-	return signedToken
 
+	return signedToken
 }
 
-// TestFakeServerConnectionSuccesfulAndRetry tests a client connecting to the gRPC server
+// TestFakeServerConnectionSuccesfulAndRetry tests a client connecting to the gRPC server.
 func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
 	logger := zap.NewNop()
 	// Setup: Start the FakeServer
@@ -49,21 +49,24 @@ func TestFakeServerConnectionSuccesfulAndRetry(t *testing.T) {
 
 	// Start the server
 	err := fakeServer.start()
-	assert.NoError(t, err, "Failed to start the FakeServer")
+	require.NoError(t, err, "Failed to start the FakeServer")
 
 	// Cleanup: Stop the server after the test
 	defer fakeServer.stop()
 
-	// Wait for the state to change, Wanting to see client succesfully connect to fakeserver
+	// Wait for the state to change, Wanting to see client successfully connect to fakeserver
 	timeout := time.After(120 * time.Second)
+
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
+
 mainloop:
 	for {
 		select {
 		case <-timeout:
 			// Test failure if the state hasn't changed in time
 			t.Fatal("Operator never connected in alloted time.")
+
 			return
 		case <-ticker.C:
 			// time.Sleep(25 * time.Second)
@@ -73,17 +76,18 @@ mainloop:
 			// Check if the log entry we sent is in the received logs
 			if stateChanged {
 				t.Log("Connection Succes is true. Test passed.")
-				assert.Equal(t, stateChanged, true)
+
 				break mainloop
 			}
 		}
 	}
+
 	fakeServer.stop()
 
 	fakeServer.state.ConnectionSuccessful = false
 	// Start the server
 	err = fakeServer.start()
-	assert.NoError(t, err, "Failed to start the FakeServer")
+	require.NoError(t, err, "Failed to start the FakeServer")
 	// Cleanup: Stop the server after the test
 	defer fakeServer.stop()
 
@@ -92,6 +96,7 @@ mainloop:
 		case <-timeout:
 			// Test failure if the state hasn't changed in time
 			t.Fatal("Operator never connected in alloted time.")
+
 			return
 		case <-ticker.C:
 			// Check if the log entry has been recorded
@@ -100,7 +105,7 @@ mainloop:
 			// Check if the log entry we sent is in the received logs
 			if stateChanged {
 				t.Log("Connection Succes is true. Test passed.")
-				assert.Equal(t, stateChanged, true)
+
 				return
 			}
 		}
@@ -120,13 +125,14 @@ func TestFailureDuringIntialCommit(t *testing.T) {
 
 	// Start the server
 	err := fakeServer.start()
-	assert.NoError(t, err, "Failed to start the FakeServer")
+	require.NoError(t, err, "Failed to start the FakeServer")
 
 	// Cleanup: Stop the server after the test
 	defer fakeServer.stop()
 
-	// Wait for the state to change, Wanting to see client succesfully connect to fakeserver
+	// Wait for the state to change, Wanting to see client successfully connect to fakeserver
 	timeout := time.After(120 * time.Second)
+
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -136,6 +142,7 @@ mainloop:
 		case <-timeout:
 			// Test failure if the state hasn't changed in time
 			t.Fatal("Operator never connected in alloted time.")
+
 			return
 		case <-ticker.C:
 			// Check if the log entry has been recorded
@@ -144,10 +151,11 @@ mainloop:
 			// Check if the log entry we sent is in the received logs
 			if stateChanged {
 				t.Log("Connection Succes is true. Test passed.")
-				assert.Equal(t, stateChanged, true)
+
 				break mainloop
 			}
 		}
 	}
+
 	fakeServer.stop()
 }

@@ -63,7 +63,7 @@ func jsonResponse(w http.ResponseWriter, status int, data any) {
 }
 
 // startHTTPServer initializes and starts an HTTP server with TLS and logging, using the provided credentials and token.
-func startHTTPServer(address string, cert tls.Certificate, authService *AuthService) (*http.Server, error) {
+func startHTTPServer(address string, cert tls.Certificate, authService *AuthService) *http.Server {
 	// Set up the server with desired TLS configuration
 	server := &http.Server{
 		Addr:         address,
@@ -86,7 +86,7 @@ func startHTTPServer(address string, cert tls.Certificate, authService *AuthServ
 		}
 	}()
 
-	return server, nil
+	return server
 }
 
 // authenticateHandler handles authentication requests and writes the response.
@@ -100,6 +100,7 @@ func (a *AuthService) authenticateHandler(w http.ResponseWriter, r *http.Request
 	if r.Method != http.MethodPost {
 		a.logger.Error("Invalid request method, method not allowed", zap.String("method", r.Method))
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+
 		return
 	}
 
@@ -109,6 +110,7 @@ func (a *AuthService) authenticateHandler(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		a.logger.Error("Invalid request, unable to parse form", zap.Error(err))
 		http.Error(w, "Invalid request", http.StatusBadRequest)
+
 		return
 	}
 
@@ -121,6 +123,7 @@ func (a *AuthService) authenticateHandler(w http.ResponseWriter, r *http.Request
 	if req.GrantType != AllowedGrantType {
 		a.logger.Error("Invalid grant type", zap.String("grant_type", req.GrantType))
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": InvalidGrantError})
+
 		return
 	}
 
@@ -141,30 +144,42 @@ func (a *AuthService) onboardCluster(w http.ResponseWriter, r *http.Request) {
 		zap.String("method", r.Method),
 		zap.String("path", r.URL.Path),
 	)
+
 	if r.Method != http.MethodPost {
 		a.logger.Error("Invalid request method, method not allowed", zap.String("method", r.Method))
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+
 		return
 	}
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Error reading request body", http.StatusInternalServerError)
+
 		return
 	}
-	defer r.Body.Close()
+
+	err = r.Body.Close()
+	if err != nil {
+		http.Error(w, "Error closing request body", http.StatusInternalServerError)
+
+		return
+	}
 
 	// Unmarshal the JSON data into a struct
 	var requestData OnboardRequest
 	if err := json.Unmarshal(body, &requestData); err != nil {
 		http.Error(w, "Error unmarshalling JSON", http.StatusBadRequest)
+
 		return
 	}
+
 	a.logger.Info("Received onboarding data", zap.String("onboarding_client_id", requestData.OnboardingClientId), zap.String("onboarding_client_secret", requestData.OnboardingClientSecret))
 
-	if !(reflect.TypeOf(requestData.OnboardingClientId).Kind() == reflect.String && reflect.TypeOf(requestData.OnboardingClientSecret).Kind() == reflect.String) {
+	if reflect.TypeOf(requestData.OnboardingClientId).Kind() != reflect.String || reflect.TypeOf(requestData.OnboardingClientSecret).Kind() != reflect.String {
 		a.logger.Error("Bad format request", zap.Any("request_data", requestData))
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "Bad format request"})
+
 		return
 	}
 	// Just pass back what client sent for testing purposes.

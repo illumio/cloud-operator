@@ -1,16 +1,15 @@
 # Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-version: v1
+version: v2
 managed:
   enabled: true
-  go_package_prefix:
-    default: github.com/illumio/cloudsecure-operator/
+  override:
+    - file_option: go_package_prefix
+      value: github.com/illumio/cloudsecure-operator
 plugins:
-  - plugin: buf.build/grpc/go:v1.3.0
+  - remote: buf.build/grpc/go:v1.5.1
     out: .
-    opt:
-      - paths=source_relative
-  - plugin: buf.build/protocolbuffers/go
+    opt: paths=source_relative
+  - remote: buf.build/protocolbuffers/go:v1.36.6
     out: .
-    opt:
-      - paths=source_relative
+    opt: paths=source_relative

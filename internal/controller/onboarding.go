@@ -17,15 +17,15 @@ import (
 )
 
 type OnboardResponse struct {
-	ClusterClientId     string `json:"cluster_client_id"`
+	ClusterClientID     string `json:"cluster_client_id"`
 	ClusterClientSecret string `json:"cluster_client_secret"`
 }
 
-// Onboard onboards this cluster with CloudSecure using the onboarding credentials and obtains OAuth 2 credentials for this cluster.
-func Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string, credentials Credentials, logger *zap.Logger) (OnboardResponse, error) {
+// OnboardCluster onboards this cluster with CloudSecure using the onboarding credentials and obtains the OAuth 2 client ID and client secret for this cluster.
+func OnboardCluster(ctx context.Context, tlsSkipVerify bool, onboardingEndpoint, onboardingClientID, onboardingClientSecret string, logger *zap.Logger) (string, string, error) {
 	tlsConfig := &tls.Config{
+		InsecureSkipVerify: tlsSkipVerify, //nolint:gosec
 		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: TlsSkipVerify,
 	}
 	transport := &http.Transport{
 		TLSClientConfig: tlsConfig,
@@ -39,30 +39,35 @@ func Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string,
 
 	// Create the data to be sent in the POST request
 	data := map[string]string{
-		"onboardingClientId":     credentials.ClientID,
-		"onboardingClientSecret": credentials.ClientSecret,
+		"onboardingClientId":     onboardingClientID,
+		"onboardingClientSecret": onboardingClientSecret,
 	}
+
 	var responseData OnboardResponse
 	// Convert the data to JSON
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		logger.Error("Unable to marshal json data", zap.Error(err))
-		return responseData, err
+
+		return "", "", err
 	}
 
 	// Create a new POST request with the JSON data
-	req, err := http.NewRequest("POST", OnboardingEndpoint, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, onboardingEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		logger.Error("Unable to structure post request", zap.Error(err))
-		return responseData, err
+
+		return "", "", err
 	}
 
 	// Set the appropriate headers
 	req.Header.Set("Content-Type", "application/json")
+
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Error("Unable to send post request", zap.Error(err))
-		return responseData, err
+
+		return "", "", err
 	}
 
 	switch resp.StatusCode {
@@ -76,7 +81,8 @@ func Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string,
 			zap.Int("status_code", http.StatusUnauthorized),
 			zap.String("description", "invalid credentials"),
 		)
-		return responseData, err
+
+		return "", "", err
 	case http.StatusInternalServerError:
 		// 500 Internal Server Error
 		err := errors.New("internal server error: something went wrong on the server")
@@ -85,7 +91,8 @@ func Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string,
 			zap.Int("status_code", http.StatusInternalServerError),
 			zap.String("description", "something went wrong on the server"),
 		)
-		return responseData, err
+
+		return "", "", err
 	default:
 		// Handle other status codes
 		err := errors.New("unexpected status code")
@@ -93,23 +100,31 @@ func Onboard(ctx context.Context, TlsSkipVerify bool, OnboardingEndpoint string,
 			zap.Error(err),
 			zap.Int("status_code", resp.StatusCode),
 		)
-		return responseData, err
+
+		return "", "", err
 	}
-	defer resp.Body.Close()
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Error("Unable to read response of onboard post request", zap.Error(err))
-		return responseData, err
+		logger.Error("Unable to read response of onboard POST request", zap.Error(err))
+
+		return "", "", err
 	}
+
+	if err := resp.Body.Close(); err != nil {
+		logger.Error("Error closing POST response body", zap.Error(err))
+	}
+
 	if err := json.Unmarshal(body, &responseData); err != nil {
 		logger.Error("Unable to unmarshal json data", zap.Error(err))
-		return responseData, err
+
+		return "", "", err
 	}
-	return responseData, nil
+
+	return responseData.ClusterClientID, responseData.ClusterClientSecret, nil
 }
 
-// getFirstAudience extracts the first audience from the claims map
+// getFirstAudience extracts the first audience from the claims map.
 func getFirstAudience(logger *zap.Logger, claims map[string]interface{}) (string, error) {
 	aud, ok := claims["aud"]
 	if !ok {
@@ -117,6 +132,7 @@ func getFirstAudience(logger *zap.Logger, claims map[string]interface{}) (string
 		logger.Error("Error extracting audience claim",
 			zap.Error(err),
 		)
+
 		return "", err
 	}
 
@@ -127,6 +143,7 @@ func getFirstAudience(logger *zap.Logger, claims map[string]interface{}) (string
 			zap.Error(err),
 			zap.Any("aud", aud),
 		)
+
 		return "", err
 	}
 
@@ -135,6 +152,7 @@ func getFirstAudience(logger *zap.Logger, claims map[string]interface{}) (string
 		logger.Error("Error extracting audience claim",
 			zap.Error(err),
 		)
+
 		return "", err
 	}
 
@@ -145,6 +163,7 @@ func getFirstAudience(logger *zap.Logger, claims map[string]interface{}) (string
 			zap.Error(err),
 			zap.Any("first_aud", audSlice[0]),
 		)
+
 		return "", err
 	}
 
@@ -157,9 +176,11 @@ func GetClusterID(ctx context.Context, logger *zap.Logger) (string, error) {
 	if err != nil {
 		logger.Error("Error creating clientset", zap.Error(err))
 	}
+
 	namespace, err := clientset.CoreV1().Namespaces().Get(ctx, "kube-system", v1.GetOptions{})
 	if err != nil {
 		logger.Error("Could not find kube-system namespace", zap.Error(err))
 	}
+
 	return string(namespace.UID), nil
 }

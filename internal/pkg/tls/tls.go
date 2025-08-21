@@ -28,11 +28,12 @@ import (
 	"net"
 	"strings"
 
-	"github.com/illumio/cloud-operator/internal/pkg/tls/spiffe"
-	"github.com/illumio/cloud-operator/internal/pkg/tls/syscallconn"
 	"go.uber.org/zap"
 	"golang.org/x/net/http2"
 	"google.golang.org/grpc/credentials"
+
+	"github.com/illumio/cloud-operator/internal/pkg/tls/spiffe"
+	"github.com/illumio/cloud-operator/internal/pkg/tls/syscallconn"
 )
 
 // tlsCreds is the credentials required for authenticating a connection using TLS.
@@ -52,7 +53,7 @@ var (
 	ErrNoTLSHandshakeFailed   = errors.New("no TLS handshake")
 )
 
-func (c tlsCreds) Info() credentials.ProtocolInfo {
+func (c *tlsCreds) Info() credentials.ProtocolInfo {
 	return credentials.ProtocolInfo{
 		SecurityProtocol: "tls",
 		SecurityVersion:  "1.2",
@@ -69,22 +70,29 @@ func (c *tlsCreds) ClientHandshake(ctx context.Context, authority string, rawCon
 			// If the authority had no host port or if the authority cannot be parsed, use it as-is.
 			serverName = authority
 		}
+
 		cfg.ServerName = serverName
 	}
+
 	conn := tls.Client(rawConn, cfg)
 	errChannel := make(chan error, 1)
+
 	go func() {
 		errChannel <- conn.Handshake()
+
 		close(errChannel)
 	}()
+
 	select {
 	case err := <-errChannel:
 		if err != nil {
-			conn.Close()
+			_ = conn.Close()
+
 			return nil, nil, err
 		}
 	case <-ctx.Done():
-		conn.Close()
+		_ = conn.Close()
+
 		return nil, nil, ctx.Err()
 	}
 
@@ -94,19 +102,23 @@ func (c *tlsCreds) ClientHandshake(ctx context.Context, authority string, rawCon
 			SecurityLevel: credentials.PrivacyAndIntegrity,
 		},
 	}
+
 	id := spiffe.SPIFFEIDFromState(conn.ConnectionState(), c.logger)
 	if id != nil {
 		tlsInfo.SPIFFEID = id
 	}
+
 	return syscallconn.WrapSyscallConn(rawConn, conn), tlsInfo, nil
 }
 
 func (c *tlsCreds) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
 	conn := tls.Server(rawConn, c.config)
 	if err := conn.Handshake(); err != nil {
-		conn.Close()
+		_ = conn.Close()
+
 		return nil, nil, err
 	}
+
 	cs := conn.ConnectionState()
 	tlsInfo := credentials.TLSInfo{
 		State: cs,
@@ -114,10 +126,12 @@ func (c *tlsCreds) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.Auth
 			SecurityLevel: credentials.PrivacyAndIntegrity,
 		},
 	}
+
 	id := spiffe.SPIFFEIDFromState(conn.ConnectionState(), c.logger)
 	if id != nil {
 		tlsInfo.SPIFFEID = id
 	}
+
 	return syscallconn.WrapSyscallConn(rawConn, conn), tlsInfo, nil
 }
 
@@ -127,6 +141,7 @@ func (c *tlsCreds) Clone() credentials.TransportCredentials {
 
 func (c *tlsCreds) OverrideServerName(serverNameOverride string) error {
 	c.config.ServerName = serverNameOverride
+
 	return nil
 }
 
@@ -150,7 +165,7 @@ var tls12ForbiddenCipherSuites = map[uint16]struct{}{
 // If cfg is nil, a new zero tls.Config is returned.
 func cloneTLSConfig(cfg *tls.Config) *tls.Config {
 	if cfg == nil {
-		return &tls.Config{}
+		return &tls.Config{} //nolint:gosec
 	}
 
 	return cfg.Clone()
@@ -163,8 +178,10 @@ func appendH2ToNextProtos(ps []string) []string {
 			return ps
 		}
 	}
+
 	ret := make([]string, 0, len(ps)+1)
 	ret = append(ret, ps...)
+
 	return append(ret, http2.NextProtoTLS)
 }
 
@@ -179,9 +196,11 @@ func NewTLSWithALPNDisabled(c *tls.Config, logger *zap.Logger) credentials.Trans
 			if err != nil || cfgForClient == nil {
 				return cfgForClient, err
 			}
+
 			return applyDefaults(cfgForClient), nil
 		}
 	}
+
 	return &tlsCreds{config: config, logger: logger}
 }
 
@@ -204,6 +223,7 @@ func applyDefaults(c *tls.Config) *tls.Config {
 			}
 		}
 	}
+
 	return config
 }
 
