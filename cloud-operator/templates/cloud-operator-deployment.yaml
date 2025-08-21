@@ -54,7 +54,7 @@ spec:
             - containerPort: 5000
             - containerPort: 4739
               protocol: UDP
-          
+
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: CLUSTER_CREDS_SECRET
@@ -99,6 +99,11 @@ spec:
               value: "{{ .Values.env.ipfixCollectorPort }}"
             - name: VERBOSE_DEBUGGING
               value: "{{ .Values.env.verboseDebugging }}"
+            - name: CILIUM_NAMESPACE
+              value: "kube-system"  # This might already exist
+            # Add this line for Calico namespace
+            - name: CALICO_NAMESPACE
+              value: "{{ .Values.env.calicoNamespace }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
