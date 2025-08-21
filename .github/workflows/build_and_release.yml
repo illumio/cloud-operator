@@ -6,7 +6,6 @@ on:
       - "v*"
 
 permissions:
-  attestations: write
   # Required to generate OIDC tokens for `sigstore/cosign-installer` authentication
   id-token: write
   packages: write
@@ -21,11 +20,6 @@ jobs:
 
       - name: Check Cosign install
         run: cosign version
-
-      - name: Install CycloneDX SBOM tools
-        run: |
-          go install github.com/anchore/syft/cmd/syft@v1.31.0
-          go install github.com/CycloneDX/sbom-utility@v0.18.1
 
       - name: Checkout code
         uses: actions/checkout@v5
@@ -52,31 +46,5 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.ref_name }}
 
-      - name: Generate SBOM
-        id: generate-sbom
-        run: |
-          SYFT_GOLANG_SEARCH_REMOTE_LICENSES=true SYFT_FILE_METADATA_SELECTION=owned-by-package syft scan registry:ghcr.io/illumio/cloud-operator:v1.3.1 --scope squashed --exclude '/usr/share/zoneinfo' --exclude '/usr/share/common-licenses' --exclude '/usr/share/base-files' -o cyclonedx-json | json_pp > sbom.cyclonedx.json
-          # Fix the license for Debian's base-files package:
-          sed -e 's/"name : "GPL"/"id" : "GPL-2.0-or-later"/' -i sbom.cyclonedx.json
-
       - name: Sign the images with GitHub OIDC Token
         run: cosign sign --yes ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-
-      - name: Attest SBOM to Docker image
-        uses: actions/attest-sbom@v2
-        with:
-          subject-name: ghcr.io/${{ github.repository }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          sbom-path: "sbom.cyclonedx.json"
-          push-to-registry: true
-
-      - name: Upload SBOM as release asset (on release)
-        if: github.event_name == 'release'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: "./sbom.cyclonedx.json"
-          asset_name: sbom-${{ github.ref_name }}.cyclonedx.json
-          asset_content_type: application/json
