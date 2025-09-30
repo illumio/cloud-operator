@@ -8,7 +8,7 @@ require (
 	github.com/netsampler/goflow2 v1.3.7
 	go.uber.org/zap v1.27.0
 	golang.org/x/oauth2 v0.31.0
-	google.golang.org/grpc v1.74.2
+	google.golang.org/grpc v1.75.1
 	google.golang.org/protobuf v1.36.9
 	k8s.io/api v0.33.4
 	k8s.io/apimachinery v0.33.4
