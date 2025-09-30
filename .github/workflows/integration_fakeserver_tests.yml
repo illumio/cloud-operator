@@ -8,6 +8,9 @@ on:
     branches:
       - main
 
+permissions:
+  packages: write
+
 jobs:
   test-deploy-onboard-fakeserver:
     runs-on: ubuntu-latest
