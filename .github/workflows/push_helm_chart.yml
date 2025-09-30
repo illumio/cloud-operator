@@ -5,6 +5,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  packages: write
+
 jobs:
   push-helm-chart:
     runs-on: ubuntu-latest
