@@ -91,7 +91,7 @@ jobs:
           kubectl wait --for=condition=ready pod -l app=cloud-operator -n illumio-cloud --timeout=300s
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "^1.24.4"
 
