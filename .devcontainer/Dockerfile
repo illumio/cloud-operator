@@ -5,7 +5,7 @@ ARG BUF_VERSION=v1.57.2
 ARG GCI_VERSION=v0.13.7
 ARG GOLANGCI_VERSION=v2.5.0
 ARG HELM_VERSION=v3.19.0
-ARG KIND_VERSION=v0.29.0
+ARG KIND_VERSION=v0.30.0
 ARG SBOM_UTILITY=v0.18.1
 ARG SYFT_VERSION=v1.31.0
 
@@ -49,6 +49,7 @@ RUN go install github.com/bufbuild/buf/cmd/buf@${BUF_VERSION} \
 USER root
 
 RUN /go/bin/buf completion bash > "/etc/bash_completion.d/buf" \
+    && /go/bin/kind completion bash > "/etc/bash_completion.d/kind" \
     && /go/bin/sbom-utility completion bash > "/etc/bash_completion.d/sbom-utility" \
     && /go/bin/syft completion bash > "/etc/bash_completion.d/syft"
 
