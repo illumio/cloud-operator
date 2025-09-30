@@ -76,7 +76,7 @@ jobs:
         run: cosign sign --yes ghcr.io/${{ github.repository }}:${{ github.ref_name }}
 
       - name: Attest CycloneDX SBOM to Docker image
-        uses: actions/attest-sbom@v2
+        uses: actions/attest-sbom@v3
         with:
           subject-name: ghcr.io/${{ github.repository }}
           subject-digest: ${{ steps.push.outputs.digest }}
