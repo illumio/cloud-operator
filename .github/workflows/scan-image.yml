@@ -27,7 +27,7 @@ jobs:
           load: true
 
       - name: Scan image
-        uses: anchore/scan-action@v6
+        uses: anchore/scan-action@v7
         with:
           image: "localbuild/testimage:latest"
           output-format: "table"
