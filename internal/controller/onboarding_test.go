@@ -46,12 +46,14 @@ func (suite *ControllerTestSuite) TestOnboard() {
 				suite.Equal("application/json", r.Header.Get("Content-Type"))
 
 				var requestData map[string]string
+
 				err := json.NewDecoder(r.Body).Decode(&requestData)
 				suite.NoError(err)
 				suite.Equal("test-client-id", requestData["onboardingClientId"])
 				suite.Equal("test-client-secret", requestData["onboardingClientSecret"])
 
 				w.Header().Set("Content-Type", "application/json")
+
 				err = json.NewEncoder(w).Encode(OnboardResponse{
 					ClusterClientID:     "test-client-id",
 					ClusterClientSecret: "test-client-secret",
@@ -146,10 +148,10 @@ func (suite *ControllerTestSuite) TestGetFirstAudience() {
 		suite.Run(name, func() {
 			got, err := getFirstAudience(suite.logger, tt.claims)
 			if tt.expectedError {
-				suite.Error(err)
+				suite.Require().Error(err)
 				suite.EqualErrorf(err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
 			} else {
-				suite.NoError(err)
+				suite.Require().NoError(err)
 				suite.Equal(tt.expected, got, "Expected audience: %v, got: %v", tt.expected, got)
 			}
 		})
@@ -163,16 +165,16 @@ func (suite *ControllerTestSuite) TestGetClusterID() {
 
 	// Manually retrieve the expected UID of the kube-system namespace
 	clientset, err := NewClientSet()
-	suite.NoError(err)
+	suite.Require().NoError(err)
 
 	namespace, err := clientset.CoreV1().Namespaces().Get(ctx, "kube-system", v1.GetOptions{})
-	suite.NoError(err)
+	suite.Require().NoError(err)
 
 	expectedUID := string(namespace.UID)
 
 	// Call the GetClusterID function
 	clusterID, err := GetClusterID(ctx, logger)
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.NotEmpty(clusterID)
 
 	// Check if the returned UID matches the expected UID
