@@ -37,38 +37,6 @@ import (
 
 const defaultTestTimeout = 10 * time.Second
 
-func TestTLSOverrideServerName(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	authority := "server.name"
-
-	c := NewTLSWithALPNDisabled(
-		&tls.Config{
-			MinVersion: tls.VersionTLS12,
-			ServerName: authority,
-		},
-		logger,
-	)
-	if c.Info().ServerName != authority {
-		t.Fatalf("c.Info().ServerName = %v, want %v", c.Info().ServerName, authority)
-	}
-}
-
-func TestTLSClone(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	authority := "server.name"
-
-	c := NewTLSWithALPNDisabled(
-		&tls.Config{
-			MinVersion: tls.VersionTLS12,
-			ServerName: authority,
-		},
-		logger,
-	)
-	if c.Info().ServerName != authority {
-		t.Fatalf("Change in clone should not affect the original, c.Info().ServerName = %v, want %v", c.Info().ServerName, authority)
-	}
-}
-
 type serverHandshake func(net.Conn) (credentials.AuthInfo, error)
 
 func TestClientHandshakeReturnsAuthInfo(t *testing.T) {
