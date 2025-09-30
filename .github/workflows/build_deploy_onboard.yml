@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+permissions:
+  packages: write
+
 jobs:
   test-deploy-onboard-live:
     runs-on: ubuntu-latest
