@@ -79,6 +79,32 @@
         "falco": {
             "type": "object",
             "properties": {
+                "collectors": {
+                    "type": "object",
+                    "properties": {
+                        "containerEngine": {
+                            "type": "object",
+                            "properties": {
+                                "engines": {
+                                    "type": "object",
+                                    "properties": {
+                                        "containerd": {
+                                            "type": "object",
+                                            "properties": {
+                                                "sockets": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
                 "customRules": {
                     "type": "object",
                     "properties": {
