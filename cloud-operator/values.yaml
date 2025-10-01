@@ -47,6 +47,16 @@ openshift:
 falco:
   enabled: false
   namespace: falco
+  collectors:
+    containerEngine:
+      engines:
+        containerd:
+          # Add /run/k3s/containerd/containerd.sock in addition
+          # to /run/host-containerd/containerd.sock for RKE2.
+          sockets:
+            - "/run/containerd/containerd.sock"
+            - "/run/k3s/containerd/containerd.sock"
+            - "/run/host-containerd/containerd.sock"
   falco:
     http_output:
       enabled: true
