@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -139,68 +140,118 @@ func getErrFromWatchEvent(event watch.Event) error {
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
 func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watchOptions metav1.ListOptions, mutationChan chan *pb.KubernetesResourceMutation) error {
 	logger := r.logger.With(zap.String("api_group", apiGroup))
-
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
-	watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
-	if err != nil {
-		logger.Error("Error setting up watch on resource", zap.Error(err))
-		return err
-	}
-	mutationCount := 0
+
+	lastKnownResourceVersion := watchOptions.ResourceVersion
+
 	for {
-		select {
-		case <-ctx.Done():
-			logger.Debug("Disconnected from CloudSecure",
-				zap.String("reason", "context cancelled"),
-			)
-			return ctx.Err()
+		// Update watch options with latest resource version
+		watchOptions.ResourceVersion = lastKnownResourceVersion
 
-		case event := <-watcher.ResultChan():
-			// Exhaustive enum check on event type. We only want to report mutations
-			switch event.Type {
-			case watch.Error:
-				err := getErrFromWatchEvent(event)
-				logger.Error("Watcher event has returned an error", zap.Error(err))
-				return err
-			case watch.Bookmark:
-				continue
-			case watch.Added, watch.Modified, watch.Deleted:
-			default:
-				logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
-				continue
-			}
+		watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
+		if err != nil {
+			logger.Error("Error setting up watch on resource", zap.Error(err))
+			return err
+		}
 
-			// Type gymnastics: turn the watch.Event into a 'KubernetesObjectData'
-			convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
-			if err != nil {
-				logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
-				return err
-			}
-			resource := event.Object.GetObjectKind().GroupVersionKind().Kind
-			metadataObj, err := convertMetaObjectToMetadata(logger, ctx, *convertedData, r.clientset, resource)
-			if err != nil {
-				logger.Error("Cannot convert object metadata", zap.Error(err))
-				return err
-			}
+		mutationCount := 0
 
-			// Helper function: type gymnastics + send the KubernetesObjectData on the mutation channel
-			mutation, err := r.streamManager.createMutationObject(metadataObj, event.Type)
-			if err != nil {
-				logger.Error("Cannot send resource mutation", zap.Error(err))
-				return err
-			}
+	watcherLoop:
+		for {
 			select {
 			case <-ctx.Done():
+				logger.Debug("Disconnected from CloudSecure", zap.String("reason", "context cancelled"))
+				watcher.Stop() // clean up
 				return ctx.Err()
-			case mutationChan <- mutation:
-			}
-			mutationCount++
 
-		case <-time.After(60 * time.Second):
-			logger.Debug("Current mutation count", zap.Int("mutation_count", mutationCount))
-			logger.Debug("Resetting mutation count")
-			mutationCount = 0
+			case event, ok := <-watcher.ResultChan():
+				if !ok {
+					logger.Warn("Watcher channel closed, restarting from resource version",
+						zap.String("resource", r.resourceName),
+						zap.String("lastResourceVersion", lastKnownResourceVersion))
+					watcher.Stop()
+					break watcherLoop
+				}
+
+				// Extract resource version from ALL event types
+				if event.Object != nil {
+					if accessor, err := meta.Accessor(event.Object); err == nil {
+						if rv := accessor.GetResourceVersion(); rv != "" {
+							lastKnownResourceVersion = rv
+						}
+					}
+				}
+
+				switch event.Type {
+				case watch.Error:
+					err := getErrFromWatchEvent(event)
+					logger.Error("Watcher event has returned an error", zap.Error(err))
+					watcher.Stop() // ← Added cleanup
+					return err
+
+				case watch.Bookmark:
+					logger.Debug("Received bookmark",
+						zap.String("resourceVersion", lastKnownResourceVersion))
+					continue
+
+				case watch.Added, watch.Modified, watch.Deleted:
+					logger.Info("Got watch event", zap.String("type", string(event.Type)))
+
+				default:
+					if event.Type == "" {
+						logger.Warn("Received empty event type, restarting watcher",
+							zap.String("resource", r.resourceName),
+							zap.String("lastResourceVersion", lastKnownResourceVersion))
+						watcher.Stop()
+						break watcherLoop
+					}
+					logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
+					continue
+				}
+
+				// Process mutations (only for Added/Modified/Deleted)
+				convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
+				if err != nil {
+					logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
+					watcher.Stop() // ← Added cleanup
+					return err
+				}
+
+				resource := event.Object.GetObjectKind().GroupVersionKind().Kind
+				metadataObj, err := convertMetaObjectToMetadata(logger, ctx, *convertedData, r.clientset, resource)
+				if err != nil {
+					logger.Error("Cannot convert object metadata", zap.Error(err))
+					watcher.Stop() // ← Added cleanup
+					return err
+				}
+
+				mutation, err := r.streamManager.createMutationObject(metadataObj, event.Type)
+				if err != nil {
+					logger.Error("Cannot send resource mutation", zap.Error(err))
+					watcher.Stop() // ← Added cleanup
+					return err
+				}
+
+				select {
+				case <-ctx.Done():
+					watcher.Stop() // ← Added cleanup
+					return ctx.Err()
+				case mutationChan <- mutation:
+				}
+				mutationCount++
+
+			case <-time.After(60 * time.Second):
+				logger.Debug("Current mutation count", zap.Int("mutation_count", mutationCount))
+				logger.Debug("Resetting mutation count")
+				mutationCount = 0
+			}
 		}
+
+		// Brief delay before restarting
+		time.Sleep(time.Second * 2)
+		logger.Info("Restarting watcher",
+			zap.String("resource", r.resourceName),
+			zap.String("fromResourceVersion", lastKnownResourceVersion))
 	}
 }
 
