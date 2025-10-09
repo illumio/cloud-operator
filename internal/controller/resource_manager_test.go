@@ -33,13 +33,13 @@ func (f *fakeWatcher) ResultChan() <-chan watch.Event {
 // TestWatchEventsHandlesEmptyEventType tests that empty event types trigger a watch restart
 func TestWatchEventsHandlesEmptyEventType(t *testing.T) {
 	logger := zap.NewNop()
-	
+
 	// Create fake clients
 	dynamicClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
-	
+
 	// Create a fake stream manager
 	sm := &streamManager{}
-	
+
 	// Create resource manager
 	rm := NewResourceManager(ResourceManagerConfig{
 		ResourceName:  "pods",
@@ -49,29 +49,29 @@ func TestWatchEventsHandlesEmptyEventType(t *testing.T) {
 		StreamManager: sm,
 		Limiter:       rate.NewLimiter(1, 5),
 	})
-	
+
 	// Create mutation channel
 	mutationChan := make(chan *pb.KubernetesResourceMutation, 1)
 	defer close(mutationChan)
-	
+
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	
+
 	// Create watch options
 	watchOptions := metav1.ListOptions{
 		Watch:           true,
 		ResourceVersion: "0",
 	}
-	
+
 	// Note: This test is limited because we can't easily inject a fake watcher
 	// into the dynamic client. The real test is that the code compiles and
 	// the logic is correct.
-	
+
 	// We'll test the error condition by calling watchEvents with a context
 	// that will be cancelled, which simulates the watch failing
 	err := rm.watchEvents(ctx, "", watchOptions, mutationChan)
-	
+
 	// We expect either a context cancelled error or a watch setup error
 	// (because the dynamic client doesn't have the resource)
 	if err == nil {
@@ -123,7 +123,7 @@ func TestWatchEventsEmptyEventTypeDetection(t *testing.T) {
 			shouldErr: false, // Error events are handled specially but don't trigger the default case
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Check if the event type would fall into the default case
@@ -132,7 +132,7 @@ func TestWatchEventsEmptyEventTypeDetection(t *testing.T) {
 			case watch.Error, watch.Bookmark, watch.Added, watch.Modified, watch.Deleted:
 				isUnknown = false
 			}
-			
+
 			if isUnknown != tc.shouldErr {
 				t.Errorf("Event type %q: expected shouldErr=%v, got isUnknown=%v", tc.eventType, tc.shouldErr, isUnknown)
 			}
