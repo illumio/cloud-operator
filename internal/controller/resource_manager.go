@@ -179,9 +179,14 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 				continue
 			case watch.Added, watch.Modified, watch.Deleted:
 			default:
-				logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
+				// Empty or invalid event types indicate watch stream corruption
+				// Log as warning and restart the watch to recover
+				logger.Warn("Received corrupted watch event, restarting watch stream",
+					zap.String("type", string(event.Type)),
+					zap.String("event_type_length", fmt.Sprintf("%d", len(event.Type))),
+				)
 
-				continue
+				return fmt.Errorf("watch stream corrupted: received invalid event type %q", event.Type)
 			}
 
 			// Type gymnastics: turn the watch.Event into a 'KubernetesObjectData'
