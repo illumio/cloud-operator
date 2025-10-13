@@ -155,6 +155,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 	lastKnownResourceVersion := watchOptions.ResourceVersion
 
 	var watcher watch.Interface
+
 	defer func() {
 		if watcher != nil {
 			watcher.Stop()
@@ -171,12 +172,16 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 		if watcher != nil {
 			watcher.Stop()
 		}
+
 		w, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 		if err != nil {
 			logger.Error("Error setting up watch on resource", zap.Error(err))
+
 			return err
 		}
+
 		watcher = w
+
 		return nil
 	}
 
@@ -192,12 +197,14 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 			select {
 			case <-ctx.Done():
 				logger.Debug("Disconnected from CloudSecure", zap.String("reason", "context cancelled"))
+
 				return ctx.Err()
 
 			case event, ok := <-watcher.ResultChan():
 				if !ok {
 					logger.Debug("Watcher channel closed")
 					logger.Debug("Restarting watcher", zap.String("fromResourceVersion", lastKnownResourceVersion))
+
 					break watcherLoop
 				}
 
@@ -205,6 +212,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 				case watch.Error:
 					err := getErrFromWatchEvent(event)
 					logger.Error("Watcher event returned error", zap.Error(err))
+
 					return err
 
 				case watch.Bookmark:
@@ -215,7 +223,9 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 							}
 						}
 					}
+
 					logger.Debug("Received bookmark", zap.String("resourceVersion", lastKnownResourceVersion))
+
 					continue
 
 				case watch.Added, watch.Modified, watch.Deleted:
@@ -225,9 +235,12 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 					if event.Type == "" {
 						logger.Debug("Received empty event type")
 						logger.Debug("Restarting watcher", zap.String("fromResourceVersion", lastKnownResourceVersion))
+
 						break watcherLoop
 					}
+
 					logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
+
 					continue
 				}
 
@@ -235,6 +248,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 				convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
 				if err != nil {
 					logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
+
 					return err
 				}
 
@@ -250,11 +264,13 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 					return ctx.Err()
 				case mutationChan <- mutation:
 				}
+
 				mutationCount++
 
 			case <-time.After(60 * time.Second):
 				logger.Debug("Current mutation count", zap.Int("mutation_count", mutationCount))
 				logger.Debug("Resetting mutation count")
+
 				mutationCount = 0
 			}
 		}
