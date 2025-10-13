@@ -143,7 +143,6 @@ func getErrFromWatchEvent(event watch.Event) error {
 func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watchOptions metav1.ListOptions, mutationChan chan *pb.KubernetesResourceMutation) error {
 	logger := r.logger.With(
 		zap.String("api_group", apiGroup),
-		zap.String("resource", r.resourceName),
 	)
 
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
