@@ -163,9 +163,7 @@ func TestWatchEvents_RestartsAfterChannelClose(t *testing.T) {
 	}()
 
 	// Give the goroutine a brief moment to start and register the first watcher.
-	select {
-	case <-time.After(50 * time.Millisecond):
-	}
+	time.Sleep(50 * time.Millisecond)
 
 	// Advance RV via bookmark on first watcher, then stop it to force restart
 	fw1.Action(watch.Bookmark, makeUnstructuredPod("p1", "default", "20"))
