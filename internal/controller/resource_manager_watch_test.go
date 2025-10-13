@@ -18,7 +18,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-// helper to build a basic Unstructured Pod with the provided name/ns/rv
+// helper to build a basic Unstructured Pod with the provided name/ns/rv.
 func makeUnstructuredPod(name, namespace, rv string) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{}
 	obj.SetAPIVersion("v1")
@@ -26,6 +26,7 @@ func makeUnstructuredPod(name, namespace, rv string) *unstructured.Unstructured 
 	obj.SetName(name)
 	obj.SetNamespace(namespace)
 	obj.SetResourceVersion(rv)
+
 	return obj
 }
 
@@ -38,7 +39,7 @@ func TestWatchEvents_EmitsMutations_ForAddModifyDelete_AndStopsOnError(t *testin
 
 	// Use a FakeWatcher we control
 	fw := watch.NewFake()
-	dyn.Fake.PrependWatchReactor("*", func(action clientgotesting.Action) (handled bool, ret watch.Interface, err error) {
+	dyn.PrependWatchReactor("*", func(action clientgotesting.Action) (handled bool, ret watch.Interface, err error) {
 		return true, fw, nil
 	})
 
@@ -57,6 +58,7 @@ func TestWatchEvents_EmitsMutations_ForAddModifyDelete_AndStopsOnError(t *testin
 
 	// Run watcher in background
 	errCh := make(chan error, 1)
+
 	go func() {
 		err := rm.watchEvents(ctx, "", metav1.ListOptions{Watch: true, ResourceVersion: "10"}, mutationCh)
 		errCh <- err
@@ -117,6 +119,7 @@ func TestGetErrFromWatchEvent(t *testing.T) {
 
 	// Error with Status payload should be formatted
 	st := &metav1.Status{Code: 404, Reason: "NotFound", Message: "nope"}
+
 	err := getErrFromWatchEvent(watch.Event{Type: watch.Error, Object: st})
 	if err == nil {
 		t.Fatalf("expected error, got nil")
@@ -135,11 +138,13 @@ func TestWatchEvents_RestartsAfterChannelClose(t *testing.T) {
 	fw2 := watch.NewFake()
 
 	watchCalls := 0
-	dyn.Fake.PrependWatchReactor("*", func(action clientgotesting.Action) (handled bool, ret watch.Interface, err error) {
+
+	dyn.PrependWatchReactor("*", func(action clientgotesting.Action) (handled bool, ret watch.Interface, err error) {
 		watchCalls++
 		if watchCalls == 1 {
 			return true, fw1, nil
 		}
+
 		return true, fw2, nil
 	})
 
@@ -157,6 +162,7 @@ func TestWatchEvents_RestartsAfterChannelClose(t *testing.T) {
 	mutationCh := make(chan *pb.KubernetesResourceMutation, 10)
 
 	errCh := make(chan error, 1)
+
 	go func() {
 		err := rm.watchEvents(ctx, "", metav1.ListOptions{Watch: true, ResourceVersion: "10"}, mutationCh)
 		errCh <- err
@@ -183,6 +189,7 @@ func TestWatchEvents_RestartsAfterChannelClose(t *testing.T) {
 
 	// Cancel context to shut down watchEvents cleanly
 	cancel()
+
 	select {
 	case <-errCh:
 		// ok (may be ctx.Err())
