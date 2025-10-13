@@ -239,17 +239,11 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 				}
 
 				resource := event.Object.GetObjectKind().GroupVersionKind().Kind
-				metadataObj, err := convertMetaObjectToMetadata(logger, ctx, *convertedData, r.clientset, resource)
-				if err != nil {
-					logger.Error("Cannot convert object metadata", zap.Error(err))
-					return err
-				}
 
-				mutation, err := r.streamManager.createMutationObject(metadataObj, event.Type)
-				if err != nil {
-					logger.Error("Cannot send resource mutation", zap.Error(err))
-					return err
-				}
+				metadataObj := convertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resource)
+
+				// Helper function: type gymnastics + send the KubernetesObjectData on the mutation channel
+				mutation := r.streamManager.createMutationObject(metadataObj, event.Type)
 
 				select {
 				case <-ctx.Done():
