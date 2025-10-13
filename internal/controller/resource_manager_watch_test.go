@@ -120,3 +120,74 @@ func TestGetErrFromWatchEvent(t *testing.T) {
         t.Fatalf("expected error, got nil")
     }
 }
+
+
+func TestWatchEvents_RestartsAfterChannelClose(t *testing.T) {
+    logger := zap.NewNop()
+
+    scheme := runtime.NewScheme()
+    dyn := dynamicfake.NewSimpleDynamicClient(scheme)
+
+    // Two fake watchers: first one will be closed to force a restart,
+    // second one will deliver events after restart.
+    fw1 := watch.NewFake()
+    fw2 := watch.NewFake()
+
+    watchCalls := 0
+    dyn.Fake.PrependWatchReactor("*", func(action clientgotesting.Action) (handled bool, ret watch.Interface, err error) {
+        watchCalls++
+        if watchCalls == 1 {
+            return true, fw1, nil
+        }
+        return true, fw2, nil
+    })
+
+    rm := &ResourceManager{
+        resourceName:  "namespaces",
+        clientset:     nil,
+        logger:        logger,
+        dynamicClient: dyn,
+        streamManager: &streamManager{},
+    }
+
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    mutationCh := make(chan *pb.KubernetesResourceMutation, 10)
+
+    errCh := make(chan error, 1)
+    go func() {
+        err := rm.watchEvents(ctx, "", metav1.ListOptions{Watch: true, ResourceVersion: "10"}, mutationCh)
+        errCh <- err
+    }()
+
+    // Give the goroutine a brief moment to start and register the first watcher.
+    select {
+    case <-time.After(50 * time.Millisecond):
+    }
+
+    // Advance RV via bookmark on first watcher, then stop it to force restart
+    fw1.Action(watch.Bookmark, makeUnstructuredPod("p1", "default", "20"))
+    fw1.Stop()
+
+    // After restart, send an Added event on the second watcher; we should get a mutation
+    fw2.Add(makeUnstructuredPod("p2", "default", "21"))
+
+    select {
+    case m := <-mutationCh:
+        if m.GetCreateResource() == nil {
+            t.Fatalf("expected CreateResource mutation from second watcher, got %#v", m)
+        }
+    case <-time.After(3 * time.Second):
+        t.Fatalf("timed out waiting for mutation from restarted watcher")
+    }
+
+    // Cancel context to shut down watchEvents cleanly
+    cancel()
+    select {
+    case <-errCh:
+        // ok (may be ctx.Err())
+    case <-time.After(3 * time.Second):
+        t.Fatalf("timed out waiting for watchEvents to exit after cancel")
+    }
+}

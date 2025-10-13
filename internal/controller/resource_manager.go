@@ -69,8 +69,9 @@ func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.
 	defer cancel()
 	// Here intiatate the watch event
 	watchOptions := metav1.ListOptions{
-		Watch:           true,
-		ResourceVersion: resourceVersion,
+		Watch:               true,
+		ResourceVersion:     resourceVersion,
+		AllowWatchBookmarks: true,
 	}
 
 	err := r.limiter.Wait(ctx)
@@ -157,8 +158,13 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 		}
 	}()
 
+	// startWatcher (re)initializes the Kubernetes watch stream.
 	startWatcher := func() error {
+		// Always resume from the last known resourceVersion.
 		watchOptions.ResourceVersion = lastKnownResourceVersion
+		// Ensure we get periodic bookmarks for advancing the resume point.
+		watchOptions.AllowWatchBookmarks = true
+		// Stop any existing watcher before creating a new one.
 		if watcher != nil {
 			watcher.Stop()
 		}
@@ -171,92 +177,88 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 		return nil
 	}
 
-	if err := startWatcher(); err != nil {
-		return err
-	}
-
 	mutationCount := 0
-
 	for {
-		select {
-		case <-ctx.Done():
-			logger.Debug("Disconnected from CloudSecure", zap.String("reason", "context cancelled"))
-			return ctx.Err()
+		if err := startWatcher(); err != nil {
+			return err
+		}
 
-		case event, ok := <-watcher.ResultChan():
-			if !ok {
-				logger.Debug("Watcher channel closed")
-				logger.Debug("Restarting watcher", zap.String("fromResourceVersion", lastKnownResourceVersion))
-				if err := startWatcher(); err != nil {
-					return err
-				}
-				continue
-			}
-
-			switch event.Type {
-			case watch.Error:
-				err := getErrFromWatchEvent(event)
-				logger.Error("Watcher event returned error", zap.Error(err))
-				return err
-
-			case watch.Bookmark:
-				if event.Object != nil {
-					if obj, ok := event.Object.(interface{ GetResourceVersion() string }); ok {
-						if rv := obj.GetResourceVersion(); rv != "" {
-							lastKnownResourceVersion = rv
-						}
-					}
-				}
-				logger.Debug("Received bookmark", zap.String("resourceVersion", lastKnownResourceVersion))
-				continue
-
-			case watch.Added, watch.Modified, watch.Deleted:
-				logger.Debug("Got watch event", zap.String("type", string(event.Type)))
-
-			default:
-				if event.Type == "" {
-					logger.Debug("Received empty event type")
-					logger.Debug("Restarting watcher", zap.String("fromResourceVersion", lastKnownResourceVersion))
-					if err := startWatcher(); err != nil {
-						return err
-					}
-					continue
-				}
-				logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
-				continue
-			}
-
-			// Process mutations (only for Added/Modified/Deleted)
-			convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
-			if err != nil {
-				logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
-				return err
-			}
-
-			resource := event.Object.GetObjectKind().GroupVersionKind().Kind
-			metadataObj, err := convertMetaObjectToMetadata(logger, ctx, *convertedData, r.clientset, resource)
-			if err != nil {
-				logger.Error("Cannot convert object metadata", zap.Error(err))
-				return err
-			}
-
-			mutation, err := r.streamManager.createMutationObject(metadataObj, event.Type)
-			if err != nil {
-				logger.Error("Cannot send resource mutation", zap.Error(err))
-				return err
-			}
-
+	watcherLoop:
+		for {
 			select {
 			case <-ctx.Done():
+				logger.Debug("Disconnected from CloudSecure", zap.String("reason", "context cancelled"))
 				return ctx.Err()
-			case mutationChan <- mutation:
-			}
-			mutationCount++
 
-		case <-time.After(60 * time.Second):
-			logger.Debug("Current mutation count", zap.Int("mutation_count", mutationCount))
-			logger.Debug("Resetting mutation count")
-			mutationCount = 0
+			case event, ok := <-watcher.ResultChan():
+				if !ok {
+					logger.Debug("Watcher channel closed")
+					logger.Debug("Restarting watcher", zap.String("fromResourceVersion", lastKnownResourceVersion))
+					break watcherLoop
+				}
+
+				switch event.Type {
+				case watch.Error:
+					err := getErrFromWatchEvent(event)
+					logger.Error("Watcher event returned error", zap.Error(err))
+					return err
+
+				case watch.Bookmark:
+					if event.Object != nil {
+						if obj, ok := event.Object.(interface{ GetResourceVersion() string }); ok {
+							if rv := obj.GetResourceVersion(); rv != "" {
+								lastKnownResourceVersion = rv
+							}
+						}
+					}
+					logger.Debug("Received bookmark", zap.String("resourceVersion", lastKnownResourceVersion))
+					continue
+
+				case watch.Added, watch.Modified, watch.Deleted:
+					logger.Debug("Got watch event", zap.String("type", string(event.Type)))
+
+				default:
+					if event.Type == "" {
+						logger.Debug("Received empty event type")
+						logger.Debug("Restarting watcher", zap.String("fromResourceVersion", lastKnownResourceVersion))
+						break watcherLoop
+					}
+					logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
+					continue
+				}
+
+				// Process mutations (only for Added/Modified/Deleted)
+				convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
+				if err != nil {
+					logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
+					return err
+				}
+
+				resource := event.Object.GetObjectKind().GroupVersionKind().Kind
+				metadataObj, err := convertMetaObjectToMetadata(logger, ctx, *convertedData, r.clientset, resource)
+				if err != nil {
+					logger.Error("Cannot convert object metadata", zap.Error(err))
+					return err
+				}
+
+				mutation, err := r.streamManager.createMutationObject(metadataObj, event.Type)
+				if err != nil {
+					logger.Error("Cannot send resource mutation", zap.Error(err))
+					return err
+				}
+
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case mutationChan <- mutation:
+				}
+				mutationCount++
+
+			case <-time.After(60 * time.Second):
+				logger.Debug("Current mutation count", zap.Int("mutation_count", mutationCount))
+				logger.Debug("Resetting mutation count")
+				mutationCount = 0
+			}
 		}
 	}
 }
