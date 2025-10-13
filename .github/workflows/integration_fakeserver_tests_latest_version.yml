@@ -8,6 +8,9 @@ on:
     branches:
       - main
 
+permissions:
+  packages: write
+
 jobs:
   test-deploy-onboard-fakeserver:
     runs-on: ubuntu-latest
@@ -58,7 +61,7 @@ jobs:
         run: |
           curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
           sudo install minikube-linux-amd64 /usr/local/bin/minikube
-      
+
       - name: Check Minikube support for Kubernetes version
         id: dry_run
         run: |
@@ -90,44 +93,44 @@ jobs:
         if: steps.dry_run.outputs.supported == 'true'
         uses: azure/setup-helm@v4.2.0
         with:
-            version: "v3.16.4"
+          version: "v3.19.0"
 
       - name: Package Helm chart
         if: steps.dry_run.outputs.supported == 'true'
         run: |
-            helm package cloud-operator && kubectl create ns illumio-cloud
+          helm package cloud-operator && kubectl create ns illumio-cloud
 
       - name: Install Integration Test Dependencies
         if: steps.dry_run.outputs.supported == 'true'
         run: |
-            cd ./fakeserver && go mod tidy && go mod download
+          cd ./fakeserver && go mod tidy && go mod download
 
       - name: Install Helm chart and Deploy Operator
         if: steps.dry_run.outputs.supported == 'true'
         env:
-            ONBOARDING_CLIENT_ID: "client_id_1"
-            ONBOARDING_CLIENT_SECRET: "client_secret_1"
-            TLS_SKIP_VERIFY: true
-            ONBOARDING_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/onboard"
-            TOKEN_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/authenticate"
+          ONBOARDING_CLIENT_ID: "client_id_1"
+          ONBOARDING_CLIENT_SECRET: "client_secret_1"
+          TLS_SKIP_VERIFY: true
+          ONBOARDING_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/onboard"
+          TOKEN_ENDPOINT: "https://192.168.49.1:50053/api/v1/k8s_cluster/authenticate"
         run: |
-            helm upgrade --install illumio cloud-operator-*.tgz \
-            --namespace illumio-cloud \
-            --create-namespace \
-            --set image.repository=ghcr.io/${{ github.repository }} \
-            --set image.tag=${{ steps.meta.outputs.tags }} \
-            --set image.pullPolicy=Always \
-            --set onboardingSecret.clientId=$ONBOARDING_CLIENT_ID \
-            --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET \
-            --set env.onboardingEndpoint=$ONBOARDING_ENDPOINT \
-            --set env.tokenEndpoint=$TOKEN_ENDPOINT \
-            --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
+          helm upgrade --install illumio cloud-operator-*.tgz \
+          --namespace illumio-cloud \
+          --create-namespace \
+          --set image.repository=ghcr.io/${{ github.repository }} \
+          --set image.tag=${{ steps.meta.outputs.tags }} \
+          --set image.pullPolicy=Always \
+          --set onboardingSecret.clientId=$ONBOARDING_CLIENT_ID \
+          --set onboardingSecret.clientSecret=$ONBOARDING_CLIENT_SECRET \
+          --set env.onboardingEndpoint=$ONBOARDING_ENDPOINT \
+          --set env.tokenEndpoint=$TOKEN_ENDPOINT \
+          --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
 
-      - name:  Run Integration Tests
+      - name: Run Integration Tests
         if: steps.dry_run.outputs.supported == 'true'
         run: |
-         # Run your test against the fake server
-          kubectl wait --for=condition=ready pod -l app=cloud-operator -n illumio-cloud --timeout=300s && go test -v ./fakeserver/...
+          # Run your test against the fake server
+           kubectl wait --for=condition=ready pod -l app=cloud-operator -n illumio-cloud --timeout=300s && go test -v ./fakeserver/...
 
       - name: Fetch Kubernetes Pod logs
         if: steps.dry_run.outputs.supported == 'true'

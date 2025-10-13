@@ -11,27 +11,30 @@ import (
 	"github.com/illumio/cloud-operator/internal/version"
 )
 
-// Helper function to send a request to the resource stream
+// Helper function to send a request to the resource stream.
 func (sm *streamManager) sendToResourceStream(logger *zap.Logger, request *pb.SendKubernetesResourcesRequest) error {
 	if err := sm.streamClient.resourceStream.Send(request); err != nil {
 		logger.Error("Failed to send request", zap.Stringer("request", request), zap.Error(err))
+
 		return err
 	}
+
 	return nil
 }
 
 // sendObjectData sends a KubernetesObjectData to CloudSecure into the given stream.
-// Its used for the intial boot up of the operator so that is can stream everything currently in the cluster.
+// Its used for the initial boot up of the operator so that is can stream everything currently in the cluster.
 func (sm *streamManager) sendObjectData(logger *zap.Logger, metadata *pb.KubernetesObjectData) error {
 	request := &pb.SendKubernetesResourcesRequest{
 		Request: &pb.SendKubernetesResourcesRequest_ResourceData{
 			ResourceData: metadata,
 		},
 	}
+
 	return sm.sendToResourceStream(logger, request)
 }
 
-// sendNetworkFlowRequest sends a network flow to the networkFlowsStream
+// sendNetworkFlowRequest sends a network flow to the networkFlowsStream.
 func (sm *streamManager) sendNetworkFlowRequest(logger *zap.Logger, flow interface{}) error {
 	var request *pb.SendKubernetesNetworkFlowsRequest
 
@@ -51,19 +54,23 @@ func (sm *streamManager) sendNetworkFlowRequest(logger *zap.Logger, flow interfa
 	default:
 		return fmt.Errorf("unsupported flow type: %T", flow)
 	}
+
 	if err := sm.streamClient.networkFlowsStream.Send(request); err != nil {
 		logger.Error("Failed to send network flow", zap.Error(err))
+
 		return err
 	}
+
 	return nil
 }
 
 // createMutationObject does type gymnastics then sends the result over the
 // wire. It "upgrades" a KubernetesObjectData into a KubernetesResourceMutation
 // (which can be sent over the wire). It needs to use information from the
-// watch.EventType to accomplish this
-func (sm *streamManager) createMutationObject(metadata *pb.KubernetesObjectData, eventType watch.EventType) (*pb.KubernetesResourceMutation, error) {
+// watch.EventType to accomplish this.
+func (sm *streamManager) createMutationObject(metadata *pb.KubernetesObjectData, eventType watch.EventType) *pb.KubernetesResourceMutation {
 	var mutation *pb.KubernetesResourceMutation
+
 	switch eventType {
 	case watch.Added:
 		mutation = &pb.KubernetesResourceMutation{
@@ -83,27 +90,36 @@ func (sm *streamManager) createMutationObject(metadata *pb.KubernetesObjectData,
 				UpdateResource: metadata,
 			},
 		}
+	case watch.Bookmark:
+	case watch.Error:
 	}
-	return mutation, nil
+
+	return mutation
 }
 
-// sendClusterMetadata sends a message to indicate current cluster metadata
+// sendClusterMetadata sends a message to indicate current cluster metadata.
 func (sm *streamManager) sendClusterMetadata(ctx context.Context, logger *zap.Logger) error {
 	clusterUid, err := GetClusterID(ctx, logger)
 	if err != nil {
 		logger.Error("Error getting cluster id", zap.Error(err))
+
 		return err
 	}
+
 	clientset, err := NewClientSet()
 	if err != nil {
 		logger.Error("Error creating clientset", zap.Error(err))
+
 		return err
 	}
+
 	kubernetesVersion, err := clientset.Discovery().ServerVersion()
 	if err != nil {
 		logger.Error("Error getting Kubernetes version", zap.Error(err))
+
 		return err
 	}
+
 	request := &pb.SendKubernetesResourcesRequest{
 		Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{
 			ClusterMetadata: &pb.KubernetesClusterMetadata{
@@ -114,6 +130,7 @@ func (sm *streamManager) sendClusterMetadata(ctx context.Context, logger *zap.Lo
 			},
 		},
 	}
+
 	return sm.sendToResourceStream(logger, request)
 }
 
@@ -122,10 +139,11 @@ func (sm *streamManager) sendResourceSnapshotComplete(logger *zap.Logger) error 
 	request := &pb.SendKubernetesResourcesRequest{
 		Request: &pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete{},
 	}
+
 	return sm.sendToResourceStream(logger, request)
 }
 
-// sendKeepalive accepts a stream type & sends a keepalive ping on that stream
+// sendKeepalive accepts a stream type & sends a keepalive ping on that stream.
 func (sm *streamManager) sendKeepalive(logger *zap.Logger, st StreamType) error {
 	var err error
 
@@ -160,7 +178,9 @@ func (sm *streamManager) sendKeepalive(logger *zap.Logger, st StreamType) error 
 
 	if err != nil {
 		logger.Error("Failed to send keepalive on stream", zap.Error(err))
+
 		return err
 	}
+
 	return nil
 }

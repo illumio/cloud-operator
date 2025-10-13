@@ -55,6 +55,7 @@ func NewFlowCache(
 func (c *FlowCache) Close() error {
 	close(c.inFlows)
 	close(c.outFlows)
+
 	return nil
 }
 
@@ -73,17 +74,23 @@ func (c *FlowCache) CacheFlow(ctx context.Context, flow pb.Flow) error {
 func (c *FlowCache) Run(ctx context.Context, logger *zap.Logger) error {
 	timer := time.NewTimer(c.activeTimeout)
 	defer timer.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 
 		case <-timer.C:
-			c.evictExpiredFlows(ctx)
+			c.evictExpiredFlows(ctx, logger)
 
 			// Reset timer based on the next soon-to-expire flow
 			if front := c.queue.Front(); front != nil {
-				resetTimer(timer, front.Value.(pb.Flow).StartTimestamp(), c.activeTimeout)
+				flow, ok := front.Value.(pb.Flow)
+				if !ok {
+					logger.Fatal("Failed to convert cache entry to Flow")
+				}
+
+				resetTimer(timer, flow.StartTimestamp(), c.activeTimeout)
 			}
 
 		case flow := <-c.inFlows:
@@ -92,30 +99,37 @@ func (c *FlowCache) Run(ctx context.Context, logger *zap.Logger) error {
 			}
 
 			if c.shouldEvictOldest() {
-				if err := c.evictOldestFlow(ctx); err != nil {
+				if err := c.evictOldestFlow(ctx, logger); err != nil {
 					return err
 				}
 			}
 
 			c.addFlowToCache(flow)
-			c.resetTimerForNextExpiration(timer)
+			c.resetTimerForNextExpiration(timer, logger)
 		}
 	}
 }
 
 // evictExpiredFlows removes all flows older than the active timeout from the cache and queue.
-func (c *FlowCache) evictExpiredFlows(ctx context.Context) {
+func (c *FlowCache) evictExpiredFlows(ctx context.Context, logger *zap.Logger) {
 	now := time.Now().UTC()
 	cutoff := now.Add(-c.activeTimeout)
 
 	for c.queue.Len() > 0 {
 		frontElem := c.queue.Front()
-		flow := frontElem.Value.(pb.Flow)
+
+		flow, ok := frontElem.Value.(pb.Flow)
+		if !ok {
+			logger.Fatal("Failed to convert cache entry to Flow")
+		}
+
 		if flow.StartTimestamp().After(cutoff) {
 			break
 		}
+
 		c.queue.Remove(frontElem)
 		delete(c.cache, flow.Key())
+
 		select {
 		case <-ctx.Done():
 			return
@@ -127,6 +141,7 @@ func (c *FlowCache) evictExpiredFlows(ctx context.Context) {
 // shouldSkipFlow determines if a flow is already cached and logs if skipped.
 func (c *FlowCache) shouldSkipFlow(flow pb.Flow) bool {
 	_, alreadyCached := c.cache[flow.Key()]
+
 	return alreadyCached
 }
 
@@ -136,19 +151,27 @@ func (c *FlowCache) shouldEvictOldest() bool {
 }
 
 // evictOldestFlow removes the oldest flow from cache and sends it out.
-func (c *FlowCache) evictOldestFlow(ctx context.Context) error {
+func (c *FlowCache) evictOldestFlow(ctx context.Context, logger *zap.Logger) error {
 	oldest := c.queue.Front()
 	if oldest == nil {
 		return nil
 	}
+
 	c.queue.Remove(oldest)
-	flow := oldest.Value.(pb.Flow)
+
+	flow, ok := oldest.Value.(pb.Flow)
+	if !ok {
+		logger.Fatal("Failed to convert cache entry to Flow")
+	}
+
 	delete(c.cache, flow.Key())
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	case c.outFlows <- flow:
 	}
+
 	return nil
 }
 
@@ -159,9 +182,14 @@ func (c *FlowCache) addFlowToCache(flow pb.Flow) {
 }
 
 // resetTimerForNextExpiration resets the eviction timer based on the oldest flow's expiration time.
-func (c *FlowCache) resetTimerForNextExpiration(timer *time.Timer) {
+func (c *FlowCache) resetTimerForNextExpiration(timer *time.Timer, logger *zap.Logger) {
 	if oldest := c.queue.Front(); oldest != nil {
-		resetTimer(timer, oldest.Value.(pb.Flow).StartTimestamp(), c.activeTimeout)
+		flow, ok := oldest.Value.(pb.Flow)
+		if !ok {
+			logger.Fatal("Failed to convert cache entry to Flow")
+		}
+
+		resetTimer(timer, flow.StartTimestamp(), c.activeTimeout)
 	}
 }
 

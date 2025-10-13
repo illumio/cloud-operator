@@ -4,8 +4,8 @@ package controller
 
 import (
 	"github.com/cilium/cilium/api/v1/flow"
+
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/stretchr/testify/assert"
 )
 
 func (suite *ControllerTestSuite) TestConvertLayer4() {
@@ -108,7 +108,7 @@ func (suite *ControllerTestSuite) TestConvertLayer4() {
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			got := convertCiliumLayer4(tt.input)
-			assert.Equal(suite.T(), tt.expected, got, "Expected: %v, got: %v", tt.expected, got)
+			suite.Equal(tt.expected, got, "Expected: %v, got: %v", tt.expected, got)
 		})
 	}
 }
@@ -163,7 +163,7 @@ func (suite *ControllerTestSuite) TestConvertCiliumWorkflows() {
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			got := convertCiliumWorkflows(tt.input)
-			assert.Equal(suite.T(), tt.expected, got, "Expected: %v, got: %v", tt.expected, got)
+			suite.Equal(tt.expected, got, "Expected: %v, got: %v", tt.expected, got)
 		})
 	}
 }
@@ -236,7 +236,7 @@ func (suite *ControllerTestSuite) TestConvertCiliumPolicies() {
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			got := convertCiliumPolicies(tt.input)
-			assert.Equal(suite.T(), tt.expected, got, "Expected: %v, got: %v", tt.expected, got)
+			suite.Equal(tt.expected, got, "Expected: %v, got: %v", tt.expected, got)
 		})
 	}
 }
@@ -267,7 +267,7 @@ func (suite *ControllerTestSuite) TestConvertCiliumIP() {
 	for name, tt := range tests {
 		suite.Run(name, func() {
 			result := convertCiliumIP(tt.input)
-			assert.Equal(suite.T(), tt.expected, result)
+			suite.Equal(tt.expected, result)
 		})
 	}
 }

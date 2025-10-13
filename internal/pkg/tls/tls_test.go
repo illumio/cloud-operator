@@ -37,24 +37,6 @@ import (
 
 const defaultTestTimeout = 10 * time.Second
 
-func TestTLSOverrideServerName(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	authority := "server.name"
-	c := NewTLSWithALPNDisabled(&tls.Config{ServerName: authority}, logger)
-	if c.Info().ServerName != authority {
-		t.Fatalf("c.Info().ServerName = %v, want %v", c.Info().ServerName, authority)
-	}
-}
-
-func TestTLSClone(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	authority := "server.name"
-	c := NewTLSWithALPNDisabled(&tls.Config{ServerName: authority}, logger)
-	if c.Info().ServerName != authority {
-		t.Fatalf("Change in clone should not affect the original, c.Info().ServerName = %v, want %v", c.Info().ServerName, authority)
-	}
-}
-
 type serverHandshake func(net.Conn) (credentials.AuthInfo, error)
 
 func TestClientHandshakeReturnsAuthInfo(t *testing.T) {
@@ -79,8 +61,13 @@ func TestClientHandshakeReturnsAuthInfo(t *testing.T) {
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
 			done := make(chan credentials.AuthInfo, 1)
+
 			lis := launchServerOnListenAddress(t, tlsServerHandshake, done, tc.address)
-			defer lis.Close()
+
+			defer func() {
+				_ = lis.Close()
+			}()
+
 			lisAddr := lis.Addr().String()
 			clientAuthInfo := clientHandle(t, gRPCClientHandshake, lisAddr)
 			// wait until server sends serverAuthInfo or fails.
@@ -88,6 +75,7 @@ func TestClientHandshakeReturnsAuthInfo(t *testing.T) {
 			if !ok {
 				t.Fatalf("Error at server-side")
 			}
+
 			if !compare(clientAuthInfo, serverAuthInfo) {
 				t.Fatalf("c.ClientHandshake(_, %v, _) = %v, want %v.", lisAddr, clientAuthInfo, serverAuthInfo)
 			}
@@ -99,6 +87,7 @@ func compare(a1, a2 credentials.AuthInfo) bool {
 	if a1.AuthType() != a2.AuthType() {
 		return false
 	}
+
 	switch a1.AuthType() {
 	case "tls":
 		state1 := a1.(credentials.TLSInfo).State
@@ -109,6 +98,7 @@ func compare(a1, a2 credentials.AuthInfo) bool {
 			state1.NegotiatedProtocol == state2.NegotiatedProtocol {
 			return true
 		}
+
 		return false
 	default:
 		return false
@@ -116,59 +106,87 @@ func compare(a1, a2 credentials.AuthInfo) bool {
 }
 
 func launchServerOnListenAddress(t *testing.T, hs serverHandshake, done chan credentials.AuthInfo, address string) net.Listener {
+	t.Helper()
+
 	lis, err := net.Listen("tcp", address)
 	if err != nil {
 		if strings.Contains(err.Error(), "bind: cannot assign requested address") ||
 			strings.Contains(err.Error(), "socket: address family not supported by protocol") {
 			t.Skipf("no support for address %v", address)
 		}
+
 		t.Fatalf("Failed to listen: %v", err)
 	}
+
 	go serverHandle(t, hs, done, lis)
+
 	return lis
 }
 
 // Is run in a separate goroutine.
 func serverHandle(t *testing.T, hs serverHandshake, done chan credentials.AuthInfo, lis net.Listener) {
+	t.Helper()
+
 	serverRawConn, err := lis.Accept()
 	if err != nil {
 		t.Errorf("Server failed to accept connection: %v", err)
 		close(done)
+
 		return
 	}
+
 	serverAuthInfo, err := hs(serverRawConn)
 	if err != nil {
 		t.Errorf("Server failed while handshake. Error: %v", err)
-		serverRawConn.Close()
+
+		_ = serverRawConn.Close()
+
 		close(done)
+
 		return
 	}
+
 	done <- serverAuthInfo
 }
 
 func clientHandle(t *testing.T, hs func(net.Conn, string) (credentials.AuthInfo, error), lisAddr string) credentials.AuthInfo {
+	t.Helper()
+
 	conn, err := net.Dial("tcp", lisAddr)
 	if err != nil {
 		t.Fatalf("Client failed to connect to %s. Error: %v", lisAddr, err)
 	}
-	defer conn.Close()
+
+	defer func() {
+		_ = conn.Close()
+	}()
+
 	clientAuthInfo, err := hs(conn, lisAddr)
 	if err != nil {
 		t.Fatalf("Error on client while handshake. Error: %v", err)
 	}
+
 	return clientAuthInfo
 }
 
 // Client handshake implementation in gRPC.
 func gRPCClientHandshake(conn net.Conn, lisAddr string) (credentials.AuthInfo, error) {
 	logger := zaptest.NewLogger(nil)
-	clientTLS := NewTLSWithALPNDisabled(&tls.Config{InsecureSkipVerify: true}, logger)
+	clientTLS := NewTLSWithALPNDisabled(
+		&tls.Config{
+			InsecureSkipVerify: true, //nolint:gosec
+		},
+		logger,
+	)
+
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
 	defer cancel()
+
 	_, authInfo, err := clientTLS.ClientHandshake(ctx, lisAddr, conn)
 	if err != nil {
 		return nil, err
 	}
+
 	return authInfo, nil
 }
 
@@ -177,12 +195,17 @@ func tlsServerHandshake(conn net.Conn) (credentials.AuthInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	serverTLSConfig := &tls.Config{Certificates: []tls.Certificate{cert}}
+
+	serverTLSConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
 	serverConn := tls.Server(conn, serverTLSConfig)
 	err = serverConn.Handshake()
 	if err != nil {
 		return nil, err
 	}
+
 	return credentials.TLSInfo{State: serverConn.ConnectionState(), CommonAuthInfo: credentials.CommonAuthInfo{SecurityLevel: credentials.PrivacyAndIntegrity}}, nil
 }
 

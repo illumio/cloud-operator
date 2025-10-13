@@ -3,10 +3,10 @@ name: Helm Lint and Unit Tests
 on:
   push:
     paths:
-      - 'cloud-operator/**'
+      - "cloud-operator/**"
   pull_request:
     paths:
-      - 'cloud-operator/**'
+      - "cloud-operator/**"
 
 jobs:
   helm-lint-and-tests:
@@ -19,7 +19,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v4.2.0
         with:
-            version: "v3.16.4"
+          version: "v3.19.0"
 
       - name: Install helm-unittest plugin
         run: |

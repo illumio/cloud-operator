@@ -1,4 +1,5 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 package controller
 
 import (
@@ -51,6 +52,7 @@ type ResourceManager struct {
 func NewResourceManager(config ResourceManagerConfig) *ResourceManager {
 	// Create a logger with the resource name already included
 	logger := config.BaseLogger.With(zap.String("resource", config.ResourceName))
+
 	return &ResourceManager{
 		resourceName:  config.ResourceName,
 		clientset:     config.Clientset,
@@ -77,12 +79,14 @@ func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.
 	err := r.limiter.Wait(ctx)
 	if err != nil {
 		r.logger.Error("Cannot wait using rate limiter", zap.Error(err))
+
 		return
 	}
 
 	err = r.watchEvents(ctx, apiGroup, watchOptions, mutationChan)
 	if err != nil {
 		r.logger.Error("Watch failed", zap.Error(err))
+
 		return
 	}
 }
@@ -90,20 +94,19 @@ func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.
 // DynamicListResources lists a specified resource dynamically and sends down the current gRPC stream.
 func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.Logger, apiGroup string) (string, error) {
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
+
 	objs, resourceListVersion, resourceK8sKind, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
 		return "", err
 	}
 
 	for _, obj := range objs {
-		metadataObj, err := convertMetaObjectToMetadata(logger, ctx, obj, r.clientset, resourceK8sKind)
-		if err != nil {
-			r.logger.Error("Cannot convert object metadata", zap.Error(err))
-			return "", err
-		}
+		metadataObj := convertMetaObjectToMetadata(ctx, obj, r.clientset, resourceK8sKind)
+
 		err = r.streamManager.sendObjectData(logger, metadataObj)
 		if err != nil {
 			r.logger.Error("Cannot send object metadata", zap.Error(err))
+
 			return "", err
 		}
 	}
@@ -115,6 +118,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.
 		return "", err
 	default:
 	}
+
 	return resourceListVersion, nil
 }
 
@@ -177,6 +181,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 	}
 
 	mutationCount := 0
+
 	for {
 		if err := startWatcher(); err != nil {
 			return err
@@ -275,8 +280,10 @@ func (r *ResourceManager) FetchResources(ctx context.Context, resource schema.Gr
 
 		// Log and return other errors as usual
 		r.logger.Error("Cannot list resource", zap.Stringer("kind", resource), zap.Error(err))
+
 		return nil, err
 	}
+
 	return unstructuredResources, nil
 }
 
@@ -287,10 +294,13 @@ func (r *ResourceManager) ExtractObjectMetas(resources *unstructured.Unstructure
 		objMeta, err := getMetadatafromResource(r.logger, item)
 		if err != nil {
 			r.logger.Error("Cannot get Metadata from resource", zap.Error(err))
+
 			return nil, err
 		}
+
 		objectMetas = append(objectMetas, *objMeta)
 	}
+
 	return objectMetas, nil
 }
 
