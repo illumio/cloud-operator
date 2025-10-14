@@ -18,13 +18,13 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-// helper to build a basic Unstructured Pod with the provided name/ns/rv.
-func makeUnstructuredPod(name, namespace, rv string) *unstructured.Unstructured {
+// helper to build a basic Unstructured Namespace with the provided name/rv.
+func makeUnstructuredPod(name, rv string) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{}
 	obj.SetAPIVersion("v1")
 	obj.SetKind("Namespace")
 	obj.SetName(name)
-	obj.SetNamespace(namespace)
+	obj.SetNamespace("default")
 	obj.SetResourceVersion(rv)
 
 	return obj
@@ -65,12 +65,12 @@ func TestWatchEvents_EmitsMutations_ForAddModifyDelete_AndStopsOnError(t *testin
 	}()
 
 	// Act: send events
-	fw.Add(makeUnstructuredPod("p1", "default", "11"))
-	fw.Modify(makeUnstructuredPod("p1", "default", "12"))
-	fw.Delete(makeUnstructuredPod("p1", "default", "13"))
+ fw.Add(makeUnstructuredPod("p1", "11"))
+ fw.Modify(makeUnstructuredPod("p1", "12"))
+ fw.Delete(makeUnstructuredPod("p1", "13"))
 
 	// Bookmark should be ignored but advance RV
-	bookmark := makeUnstructuredPod("p1", "default", "14")
+ bookmark := makeUnstructuredPod("p1", "14")
 	fw.Action(watch.Bookmark, bookmark)
 
 	// Finally, send an error and expect the watcher to stop with error
@@ -172,11 +172,11 @@ func TestWatchEvents_RestartsAfterChannelClose(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Advance RV via bookmark on first watcher, then stop it to force restart
-	fw1.Action(watch.Bookmark, makeUnstructuredPod("p1", "default", "20"))
+ fw1.Action(watch.Bookmark, makeUnstructuredPod("p1", "20"))
 	fw1.Stop()
 
 	// After restart, send an Added event on the second watcher; we should get a mutation
-	fw2.Add(makeUnstructuredPod("p2", "default", "21"))
+ fw2.Add(makeUnstructuredPod("p2", "21"))
 
 	select {
 	case m := <-mutationCh:
