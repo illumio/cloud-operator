@@ -6,10 +6,13 @@ import (
 	"context"
 	cryptotls "crypto/tls"
 	"fmt"
+	"sync"
 
 	"github.com/cilium/cilium/api/v1/flow"
 	observer "github.com/cilium/cilium/api/v1/observer"
 	"go.uber.org/zap"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/hubble"
@@ -18,8 +21,11 @@ import (
 
 // CiliumFlowCollector collects flows from Cilium Hubble Relay running in this cluster.
 type CiliumFlowCollector struct {
-	logger *zap.Logger
-	client observer.ObserverClient
+	logger       *zap.Logger
+	client       observer.ObserverClient
+	clientset    *kubernetes.Clientset
+	podNodeCache map[string]string
+	pncMutex     sync.RWMutex
 }
 
 const (
@@ -96,9 +102,49 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 	logger.Info("Successfully connected to Cilium Hubble Relay",
 		zap.String("address", hubbleAddress))
 
-	hubbleClient := observer.NewObserverClient(conn)
+ hubbleClient := observer.NewObserverClient(conn)
 
-	return &CiliumFlowCollector{logger: logger, client: hubbleClient}, nil
+	collector := &CiliumFlowCollector{
+		logger:       logger,
+		client:       hubbleClient,
+		clientset:    clientset,
+		podNodeCache: make(map[string]string),
+	}
+
+	return collector, nil
+}
+
+// resolveNodeName attempts to resolve a PodName@namespace to nodeName using the k8s API.
+// Caches results in podNodeCache to avoid repeated API calls.
+func (fm *CiliumFlowCollector) resolveNodeName(ctx context.Context, podName, namespace string) (string, error) {
+	if podName == "" || namespace == "" || fm.clientset == nil {
+		return "", nil
+	}
+
+	key := namespace + "/" + podName
+
+	fm.pncMutex.RLock()
+	if n, ok := fm.podNodeCache[key]; ok {
+		fm.pncMutex.RUnlock()
+		return n, nil
+	}
+	fm.pncMutex.RUnlock()
+
+	pod, err := fm.clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+	if err != nil {
+		// don't log loudly here; caller will decide
+		return "", err
+	}
+	node := pod.Spec.NodeName
+	if node == "" {
+		return "", nil
+	}
+
+	fm.pncMutex.Lock()
+	fm.podNodeCache[key] = node
+	fm.pncMutex.Unlock()
+
+	return node, nil
 }
 
 // convertCiliumIP converts a flow.IP object to a pb.IP object.
@@ -196,6 +242,81 @@ func convertCiliumPolicies(policies []*flow.Policy) []*pb.Policy {
 }
 
 // exportCiliumFlows makes one stream gRPC call to hubble-relay to collect, convert, and export flows into the given stream.
+func (fm *CiliumFlowCollector) convertCiliumFlow(ctx context.Context, flowResp *observer.GetFlowsResponse) *pb.CiliumFlow {
+	flowObj := flowResp.GetFlow()
+	// Only require minimal fields needed for timestamp and IP-based keying.
+	if flowObj == nil || flowObj.GetTime() == nil || flowObj.GetIP() == nil {
+		// Log diagnostic details
+		fm.logger.Debug("Dropping Cilium flow: missing essential fields",
+			zap.Any("flow", flowObj),
+			zap.Bool("has_time", flowObj != nil && flowObj.GetTime() != nil),
+			zap.Bool("has_ip", flowObj != nil && flowObj.GetIP() != nil),
+		)
+		return nil
+	}
+
+	// Attempt best-effort resolution for nodeName if empty
+	nodeName := flowObj.GetNodeName()
+	if nodeName == "" {
+		if flowObj.GetSource() != nil {
+			pod := flowObj.GetSource().GetPodName()
+			ns := flowObj.GetSource().GetNamespace()
+			if pod != "" && ns != "" {
+				if resolved, err := fm.resolveNodeName(ctx, pod, ns); err == nil && resolved != "" {
+					nodeName = resolved
+				} else if err != nil {
+					// Debug only — not fatal
+					fm.logger.Debug("Could not resolve nodeName from k8s API", zap.String("pod", pod), zap.String("namespace", ns), zap.Error(err))
+				}
+			}
+		}
+	}
+
+	ciliumFlow := &pb.CiliumFlow{
+		Time:               flowObj.GetTime(),
+		NodeName:           nodeName,
+		Verdict:            pb.Verdict(flowObj.GetVerdict()),
+		TrafficDirection:   pb.TrafficDirection(flowObj.GetTrafficDirection()),
+		Layer3:             convertCiliumIP(flowObj.GetIP()),
+		Layer4:             convertCiliumLayer4(flowObj.GetL4()),
+		DestinationService: &pb.Service{Name: flowObj.GetDestinationService().GetName(), Namespace: flowObj.GetDestinationService().GetNamespace()},
+		EgressAllowedBy:    convertCiliumPolicies(flowObj.GetEgressAllowedBy()),
+		IngressAllowedBy:   convertCiliumPolicies(flowObj.GetIngressAllowedBy()),
+		EgressDeniedBy:     convertCiliumPolicies(flowObj.GetEgressDeniedBy()),
+		IngressDeniedBy:    convertCiliumPolicies(flowObj.GetIngressDeniedBy()),
+		IsReply:            flowObj.GetIsReply(),
+	}
+	if flowObj.GetSource() != nil {
+		ciliumFlow.SourceEndpoint = &pb.Endpoint{
+			Uid:         flowObj.GetSource().GetID(),
+			ClusterName: flowObj.GetSource().GetClusterName(),
+			Namespace:   flowObj.GetSource().GetNamespace(),
+			Labels:      flowObj.GetSource().GetLabels(),
+			PodName:     flowObj.GetSource().GetPodName(),
+			Workloads:   convertCiliumWorkflows(flowObj.GetSource().GetWorkloads()),
+		}
+	}
+
+	if flowObj.GetDestination() != nil {
+		ciliumFlow.DestinationEndpoint = &pb.Endpoint{
+			Uid:         flowObj.GetDestination().GetID(),
+			ClusterName: flowObj.GetDestination().GetClusterName(),
+			Namespace:   flowObj.GetDestination().GetNamespace(),
+			Labels:      flowObj.GetDestination().GetLabels(),
+			PodName:     flowObj.GetDestination().GetPodName(),
+			Workloads:   convertCiliumWorkflows(flowObj.GetDestination().GetWorkloads()),
+		}
+	}
+
+	// If NodeName is still empty, emit a warning but accept flow so it reaches backend.
+	if ciliumFlow.NodeName == "" {
+		fm.logger.Warn("Cilium flow has no nodeName after best-effort resolution; accepting flow but mapping may be incomplete", zap.Any("flow", flowObj))
+	}
+
+	return ciliumFlow
+}
+
+// exportCiliumFlows makes one stream gRPC call to hubble-relay to collect, convert, and export flows into the given stream.
 func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *streamManager) error {
 	req := &observer.GetFlowsRequest{
 		Number: ciliumHubbleRelayMaxFlowCount,
@@ -227,17 +348,85 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 		default:
 		}
 
-		flow, err := stream.Recv()
+		flowResp, err := stream.Recv()
 		if err != nil {
 			fm.logger.Warn("Failed to get flow log from stream", zap.Error(err))
 
 			return err
 		}
 
-		ciliumFlow := convertCiliumFlow(flow)
+		ciliumFlow := fm.convertCiliumFlow(ctx, flowResp)
 		if ciliumFlow == nil {
+			fo := flowResp.GetFlow()
+			hasTime := fo != nil && fo.GetTime() != nil
+			hasIP := fo != nil && fo.GetIP() != nil
+			hasL4 := fo != nil && fo.GetL4() != nil
+			var srcNs, dstNs, node, verdict, direction string
+			if fo != nil {
+				node = fo.GetNodeName()
+				verdict = fo.GetVerdict().String()
+				direction = fo.GetTrafficDirection().String()
+				if fo.GetSource() != nil { srcNs = fo.GetSource().GetNamespace() }
+				if fo.GetDestination() != nil { dstNs = fo.GetDestination().GetNamespace() }
+			}
+			fm.logger.Debug("Skipping Cilium flow due to missing fields",
+				zap.Bool("has_time", hasTime),
+				zap.Bool("has_ip", hasIP),
+				zap.Bool("has_l4", hasL4),
+				zap.String("src_ns", srcNs),
+				zap.String("dst_ns", dstNs),
+				zap.String("node", node),
+				zap.String("verdict", verdict),
+				zap.String("direction", direction),
+			)
 			continue
 		}
+
+		// Debug: log the converted flow (summary). Warning: high volume in busy clusters.
+		fm.logger.Debug("Converted Cilium flow (summary)",
+			zap.Any("flow_summary", map[string]interface{}{
+				"time":      ciliumFlow.GetTime(),
+				"node":      ciliumFlow.GetNodeName(),
+				"verdict":   ciliumFlow.GetVerdict().String(),
+				"direction": ciliumFlow.GetTrafficDirection().String(),
+				"src_ns": func() string {
+					if ciliumFlow.GetSourceEndpoint() != nil {
+						return ciliumFlow.GetSourceEndpoint().GetNamespace()
+					}
+					return ""
+				}(),
+				"src_pod": func() string {
+					if ciliumFlow.GetSourceEndpoint() != nil {
+						return ciliumFlow.GetSourceEndpoint().GetPodName()
+					}
+					return ""
+				}(),
+				"src_ip": func() string {
+					if ciliumFlow.GetLayer3() != nil {
+						return ciliumFlow.GetLayer3().GetSource()
+					}
+					return ""
+				}(),
+				"dst_ns": func() string {
+					if ciliumFlow.GetDestinationEndpoint() != nil {
+						return ciliumFlow.GetDestinationEndpoint().GetNamespace()
+					}
+					return ""
+				}(),
+				"dst_pod": func() string {
+					if ciliumFlow.GetDestinationEndpoint() != nil {
+						return ciliumFlow.GetDestinationEndpoint().GetPodName()
+					}
+					return ""
+				}(),
+				"dst_ip": func() string {
+					if ciliumFlow.GetLayer3() != nil {
+						return ciliumFlow.GetLayer3().GetDestination()
+					}
+					return ""
+				}(),
+			}),
+		)
 
 		err = sm.FlowCache.CacheFlow(ctx, ciliumFlow)
 		if err != nil {
@@ -251,23 +440,18 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 // convertCiliumFlow converts a GetFlowsResponse object to a CiliumFlow object.
 func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 	flowObj := flow.GetFlow()
-	// Check for nil fields
-	if flowObj.GetTime() == nil ||
-		flowObj.GetNodeName() == "" ||
-		flowObj.GetTrafficDirection().String() == "" ||
-		flowObj.GetVerdict().String() == "" ||
-		flowObj.GetIP() == nil ||
-		flowObj.GetL4() == nil {
-		// Return nil if any of the essential fields are nil
+	// Only require minimal fields needed for timestamp and IP-based keying.
+	if flowObj == nil || flowObj.GetTime() == nil || flowObj.GetIP() == nil {
 		return nil
 	}
 
 	ciliumFlow := &pb.CiliumFlow{
-		Time:               flowObj.GetTime(),
-		NodeName:           flowObj.GetNodeName(),
-		Verdict:            pb.Verdict(flowObj.GetVerdict()),
-		TrafficDirection:   pb.TrafficDirection(flowObj.GetTrafficDirection()),
-		Layer3:             convertCiliumIP(flowObj.GetIP()),
+		Time:             flowObj.GetTime(),
+		NodeName:         flowObj.GetNodeName(), // may be empty
+		Verdict:          pb.Verdict(flowObj.GetVerdict()),
+		TrafficDirection: pb.TrafficDirection(flowObj.GetTrafficDirection()),
+		Layer3:           convertCiliumIP(flowObj.GetIP()),
+		// Layer4 may be nil for some flow types (e.g., ICMP or L3-only). That's OK.
 		Layer4:             convertCiliumLayer4(flowObj.GetL4()),
 		DestinationService: &pb.Service{Name: flowObj.GetDestinationService().GetName(), Namespace: flowObj.GetDestinationService().GetNamespace()},
 		EgressAllowedBy:    convertCiliumPolicies(flowObj.GetEgressAllowedBy()),

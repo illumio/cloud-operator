@@ -55,6 +55,12 @@ func (sm *streamManager) sendNetworkFlowRequest(logger *zap.Logger, flow interfa
 		return fmt.Errorf("unsupported flow type: %T", flow)
 	}
 
+	// Debug: log what we're about to send (summary). High volume in busy clusters.
+	logger.Debug("Sending network flow", zap.Any("request_summary", map[string]interface{}{
+		"request_type": fmt.Sprintf("%T", request.GetRequest()),
+		"payload":      request, // consider reducing fields for production
+	}))
+
 	if err := sm.streamClient.networkFlowsStream.Send(request); err != nil {
 		logger.Error("Failed to send network flow", zap.Error(err))
 

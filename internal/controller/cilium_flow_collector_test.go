@@ -3,7 +3,11 @@
 package controller
 
 import (
+	"time"
+
 	"github.com/cilium/cilium/api/v1/flow"
+	observer "github.com/cilium/cilium/api/v1/observer"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
@@ -270,4 +274,21 @@ func (suite *ControllerTestSuite) TestConvertCiliumIP() {
 			suite.Equal(tt.expected, result)
 		})
 	}
+}
+
+func (suite *ControllerTestSuite) TestConvertCiliumFlow_AllowsNilL4() {
+ resp := &observer.GetFlowsResponse{
+		ResponseTypes: &observer.GetFlowsResponse_Flow{
+			Flow: &flow.Flow{
+				Time: timestamppb.New(time.Now()),
+				IP: &flow.IP{Source: "10.0.0.1", Destination: "10.0.0.2"},
+				// L4 intentionally nil
+			},
+		},
+	}
+
+	converted := convertCiliumFlow(resp)
+	suite.Require().NotNil(converted, "conversion should not drop flows with nil L4")
+	suite.Equal("10.0.0.1", converted.GetLayer3().GetSource())
+	suite.Equal("10.0.0.2", converted.GetLayer3().GetDestination())
 }

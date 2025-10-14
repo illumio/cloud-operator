@@ -844,7 +844,12 @@ func determineFlowCollector(ctx context.Context, logger *zap.Logger, sm *streamM
 // ConnectStreams will continue to reboot and restart the main operations within
 // the operator if any disconnects or errors occur.
 func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
-	// Falco channels communicate news events between http server and our network flows stream,
+	// If verbose debugging is enabled, set the initial log level to DEBUG immediately.
+	if envMap.VerboseDebugging {
+		logger.Info("Verbose debugging enabled via env; setting initial log level to DEBUG")
+		bufferedGrpcSyncer.updateLogLevel(pb.LogLevel_LOG_LEVEL_DEBUG)
+	}
+ // Falco channels communicate news events between http server and our network flows stream,
 	falcoEventChan := make(chan string)
 	http.HandleFunc("/", NewFalcoEventHandler(falcoEventChan))
 
