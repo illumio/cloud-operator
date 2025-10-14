@@ -162,35 +162,15 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 		}
 	}()
 
-	// startWatcher (re)initializes the Kubernetes watch stream.
-	startWatcher := func() error {
-		// Always resume from the last known resourceVersion.
-		watchOptions.ResourceVersion = lastKnownResourceVersion
-		// Ensure we get periodic bookmarks for advancing the resume point.
-		watchOptions.AllowWatchBookmarks = true
-		// Stop any existing watcher before creating a new one.
-		if watcher != nil {
-			watcher.Stop()
-		}
-
-		w, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
-		if err != nil {
-			logger.Error("Error setting up watch on resource", zap.Error(err))
-
-			return err
-		}
-
-		watcher = w
-
-		return nil
-	}
-
 	mutationCount := 0
 
 	for {
-		if err := startWatcher(); err != nil {
+		// (Re)initialize the watcher using a helper
+		w, err := r.startWatcher(ctx, objGVR, lastKnownResourceVersion, watchOptions, watcher, logger)
+		if err != nil {
 			return err
 		}
+		watcher = w
 
 	watcherLoop:
 		for {
@@ -216,16 +196,8 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 					return err
 
 				case watch.Bookmark:
-					if event.Object != nil {
-						if obj, ok := event.Object.(interface{ GetResourceVersion() string }); ok {
-							if rv := obj.GetResourceVersion(); rv != "" {
-								lastKnownResourceVersion = rv
-							}
-						}
-					}
-
+					lastKnownResourceVersion = updateRVFromBookmark(event, lastKnownResourceVersion)
 					logger.Debug("Received bookmark", zap.String("resourceVersion", lastKnownResourceVersion))
-
 					continue
 
 				case watch.Added, watch.Modified, watch.Deleted:
@@ -240,29 +212,12 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 					}
 
 					logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
-
 					continue
 				}
 
 				// Process mutations (only for Added/Modified/Deleted)
-				convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
-				if err != nil {
-					logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
-
+				if err := r.processMutation(ctx, event, mutationChan, logger); err != nil {
 					return err
-				}
-
-				resource := event.Object.GetObjectKind().GroupVersionKind().Kind
-
-				metadataObj := convertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resource)
-
-				// Helper function: type gymnastics + send the KubernetesObjectData on the mutation channel
-				mutation := r.streamManager.createMutationObject(metadataObj, event.Type)
-
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case mutationChan <- mutation:
 				}
 
 				mutationCount++
@@ -338,4 +293,62 @@ func removeListSuffix(s string) string {
 	}
 
 	return s
+}
+
+// startWatcher (re)initializes the Kubernetes watch stream using the last known resourceVersion.
+func (r *ResourceManager) startWatcher(ctx context.Context, gvr schema.GroupVersionResource, lastKnownRV string, watchOptions metav1.ListOptions, existing watch.Interface, logger *zap.Logger) (watch.Interface, error) {
+	// Always resume from the last known resourceVersion.
+	watchOptions.ResourceVersion = lastKnownRV
+	// Ensure we get periodic bookmarks for advancing the resume point.
+	watchOptions.AllowWatchBookmarks = true
+	// Stop any existing watcher before creating a new one.
+	if existing != nil {
+		existing.Stop()
+	}
+
+	w, err := r.dynamicClient.Resource(gvr).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
+	if err != nil {
+		logger.Error("Error setting up watch on resource", zap.Error(err))
+
+		return nil, err
+	}
+
+	return w, nil
+}
+
+// updateRVFromBookmark extracts the resourceVersion from a Bookmark event.
+func updateRVFromBookmark(event watch.Event, lastKnown string) string {
+	if event.Object != nil {
+		if obj, ok := event.Object.(interface{ GetResourceVersion() string }); ok {
+			if rv := obj.GetResourceVersion(); rv != "" {
+				return rv
+			}
+		}
+	}
+
+	return lastKnown
+}
+
+// processMutation converts the event object to our metadata, builds a mutation, and sends it on the channel.
+func (r *ResourceManager) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation, logger *zap.Logger) error {
+	convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
+	if err != nil {
+		logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
+
+		return err
+	}
+
+	resource := event.Object.GetObjectKind().GroupVersionKind().Kind
+	metadataObj := convertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resource)
+
+	// Helper function: type gymnastics + send the KubernetesObjectData on the mutation channel
+	mutation := r.streamManager.createMutationObject(metadataObj, event.Type)
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case mutationChan <- mutation:
+	}
+
+	return nil
 }
