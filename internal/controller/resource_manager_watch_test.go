@@ -26,12 +26,14 @@ func makeUnstructuredNS(name, rv string) *unstructured.Unstructured {
 	obj.SetName(name)
 	obj.SetNamespace("default")
 	obj.SetResourceVersion(rv)
+
 	return obj
 }
 
 func TestUpdateRVFromBookmark(t *testing.T) {
 	// When bookmark contains RV, it should be returned
 	u := makeUnstructuredNS("ns1", "42")
+
 	ev := watch.Event{Type: watch.Bookmark, Object: u}
 	if got := updateRVFromBookmark(ev, "10"); got != "42" {
 		t.Fatalf("expected rv 42, got %q", got)
@@ -45,6 +47,7 @@ func TestUpdateRVFromBookmark(t *testing.T) {
 
 	// When object has empty RV, preserve last known
 	u2 := makeUnstructuredNS("ns2", "")
+
 	ev4 := watch.Event{Type: watch.Bookmark, Object: u2}
 	if got := updateRVFromBookmark(ev4, "88"); got != "88" {
 		t.Fatalf("expected rv 88 to be preserved for empty RV, got %q", got)
@@ -83,6 +86,7 @@ func TestStartWatcher_StopsExistingAndReturnsNew(t *testing.T) {
 	if err != nil {
 		t.Fatalf("startWatcher returned error: %v", err)
 	}
+
 	if w == nil {
 		t.Fatalf("expected non-nil watcher")
 	}
@@ -104,6 +108,7 @@ func TestStartWatcher_PropagatesErrors(t *testing.T) {
 	dyn := dynamicfake.NewSimpleDynamicClient(scheme)
 
 	wantErr := errors.New("boom")
+
 	dyn.PrependWatchReactor("*", func(action clientgotesting.Action) (handled bool, ret watch.Interface, err error) {
 		return true, nil, wantErr
 	})
@@ -191,6 +196,7 @@ func TestProcessMutation_RespectsContextCancellation(t *testing.T) {
 
 	ch := make(chan *pb.KubernetesResourceMutation)
 	u := makeUnstructuredNS("n1", "10")
+
 	err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u}, ch, logger)
 	if err == nil {
 		t.Fatalf("expected context error, got nil")
@@ -210,6 +216,11 @@ func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 
 	ch := make(chan *pb.KubernetesResourceMutation, 3)
 
+	const (
+		nsKind    = "Namespace"
+		defaultNS = "default"
+	)
+
 	// Prepare three events for the same object with increasing RVs
 	u1 := makeUnstructuredNS("n1", "10")
 	u2 := makeUnstructuredNS("n1", "11")
@@ -218,9 +229,11 @@ func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 	if err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u1}, ch, logger); err != nil {
 		t.Fatalf("processMutation(Add) error: %v", err)
 	}
+
 	if err := rm.processMutation(ctx, watch.Event{Type: watch.Modified, Object: u2}, ch, logger); err != nil {
 		t.Fatalf("processMutation(Modify) error: %v", err)
 	}
+
 	if err := rm.processMutation(ctx, watch.Event{Type: watch.Deleted, Object: u3}, ch, logger); err != nil {
 		t.Fatalf("processMutation(Delete) error: %v", err)
 	}
@@ -228,25 +241,19 @@ func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 	// Validate metadata contents
 	if got := (<-ch).GetCreateResource(); got == nil {
 		t.Fatalf("expected CreateResource mutation")
-	} else {
-		if got.Kind != "Namespace" || got.Name != "n1" || got.Namespace != "default" || got.ResourceVersion != "10" {
-			t.Fatalf("unexpected metadata in CreateResource: %#v", got)
-		}
+	} else if got.GetKind() != nsKind || got.GetName() != "n1" || got.GetNamespace() != defaultNS || got.GetResourceVersion() != "10" {
+		t.Fatalf("unexpected metadata in CreateResource: %#v", got)
 	}
 
 	if got := (<-ch).GetUpdateResource(); got == nil {
 		t.Fatalf("expected UpdateResource mutation")
-	} else {
-		if got.Kind != "Namespace" || got.Name != "n1" || got.Namespace != "default" || got.ResourceVersion != "11" {
-			t.Fatalf("unexpected metadata in UpdateResource: %#v", got)
-		}
+	} else if got.GetKind() != nsKind || got.GetName() != "n1" || got.GetNamespace() != defaultNS || got.GetResourceVersion() != "11" {
+		t.Fatalf("unexpected metadata in UpdateResource: %#v", got)
 	}
 
 	if got := (<-ch).GetDeleteResource(); got == nil {
 		t.Fatalf("expected DeleteResource mutation")
-	} else {
-		if got.Kind != "Namespace" || got.Name != "n1" || got.Namespace != "default" || got.ResourceVersion != "12" {
-			t.Fatalf("unexpected metadata in DeleteResource: %#v", got)
-		}
+	} else if got.GetKind() != nsKind || got.GetName() != "n1" || got.GetNamespace() != defaultNS || got.GetResourceVersion() != "12" {
+		t.Fatalf("unexpected metadata in DeleteResource: %#v", got)
 	}
 }

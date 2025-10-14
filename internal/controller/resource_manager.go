@@ -170,6 +170,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 		if err != nil {
 			return err
 		}
+
 		watcher = w
 
 	watcherLoop:
@@ -198,6 +199,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 				case watch.Bookmark:
 					lastKnownResourceVersion = updateRVFromBookmark(event, lastKnownResourceVersion)
 					logger.Debug("Received bookmark", zap.String("resourceVersion", lastKnownResourceVersion))
+
 					continue
 
 				case watch.Added, watch.Modified, watch.Deleted:
@@ -212,6 +214,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 					}
 
 					logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
+
 					continue
 				}
 
