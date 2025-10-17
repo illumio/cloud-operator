@@ -34,13 +34,13 @@ func TestUpdateRVFromBookmark(t *testing.T) {
 	u := makeUnstructuredNS("ns1", "42")
 
 	ev := watch.Event{Type: watch.Bookmark, Object: u}
-	if got, err := updateRVFromBookmark(ev, "10"); err != nil || got != "42" {
+	if got, err := updateRVFromBookmark(ev); err != nil || got != "42" {
 		t.Fatalf("expected rv 42 with nil err, got rv=%q err=%v", got, err)
 	}
 
 	// When object is nil, last known should be preserved
 	ev2 := watch.Event{Type: watch.Bookmark, Object: nil}
-	if got, err := updateRVFromBookmark(ev2, "55"); err == nil || got != "" {
+	if got, err := updateRVFromBookmark(ev2); err == nil || got != "" {
 		t.Fatalf("expected error for nil object and empty rv, got rv=%q err=%v", got, err)
 	}
 
@@ -48,7 +48,7 @@ func TestUpdateRVFromBookmark(t *testing.T) {
 	u2 := makeUnstructuredNS("ns2", "")
 
 	ev4 := watch.Event{Type: watch.Bookmark, Object: u2}
-	if got, err := updateRVFromBookmark(ev4, "88"); err == nil || got != "" {
+	if got, err := updateRVFromBookmark(ev4); err == nil || got != "" {
 		t.Fatalf("expected error for empty RV, got rv=%q err=%v", got, err)
 	}
 }

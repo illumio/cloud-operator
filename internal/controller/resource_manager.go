@@ -202,7 +202,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion strin
 					return err
 
 				case watch.Bookmark:
-					newRV, err := updateRVFromBookmark(event, lastKnownResourceVersion)
+					newRV, err := updateRVFromBookmark(event)
 					if err != nil {
 						logger.Error("Failed to extract resourceVersion from bookmark", zap.Error(err))
 
@@ -334,7 +334,7 @@ func (r *ResourceManager) startWatcher(ctx context.Context, apiGroup string, las
 }
 
 // updateRVFromBookmark extracts the resourceVersion from a Bookmark event.
-func updateRVFromBookmark(event watch.Event, lastKnown string) (string, error) {
+func updateRVFromBookmark(event watch.Event) (string, error) {
 	if event.Object == nil {
 		return "", errors.New("bookmark object is nil")
 	}
