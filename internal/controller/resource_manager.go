@@ -178,71 +178,93 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion strin
 
 		watcher = w
 
-	watcherLoop:
-		for {
-			select {
-			case <-ctx.Done():
-				logger.Debug("Disconnected from CloudSecure", zap.String("reason", "context cancelled"))
+		// Run the watcher loop until a restart is requested or an error occurs
+		updatedRV, restart, err := r.runWatcherUntilRestart(ctx, watcher, lastKnownResourceVersion, mutationChan, logger, &mutationCount)
+		if err != nil {
+			return err
+		}
 
-				return ctx.Err()
+		lastKnownResourceVersion = updatedRV
 
-			case event, ok := <-watcher.ResultChan():
-				if !ok {
-					logger.Debug("Watcher channel closed")
+		if !restart {
+			return nil
+		}
+	}
+}
+
+// runWatcherUntilRestart processes events from a watcher until it needs to be restarted or an error occurs.
+// It returns the latest resourceVersion, whether a restart is needed, and any error encountered.
+func (r *ResourceManager) runWatcherUntilRestart(
+	ctx context.Context,
+	watcher watch.Interface,
+	lastKnownResourceVersion string,
+	mutationChan chan *pb.KubernetesResourceMutation,
+	logger *zap.Logger,
+	mutationCount *int,
+) (string, bool, error) {
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Debug("Disconnected from CloudSecure", zap.String("reason", "context cancelled"))
+
+			return lastKnownResourceVersion, false, ctx.Err()
+
+		case event, ok := <-watcher.ResultChan():
+			if !ok {
+				logger.Debug("Watcher channel closed")
+				logger.Debug("Restarting watcher", zap.String("fromResourceVersion", lastKnownResourceVersion))
+
+				return lastKnownResourceVersion, true, nil
+			}
+
+			switch event.Type {
+			case watch.Error:
+				err := getErrFromWatchEvent(event)
+				logger.Error("Watcher event returned error", zap.Error(err))
+
+				return lastKnownResourceVersion, false, err
+
+			case watch.Bookmark:
+				newRV, err := updateRVFromBookmark(event)
+				if err != nil {
+					logger.Error("Failed to extract resourceVersion from bookmark", zap.Error(err))
+
+					return lastKnownResourceVersion, false, err
+				}
+
+				lastKnownResourceVersion = newRV
+				logger.Debug("Received bookmark", zap.String("resourceVersion", lastKnownResourceVersion))
+
+				continue
+
+			case watch.Added, watch.Modified, watch.Deleted:
+				logger.Debug("Got watch event", zap.String("type", string(event.Type)))
+
+			default:
+				if event.Type == "" {
+					logger.Debug("Received empty event type")
 					logger.Debug("Restarting watcher", zap.String("fromResourceVersion", lastKnownResourceVersion))
 
-					break watcherLoop
+					return lastKnownResourceVersion, true, nil
 				}
 
-				switch event.Type {
-				case watch.Error:
-					err := getErrFromWatchEvent(event)
-					logger.Error("Watcher event returned error", zap.Error(err))
+				logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
 
-					return err
-
-				case watch.Bookmark:
-					newRV, err := updateRVFromBookmark(event)
-					if err != nil {
-						logger.Error("Failed to extract resourceVersion from bookmark", zap.Error(err))
-
-						return err
-					}
-
-					lastKnownResourceVersion = newRV
-					logger.Debug("Received bookmark", zap.String("resourceVersion", lastKnownResourceVersion))
-
-					continue
-
-				case watch.Added, watch.Modified, watch.Deleted:
-					logger.Debug("Got watch event", zap.String("type", string(event.Type)))
-
-				default:
-					if event.Type == "" {
-						logger.Debug("Received empty event type")
-						logger.Debug("Restarting watcher", zap.String("fromResourceVersion", lastKnownResourceVersion))
-
-						break watcherLoop
-					}
-
-					logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
-
-					continue
-				}
-
-				// Process mutations (only for Added/Modified/Deleted)
-				if err := r.processMutation(ctx, event, mutationChan, logger); err != nil {
-					return err
-				}
-
-				mutationCount++
-
-			case <-time.After(60 * time.Second):
-				logger.Debug("Current mutation count", zap.Int("mutation_count", mutationCount))
-				logger.Debug("Resetting mutation count")
-
-				mutationCount = 0
+				continue
 			}
+
+			// Process mutations (only for Added/Modified/Deleted)
+			if err := r.processMutation(ctx, event, mutationChan, logger); err != nil {
+				return lastKnownResourceVersion, false, err
+			}
+
+			*mutationCount++
+
+		case <-time.After(60 * time.Second):
+			logger.Debug("Current mutation count", zap.Int("mutation_count", *mutationCount))
+			logger.Debug("Resetting mutation count")
+
+			*mutationCount = 0
 		}
 	}
 }
