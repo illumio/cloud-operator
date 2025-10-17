@@ -309,6 +309,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		// Create a new resource manager for each resource type
 		resourceManager := NewResourceManager(ResourceManagerConfig{
 			ResourceName:  resource,
+			ApiGroup:      apiGroup,
 			Clientset:     clientset,
 			BaseLogger:    logger,
 			DynamicClient: dynamicClient,

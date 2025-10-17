@@ -24,6 +24,7 @@ import (
 // ResourceManagerConfig holds the configuration for creating a new ResourceManager.
 type ResourceManagerConfig struct {
 	ResourceName  string
+	ApiGroup      string
 	Clientset     *kubernetes.Clientset
 	BaseLogger    *zap.Logger
 	DynamicClient dynamic.Interface
@@ -35,6 +36,8 @@ type ResourceManagerConfig struct {
 type ResourceManager struct {
 	// resourceName identifies which resource this manager handles
 	resourceName string
+	// apiGroup identifies the Kubernetes API group for this resource
+	apiGroup string
 	// Clientset providing accees to k8s api.
 	clientset *kubernetes.Clientset
 	// Logger provides strucuted logging interface.
@@ -51,10 +54,14 @@ type ResourceManager struct {
 // The logger will automatically include the resource name in all log messages.
 func NewResourceManager(config ResourceManagerConfig) *ResourceManager {
 	// Create a logger with the resource name already included
-	logger := config.BaseLogger.With(zap.String("resource", config.ResourceName))
+	logger := config.BaseLogger.With(
+		zap.String("resource", config.ResourceName),
+		zap.String("api_group", config.ApiGroup),
+	)
 
 	return &ResourceManager{
 		resourceName:  config.ResourceName,
+		apiGroup:      config.ApiGroup,
 		clientset:     config.Clientset,
 		logger:        logger,
 		dynamicClient: config.DynamicClient,
@@ -69,13 +76,6 @@ func NewResourceManager(config ResourceManagerConfig) *ResourceManager {
 // This function blocks until the watch ends or the context is canceled.
 func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.CancelFunc, apiGroup string, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation) {
 	defer cancel()
-	// Here intiatate the watch event
-	watchOptions := metav1.ListOptions{
-		Watch:               true,
-		ResourceVersion:     resourceVersion,
-		AllowWatchBookmarks: true,
-	}
-
 	err := r.limiter.Wait(ctx)
 	if err != nil {
 		r.logger.Error("Cannot wait using rate limiter", zap.Error(err))
@@ -83,7 +83,7 @@ func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.
 		return
 	}
 
-	err = r.watchEvents(ctx, apiGroup, watchOptions, mutationChan)
+	err = r.watchEvents(ctx, resourceVersion, mutationChan)
 	if err != nil {
 		r.logger.Error("Watch failed", zap.Error(err))
 
@@ -145,14 +145,17 @@ func getErrFromWatchEvent(event watch.Event) error {
 // watchEvents watches Kubernetes resources. The second part of the of the "list
 // and watch" strategy.
 // Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
-func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watchOptions metav1.ListOptions, mutationChan chan *pb.KubernetesResourceMutation) error {
-	logger := r.logger.With(
-		zap.String("api_group", apiGroup),
-	)
+func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation) error {
+	logger := r.logger
 
-	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
+	// Build watch options from the provided resource version
+	watchOptions := metav1.ListOptions{
+		Watch:               true,
+		ResourceVersion:     resourceVersion,
+		AllowWatchBookmarks: true,
+	}
 
-	lastKnownResourceVersion := watchOptions.ResourceVersion
+	lastKnownResourceVersion := resourceVersion
 
 	var watcher watch.Interface
 
@@ -166,7 +169,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 
 	for {
 		// (Re)initialize the watcher using a helper
-		w, err := r.startWatcher(ctx, objGVR, lastKnownResourceVersion, watchOptions, watcher, logger)
+		w, err := r.startWatcher(ctx, r.apiGroup, lastKnownResourceVersion, watchOptions, watcher, logger)
 		if err != nil {
 			return err
 		}
@@ -197,7 +200,14 @@ func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watc
 					return err
 
 				case watch.Bookmark:
-					lastKnownResourceVersion = updateRVFromBookmark(event, lastKnownResourceVersion)
+					newRV, err := updateRVFromBookmark(event, lastKnownResourceVersion)
+					if err != nil {
+						logger.Error("Failed to extract resourceVersion from bookmark", zap.Error(err))
+
+						return err
+					}
+
+					lastKnownResourceVersion = newRV
 					logger.Debug("Received bookmark", zap.String("resourceVersion", lastKnownResourceVersion))
 
 					continue
@@ -299,7 +309,7 @@ func removeListSuffix(s string) string {
 }
 
 // startWatcher (re)initializes the Kubernetes watch stream using the last known resourceVersion.
-func (r *ResourceManager) startWatcher(ctx context.Context, gvr schema.GroupVersionResource, lastKnownRV string, watchOptions metav1.ListOptions, existing watch.Interface, logger *zap.Logger) (watch.Interface, error) {
+func (r *ResourceManager) startWatcher(ctx context.Context, apiGroup string, lastKnownRV string, watchOptions metav1.ListOptions, existing watch.Interface, logger *zap.Logger) (watch.Interface, error) {
 	// Always resume from the last known resourceVersion.
 	watchOptions.ResourceVersion = lastKnownRV
 	// Ensure we get periodic bookmarks for advancing the resume point.
@@ -309,7 +319,8 @@ func (r *ResourceManager) startWatcher(ctx context.Context, gvr schema.GroupVers
 		existing.Stop()
 	}
 
-	w, err := r.dynamicClient.Resource(gvr).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
+	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
+	w, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
 		logger.Error("Error setting up watch on resource", zap.Error(err))
 
@@ -320,16 +331,18 @@ func (r *ResourceManager) startWatcher(ctx context.Context, gvr schema.GroupVers
 }
 
 // updateRVFromBookmark extracts the resourceVersion from a Bookmark event.
-func updateRVFromBookmark(event watch.Event, lastKnown string) string {
-	if event.Object != nil {
-		if obj, ok := event.Object.(interface{ GetResourceVersion() string }); ok {
-			if rv := obj.GetResourceVersion(); rv != "" {
-				return rv
-			}
+func updateRVFromBookmark(event watch.Event, lastKnown string) (string, error) {
+	if event.Object == nil {
+		return "", fmt.Errorf("bookmark object is nil")
+	}
+
+	if obj, ok := event.Object.(interface{ GetResourceVersion() string }); ok {
+		if rv := obj.GetResourceVersion(); rv != "" {
+			return rv, nil
 		}
 	}
 
-	return lastKnown
+	return "", fmt.Errorf("bookmark missing resourceVersion")
 }
 
 // processMutation converts the event object to our metadata, builds a mutation, and sends it on the channel.

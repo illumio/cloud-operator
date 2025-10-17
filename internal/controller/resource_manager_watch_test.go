@@ -10,7 +10,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	clientgotesting "k8s.io/client-go/testing"
@@ -35,22 +34,22 @@ func TestUpdateRVFromBookmark(t *testing.T) {
 	u := makeUnstructuredNS("ns1", "42")
 
 	ev := watch.Event{Type: watch.Bookmark, Object: u}
-	if got := updateRVFromBookmark(ev, "10"); got != "42" {
-		t.Fatalf("expected rv 42, got %q", got)
+	if got, err := updateRVFromBookmark(ev, "10"); err != nil || got != "42" {
+		t.Fatalf("expected rv 42 with nil err, got rv=%q err=%v", got, err)
 	}
 
 	// When object is nil, last known should be preserved
 	ev2 := watch.Event{Type: watch.Bookmark, Object: nil}
-	if got := updateRVFromBookmark(ev2, "55"); got != "55" {
-		t.Fatalf("expected rv 55 to be preserved, got %q", got)
+	if got, err := updateRVFromBookmark(ev2, "55"); err == nil || got != "" {
+		t.Fatalf("expected error for nil object and empty rv, got rv=%q err=%v", got, err)
 	}
 
 	// When object has empty RV, preserve last known
 	u2 := makeUnstructuredNS("ns2", "")
 
 	ev4 := watch.Event{Type: watch.Bookmark, Object: u2}
-	if got := updateRVFromBookmark(ev4, "88"); got != "88" {
-		t.Fatalf("expected rv 88 to be preserved for empty RV, got %q", got)
+	if got, err := updateRVFromBookmark(ev4, "88"); err == nil || got != "" {
+		t.Fatalf("expected error for empty RV, got rv=%q err=%v", got, err)
 	}
 }
 
@@ -78,11 +77,10 @@ func TestStartWatcher_StopsExistingAndReturnsNew(t *testing.T) {
 	// existing watcher that should be stopped by startWatcher
 	existing := watch.NewFake()
 
-	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}
 	opts := metav1.ListOptions{Watch: true, ResourceVersion: "10", AllowWatchBookmarks: false}
 
 	// Call startWatcher
-	w, err := rm.startWatcher(ctx, gvr, "25", opts, existing, logger)
+	w, err := rm.startWatcher(ctx, "", "25", opts, existing, logger)
 	if err != nil {
 		t.Fatalf("startWatcher returned error: %v", err)
 	}
@@ -123,10 +121,9 @@ func TestStartWatcher_PropagatesErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}
 	opts := metav1.ListOptions{Watch: true}
 
-	_, err := rm.startWatcher(ctx, gvr, "1", opts, nil, logger)
+	_, err := rm.startWatcher(ctx, "", "1", opts, nil, logger)
 	if err == nil {
 		t.Fatalf("expected error from startWatcher, got nil")
 	}
