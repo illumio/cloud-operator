@@ -150,36 +150,13 @@ func getErrFromWatchEvent(event watch.Event) error {
 func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation) error {
 	logger := r.logger
 
-	// Build watch options from the provided resource version
-	watchOptions := metav1.ListOptions{
-		Watch:               true,
-		ResourceVersion:     resourceVersion,
-		AllowWatchBookmarks: true,
-	}
-
 	lastKnownResourceVersion := resourceVersion
-
-	var watcher watch.Interface
-
-	defer func() {
-		if watcher != nil {
-			watcher.Stop()
-		}
-	}()
 
 	mutationCount := 0
 
 	for {
-		// (Re)initialize the watcher using a helper
-		w, err := r.startWatcher(ctx, r.apiGroup, lastKnownResourceVersion, watchOptions, watcher, logger)
-		if err != nil {
-			return err
-		}
-
-		watcher = w
-
 		// Run the watcher loop until a restart is requested or an error occurs
-		updatedRV, restart, err := r.runWatcherUntilRestart(ctx, watcher, lastKnownResourceVersion, mutationChan, logger, &mutationCount)
+		updatedRV, restart, err := r.runWatcherUntilRestart(ctx, lastKnownResourceVersion, mutationChan, logger, &mutationCount)
 		if err != nil {
 			return err
 		}
@@ -196,12 +173,19 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion strin
 // It returns the latest resourceVersion, whether a restart is needed, and any error encountered.
 func (r *ResourceManager) runWatcherUntilRestart(
 	ctx context.Context,
-	watcher watch.Interface,
 	lastKnownResourceVersion string,
 	mutationChan chan *pb.KubernetesResourceMutation,
 	logger *zap.Logger,
 	mutationCount *int,
 ) (string, bool, error) {
+	// Create a new watcher starting from the last known resourceVersion.
+	watcher, err := r.newWatcher(ctx, r.apiGroup, lastKnownResourceVersion, nil, logger)
+	if err != nil {
+		return lastKnownResourceVersion, false, err
+	}
+
+	defer watcher.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -220,31 +204,29 @@ func (r *ResourceManager) runWatcherUntilRestart(
 			switch event.Type {
 			case watch.Error:
 				err := getErrFromWatchEvent(event)
-				logger.Error("Watcher event returned error", zap.Error(err))
+				logger.Error("Watcher returned error", zap.Error(err))
 
 				return lastKnownResourceVersion, false, err
 
 			case watch.Bookmark:
-				newRV, err := updateRVFromBookmark(event)
+				newResourceVersion, err := getResourceVersionFromBookmark(event)
 				if err != nil {
-					logger.Error("Failed to extract resourceVersion from bookmark", zap.Error(err))
+					logger.Error("Failed to extract resource_Version from bookmark", zap.Error(err))
 
 					return lastKnownResourceVersion, false, err
 				}
 
-				lastKnownResourceVersion = newRV
-				logger.Debug("Received bookmark", zap.String("resourceVersion", lastKnownResourceVersion))
+				lastKnownResourceVersion = newResourceVersion
+				logger.Debug("Received bookmark", zap.String("resource_Version", lastKnownResourceVersion))
 
 				continue
 
 			case watch.Added, watch.Modified, watch.Deleted:
-				logger.Debug("Got watch event", zap.String("type", string(event.Type)))
+				logger.Debug("Received mutation event", zap.String("type", string(event.Type)))
 
 			default:
 				if event.Type == "" {
 					logger.Debug("Received empty event type")
-					logger.Debug("Restarting watcher", zap.String("fromResourceVersion", lastKnownResourceVersion))
-
 					return lastKnownResourceVersion, true, nil
 				}
 
@@ -332,15 +314,17 @@ func removeListSuffix(s string) string {
 	return s
 }
 
-// startWatcher (re)initializes the Kubernetes watch stream using the last known resourceVersion.
-func (r *ResourceManager) startWatcher(ctx context.Context, apiGroup string, lastKnownRV string, watchOptions metav1.ListOptions, existing watch.Interface, logger *zap.Logger) (watch.Interface, error) {
-	// Always resume from the last known resourceVersion.
-	watchOptions.ResourceVersion = lastKnownRV
-	// Ensure we get periodic bookmarks for advancing the resume point.
-	watchOptions.AllowWatchBookmarks = true
+// newWatcher creates a new Kubernetes watcher starting from the given resource version.
+func (r *ResourceManager) newWatcher(ctx context.Context, apiGroup string, resourceVersion string, existing watch.Interface, logger *zap.Logger) (watch.Interface, error) {
 	// Stop any existing watcher before creating a new one.
 	if existing != nil {
 		existing.Stop()
+	}
+
+	watchOptions := metav1.ListOptions{
+		Watch:               true,
+		ResourceVersion:     resourceVersion,
+		AllowWatchBookmarks: true,
 	}
 
 	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
@@ -355,19 +339,23 @@ func (r *ResourceManager) startWatcher(ctx context.Context, apiGroup string, las
 	return w, nil
 }
 
-// updateRVFromBookmark extracts the resourceVersion from a Bookmark event.
-func updateRVFromBookmark(event watch.Event) (string, error) {
+// getResourceVersionFromBookmark extracts the resourceVersion from a Bookmark event.
+func getResourceVersionFromBookmark(event watch.Event) (string, error) {
 	if event.Object == nil {
-		return "", errors.New("bookmark object is nil")
+		return "", errors.New("k8s watcher bookmark event contains no object")
 	}
 
-	if obj, ok := event.Object.(interface{ GetResourceVersion() string }); ok {
-		if rv := obj.GetResourceVersion(); rv != "" {
-			return rv, nil
-		}
+	obj, ok := event.Object.(interface{ GetResourceVersion() string })
+	if !ok {
+		return "", errors.New("k8s watcher bookmark event contains no resource version")
 	}
 
-	return "", errors.New("bookmark missing resourceVersion")
+	resourceVersion := obj.GetResourceVersion()
+	if resourceVersion == "" {
+		return "", errors.New("k8s watcher bookmark event contains no resource version")
+	}
+
+	return resourceVersion, nil
 }
 
 // processMutation converts the event object to our metadata, builds a mutation, and sends it on the channel.

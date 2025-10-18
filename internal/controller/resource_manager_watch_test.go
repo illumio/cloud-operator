@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
@@ -34,13 +33,13 @@ func TestUpdateRVFromBookmark(t *testing.T) {
 	u := makeUnstructuredNS("ns1", "42")
 
 	ev := watch.Event{Type: watch.Bookmark, Object: u}
-	if got, err := updateRVFromBookmark(ev); err != nil || got != "42" {
+	if got, err := getResourceVersionFromBookmark(ev); err != nil || got != "42" {
 		t.Fatalf("expected rv 42 with nil err, got rv=%q err=%v", got, err)
 	}
 
 	// When object is nil, last known should be preserved
 	ev2 := watch.Event{Type: watch.Bookmark, Object: nil}
-	if got, err := updateRVFromBookmark(ev2); err == nil || got != "" {
+	if got, err := getResourceVersionFromBookmark(ev2); err == nil || got != "" {
 		t.Fatalf("expected error for nil object and empty rv, got rv=%q err=%v", got, err)
 	}
 
@@ -48,12 +47,12 @@ func TestUpdateRVFromBookmark(t *testing.T) {
 	u2 := makeUnstructuredNS("ns2", "")
 
 	ev4 := watch.Event{Type: watch.Bookmark, Object: u2}
-	if got, err := updateRVFromBookmark(ev4); err == nil || got != "" {
+	if got, err := getResourceVersionFromBookmark(ev4); err == nil || got != "" {
 		t.Fatalf("expected error for empty RV, got rv=%q err=%v", got, err)
 	}
 }
 
-func TestStartWatcher_StopsExistingAndReturnsNew(t *testing.T) {
+func TestNewWatcher_StopsExistingAndReturnsNew(t *testing.T) {
 	logger := zap.NewNop()
 	scheme := runtime.NewScheme()
 	dyn := dynamicfake.NewSimpleDynamicClient(scheme)
@@ -74,15 +73,13 @@ func TestStartWatcher_StopsExistingAndReturnsNew(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// existing watcher that should be stopped by startWatcher
+	// existing watcher that should be stopped by newWatcher
 	existing := watch.NewFake()
 
-	opts := metav1.ListOptions{Watch: true, ResourceVersion: "10", AllowWatchBookmarks: false}
-
-	// Call startWatcher
-	w, err := rm.startWatcher(ctx, "", "25", opts, existing, logger)
+	// Call newWatcher
+	w, err := rm.newWatcher(ctx, "", "25", existing, logger)
 	if err != nil {
-		t.Fatalf("startWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 
 	if w == nil {
@@ -100,7 +97,7 @@ func TestStartWatcher_StopsExistingAndReturnsNew(t *testing.T) {
 	}
 }
 
-func TestStartWatcher_PropagatesErrors(t *testing.T) {
+func TestNewWatcher_PropagatesErrors(t *testing.T) {
 	logger := zap.NewNop()
 	scheme := runtime.NewScheme()
 	dyn := dynamicfake.NewSimpleDynamicClient(scheme)
@@ -121,11 +118,9 @@ func TestStartWatcher_PropagatesErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	opts := metav1.ListOptions{Watch: true}
-
-	_, err := rm.startWatcher(ctx, "", "1", opts, nil, logger)
+	_, err := rm.newWatcher(ctx, "", "1", nil, logger)
 	if err == nil {
-		t.Fatalf("expected error from startWatcher, got nil")
+		t.Fatalf("expected error from newWatcher, got nil")
 	}
 }
 
