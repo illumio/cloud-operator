@@ -227,6 +227,7 @@ func (r *ResourceManager) runWatcherUntilRestart(
 			default:
 				if event.Type == "" {
 					logger.Debug("Received empty event type")
+
 					return lastKnownResourceVersion, true, nil
 				}
 
