@@ -357,7 +357,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		go func(info watcherInfo, manager *ResourceManager) {
 			defer watcherWaitGroup.Done()
 
-			manager.WatchK8sResources(ctx, cancel, info.apiGroup, info.resourceVersion, mutationChan)
+			manager.WatchK8sResources(ctx, cancel, info.resourceVersion, mutationChan)
 		}(info, resourceManager)
 	}
 

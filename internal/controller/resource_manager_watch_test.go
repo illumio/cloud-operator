@@ -1,10 +1,11 @@
+// Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 package controller
 
 import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -73,11 +74,8 @@ func TestNewWatcher_StopsExistingAndReturnsNew(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// existing watcher that should be stopped by newWatcher
-	existing := watch.NewFake()
-
 	// Call newWatcher
-	w, err := rm.newWatcher(ctx, "", "25", existing, logger)
+	w, err := rm.newWatcher(ctx, "25", logger)
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
@@ -86,15 +84,7 @@ func TestNewWatcher_StopsExistingAndReturnsNew(t *testing.T) {
 		t.Fatalf("expected non-nil watcher")
 	}
 
-	// Verify existing watcher was stopped (its channel should be closed)
-	select {
-	case _, ok := <-existing.ResultChan():
-		if ok {
-			t.Fatalf("expected existing watcher channel to be closed")
-		}
-	case <-time.After(1 * time.Second):
-		t.Fatalf("timeout waiting for existing watcher to stop")
-	}
+	// No existing watcher to verify for stopping
 }
 
 func TestNewWatcher_PropagatesErrors(t *testing.T) {
@@ -118,7 +108,7 @@ func TestNewWatcher_PropagatesErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, err := rm.newWatcher(ctx, "", "1", nil, logger)
+	_, err := rm.newWatcher(ctx, "1", logger)
 	if err == nil {
 		t.Fatalf("expected error from newWatcher, got nil")
 	}

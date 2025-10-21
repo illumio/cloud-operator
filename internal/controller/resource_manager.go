@@ -39,9 +39,9 @@ type ResourceManager struct {
 	resourceName string
 	// apiGroup identifies the Kubernetes API group for this resource
 	apiGroup string
-	// Clientset providing accees to k8s api.
+	// Clientset providing access to k8s api.
 	clientset *kubernetes.Clientset
-	// Logger provides strucuted logging interface.
+	// Logger provides structured logging interface.
 	logger *zap.Logger
 	// DynamicClient offers generic Kubernetes API operations.
 	dynamicClient dynamic.Interface
@@ -75,7 +75,7 @@ func NewResourceManager(config ResourceManagerConfig) *ResourceManager {
 
 // WatchK8sResources initiates a watch stream for the specified Kubernetes resource starting from the given resourceVersion.
 // This function blocks until the watch ends or the context is canceled.
-func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.CancelFunc, apiGroup string, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation) {
+func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.CancelFunc, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation) {
 	defer cancel()
 
 	err := r.limiter.Wait(ctx)
@@ -152,102 +152,89 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion strin
 
 	lastKnownResourceVersion := resourceVersion
 
+	var watcher watch.Interface
+
+	defer func() {
+		if watcher != nil {
+			watcher.Stop()
+		}
+	}()
+
 	mutationCount := 0
 
 	for {
-		// Run the watcher loop until a restart is requested or an error occurs
-		updatedRV, restart, err := r.runWatcherUntilRestart(ctx, lastKnownResourceVersion, mutationChan, logger, &mutationCount)
+		// Stop any existing watcher
+		if watcher != nil {
+			watcher.Stop()
+			watcher = nil
+			logger.Debug("Restarting watcher", zap.String("fromResourceVersion", lastKnownResourceVersion))
+		}
+
+		w, err := r.newWatcher(ctx, lastKnownResourceVersion, logger)
 		if err != nil {
 			return err
 		}
 
-		lastKnownResourceVersion = updatedRV
+		watcher = w
 
-		if !restart {
-			return nil
-		}
-	}
-}
+	watcherLoop:
+		for {
+			select {
+			case <-ctx.Done():
+				logger.Debug("Disconnected from CloudSecure", zap.String("reason", "context cancelled"))
 
-// runWatcherUntilRestart processes events from a watcher until it needs to be restarted or an error occurs.
-// It returns the latest resourceVersion, whether a restart is needed, and any error encountered.
-func (r *ResourceManager) runWatcherUntilRestart(
-	ctx context.Context,
-	lastKnownResourceVersion string,
-	mutationChan chan *pb.KubernetesResourceMutation,
-	logger *zap.Logger,
-	mutationCount *int,
-) (string, bool, error) {
-	// Create a new watcher starting from the last known resourceVersion.
-	watcher, err := r.newWatcher(ctx, r.apiGroup, lastKnownResourceVersion, nil, logger)
-	if err != nil {
-		return lastKnownResourceVersion, false, err
-	}
+				return ctx.Err()
 
-	defer watcher.Stop()
+			case event, ok := <-watcher.ResultChan():
+				if !ok {
+					logger.Debug("Watcher channel closed")
 
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Debug("Disconnected from CloudSecure", zap.String("reason", "context cancelled"))
-
-			return lastKnownResourceVersion, false, ctx.Err()
-
-		case event, ok := <-watcher.ResultChan():
-			if !ok {
-				logger.Debug("Watcher channel closed")
-				logger.Debug("Restarting watcher", zap.String("fromResourceVersion", lastKnownResourceVersion))
-
-				return lastKnownResourceVersion, true, nil
-			}
-
-			switch event.Type {
-			case watch.Error:
-				err := getErrFromWatchEvent(event)
-				logger.Error("Watcher returned error", zap.Error(err))
-
-				return lastKnownResourceVersion, false, err
-
-			case watch.Bookmark:
-				newResourceVersion, err := getResourceVersionFromBookmark(event)
-				if err != nil {
-					logger.Error("Failed to extract resource_Version from bookmark", zap.Error(err))
-
-					return lastKnownResourceVersion, false, err
+					break watcherLoop
 				}
 
-				lastKnownResourceVersion = newResourceVersion
-				logger.Debug("Received bookmark", zap.String("resource_Version", lastKnownResourceVersion))
+				switch event.Type {
+				case watch.Error:
+					err := getErrFromWatchEvent(event)
+					logger.Error("Watcher event returned error", zap.Error(err))
 
-				continue
+					return err
 
-			case watch.Added, watch.Modified, watch.Deleted:
-				logger.Debug("Received mutation event", zap.String("type", string(event.Type)))
+				case watch.Bookmark:
+					newResourceVersion, err := getResourceVersionFromBookmark(event)
+					if err != nil {
+						logger.Error("Failed to extract resourceVersion from bookmark", zap.Error(err))
 
-			default:
-				if event.Type == "" {
-					logger.Debug("Received empty event type")
+						return err
+					}
 
-					return lastKnownResourceVersion, true, nil
+					lastKnownResourceVersion = newResourceVersion
+					logger.Debug("Received bookmark", zap.String("resource_version", lastKnownResourceVersion))
+
+					continue
+
+				case watch.Added, watch.Modified, watch.Deleted:
+					logger.Debug("Received mutation event", zap.String("type", string(event.Type)))
+
+				default:
+					// Treat empty and unknown types the same: restart the watcher
+					logger.Debug("Received unknown or empty watch event", zap.String("type", string(event.Type)))
+
+					break watcherLoop
 				}
 
-				logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
+				// Process mutations (only for Added/Modified/Deleted)
+				if err := r.processMutation(ctx, event, mutationChan, logger); err != nil {
+					return err
+				}
 
-				continue
+				mutationCount++
+
+			case <-time.After(60 * time.Second):
+				logger.Debug("Current mutation count", zap.Int("mutation_count", mutationCount))
+				logger.Debug("Resetting mutation count")
+
+				mutationCount = 0
 			}
-
-			// Process mutations (only for Added/Modified/Deleted)
-			if err := r.processMutation(ctx, event, mutationChan, logger); err != nil {
-				return lastKnownResourceVersion, false, err
-			}
-
-			*mutationCount++
-
-		case <-time.After(60 * time.Second):
-			logger.Debug("Current mutation count", zap.Int("mutation_count", *mutationCount))
-			logger.Debug("Resetting mutation count")
-
-			*mutationCount = 0
 		}
 	}
 }
@@ -316,11 +303,7 @@ func removeListSuffix(s string) string {
 }
 
 // newWatcher creates a new Kubernetes watcher starting from the given resource version.
-func (r *ResourceManager) newWatcher(ctx context.Context, apiGroup string, resourceVersion string, existing watch.Interface, logger *zap.Logger) (watch.Interface, error) {
-	// Stop any existing watcher before creating a new one.
-	if existing != nil {
-		existing.Stop()
-	}
+func (r *ResourceManager) newWatcher(ctx context.Context, resourceVersion string, logger *zap.Logger) (watch.Interface, error) {
 
 	watchOptions := metav1.ListOptions{
 		Watch:               true,
@@ -328,7 +311,7 @@ func (r *ResourceManager) newWatcher(ctx context.Context, apiGroup string, resou
 		AllowWatchBookmarks: true,
 	}
 
-	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
+	objGVR := schema.GroupVersionResource{Group: r.apiGroup, Version: "v1", Resource: r.resourceName}
 
 	w, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
