@@ -167,6 +167,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion strin
 		if watcher != nil {
 			watcher.Stop()
 			watcher = nil
+
 			logger.Debug("Restarting watcher", zap.String("fromResourceVersion", lastKnownResourceVersion))
 		}
 
@@ -304,7 +305,6 @@ func removeListSuffix(s string) string {
 
 // newWatcher creates a new Kubernetes watcher starting from the given resource version.
 func (r *ResourceManager) newWatcher(ctx context.Context, resourceVersion string, logger *zap.Logger) (watch.Interface, error) {
-
 	watchOptions := metav1.ListOptions{
 		Watch:               true,
 		ResourceVersion:     resourceVersion,
