@@ -163,7 +163,7 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion strin
 	mutationCount := 0
 
 	for {
-		// Stop any existing watcher
+		// Stop any existing watcher and create a new one from the last known resource version
 		if watcher != nil {
 			watcher.Stop()
 			watcher = nil
@@ -193,42 +193,14 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion strin
 					break watcherLoop
 				}
 
-				switch event.Type {
-				case watch.Error:
-					err := getErrFromWatchEvent(event)
-					logger.Error("Watcher event returned error", zap.Error(err))
-
+				restart, err := r.handleWatchEvent(ctx, event, mutationChan, logger, &lastKnownResourceVersion, &mutationCount)
+				if err != nil {
 					return err
+				}
 
-				case watch.Bookmark:
-					newResourceVersion, err := getResourceVersionFromBookmark(event)
-					if err != nil {
-						logger.Error("Failed to extract resourceVersion from bookmark", zap.Error(err))
-
-						return err
-					}
-
-					lastKnownResourceVersion = newResourceVersion
-					logger.Debug("Received bookmark", zap.String("resource_version", lastKnownResourceVersion))
-
-					continue
-
-				case watch.Added, watch.Modified, watch.Deleted:
-					logger.Debug("Received mutation event", zap.String("type", string(event.Type)))
-
-				default:
-					// Treat empty and unknown types the same: restart the watcher
-					logger.Debug("Received unknown or empty watch event", zap.String("type", string(event.Type)))
-
+				if restart {
 					break watcherLoop
 				}
-
-				// Process mutations (only for Added/Modified/Deleted)
-				if err := r.processMutation(ctx, event, mutationChan, logger); err != nil {
-					return err
-				}
-
-				mutationCount++
 
 			case <-time.After(60 * time.Second):
 				logger.Debug("Current mutation count", zap.Int("mutation_count", mutationCount))
@@ -321,6 +293,56 @@ func (r *ResourceManager) newWatcher(ctx context.Context, resourceVersion string
 	}
 
 	return w, nil
+}
+
+// handleWatchEvent processes a single watch.Event.
+// It updates lastKnownResourceVersion for bookmarks, sends mutations for change events,
+// and returns (restart=true) when the watcher should be restarted (empty/unknown types).
+func (r *ResourceManager) handleWatchEvent(
+	ctx context.Context,
+	event watch.Event,
+	mutationChan chan *pb.KubernetesResourceMutation,
+	logger *zap.Logger,
+	lastKnownResourceVersion *string,
+	mutationCount *int,
+) (bool, error) {
+	switch event.Type {
+	case watch.Error:
+		err := getErrFromWatchEvent(event)
+		logger.Error("Watcher event returned error", zap.Error(err))
+
+		return false, err
+
+	case watch.Bookmark:
+		newResourceVersion, err := getResourceVersionFromBookmark(event)
+		if err != nil {
+			logger.Error("Failed to extract resourceVersion from bookmark", zap.Error(err))
+
+			return false, err
+		}
+
+		*lastKnownResourceVersion = newResourceVersion
+		logger.Debug("Received bookmark", zap.String("resource_version", *lastKnownResourceVersion))
+
+		return false, nil
+
+	case watch.Added, watch.Modified, watch.Deleted:
+		logger.Debug("Received mutation event", zap.String("type", string(event.Type)))
+
+		if err := r.processMutation(ctx, event, mutationChan, logger); err != nil {
+			return false, err
+		}
+
+		*mutationCount++
+
+		return false, nil
+
+	default:
+		// Treat empty and unknown types the same: restart the watcher
+		logger.Debug("Received unknown or empty watch event", zap.String("type", string(event.Type)))
+
+		return true, nil
+	}
 }
 
 // getResourceVersionFromBookmark extracts the resourceVersion from a Bookmark event.
