@@ -130,19 +130,19 @@ func TestProcessMutation_SendsCorrectMutationTypes(t *testing.T) {
 
 	// Added → CreateResource
 	u1 := makeUnstructuredNS("n1", "10")
-	if err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u1}, ch, logger); err != nil {
+	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u1}, ch, logger); err != nil {
 		t.Fatalf("processMutation(Add) error: %v", err)
 	}
 
 	// Modified → UpdateResource
 	u2 := makeUnstructuredNS("n1", "11")
-	if err := rm.processMutation(ctx, watch.Event{Type: watch.Modified, Object: u2}, ch, logger); err != nil {
+	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Modified, Object: u2}, ch, logger); err != nil {
 		t.Fatalf("processMutation(Modify) error: %v", err)
 	}
 
 	// Deleted → DeleteResource
 	u3 := makeUnstructuredNS("n1", "12")
-	if err := rm.processMutation(ctx, watch.Event{Type: watch.Deleted, Object: u3}, ch, logger); err != nil {
+	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Deleted, Object: u3}, ch, logger); err != nil {
 		t.Fatalf("processMutation(Delete) error: %v", err)
 	}
 
@@ -179,7 +179,7 @@ func TestProcessMutation_RespectsContextCancellation(t *testing.T) {
 	ch := make(chan *pb.KubernetesResourceMutation)
 	u := makeUnstructuredNS("n1", "10")
 
-	err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u}, ch, logger)
+	_, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u}, ch, logger)
 	if err == nil {
 		t.Fatalf("expected context error, got nil")
 	}
@@ -208,15 +208,15 @@ func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 	u2 := makeUnstructuredNS("n1", "11")
 	u3 := makeUnstructuredNS("n1", "12")
 
-	if err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u1}, ch, logger); err != nil {
+	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u1}, ch, logger); err != nil {
 		t.Fatalf("processMutation(Add) error: %v", err)
 	}
 
-	if err := rm.processMutation(ctx, watch.Event{Type: watch.Modified, Object: u2}, ch, logger); err != nil {
+	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Modified, Object: u2}, ch, logger); err != nil {
 		t.Fatalf("processMutation(Modify) error: %v", err)
 	}
 
-	if err := rm.processMutation(ctx, watch.Event{Type: watch.Deleted, Object: u3}, ch, logger); err != nil {
+	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Deleted, Object: u3}, ch, logger); err != nil {
 		t.Fatalf("processMutation(Delete) error: %v", err)
 	}
 

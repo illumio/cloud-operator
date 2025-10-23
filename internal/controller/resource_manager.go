@@ -329,8 +329,11 @@ func (r *ResourceManager) handleWatchEvent(
 	case watch.Added, watch.Modified, watch.Deleted:
 		logger.Debug("Received mutation event", zap.String("type", string(event.Type)))
 
-		if err := r.processMutation(ctx, event, mutationChan, logger); err != nil {
+		if resourceVersion, err := r.processMutation(ctx, event, mutationChan, logger); err != nil {
 			return false, err
+		} else if resourceVersion != "" {
+			*lastKnownResourceVersion = resourceVersion
+			logger.Debug("Updated lastKnownResourceVersion from mutation", zap.String("resource_version", resourceVersion))
 		}
 
 		*mutationCount++
@@ -365,12 +368,13 @@ func getResourceVersionFromBookmark(event watch.Event) (string, error) {
 }
 
 // processMutation converts the event object to our metadata, builds a mutation, and sends it on the channel.
-func (r *ResourceManager) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation, logger *zap.Logger) error {
+// It returns the resourceVersion from the event object so callers can persist progress.
+func (r *ResourceManager) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation, logger *zap.Logger) (string, error) {
 	convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
 	if err != nil {
 		logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
 
-		return err
+		return "", err
 	}
 
 	resource := event.Object.GetObjectKind().GroupVersionKind().Kind
@@ -381,9 +385,9 @@ func (r *ResourceManager) processMutation(ctx context.Context, event watch.Event
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return "", ctx.Err()
 	case mutationChan <- mutation:
 	}
 
-	return nil
+	return convertedData.GetResourceVersion(), nil
 }
