@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -24,6 +25,7 @@ import (
 // ResourceManagerConfig holds the configuration for creating a new ResourceManager.
 type ResourceManagerConfig struct {
 	ResourceName  string
+	ApiGroup      string
 	Clientset     *kubernetes.Clientset
 	BaseLogger    *zap.Logger
 	DynamicClient dynamic.Interface
@@ -35,9 +37,11 @@ type ResourceManagerConfig struct {
 type ResourceManager struct {
 	// resourceName identifies which resource this manager handles
 	resourceName string
-	// Clientset providing accees to k8s api.
+	// apiGroup identifies the Kubernetes API group for this resource
+	apiGroup string
+	// Clientset providing access to k8s api.
 	clientset *kubernetes.Clientset
-	// Logger provides strucuted logging interface.
+	// Logger provides structured logging interface.
 	logger *zap.Logger
 	// DynamicClient offers generic Kubernetes API operations.
 	dynamicClient dynamic.Interface
@@ -51,10 +55,14 @@ type ResourceManager struct {
 // The logger will automatically include the resource name in all log messages.
 func NewResourceManager(config ResourceManagerConfig) *ResourceManager {
 	// Create a logger with the resource name already included
-	logger := config.BaseLogger.With(zap.String("resource", config.ResourceName))
+	logger := config.BaseLogger.With(
+		zap.String("resource", config.ResourceName),
+		zap.String("api_group", config.ApiGroup),
+	)
 
 	return &ResourceManager{
 		resourceName:  config.ResourceName,
+		apiGroup:      config.ApiGroup,
 		clientset:     config.Clientset,
 		logger:        logger,
 		dynamicClient: config.DynamicClient,
@@ -67,13 +75,8 @@ func NewResourceManager(config ResourceManagerConfig) *ResourceManager {
 
 // WatchK8sResources initiates a watch stream for the specified Kubernetes resource starting from the given resourceVersion.
 // This function blocks until the watch ends or the context is canceled.
-func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.CancelFunc, apiGroup string, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation) {
+func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.CancelFunc, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation) {
 	defer cancel()
-	// Here intiatate the watch event
-	watchOptions := metav1.ListOptions{
-		Watch:           true,
-		ResourceVersion: resourceVersion,
-	}
 
 	err := r.limiter.Wait(ctx)
 	if err != nil {
@@ -82,7 +85,7 @@ func (r *ResourceManager) WatchK8sResources(ctx context.Context, cancel context.
 		return
 	}
 
-	err = r.watchEvents(ctx, apiGroup, watchOptions, mutationChan)
+	err = r.watchEvents(ctx, resourceVersion, mutationChan)
 	if err != nil {
 		r.logger.Error("Watch failed", zap.Error(err))
 
@@ -110,7 +113,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.
 		}
 	}
 
-	r.logger.Debug("Successfully sent k8s workloads", zap.Int("count", len(objs)))
+	r.logger.Debug("Successfully sent k8s resources", zap.Int("count", len(objs)))
 
 	select {
 	case <-ctx.Done():
@@ -123,7 +126,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.
 
 // getErrFromWatchEvent returns an error if the watch event is of type Error.
 // Includes the 'code', 'reason', and 'message'. If the watch event is NOT of
-// type Error then return nil.
+// type Error, returns nil.
 func getErrFromWatchEvent(event watch.Event) error {
 	if event.Object == nil {
 		return nil
@@ -141,77 +144,76 @@ func getErrFromWatchEvent(event watch.Event) error {
 	return fmt.Errorf("code: %d, reason: %s, message: %s", status.Code, status.Reason, status.Message)
 }
 
-// watchEvents watches Kubernetes resources. The second part of the of the "list
-// and watch" strategy.
-// Any occurring errors are sent through errChanWatch. The watch stops when ctx is cancelled.
-func (r *ResourceManager) watchEvents(ctx context.Context, apiGroup string, watchOptions metav1.ListOptions, mutationChan chan *pb.KubernetesResourceMutation) error {
-	logger := r.logger.With(zap.String("api_group", apiGroup))
+// watchEvents watches Kubernetes resources. The second part of the "list and watch" strategy.
+// Stops when ctx is cancelled.
+func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation) error {
+	logger := r.logger
 
-	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
+	lastResourceVersion := resourceVersion
 
-	watcher, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
-	if err != nil {
-		logger.Error("Error setting up watch on resource", zap.Error(err))
+	var watcher watch.Interface
 
-		return err
-	}
+	defer func() {
+		if watcher != nil {
+			watcher.Stop()
+		}
+	}()
 
 	mutationCount := 0
 
 	for {
-		select {
-		case <-ctx.Done():
-			logger.Debug("Disconnected from CloudSecure",
-				zap.String("reason", "context cancelled"),
-			)
+		// Stop any existing watcher and create a new one from the last known resource version
+		if watcher != nil {
+			watcher.Stop()
+			watcher = nil
 
-			return ctx.Err()
+			logger.Debug("Restarting watcher", zap.String("resource_version", lastResourceVersion))
+		}
 
-		case event := <-watcher.ResultChan():
-			// Exhaustive enum check on event type. We only want to report mutations
-			switch event.Type {
-			case watch.Error:
-				err := getErrFromWatchEvent(event)
-				logger.Error("Watcher event has returned an error", zap.Error(err))
+		var err error
 
-				return err
-			case watch.Bookmark:
-				continue
-			case watch.Added, watch.Modified, watch.Deleted:
-			default:
-				logger.Debug("Received unknown watch event", zap.String("type", string(event.Type)))
+		watcher, err = r.newWatcher(ctx, lastResourceVersion, logger)
+		if err != nil {
+			return err
+		}
 
-				continue
-			}
-
-			// Type gymnastics: turn the watch.Event into a 'KubernetesObjectData'
-			convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
-			if err != nil {
-				logger.Error("Cannot convert runtime.Object to metav1.ObjectMeta", zap.Error(err))
-
-				return err
-			}
-
-			resource := event.Object.GetObjectKind().GroupVersionKind().Kind
-
-			metadataObj := convertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resource)
-
-			// Helper function: type gymnastics + send the KubernetesObjectData on the mutation channel
-			mutation := r.streamManager.createMutationObject(metadataObj, event.Type)
-
+	watcherLoop:
+		for {
 			select {
 			case <-ctx.Done():
+				logger.Debug("Disconnected from CloudSecure (context canceled)")
+
 				return ctx.Err()
-			case mutationChan <- mutation:
+
+			case event, ok := <-watcher.ResultChan():
+				if !ok {
+					logger.Debug("Watcher channel closed")
+
+					break watcherLoop
+				}
+
+				newResourceVersion, eventIsMutation, err := r.handleWatchEvent(ctx, event, mutationChan, logger)
+				if err != nil {
+					logger.Error("Error processing watch event", zap.Error(err))
+
+					// Fix any error re: watch events by just restarting the watcher
+					// from the last known resource version.
+					break watcherLoop
+				}
+
+				if newResourceVersion != "" {
+					lastResourceVersion = newResourceVersion
+				}
+
+				if eventIsMutation {
+					mutationCount += 1
+				}
+
+			case <-time.After(60 * time.Second):
+				logger.Debug("Processed mutations checkpoint", zap.Duration("period", 60*time.Second), zap.Int("mutation_count", mutationCount))
+
+				mutationCount = 0
 			}
-
-			mutationCount++
-
-		case <-time.After(60 * time.Second):
-			logger.Debug("Current mutation count", zap.Int("mutation_count", mutationCount))
-			logger.Debug("Resetting mutation count")
-
-			mutationCount = 0
 		}
 	}
 }
@@ -242,7 +244,7 @@ func (r *ResourceManager) ExtractObjectMetas(resources *unstructured.Unstructure
 	for _, item := range resources.Items {
 		objMeta, err := getMetadatafromResource(r.logger, item)
 		if err != nil {
-			r.logger.Error("Cannot get Metadata from resource", zap.Error(err))
+			r.logger.Error("Cannot get metadata from resource", zap.Error(err))
 
 			return nil, err
 		}
@@ -277,4 +279,103 @@ func removeListSuffix(s string) string {
 	}
 
 	return s
+}
+
+// newWatcher creates a new Kubernetes watcher starting from the given resource version.
+func (r *ResourceManager) newWatcher(ctx context.Context, resourceVersion string, logger *zap.Logger) (watch.Interface, error) {
+	watchOptions := metav1.ListOptions{
+		Watch:               true,
+		ResourceVersion:     resourceVersion,
+		AllowWatchBookmarks: true,
+	}
+
+	objGVR := schema.GroupVersionResource{Group: r.apiGroup, Version: "v1", Resource: r.resourceName}
+
+	w, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
+	if err != nil {
+		logger.Error("Error setting up watch on resource", zap.Error(err))
+
+		return nil, err
+	}
+
+	return w, nil
+}
+
+// handleWatchEvent processes a single watch.Event.
+// It updates lastKnownResourceVersion for bookmarks, sends mutations for change events,
+// and returns (restart=true) when the watcher should be restarted (empty/unknown types).
+func (r *ResourceManager) handleWatchEvent(
+	ctx context.Context,
+	event watch.Event,
+	mutationChan chan *pb.KubernetesResourceMutation,
+	logger *zap.Logger,
+) (string, bool, error) {
+	switch event.Type {
+	case watch.Error:
+		err := getErrFromWatchEvent(event)
+
+		return "", false, fmt.Errorf("watcher returned an error: %w", err)
+
+	case watch.Bookmark:
+		logger.Debug("Received bookmark from watcher")
+
+		resourceVersion, err := getResourceVersionFromBookmark(event)
+		if err != nil {
+			return "", false, err
+		}
+
+		return resourceVersion, false, nil
+
+	case watch.Added, watch.Modified, watch.Deleted:
+		logger.Debug("Received mutation from watcher", zap.String("type", string(event.Type)))
+
+		resourceVersion, err := r.processMutation(ctx, event, mutationChan)
+
+		return resourceVersion, true, err
+
+	default:
+		return "", false, fmt.Errorf("watcher returned an unknown or empty watch event of type %s", string(event.Type))
+	}
+}
+
+// getResourceVersionFromBookmark extracts the resourceVersion from a Bookmark event.
+func getResourceVersionFromBookmark(event watch.Event) (string, error) {
+	if event.Object == nil {
+		return "", errors.New("k8s watcher bookmark event contains no object")
+	}
+
+	obj, ok := event.Object.(interface{ GetResourceVersion() string })
+	if !ok {
+		return "", errors.New("k8s watcher bookmark event contains no resource version")
+	}
+
+	resourceVersion := obj.GetResourceVersion()
+	if resourceVersion == "" {
+		return "", errors.New("k8s watcher bookmark event contains no resource version")
+	}
+
+	return resourceVersion, nil
+}
+
+// processMutation converts the event object to our metadata, builds a mutation, and sends it on the channel.
+// It returns the resourceVersion from the event object so callers can persist progress.
+func (r *ResourceManager) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation) (string, error) {
+	convertedData, err := getObjectMetadataFromRuntimeObject(event.Object)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert runtime.Object to metav1.ObjectMeta: %w", err)
+	}
+
+	resource := event.Object.GetObjectKind().GroupVersionKind().Kind
+	metadataObj := convertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resource)
+
+	// Helper function: type gymnastics + send the KubernetesObjectData on the mutation channel
+	mutation := r.streamManager.createMutationObject(metadataObj, event.Type)
+
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case mutationChan <- mutation:
+	}
+
+	return convertedData.GetResourceVersion(), nil
 }

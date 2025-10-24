@@ -27,7 +27,6 @@ const (
 
 	// Constants for fetching the mTLS secret.
 	ciliumHubbleMTLSSecretName string = "hubble-relay-client-certs" //nolint:gosec
-	ciliumHubbleRelayNamespace string = "kube-system"
 )
 
 // newCiliumFlowCollector connects to Cilium Hubble Relay, sets up an Observer client,
