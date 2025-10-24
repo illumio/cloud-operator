@@ -18,7 +18,7 @@ import (
 )
 
 // helper: minimal unstructured Namespace with name and rv
-func makeUnstructuredNS(name, rv string) *unstructured.Unstructured {
+func newUnstructuredNamespace(name, rv string) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{}
 	obj.SetAPIVersion("v1")
 	obj.SetKind("Namespace")
@@ -29,9 +29,9 @@ func makeUnstructuredNS(name, rv string) *unstructured.Unstructured {
 	return obj
 }
 
-func TestUpdateRVFromBookmark(t *testing.T) {
+func TestUpdateResourceVersionFromBookmark(t *testing.T) {
 	// When bookmark contains RV, it should be returned
-	u := makeUnstructuredNS("ns1", "42")
+	u := newUnstructuredNamespace("ns1", "42")
 
 	ev := watch.Event{Type: watch.Bookmark, Object: u}
 	if got, err := getResourceVersionFromBookmark(ev); err != nil || got != "42" {
@@ -45,7 +45,7 @@ func TestUpdateRVFromBookmark(t *testing.T) {
 	}
 
 	// When object has empty RV, preserve last known
-	u2 := makeUnstructuredNS("ns2", "")
+	u2 := newUnstructuredNamespace("ns2", "")
 
 	ev4 := watch.Event{Type: watch.Bookmark, Object: u2}
 	if got, err := getResourceVersionFromBookmark(ev4); err == nil || got != "" {
@@ -129,20 +129,20 @@ func TestProcessMutation_SendsCorrectMutationTypes(t *testing.T) {
 	ch := make(chan *pb.KubernetesResourceMutation, 3)
 
 	// Added → CreateResource
-	u1 := makeUnstructuredNS("n1", "10")
-	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u1}, ch, logger); err != nil {
+	u1 := newUnstructuredNamespace("n1", "10")
+	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u1}, ch); err != nil {
 		t.Fatalf("processMutation(Add) error: %v", err)
 	}
 
 	// Modified → UpdateResource
-	u2 := makeUnstructuredNS("n1", "11")
-	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Modified, Object: u2}, ch, logger); err != nil {
+	u2 := newUnstructuredNamespace("n1", "11")
+	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Modified, Object: u2}, ch); err != nil {
 		t.Fatalf("processMutation(Modify) error: %v", err)
 	}
 
 	// Deleted → DeleteResource
-	u3 := makeUnstructuredNS("n1", "12")
-	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Deleted, Object: u3}, ch, logger); err != nil {
+	u3 := newUnstructuredNamespace("n1", "12")
+	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Deleted, Object: u3}, ch); err != nil {
 		t.Fatalf("processMutation(Delete) error: %v", err)
 	}
 
@@ -177,9 +177,9 @@ func TestProcessMutation_RespectsContextCancellation(t *testing.T) {
 	cancel()
 
 	ch := make(chan *pb.KubernetesResourceMutation)
-	u := makeUnstructuredNS("n1", "10")
+	u := newUnstructuredNamespace("n1", "10")
 
-	_, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u}, ch, logger)
+	_, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u}, ch)
 	if err == nil {
 		t.Fatalf("expected context error, got nil")
 	}
@@ -204,19 +204,19 @@ func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 	)
 
 	// Prepare three events for the same object with increasing RVs
-	u1 := makeUnstructuredNS("n1", "10")
-	u2 := makeUnstructuredNS("n1", "11")
-	u3 := makeUnstructuredNS("n1", "12")
+	u1 := newUnstructuredNamespace("n1", "10")
+	u2 := newUnstructuredNamespace("n1", "11")
+	u3 := newUnstructuredNamespace("n1", "12")
 
-	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u1}, ch, logger); err != nil {
+	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u1}, ch); err != nil {
 		t.Fatalf("processMutation(Add) error: %v", err)
 	}
 
-	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Modified, Object: u2}, ch, logger); err != nil {
+	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Modified, Object: u2}, ch); err != nil {
 		t.Fatalf("processMutation(Modify) error: %v", err)
 	}
 
-	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Deleted, Object: u3}, ch, logger); err != nil {
+	if _, err := rm.processMutation(ctx, watch.Event{Type: watch.Deleted, Object: u3}, ch); err != nil {
 		t.Fatalf("processMutation(Delete) error: %v", err)
 	}
 
