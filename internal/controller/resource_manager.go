@@ -113,7 +113,7 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.
 		}
 	}
 
-	r.logger.Debug("Successfully sent k8s workloads", zap.Int("count", len(objs)))
+	r.logger.Debug("Successfully sent k8s resources", zap.Int("count", len(objs)))
 
 	select {
 	case <-ctx.Done():
