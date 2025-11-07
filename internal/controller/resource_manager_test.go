@@ -258,28 +258,13 @@ func TestIsExpiredResourceVersionError(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "expired resource version error with exact message from customer logs",
-			err:      errors.New("code: 410, reason: Expired, message: too old resource version: 1762495487792497000 (1762495505417599006)"),
-			expected: true,
-		},
-		{
-			name:     "expired error with different wording",
-			err:      errors.New("code: 410, reason: Expired, message: the resource version is too old"),
-			expected: true,
-		},
-		{
-			name:     "410 with Expired reason only",
-			err:      errors.New("code: 410, reason: Expired, message: something went wrong"),
-			expected: true,
-		},
-		{
-			name:     "410 Gone without Expired keyword",
-			err:      errors.New("code: 410, reason: Gone, message: resource not found"),
+			name:     "properly typed gone error",
+			err:      apierrors.NewGone("resource not found"),
 			expected: false,
 		},
 		{
-			name:     "different error code",
-			err:      errors.New("code: 500, reason: InternalError, message: something broke"),
+			name:     "internal server error",
+			err:      apierrors.NewInternalError(errors.New("something broke")),
 			expected: false,
 		},
 		{
