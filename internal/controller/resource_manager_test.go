@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"go.uber.org/zap"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
@@ -252,7 +253,12 @@ func TestIsExpiredResourceVersionError(t *testing.T) {
 			expected: false,
 		},
 		{
-			name:     "expired resource version error with exact message from customer",
+			name:     "properly typed resource expired error",
+			err:      apierrors.NewResourceExpired("too old resource version: 1762495487792497000 (1762495505417599006)"),
+			expected: true,
+		},
+		{
+			name:     "expired resource version error with exact message from customer logs",
 			err:      errors.New("code: 410, reason: Expired, message: too old resource version: 1762495487792497000 (1762495505417599006)"),
 			expected: true,
 		},
