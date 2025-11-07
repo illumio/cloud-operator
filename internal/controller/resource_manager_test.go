@@ -239,3 +239,56 @@ func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 		t.Fatalf("unexpected metadata in DeleteResource: %#v", got)
 	}
 }
+
+func TestIsExpiredResourceVersionError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "nil error",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "expired resource version error with exact message from customer",
+			err:      errors.New("code: 410, reason: Expired, message: too old resource version: 1762495487792497000 (1762495505417599006)"),
+			expected: true,
+		},
+		{
+			name:     "expired error with different wording",
+			err:      errors.New("code: 410, reason: Expired, message: the resource version is too old"),
+			expected: true,
+		},
+		{
+			name:     "410 with Expired reason only",
+			err:      errors.New("code: 410, reason: Expired, message: something went wrong"),
+			expected: true,
+		},
+		{
+			name:     "410 Gone without Expired keyword",
+			err:      errors.New("code: 410, reason: Gone, message: resource not found"),
+			expected: false,
+		},
+		{
+			name:     "different error code",
+			err:      errors.New("code: 500, reason: InternalError, message: something broke"),
+			expected: false,
+		},
+		{
+			name:     "unrelated error",
+			err:      errors.New("some other error"),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isExpiredResourceVersionError(tt.err)
+			if result != tt.expected {
+				t.Errorf("isExpiredResourceVersionError() = %v, want %v for error: %v", result, tt.expected, tt.err)
+			}
+		})
+	}
+}

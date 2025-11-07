@@ -144,6 +144,19 @@ func getErrFromWatchEvent(event watch.Event) error {
 	return fmt.Errorf("code: %d, reason: %s, message: %s", status.Code, status.Reason, status.Message)
 }
 
+// isExpiredResourceVersionError checks if the error is a 410 Gone error indicating
+// the resource version is too old to watch from.
+func isExpiredResourceVersionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errMsg := err.Error()
+	// Check for 410 status code with expired resource version indicators
+	return strings.Contains(errMsg, "code: 410") &&
+		(strings.Contains(errMsg, "Expired") || strings.Contains(errMsg, "too old resource version"))
+}
+
 // watchEvents watches Kubernetes resources. The second part of the "list and watch" strategy.
 // Stops when ctx is cancelled.
 func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation) error {
@@ -196,8 +209,16 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion strin
 				if err != nil {
 					logger.Error("Error processing watch event", zap.Error(err))
 
+					// If we got an expired resource version error, reset to empty string
+					// to restart from current state instead of the expired version
+					if isExpiredResourceVersionError(err) {
+						logger.Warn("Resource version expired, restarting list-and-watch from current state",
+							zap.String("expired_resource_version", lastResourceVersion))
+						lastResourceVersion = ""
+					}
+
 					// Fix any error re: watch events by just restarting the watcher
-					// from the last known resource version.
+					// from the last known resource version (or empty if expired).
 					break watcherLoop
 				}
 
