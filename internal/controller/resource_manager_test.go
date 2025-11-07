@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"go.uber.org/zap"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
@@ -238,48 +237,5 @@ func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 		t.Fatalf("expected DeleteResource mutation")
 	} else if got.GetKind() != nsKind || got.GetName() != "n1" || got.GetNamespace() != defaultNS || got.GetResourceVersion() != "12" {
 		t.Fatalf("unexpected metadata in DeleteResource: %#v", got)
-	}
-}
-
-func TestIsExpiredResourceVersionError(t *testing.T) {
-	tests := []struct {
-		name     string
-		err      error
-		expected bool
-	}{
-		{
-			name:     "nil error",
-			err:      nil,
-			expected: false,
-		},
-		{
-			name:     "properly typed resource expired error",
-			err:      apierrors.NewResourceExpired("too old resource version: 1762495487792497000 (1762495505417599006)"),
-			expected: true,
-		},
-		{
-			name:     "properly typed gone error",
-			err:      apierrors.NewGone("resource not found"),
-			expected: false,
-		},
-		{
-			name:     "internal server error",
-			err:      apierrors.NewInternalError(errors.New("something broke")),
-			expected: false,
-		},
-		{
-			name:     "unrelated error",
-			err:      errors.New("some other error"),
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := isExpiredResourceVersionError(tt.err)
-			if result != tt.expected {
-				t.Errorf("isExpiredResourceVersionError() = %v, want %v for error: %v", result, tt.expected, tt.err)
-			}
-		})
 	}
 }

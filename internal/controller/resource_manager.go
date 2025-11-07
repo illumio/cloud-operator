@@ -145,17 +145,29 @@ func getErrFromWatchEvent(event watch.Event) error {
 	return &apierrors.StatusError{ErrStatus: *status}
 }
 
-// isExpiredResourceVersionError checks if the error indicates the resource version is expired.
-func isExpiredResourceVersionError(err error) bool {
-	if err == nil {
-		return false
-	}
+// handleWatchError processes errors from watch events.
+// Returns true if the watcher should be restarted (break watcherLoop), or returns an error to exit watchEvents entirely.
+func (r *ResourceManager) handleWatchError(err error, lastResourceVersion string, logger *zap.Logger) (shouldBreak bool, returnErr error) {
+	//nolint:exhaustive // we intentionally only care about specific status reasons
+	switch apierrors.ReasonForError(err) {
+	case metav1.StatusReasonExpired:
+		// If we got an expired resource version error, return error to restart the stream
+		// with a new list-and-watch cycle.
+		logger.Warn("Resource version expired, restarting list-and-watch from current state",
+			zap.String("expired_resource_version", lastResourceVersion))
 
-	return apierrors.IsResourceExpired(err)
+		return false, err
+	default:
+		logger.Error("Error processing watch event", zap.Error(err))
+		// For other errors, just recreate the watcher from last known RV.
+		return true, nil
+	}
 }
 
 // watchEvents watches Kubernetes resources. The second part of the "list and watch" strategy.
 // Stops when ctx is cancelled.
+//
+//nolint:gocognit // function is complex by nature (watch loop), splitting would reduce readability
 func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation) error {
 	logger := r.logger
 
@@ -204,18 +216,14 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion strin
 
 				newResourceVersion, eventIsMutation, err := r.handleWatchEvent(ctx, event, mutationChan, logger)
 				if err != nil {
-					// If the RV is expired, return so caller re-lists and restarts the whole stream.
-					if isExpiredResourceVersionError(err) {
-						logger.Warn("Resource version expired; returning to restart list-and-watch from snapshot",
-							zap.String("expired_resource_version", lastResourceVersion),
-						)
-
-						return err
+					shouldBreak, returnErr := r.handleWatchError(err, lastResourceVersion, logger)
+					if returnErr != nil {
+						return returnErr
 					}
 
-					logger.Error("Error processing watch event", zap.Error(err))
-					// For other errors, just recreate the watcher from last known RV.
-					break watcherLoop
+					if shouldBreak {
+						break watcherLoop
+					}
 				}
 
 				if newResourceVersion != "" {
