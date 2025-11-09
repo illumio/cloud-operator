@@ -125,8 +125,8 @@ func (r *ResourceManager) DynamicListResources(ctx context.Context, logger *zap.
 }
 
 // getErrFromWatchEvent returns an error if the watch event is of type Error.
-// Includes the 'code', 'reason', and 'message'. If the watch event is NOT of
-// type Error, returns nil.
+// Returns a properly typed Kubernetes StatusError so error checking functions like
+// apierrors.IsResourceExpired() work correctly.
 func getErrFromWatchEvent(event watch.Event) error {
 	if event.Object == nil {
 		return nil
@@ -141,11 +141,33 @@ func getErrFromWatchEvent(event watch.Event) error {
 		return fmt.Errorf("unexpected error type: %T", event.Object)
 	}
 
-	return fmt.Errorf("code: %d, reason: %s, message: %s", status.Code, status.Reason, status.Message)
+	// Return a properly typed StatusError so apierrors.Is* functions work
+	return &apierrors.StatusError{ErrStatus: *status}
+}
+
+// handleWatchError processes errors from watch events.
+// Returns true if the watcher should be restarted (break watcherLoop), or returns an error to exit watchEvents entirely.
+func (r *ResourceManager) handleWatchError(err error, lastResourceVersion string, logger *zap.Logger) (shouldBreak bool, returnErr error) {
+	//nolint:exhaustive // we intentionally only care about specific status reasons
+	switch apierrors.ReasonForError(err) {
+	case metav1.StatusReasonExpired:
+		// If we got an expired resource version error, return error to restart the stream
+		// with a new list-and-watch cycle.
+		logger.Warn("Resource version expired, restarting list-and-watch from current state",
+			zap.String("expired_resource_version", lastResourceVersion))
+
+		return false, err
+	default:
+		logger.Error("Error processing watch event", zap.Error(err))
+		// For other errors, just recreate the watcher from last known RV.
+		return true, nil
+	}
 }
 
 // watchEvents watches Kubernetes resources. The second part of the "list and watch" strategy.
 // Stops when ctx is cancelled.
+//
+//nolint:gocognit // function is complex by nature (watch loop), splitting would reduce readability
 func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation) error {
 	logger := r.logger
 
@@ -194,11 +216,14 @@ func (r *ResourceManager) watchEvents(ctx context.Context, resourceVersion strin
 
 				newResourceVersion, eventIsMutation, err := r.handleWatchEvent(ctx, event, mutationChan, logger)
 				if err != nil {
-					logger.Error("Error processing watch event", zap.Error(err))
+					shouldBreak, returnErr := r.handleWatchError(err, lastResourceVersion, logger)
+					if returnErr != nil {
+						return returnErr
+					}
 
-					// Fix any error re: watch events by just restarting the watcher
-					// from the last known resource version.
-					break watcherLoop
+					if shouldBreak {
+						break watcherLoop
+					}
 				}
 
 				if newResourceVersion != "" {
