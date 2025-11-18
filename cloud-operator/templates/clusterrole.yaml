@@ -25,3 +25,6 @@ rules:
 - apiGroups: ["gateway.networking.k8s.io"]
   resources: ["gateways", "gatewayclasses", "httproutes"]
   verbs: ["get", "list", "watch"]
+- apiGroups: ["config.openshift.io"]
+  resources: ["ingresses", "nodes"]
+  verbs: ["get", "list", "watch"]
