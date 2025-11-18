@@ -42,7 +42,7 @@ service:
   clusterIP: ""
 
 openshift:
-  ovnk_namespace: "openshift-ovn-kubernetes"
+  ovnkNamespace: "openshift-ovn-kubernetes"
 
 falco:
   enabled: false
@@ -78,8 +78,8 @@ env:
   onboardingEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
   tokenEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
   streamKeepalivePeriods:
-    kubernetes_resources: "10s"
-    kubernetes_network_flows: "10s"
+    kubernetesResources: "10s"
+    kubernetesNetworkFlows: "10s"
     logs: "10s"
     configuration: "10s"
   streamSuccessPeriods:

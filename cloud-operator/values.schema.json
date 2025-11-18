@@ -43,10 +43,10 @@
                         "configuration": {
                             "type": "string"
                         },
-                        "kubernetes_network_flows": {
+                        "kubernetesNetworkFlows": {
                             "type": "string"
                         },
-                        "kubernetes_resources": {
+                        "kubernetesResources": {
                             "type": "string"
                         },
                         "logs": {
@@ -160,7 +160,7 @@
         "openshift": {
             "type": "object",
             "properties": {
-                "ovnk_namespace": {
+                "ovnkNamespace": {
                     "type": "string"
                 }
             }

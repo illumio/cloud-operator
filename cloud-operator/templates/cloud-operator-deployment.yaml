@@ -76,9 +76,9 @@ spec:
             - name: TLS_SKIP_VERIFY
               value: "{{ .Values.env.tlsSkipVerify }}"
             - name: STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES
-              value: "{{ .Values.env.streamKeepalivePeriods.kubernetes_resources }}"
+              value: "{{ .Values.env.streamKeepalivePeriods.kubernetesResources }}"
             - name: STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS
-              value: "{{ .Values.env.streamKeepalivePeriods.kubernetes_network_flows }}"
+              value: "{{ .Values.env.streamKeepalivePeriods.kubernetesNetworkFlows }}"
             - name: STREAM_KEEPALIVE_PERIOD_LOGS
               value: "{{ .Values.env.streamKeepalivePeriods.logs }}"
             - name: STREAM_KEEPALIVE_PERIOD_CONFIGURATION
@@ -94,7 +94,7 @@ spec:
             - name: HTTPS_PROXY
               value: "{{ .Values.env.httpsProxy | default "" }}"
             - name: OVNK_NAMESPACE
-              value: "{{ .Values.openshift.ovnk_namespace }}"
+              value: "{{ .Values.openshift.ovnkNamespace }}"
             - name: IPFIX_COLLECTOR_PORT
               value: "{{ .Values.env.ipfixCollectorPort }}"
             - name: VERBOSE_DEBUGGING
