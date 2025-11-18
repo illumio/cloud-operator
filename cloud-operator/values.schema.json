@@ -162,6 +162,9 @@
             "properties": {
                 "ovnkNamespace": {
                     "type": "string"
+                },
+                "workerNodeCidrs": {
+                    "type": "array"
                 }
             }
         },
