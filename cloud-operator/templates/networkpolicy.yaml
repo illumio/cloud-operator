@@ -1,26 +1,33 @@
-# Copyright 2024 Illumio, Inc. All Rights Reserved.
+# Copyright 2025 Illumio, Inc. All Rights Reserved.
 
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-from-falco
+  name: allow-network-flow-export
   namespace: {{ .Values.defaultNamespace }}
 spec:
-  podSelector: {}  # Apply to all pods in the illumio-cloud namespace
+  podSelector: {}
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  - from:
-    - namespaceSelector:
-        matchExpressions:
-          - key: kubernetes.io/metadata.name
-            operator: In
-            values:
-              - {{ .Values.falco.namespace }}
-  - from:
-    - namespaceSelector:
-        matchExpressions:
-          - key: kubernetes.io/metadata.name
-            operator: In
-            values:
-              - {{ .Values.openshift.ovnk_namespace }}
+    # Allow flow export HTTP requests from Falco.
+    - ports:
+        - protocol: TCP
+          port: 5000
+      from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.falco.namespace }}
+          podSelector: {}
+    # Allow IPFIX-over-UDP packets from the ovs-vswitchd daemon
+    # that runs on every worker node in OpenShift OVN-k clusters.
+    - ports:
+        - protocol: UDP
+          port: 4739
+      {{- if .Values.openshift.workerNodeCidrs }}
+      from:
+        {{- range .Values.openshift.workerNodeCidrs }}
+        - ipBlock:
+            cidr: "{{.}}"
+        {{- end }}
+      {{- end }}

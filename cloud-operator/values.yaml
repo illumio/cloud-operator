@@ -42,7 +42,24 @@ service:
   clusterIP: ""
 
 openshift:
-  ovnk_namespace: "openshift-ovn-kubernetes"
+  # The namespace in which OVN-k is deployed.
+  # cloud-operator uses this to determine whether OVN-k is deployed, in which
+  # case the IPFIX collector on UDP port 4739 is enabled.
+  ovnkNamespace: "openshift-ovn-kubernetes"
+
+  # The list of IP address CIDRs of the cluster's worker nodes.
+  # Used to restrict access from only those nodes to the IPFIX collector on UDP
+  # port 4739 in the NetworkPolicy.
+  #
+  # For example:
+  # workerNodeCidrs:
+  #   - "10.1.0.0/24"
+  #   - "10.2.0.0/24"
+  #
+  # If empty, defaults to allowing ingress traffic to UDP port 4739 from any
+  # address. This is a safe default only on clusters that are not running
+  # OpenShift with OVN-k, because port 4739 is not open in that case.
+  workerNodeCidrs: []
 
 falco:
   enabled: false
@@ -78,8 +95,8 @@ env:
   onboardingEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
   tokenEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
   streamKeepalivePeriods:
-    kubernetes_resources: "10s"
-    kubernetes_network_flows: "10s"
+    kubernetesResources: "10s"
+    kubernetesNetworkFlows: "10s"
     logs: "10s"
     configuration: "10s"
   streamSuccessPeriods:
