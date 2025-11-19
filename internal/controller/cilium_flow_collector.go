@@ -199,6 +199,16 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 	req := &observer.GetFlowsRequest{
 		Number: ciliumHubbleRelayMaxFlowCount,
 		Follow: true,
+		// https://jira.illum.io/browse/CLOUD-14483 - only collect dropped, forwarded, and audit flows
+		Whitelist: []*flow.FlowFilter{
+			{
+				Verdict: []flow.Verdict{
+					flow.Verdict_DROPPED,
+					flow.Verdict_FORWARDED,
+					flow.Verdict_AUDIT,
+				},
+			},
+		},
 	}
 	observerClient := fm.client
 
