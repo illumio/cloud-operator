@@ -199,7 +199,10 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 	req := &observer.GetFlowsRequest{
 		Number: ciliumHubbleRelayMaxFlowCount,
 		Follow: true,
-		// only collect dropped, forwarded, and audit flows
+		// Limit ingestion of Cilium network flows to those with the following verdicts, which are the only relevant ones per the Cilium docs:
+		// 1: FORWARDED
+		// 2: DROPPED
+		// 4: AUDIT
 		Whitelist: []*flow.FlowFilter{
 			{
 				Verdict: []flow.Verdict{
