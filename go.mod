@@ -6,7 +6,7 @@ require (
 	github.com/cilium/cilium v1.18.4
 	github.com/go-logr/zapr v1.3.0
 	github.com/netsampler/goflow2 v1.3.7
-	go.uber.org/zap v1.27.0
+	go.uber.org/zap v1.27.1
 	golang.org/x/oauth2 v0.33.0
 	google.golang.org/grpc v1.76.0
 	google.golang.org/protobuf v1.36.10
