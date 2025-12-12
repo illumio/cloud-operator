@@ -626,6 +626,7 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 
 		return err
 	}
+
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
 	close(sm.networkFlowsReady)
 
@@ -847,6 +848,8 @@ func determineFlowCollector(ctx context.Context, logger *zap.Logger, sm *streamM
 
 // ConnectStreams will continue to reboot and restart the main operations within
 // the operator if any disconnects or errors occur.
+//
+//nolint:gocognit // ConnectStreams is complex due to orchestration; refactor pending
 func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentConfig, bufferedGrpcSyncer *BufferedGrpcWriteSyncer) {
 	// Falco channels communicate news events between http server and our network flows stream,
 	falcoEventChan := make(chan string)
@@ -1021,6 +1024,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				case <-ctxFlowCacheOutReader.Done():
 					return
 				}
+
 				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger, envMap.KeepalivePeriods.KubernetesNetworkFlows)
 				if err != nil {
 					logger.Info("Failed to send network flow from cache", zap.Error(err))
