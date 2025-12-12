@@ -152,6 +152,7 @@ func (sm *streamManager) sendKeepalive(logger *zap.Logger, st StreamType) error 
 		if sm.streamClient.networkFlowsStream == nil {
 			return nil // If the stream is not initialized, we don't need to send a keepalive.
 		}
+
 		err = sm.streamClient.networkFlowsStream.Send(&pb.SendKubernetesNetworkFlowsRequest{
 			Request: &pb.SendKubernetesNetworkFlowsRequest_Keepalive{
 				Keepalive: &pb.Keepalive{},
@@ -161,6 +162,7 @@ func (sm *streamManager) sendKeepalive(logger *zap.Logger, st StreamType) error 
 		if sm.streamClient.resourceStream == nil {
 			return nil // If the stream is not initialized, we don't need to send a keepalive.
 		}
+
 		err = sm.streamClient.resourceStream.Send(&pb.SendKubernetesResourcesRequest{
 			Request: &pb.SendKubernetesResourcesRequest_Keepalive{
 				Keepalive: &pb.Keepalive{},
@@ -170,6 +172,7 @@ func (sm *streamManager) sendKeepalive(logger *zap.Logger, st StreamType) error 
 		if sm.streamClient.logStream == nil {
 			return nil // If the stream is not initialized, we don't need to send a keepalive.
 		}
+
 		err = sm.streamClient.logStream.Send(&pb.SendLogsRequest{
 			Request: &pb.SendLogsRequest_Keepalive{
 				Keepalive: &pb.Keepalive{},
@@ -179,6 +182,7 @@ func (sm *streamManager) sendKeepalive(logger *zap.Logger, st StreamType) error 
 		if sm.streamClient.configStream == nil {
 			return nil // If the stream is not initialized, we don't need to send a keepalive.
 		}
+
 		err = sm.streamClient.configStream.Send(&pb.GetConfigurationUpdatesRequest{
 			Request: &pb.GetConfigurationUpdatesRequest_Keepalive{
 				Keepalive: &pb.Keepalive{},
