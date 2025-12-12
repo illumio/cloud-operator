@@ -213,14 +213,14 @@ func TestSendKeepalive(t *testing.T) {
 	logger := zap.NewNop()
 	mockResourceStream := &mockResourceStream{}
 	mockNetworkFlowsStream := &mockNetworkFlowsStream{}
-	sm := &streamManager{
-		streamClient: &streamClient{
-			resourceStream:     mockResourceStream,
-			networkFlowsStream: mockNetworkFlowsStream,
-		},
-	}
 
 	t.Run("resource stream", func(t *testing.T) {
+		sm := &streamManager{
+			streamClient: &streamClient{
+				resourceStream:     mockResourceStream,
+				networkFlowsStream: mockNetworkFlowsStream,
+			},
+		}
 		err := sm.sendKeepalive(logger, STREAM_RESOURCES)
 		require.NoError(t, err)
 
@@ -233,6 +233,12 @@ func TestSendKeepalive(t *testing.T) {
 	})
 
 	t.Run("network flows stream", func(t *testing.T) {
+		sm := &streamManager{
+			streamClient: &streamClient{
+				resourceStream:     mockResourceStream,
+				networkFlowsStream: mockNetworkFlowsStream,
+			},
+		}
 		err := sm.sendKeepalive(logger, STREAM_NETWORK_FLOWS)
 		require.NoError(t, err)
 
@@ -242,5 +248,27 @@ func TestSendKeepalive(t *testing.T) {
 			},
 		}
 		assert.Equal(t, expected, mockNetworkFlowsStream.lastRequest)
+	})
+
+	t.Run("nil stream", func(t *testing.T) {
+		sm := &streamManager{
+			streamClient: &streamClient{
+				resourceStream:     nil,
+				networkFlowsStream: nil,
+				logStream:          nil,
+				configStream:       nil,
+			},
+		}
+		err := sm.sendKeepalive(logger, STREAM_NETWORK_FLOWS)
+		require.NoError(t, err)
+
+		err = sm.sendKeepalive(logger, STREAM_RESOURCES)
+		require.NoError(t, err)
+
+		err = sm.sendKeepalive(logger, STREAM_LOGS)
+		require.NoError(t, err)
+
+		err = sm.sendKeepalive(logger, STREAM_CONFIGURATION)
+		require.NoError(t, err)
 	})
 }
