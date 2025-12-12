@@ -65,6 +65,7 @@ type streamManager struct {
 	streamClient       *streamClient
 	FlowCache          *FlowCache
 	verboseDebugging   bool
+	networkFlowsReady  chan struct{}
 }
 
 type KeepalivePeriods struct {
@@ -625,8 +626,8 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 
 		return err
 	}
-
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
+	close(sm.networkFlowsReady)
 
 	logger.Debug("Starting to stream cilium network flows")
 
@@ -658,6 +659,7 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, _
 	}
 
 	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
+	close(sm.networkFlowsReady)
 
 	err = sm.StreamFalcoNetworkFlows(falcoCtx, logger)
 	if err != nil {
@@ -759,6 +761,7 @@ func (sm *streamManager) connectAndStreamOVNKNetworkFlows(logger *zap.Logger, _ 
 	}
 
 	sm.streamClient.networkFlowsStream = sendOVNKNetworkFlows
+	close(sm.networkFlowsReady)
 
 	err = sm.StreamOVNKNetworkFlows(ovnkContext, logger)
 	if err != nil {
@@ -933,6 +936,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					1000,           // TODO: Make the maxFlows capacity configurable.
 					make(chan pb.Flow, 100),
 				),
+				networkFlowsReady: make(chan struct{}),
 			}
 
 			resourceDone := make(chan struct{})
@@ -1010,6 +1014,13 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(authConContext)
 				defer ctxCancelFlowCacheOutReader()
 
+				// wait until the flow collector is initialized, or bail if context canceled
+				select {
+				case <-sm.networkFlowsReady:
+					// proceed
+				case <-ctxFlowCacheOutReader.Done():
+					return
+				}
 				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger, envMap.KeepalivePeriods.KubernetesNetworkFlows)
 				if err != nil {
 					logger.Info("Failed to send network flow from cache", zap.Error(err))

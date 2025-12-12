@@ -149,40 +149,24 @@ func (sm *streamManager) sendKeepalive(logger *zap.Logger, st StreamType) error 
 
 	switch st {
 	case STREAM_NETWORK_FLOWS:
-		if sm.streamClient.networkFlowsStream == nil {
-			return nil // If the stream is not initialized, we don't need to send a keepalive.
-		}
-
 		err = sm.streamClient.networkFlowsStream.Send(&pb.SendKubernetesNetworkFlowsRequest{
 			Request: &pb.SendKubernetesNetworkFlowsRequest_Keepalive{
 				Keepalive: &pb.Keepalive{},
 			},
 		})
 	case STREAM_RESOURCES:
-		if sm.streamClient.resourceStream == nil {
-			return nil // If the stream is not initialized, we don't need to send a keepalive.
-		}
-
 		err = sm.streamClient.resourceStream.Send(&pb.SendKubernetesResourcesRequest{
 			Request: &pb.SendKubernetesResourcesRequest_Keepalive{
 				Keepalive: &pb.Keepalive{},
 			},
 		})
 	case STREAM_LOGS:
-		if sm.streamClient.logStream == nil {
-			return nil // If the stream is not initialized, we don't need to send a keepalive.
-		}
-
 		err = sm.streamClient.logStream.Send(&pb.SendLogsRequest{
 			Request: &pb.SendLogsRequest_Keepalive{
 				Keepalive: &pb.Keepalive{},
 			},
 		})
 	case STREAM_CONFIGURATION:
-		if sm.streamClient.configStream == nil {
-			return nil // If the stream is not initialized, we don't need to send a keepalive.
-		}
-
 		err = sm.streamClient.configStream.Send(&pb.GetConfigurationUpdatesRequest{
 			Request: &pb.GetConfigurationUpdatesRequest_Keepalive{
 				Keepalive: &pb.Keepalive{},
