@@ -1014,16 +1014,17 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			go func() {
 				defer close(flowCacheOutReaderDone)
 
-				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(authConContext)
-				defer ctxCancelFlowCacheOutReader()
-
-				// wait until the flow collector is initialized, or bail if context canceled
+				// wait until the flow collector is initialized, or bail if the context is canceled
 				select {
 				case <-sm.networkFlowsReady:
 					// proceed
-				case <-ctxFlowCacheOutReader.Done():
+				case <-authConContext.Done():
+					logger.Info("Failed to start sending network flows from cache", zap.Error(authConContext.Err()))
 					return
 				}
+
+				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(authConContext)
+				defer ctxCancelFlowCacheOutReader()
 
 				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger, envMap.KeepalivePeriods.KubernetesNetworkFlows)
 				if err != nil {
