@@ -1020,6 +1020,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					// proceed
 				case <-authConContext.Done():
 					logger.Info("Failed to start sending network flows from cache", zap.Error(authConContext.Err()))
+
 					return
 				}
 
