@@ -304,7 +304,7 @@ func (suite *ControllerTestSuite) TestGRPCProxySupport() {
 	conn, err := SetUpOAuthConnection(
 		ctx,
 		suite.logger,
-		"https://example.com/token",
+		"https://something.invalid/token",
 		true, // Skip TLS verification for testing
 		"test-client-id",
 		"test-client-secret",
