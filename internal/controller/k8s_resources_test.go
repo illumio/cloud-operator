@@ -721,9 +721,9 @@ func (suite *ControllerTestSuite) TestConvertIngressToStringList() {
 	}{
 		"both IP and Hostname": {
 			ingress: []v1.LoadBalancerIngress{
-				{IP: "192.168.1.1", Hostname: "example.com"},
+				{IP: "192.168.1.1", Hostname: "something.invalid"},
 			},
-			expectedResult: []string{"192.168.1.1", "example.com"},
+			expectedResult: []string{"192.168.1.1", "something.invalid"},
 		},
 		"only IP": {
 			ingress: []v1.LoadBalancerIngress{
@@ -733,9 +733,9 @@ func (suite *ControllerTestSuite) TestConvertIngressToStringList() {
 		},
 		"only Hostname": {
 			ingress: []v1.LoadBalancerIngress{
-				{Hostname: "another-example.com"},
+				{Hostname: "another.invalid"},
 			},
-			expectedResult: []string{"another-example.com"},
+			expectedResult: []string{"another.invalid"},
 		},
 		"empty ingress": {
 			ingress:        []v1.LoadBalancerIngress{},
@@ -835,16 +835,16 @@ func (suite *ControllerTestSuite) TestCombineIPAddresses() {
 		"all fields populated": {
 			clusterIps:            []string{"10.0.0.1", "10.0.0.2"},
 			externalIps:           []string{"192.168.1.1"},
-			loadBalancerIngresses: []string{"lb1.example.com", "lb2.example.com"},
+			loadBalancerIngresses: []string{"lb1.something.invalid", "lb2.something.invalid"},
 			loadBalancerIp:        "34.123.45.67",
-			expectedResult:        []string{"10.0.0.1", "10.0.0.2", "192.168.1.1", "lb1.example.com", "lb2.example.com", "34.123.45.67"},
+			expectedResult:        []string{"10.0.0.1", "10.0.0.2", "192.168.1.1", "lb1.something.invalid", "lb2.something.invalid", "34.123.45.67"},
 		},
 		"no load balancer IP": {
 			clusterIps:            []string{"10.0.0.1"},
 			externalIps:           []string{"192.168.1.1"},
-			loadBalancerIngresses: []string{"lb1.example.com"},
+			loadBalancerIngresses: []string{"lb1.something.invalid"},
 			loadBalancerIp:        "",
-			expectedResult:        []string{"10.0.0.1", "192.168.1.1", "lb1.example.com"},
+			expectedResult:        []string{"10.0.0.1", "192.168.1.1", "lb1.something.invalid"},
 		},
 		"only cluster IPs": {
 			clusterIps:            []string{"10.0.0.1", "10.0.0.2"},
@@ -916,8 +916,8 @@ func (suite *ControllerTestSuite) TestConvertToKubernetesServiceData() {
 				Status: v1.ServiceStatus{
 					LoadBalancer: v1.LoadBalancerStatus{
 						Ingress: []v1.LoadBalancerIngress{
-							{Hostname: "lb1.example.com"},
-							{Hostname: "lb2.example.com"},
+							{Hostname: "lb1.something.invalid"},
+							{Hostname: "lb2.something.invalid"},
 						},
 					},
 				},

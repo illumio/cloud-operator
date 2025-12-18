@@ -62,7 +62,7 @@ func (suite *ControllerTestSuite) TestOnboard() {
 					suite.T().Fatal("Failed to encode response in creds manager test " + err.Error())
 				}
 			},
-			requestURL:                  "http://example.com",
+			requestURL:                  "http://something.invalid",
 			expectedClusterClientID:     "test-client-id",
 			expectedClusterClientSecret: "test-client-secret",
 			expectedError:               false,
@@ -71,9 +71,9 @@ func (suite *ControllerTestSuite) TestOnboard() {
 			onboardingClientID:     "test-client-id",
 			onboardingClientSecret: "test-client-secret",
 			serverHandler:          nil,
-			requestURL:             "http://example.com/\x00",
+			requestURL:             "http://something.invalid/\x00",
 			expectedError:          true,
-			expectedErrMsg:         "parse \"http://example.com/\\x00\": net/url: invalid control character in URL",
+			expectedErrMsg:         "parse \"http://something.invalid/\\x00\": net/url: invalid control character in URL",
 		},
 	}
 
