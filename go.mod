@@ -3,7 +3,7 @@ module github.com/illumio/cloud-operator
 go 1.24.4
 
 require (
-	github.com/cilium/cilium v1.18.4
+	github.com/cilium/cilium v1.18.5
 	github.com/go-logr/zapr v1.3.0
 	github.com/netsampler/goflow2 v1.3.7
 	go.uber.org/zap v1.27.1
