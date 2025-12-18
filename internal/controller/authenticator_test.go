@@ -281,29 +281,32 @@ func (suite *ControllerTestSuite) TestHTTPProxySupport() {
 	suite.Equal("Proxy used", string(body))
 }
 
-func (suite *ControllerTestSuite) TestGRPCProxySupport() {
+func TestOAuthProxySupport(t *testing.T) {
 	// Start a mock proxy server that returns a 403 Forbidden response
 	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		suite.T().Logf("Proxy server received request: %s %s", r.Method, r.URL.String())
+		t.Logf("Proxy server received request: %s %s", r.Method, r.URL.String())
 		http.Error(w, "Access Denied", http.StatusForbidden)
 	}))
 	defer proxyServer.Close()
 
 	// Log the proxy URL for debugging
-	suite.T().Logf("Proxy URL set to: %s", proxyServer.URL)
+	t.Logf("Proxy URL set to: %s", proxyServer.URL)
 
 	proxyURL, err := url.Parse(proxyServer.URL)
 	if err != nil {
-		suite.T().Fatal("Failed to parse proxy URL")
+		t.Fatal("Failed to parse proxy URL")
 	}
 
-	suite.T().Logf("Proxy URL: %s", proxyURL.String())
+	t.Logf("Proxy URL: %s", proxyURL.String())
+
+	t.Setenv("HTTP_PROXY", proxyServer.URL)
+	t.Setenv("HTTPS_PROXY", proxyServer.URL)
 
 	// Attempt to set up an OAuth connection using the authenticator
 	ctx := context.Background()
 	conn, err := SetUpOAuthConnection(
 		ctx,
-		suite.logger,
+		newCustomLogger(t),
 		"https://something.invalid/token",
 		true, // Skip TLS verification for testing
 		"test-client-id",
@@ -318,8 +321,8 @@ func (suite *ControllerTestSuite) TestGRPCProxySupport() {
 	}
 
 	// Assert that an error is returned due to the proxy
-	suite.Require().Error(err, "Expected an error from SetUpOAuthConnection due to proxy failure, but got nil")
-	suite.ErrorContains(err, "Access Denied", "Error message should indicate a proxy failure")
+	require.Error(t, err, "Expected an error from SetUpOAuthConnection due to proxy failure, but got nil")
+	assert.ErrorContains(t, err, "Post \"https://something.invalid/token\": Forbidden", "Error message should indicate a proxy failure")
 }
 func TestGetTLSConfig(t *testing.T) {
 	tests := []struct {
