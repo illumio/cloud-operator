@@ -614,25 +614,28 @@ func (sm *streamManager) StreamOVNKNetworkFlows(ctx context.Context, logger *zap
 	return nil
 }
 
+func (sm *streamManager) connectNetworkFlowsStream(logger *zap.Logger, _ time.Duration) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sendCiliumNetworkFlowsStream, err := sm.streamClient.client.SendKubernetesNetworkFlows(ctx)
+	if err != nil {
+		logger.Error("Failed to connect to server", zap.Error(err))
+
+		return err
+	}
+	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
+	close(sm.networkFlowsReady)
+	return nil
+}
+
 // connectAndStreamCiliumNetworkFlows creates networkFlowsStream client and
 // begins the streaming of network flows.
 func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, _ time.Duration) error {
 	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
 	defer ciliumCancel()
 
-	sendCiliumNetworkFlowsStream, err := sm.streamClient.client.SendKubernetesNetworkFlows(ciliumCtx)
-	if err != nil {
-		logger.Error("Failed to connect to server", zap.Error(err))
-
-		return err
-	}
-
-	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
-	close(sm.networkFlowsReady)
-
-	logger.Debug("Starting to stream cilium network flows")
-
-	err = sm.StreamCiliumNetworkFlows(ciliumCtx, logger)
+	err := sm.StreamCiliumNetworkFlows(ciliumCtx, logger)
 	if err != nil {
 		if errors.Is(err, hubble.ErrHubbleNotFound) || errors.Is(err, hubble.ErrNoPortsAvailable) {
 			logger.Warn("Disabling Cilium flow collection", zap.Error(err))
@@ -1002,6 +1005,14 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 
 			flowCollector, streamFunc, doneChannel := determineFlowCollector(ctx, logger, sm, envMap, clientset)
 			sm.streamClient.flowCollector = flowCollector
+
+			go sm.manageStream(
+				logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
+				sm.connectNetworkFlowsStream,
+				doneChannel,
+				envMap.KeepalivePeriods.KubernetesNetworkFlows,
+				envMap.StreamSuccessPeriod,
+			)
 
 			go sm.manageStream(
 				logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
