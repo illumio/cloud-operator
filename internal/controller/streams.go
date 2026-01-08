@@ -61,11 +61,11 @@ type deadlockDetector struct {
 }
 
 type streamManager struct {
-	bufferedGrpcSyncer *BufferedGrpcWriteSyncer
-	streamClient       *streamClient
-	FlowCache          *FlowCache
-	verboseDebugging   bool
-	networkFlowsReady  chan struct{}
+	bufferedGrpcSyncer    *BufferedGrpcWriteSyncer
+	streamClient          *streamClient
+	FlowCache             *FlowCache
+	verboseDebugging      bool
+	networkFlowsReady     chan struct{}
 	closeNetworkFlowsOnce sync.Once
 }
 
