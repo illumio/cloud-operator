@@ -617,9 +617,6 @@ func (sm *streamManager) StreamOVNKNetworkFlows(ctx context.Context, logger *zap
 // connectAndStreamCiliumNetworkFlows creates networkFlowsStream client and
 // begins the streaming of network flows.
 func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, _ time.Duration) error {
-	if sm.networkFlowsReady == nil {
-		sm.networkFlowsReady = make(chan struct{})
-	}
 	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
 	defer ciliumCancel()
 
@@ -637,6 +634,7 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, logger)
 	if err != nil {
+		sm.networkFlowsReady = make(chan struct{})
 		if errors.Is(err, hubble.ErrHubbleNotFound) || errors.Is(err, hubble.ErrNoPortsAvailable) {
 			logger.Warn("Disabling Cilium flow collection", zap.Error(err))
 
@@ -652,9 +650,6 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 // connectAndStreamFalcoNetworkFlows creates networkFlowsStream client and
 // begins the streaming of network flows.
 func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, _ time.Duration) error {
-	if sm.networkFlowsReady == nil {
-		sm.networkFlowsReady = make(chan struct{})
-	}
 	falcoCtx, falcoCancel := context.WithCancel(context.Background())
 	defer falcoCancel()
 
@@ -670,6 +665,7 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, _
 
 	err = sm.StreamFalcoNetworkFlows(falcoCtx, logger)
 	if err != nil {
+		sm.networkFlowsReady = make(chan struct{})
 		logger.Error("Failed to stream Falco network flows", zap.Error(err))
 
 		return err
@@ -757,9 +753,6 @@ func (sm *streamManager) connectAndStreamConfigurationUpdates(logger *zap.Logger
 // connectAndStreamOVNKNetworkFlows creates OVN-K networkFlowsStream client and
 // begins the streaming of OVN-K network flows.
 func (sm *streamManager) connectAndStreamOVNKNetworkFlows(logger *zap.Logger, _ time.Duration) error {
-	if sm.networkFlowsReady == nil {
-		sm.networkFlowsReady = make(chan struct{})
-	}
 	ovnkContext, ovnkCancel := context.WithCancel(context.Background())
 	defer ovnkCancel()
 
@@ -775,6 +768,7 @@ func (sm *streamManager) connectAndStreamOVNKNetworkFlows(logger *zap.Logger, _ 
 
 	err = sm.StreamOVNKNetworkFlows(ovnkContext, logger)
 	if err != nil {
+		sm.networkFlowsReady = make(chan struct{})
 		logger.Error("Failed to stream OVN-K network flows", zap.Error(err))
 
 		return err
