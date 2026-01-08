@@ -542,18 +542,6 @@ func (sm *streamManager) findHubbleRelay(ctx context.Context, logger *zap.Logger
 	return ciliumFlowCollector
 }
 
-// safeCloseNetworkFlowsReady safely closes the networkFlowsReady channel, preventing
-// "close of closed channel" panic on retry attempts.
-func (sm *streamManager) safeCloseNetworkFlowsReady() {
-	select {
-	case <-sm.networkFlowsReady:
-		// Channel already closed, do nothing
-	default:
-		// Channel not closed yet, close it
-		close(sm.networkFlowsReady)
-	}
-}
-
 // StreamCiliumNetworkFlows handles the cilium network flow stream.
 func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *zap.Logger) error {
 	// TODO: Add logic for a discoveribility function to decide which CNI to use.
@@ -629,6 +617,9 @@ func (sm *streamManager) StreamOVNKNetworkFlows(ctx context.Context, logger *zap
 // connectAndStreamCiliumNetworkFlows creates networkFlowsStream client and
 // begins the streaming of network flows.
 func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, _ time.Duration) error {
+	if sm.networkFlowsReady == nil {
+		sm.networkFlowsReady = make(chan struct{})
+	}
 	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
 	defer ciliumCancel()
 
@@ -640,7 +631,7 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 	}
 
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
-	sm.safeCloseNetworkFlowsReady()
+	close(sm.networkFlowsReady)
 
 	logger.Debug("Starting to stream cilium network flows")
 
@@ -661,6 +652,9 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 // connectAndStreamFalcoNetworkFlows creates networkFlowsStream client and
 // begins the streaming of network flows.
 func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, _ time.Duration) error {
+	if sm.networkFlowsReady == nil {
+		sm.networkFlowsReady = make(chan struct{})
+	}
 	falcoCtx, falcoCancel := context.WithCancel(context.Background())
 	defer falcoCancel()
 
@@ -672,7 +666,7 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, _
 	}
 
 	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
-	sm.safeCloseNetworkFlowsReady()
+	close(sm.networkFlowsReady)
 
 	err = sm.StreamFalcoNetworkFlows(falcoCtx, logger)
 	if err != nil {
@@ -763,6 +757,9 @@ func (sm *streamManager) connectAndStreamConfigurationUpdates(logger *zap.Logger
 // connectAndStreamOVNKNetworkFlows creates OVN-K networkFlowsStream client and
 // begins the streaming of OVN-K network flows.
 func (sm *streamManager) connectAndStreamOVNKNetworkFlows(logger *zap.Logger, _ time.Duration) error {
+	if sm.networkFlowsReady == nil {
+		sm.networkFlowsReady = make(chan struct{})
+	}
 	ovnkContext, ovnkCancel := context.WithCancel(context.Background())
 	defer ovnkCancel()
 
@@ -774,7 +771,7 @@ func (sm *streamManager) connectAndStreamOVNKNetworkFlows(logger *zap.Logger, _ 
 	}
 
 	sm.streamClient.networkFlowsStream = sendOVNKNetworkFlows
-	sm.safeCloseNetworkFlowsReady()
+	close(sm.networkFlowsReady)
 
 	err = sm.StreamOVNKNetworkFlows(ovnkContext, logger)
 	if err != nil {
