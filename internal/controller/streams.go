@@ -635,6 +635,7 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, logger)
 	if err != nil {
 		sm.networkFlowsReady = make(chan struct{})
+
 		if errors.Is(err, hubble.ErrHubbleNotFound) || errors.Is(err, hubble.ErrNoPortsAvailable) {
 			logger.Warn("Disabling Cilium flow collection", zap.Error(err))
 
@@ -666,6 +667,7 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, _
 	err = sm.StreamFalcoNetworkFlows(falcoCtx, logger)
 	if err != nil {
 		sm.networkFlowsReady = make(chan struct{})
+
 		logger.Error("Failed to stream Falco network flows", zap.Error(err))
 
 		return err
@@ -769,6 +771,7 @@ func (sm *streamManager) connectAndStreamOVNKNetworkFlows(logger *zap.Logger, _ 
 	err = sm.StreamOVNKNetworkFlows(ovnkContext, logger)
 	if err != nil {
 		sm.networkFlowsReady = make(chan struct{})
+
 		logger.Error("Failed to stream OVN-K network flows", zap.Error(err))
 
 		return err
