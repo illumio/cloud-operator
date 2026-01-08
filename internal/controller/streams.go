@@ -614,17 +614,15 @@ func (sm *streamManager) StreamOVNKNetworkFlows(ctx context.Context, logger *zap
 	return nil
 }
 
-func (sm *streamManager) connectNetworkFlowsStream(logger *zap.Logger, _ time.Duration) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+func (sm *streamManager) connectNetworkFlowsStream(ctx context.Context, logger *zap.Logger) error {
 
-	sendCiliumNetworkFlowsStream, err := sm.streamClient.client.SendKubernetesNetworkFlows(ctx)
+	sendNetworkFlowsStream, err := sm.streamClient.client.SendKubernetesNetworkFlows(ctx)
 	if err != nil {
 		logger.Error("Failed to connect to server", zap.Error(err))
 
 		return err
 	}
-	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
+	sm.streamClient.networkFlowsStream = sendNetworkFlowsStream
 	return nil
 }
 
@@ -1016,15 +1014,15 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			go func() {
 				defer close(flowCacheOutReaderDone)
 
-				err := sm.connectNetworkFlowsStream(logger, envMap.KeepalivePeriods.KubernetesNetworkFlows)
+				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(authConContext)
+				defer ctxCancelFlowCacheOutReader()
+
+				err := sm.connectNetworkFlowsStream(ctxFlowCacheOutReader, logger)
 				if err != nil {
 					logger.Error("Failed to connect to network flows stream", zap.Error(err))
 
 					return
 				}
-
-				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(authConContext)
-				defer ctxCancelFlowCacheOutReader()
 
 				err = sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger, envMap.KeepalivePeriods.KubernetesNetworkFlows)
 				if err != nil {
