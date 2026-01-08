@@ -615,7 +615,6 @@ func (sm *streamManager) StreamOVNKNetworkFlows(ctx context.Context, logger *zap
 }
 
 func (sm *streamManager) connectNetworkFlowsStream(ctx context.Context, logger *zap.Logger) error {
-
 	sendNetworkFlowsStream, err := sm.streamClient.client.SendKubernetesNetworkFlows(ctx)
 	if err != nil {
 		logger.Error("Failed to connect to server", zap.Error(err))
@@ -623,6 +622,7 @@ func (sm *streamManager) connectNetworkFlowsStream(ctx context.Context, logger *
 		return err
 	}
 	sm.streamClient.networkFlowsStream = sendNetworkFlowsStream
+
 	return nil
 }
 
