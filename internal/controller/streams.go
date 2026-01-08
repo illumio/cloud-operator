@@ -66,6 +66,7 @@ type streamManager struct {
 	FlowCache          *FlowCache
 	verboseDebugging   bool
 	networkFlowsReady  chan struct{}
+	closeNetworkFlowsOnce sync.Once
 }
 
 type KeepalivePeriods struct {
@@ -634,7 +635,9 @@ func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, 
 
 	err = sm.StreamCiliumNetworkFlows(ciliumCtx, logger)
 	if err != nil {
-		sm.networkFlowsReady = make(chan struct{})
+		sm.closeNetworkFlowsOnce.Do(func() {
+			close(sm.networkFlowsReady)
+		})
 
 		if errors.Is(err, hubble.ErrHubbleNotFound) || errors.Is(err, hubble.ErrNoPortsAvailable) {
 			logger.Warn("Disabling Cilium flow collection", zap.Error(err))
@@ -666,7 +669,9 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, _
 
 	err = sm.StreamFalcoNetworkFlows(falcoCtx, logger)
 	if err != nil {
-		sm.networkFlowsReady = make(chan struct{})
+		sm.closeNetworkFlowsOnce.Do(func() {
+			close(sm.networkFlowsReady)
+		})
 
 		logger.Error("Failed to stream Falco network flows", zap.Error(err))
 
@@ -770,7 +775,9 @@ func (sm *streamManager) connectAndStreamOVNKNetworkFlows(logger *zap.Logger, _ 
 
 	err = sm.StreamOVNKNetworkFlows(ovnkContext, logger)
 	if err != nil {
-		sm.networkFlowsReady = make(chan struct{})
+		sm.closeNetworkFlowsOnce.Do(func() {
+			close(sm.networkFlowsReady)
+		})
 
 		logger.Error("Failed to stream OVN-K network flows", zap.Error(err))
 
