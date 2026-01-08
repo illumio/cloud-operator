@@ -625,7 +625,6 @@ func (sm *streamManager) connectNetworkFlowsStream(logger *zap.Logger, _ time.Du
 		return err
 	}
 	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
-	close(sm.networkFlowsReady)
 	return nil
 }
 
@@ -1008,14 +1007,6 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 
 			go sm.manageStream(
 				logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
-				sm.connectNetworkFlowsStream,
-				doneChannel,
-				envMap.KeepalivePeriods.KubernetesNetworkFlows,
-				envMap.StreamSuccessPeriod,
-			)
-
-			go sm.manageStream(
-				logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
 				streamFunc,
 				doneChannel,
 				envMap.KeepalivePeriods.KubernetesNetworkFlows,
@@ -1025,12 +1016,9 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			go func() {
 				defer close(flowCacheOutReaderDone)
 
-				// wait until the flow collector is initialized, or bail if the context is canceled
-				select {
-				case <-sm.networkFlowsReady:
-					// proceed
-				case <-authConContext.Done():
-					logger.Info("Failed to start sending network flows from cache", zap.Error(authConContext.Err()))
+				err := sm.connectNetworkFlowsStream(logger, envMap.KeepalivePeriods.KubernetesNetworkFlows)
+				if err != nil {
+					logger.Error("Failed to connect to network flows stream", zap.Error(err))
 
 					return
 				}
@@ -1038,7 +1026,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(authConContext)
 				defer ctxCancelFlowCacheOutReader()
 
-				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger, envMap.KeepalivePeriods.KubernetesNetworkFlows)
+				err = sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger, envMap.KeepalivePeriods.KubernetesNetworkFlows)
 				if err != nil {
 					logger.Info("Failed to send network flow from cache", zap.Error(err))
 
