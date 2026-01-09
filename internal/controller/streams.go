@@ -521,7 +521,6 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 				return err
 			}
 		case flow := <-sm.FlowCache.outFlows:
-			logger.Info("Sending flow from cache to CloudSecure")
 			err := sm.sendNetworkFlowRequest(logger, flow)
 			if err != nil {
 				return err

@@ -60,7 +60,6 @@ func (sm *streamManager) sendNetworkFlowRequest(logger *zap.Logger, flow interfa
 
 		return err
 	}
-	logger.Info("Successfully sent network flow to CloudSecure")
 
 	return nil
 }

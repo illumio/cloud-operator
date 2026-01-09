@@ -105,7 +105,6 @@ func (c *FlowCache) Run(ctx context.Context, logger *zap.Logger) error {
 			}
 
 			c.addFlowToCache(flow)
-			logger.Info("Flow added to cache", zap.Any("flow_key", flow.Key()))
 			c.resetTimerForNextExpiration(timer, logger)
 		}
 	}
@@ -130,7 +129,6 @@ func (c *FlowCache) evictExpiredFlows(ctx context.Context, logger *zap.Logger) {
 
 		c.queue.Remove(frontElem)
 		delete(c.cache, flow.Key())
-		logger.Info("Evicting expired flow from cache", zap.Any("flow_key", flow.Key()))
 
 		select {
 		case <-ctx.Done():
@@ -167,7 +165,6 @@ func (c *FlowCache) evictOldestFlow(ctx context.Context, logger *zap.Logger) err
 	}
 
 	delete(c.cache, flow.Key())
-	logger.Info("Evicting oldest flow due to cache capacity limit", zap.Any("flow_key", flow.Key()))
 
 	select {
 	case <-ctx.Done():
