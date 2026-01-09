@@ -65,7 +65,6 @@ type streamManager struct {
 	streamClient       *streamClient
 	FlowCache          *FlowCache
 	verboseDebugging   bool
-	networkFlowsReady  chan struct{}
 }
 
 type KeepalivePeriods struct {
@@ -522,6 +521,7 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 				return err
 			}
 		case flow := <-sm.FlowCache.outFlows:
+			logger.Info("Sending flow from cache to CloudSecure")
 			err := sm.sendNetworkFlowRequest(logger, flow)
 			if err != nil {
 				return err
@@ -615,14 +615,15 @@ func (sm *streamManager) StreamOVNKNetworkFlows(ctx context.Context, logger *zap
 }
 
 func (sm *streamManager) connectNetworkFlowsStream(ctx context.Context, logger *zap.Logger) error {
-
 	sendNetworkFlowsStream, err := sm.streamClient.client.SendKubernetesNetworkFlows(ctx)
 	if err != nil {
 		logger.Error("Failed to connect to server", zap.Error(err))
 
 		return err
 	}
+
 	sm.streamClient.networkFlowsStream = sendNetworkFlowsStream
+
 	return nil
 }
 
@@ -652,17 +653,7 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, _
 	falcoCtx, falcoCancel := context.WithCancel(context.Background())
 	defer falcoCancel()
 
-	sendFalcoNetworkFlows, err := sm.streamClient.client.SendKubernetesNetworkFlows(falcoCtx)
-	if err != nil {
-		logger.Error("Failed to connect to server", zap.Error(err))
-
-		return err
-	}
-
-	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
-	close(sm.networkFlowsReady)
-
-	err = sm.StreamFalcoNetworkFlows(falcoCtx, logger)
+	err := sm.StreamFalcoNetworkFlows(falcoCtx, logger)
 	if err != nil {
 		logger.Error("Failed to stream Falco network flows", zap.Error(err))
 
@@ -754,17 +745,7 @@ func (sm *streamManager) connectAndStreamOVNKNetworkFlows(logger *zap.Logger, _ 
 	ovnkContext, ovnkCancel := context.WithCancel(context.Background())
 	defer ovnkCancel()
 
-	sendOVNKNetworkFlows, err := sm.streamClient.client.SendKubernetesNetworkFlows(ovnkContext)
-	if err != nil {
-		logger.Error("Failed to connect to server", zap.Error(err))
-
-		return err
-	}
-
-	sm.streamClient.networkFlowsStream = sendOVNKNetworkFlows
-	close(sm.networkFlowsReady)
-
-	err = sm.StreamOVNKNetworkFlows(ovnkContext, logger)
+	err := sm.StreamOVNKNetworkFlows(ovnkContext, logger)
 	if err != nil {
 		logger.Error("Failed to stream OVN-K network flows", zap.Error(err))
 
@@ -939,7 +920,6 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					1000,           // TODO: Make the maxFlows capacity configurable.
 					make(chan pb.Flow, 100),
 				),
-				networkFlowsReady: make(chan struct{}),
 			}
 
 			resourceDone := make(chan struct{})
@@ -972,9 +952,6 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				envMap.StreamSuccessPeriod,
 			)
 
-			ovnkDone := make(chan struct{})
-			falcoDone := make(chan struct{})
-			ciliumDone := make(chan struct{})
 			flowCacheRunDone := make(chan struct{})
 			flowCacheOutReaderDone := make(chan struct{})
 
@@ -1037,18 +1014,14 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			logger.Info("All streams are open and running")
 
 			select {
-			case <-ciliumDone:
-				failureReason = "Cilium network flow stream closed"
-			case <-falcoDone:
-				failureReason = "Falco network flow stream closed"
 			case <-resourceDone:
 				failureReason = "Resource stream closed"
 			case <-logDone:
 				failureReason = "Log stream closed"
 			case <-configDone:
 				failureReason = "Configuration update stream closed"
-			case <-ovnkDone:
-				failureReason = "OVN-K network flow stream closed"
+			case <-doneChannel:
+				failureReason = "Network flow stream closed"
 			case <-flowCacheOutReaderDone:
 				failureReason = "Flow cache reader failed"
 			case <-flowCacheRunDone:
