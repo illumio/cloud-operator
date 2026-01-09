@@ -613,6 +613,8 @@ func (sm *streamManager) StreamOVNKNetworkFlows(ctx context.Context, logger *zap
 	return nil
 }
 
+// connectNetworkFlowsStream establishes the network flows stream connection to
+// the server and stores the resulting stream client on the streamManager.
 func (sm *streamManager) connectNetworkFlowsStream(ctx context.Context, logger *zap.Logger) error {
 	sendNetworkFlowsStream, err := sm.streamClient.client.SendKubernetesNetworkFlows(ctx)
 	if err != nil {
