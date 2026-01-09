@@ -5,7 +5,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"maps"
 	"math"
@@ -1023,7 +1022,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			case <-configDone:
 				failureReason = "Configuration update stream closed"
 			case <-doneChannel:
-				failureReason = fmt.Sprintf("%s network flow stream closed", sm.streamClient.flowCollector.String())
+				failureReason = sm.streamClient.flowCollector.String() + " network flow stream closed"
 			case <-flowCacheOutReaderDone:
 				failureReason = "Flow cache reader failed"
 			case <-flowCacheRunDone:
