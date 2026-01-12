@@ -46,7 +46,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/gnostic-models v0.7.0 // indirect
-	github.com/google/gops v0.3.28
+	github.com/google/gops v0.3.29
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
