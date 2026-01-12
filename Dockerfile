@@ -4,6 +4,8 @@ ARG VERSION=dev
 ARG TARGETOS
 ARG TARGETARCH
 
+ARG GOPS_VERSION=v0.3.29
+
 WORKDIR /workspace
 
 # Copy the Go Modules manifests
@@ -23,7 +25,7 @@ COPY api/ api/
 RUN CGO_ENABLED=0 go build -ldflags="-X 'github.com/illumio/cloud-operator/internal/version.version=${VERSION}'" -a -o manager cmd/main.go
 
 # Install gops for troubleshooting
-RUN CGO_ENABLED=0 go install github.com/google/gops@latest
+RUN CGO_ENABLED=0 go install github.com/google/gops@${GOPS_VERSION}
 
 # Use distroless as minimal base image to package the manager binary
 FROM gcr.io/distroless/static:nonroot
