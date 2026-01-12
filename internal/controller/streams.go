@@ -813,7 +813,7 @@ func (sm *streamManager) manageStream(
 	}
 }
 
-// determineFlowCollector determines the flow collector type and returns the flow collector type, stream function, and the corresponding done channel.
+// determineFlowCollector determines the flow collector type and returns the flow collector type, stream function, and the corresponding networkFlowsDone channel.
 func determineFlowCollector(ctx context.Context, logger *zap.Logger, sm *streamManager, envMap EnvironmentConfig, clientset *kubernetes.Clientset) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
 	switch {
 	case sm.findHubbleRelay(ctx, logger) != nil && !sm.streamClient.disableNetworkFlowsCilium:
@@ -978,13 +978,13 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				return
 			}
 
-			flowCollector, streamFunc, doneChannel := determineFlowCollector(ctx, logger, sm, envMap, clientset)
+			flowCollector, streamFunc, networkFlowsDone := determineFlowCollector(ctx, logger, sm, envMap, clientset)
 			sm.streamClient.flowCollector = flowCollector
 
 			go sm.manageStream(
 				logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
 				streamFunc,
-				doneChannel,
+				networkFlowsDone,
 				envMap.KeepalivePeriods.KubernetesNetworkFlows,
 				envMap.StreamSuccessPeriod,
 			)
@@ -1021,7 +1021,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				failureReason = "Log stream closed"
 			case <-configDone:
 				failureReason = "Configuration update stream closed"
-			case <-doneChannel:
+			case <-networkFlowsDone:
 				failureReason = sm.streamClient.flowCollector.String() + " network flow stream closed"
 			case <-flowCacheOutReaderDone:
 				failureReason = "Flow cache reader failed"
