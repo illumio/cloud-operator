@@ -3,3 +3,13 @@ cloud-operator-*.tgz
 .DS_Store
 # IDE
 .idea/
+
+# Helm values files with credentials
+cloud-operator/illumio-cloud-operator-values-*.yaml
+cloud-operator/rolegke.yaml
+
+# Test charts
+gketest/
+
+# Binary
+operator
