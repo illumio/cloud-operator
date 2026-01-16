@@ -1,9 +1,10 @@
 ARG VARIANT=1.24-bookworm
 FROM mcr.microsoft.com/vscode/devcontainers/go:${VARIANT}
 
-ARG BUF_VERSION=v1.57.2
+ARG BUF_VERSION=v1.63.0
 ARG GCI_VERSION=v0.13.7
 ARG GOLANGCI_VERSION=v2.5.0
+ARG GOPS_VERSION=v0.3.29
 ARG HELM_VERSION=v3.19.0
 ARG KIND_VERSION=v0.30.0
 ARG SBOM_UTILITY=v0.18.1
@@ -42,6 +43,7 @@ USER vscode
 RUN go install github.com/bufbuild/buf/cmd/buf@${BUF_VERSION} \
     && go install github.com/daixiang0/gci@${GCI_VERSION} \
     && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VERSION} \
+    && go install github.com/google/gops@${GOPS_VERSION} \
     && go install sigs.k8s.io/kind@${KIND_VERSION} \
     && go install github.com/CycloneDX/sbom-utility@${SBOM_UTILITY} \
     && go install github.com/anchore/syft/cmd/syft@${SYFT_VERSION}

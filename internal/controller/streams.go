@@ -67,7 +67,6 @@ type streamManager struct {
 	streamClient       *streamClient
 	FlowCache          *FlowCache
 	verboseDebugging   bool
-	networkFlowsReady  chan struct{}
 }
 
 type KeepalivePeriods struct {
@@ -650,25 +649,28 @@ func (sm *streamManager) StreamOVNKNetworkFlows(ctx context.Context, logger *zap
 	return nil
 }
 
-// connectAndStreamCiliumNetworkFlows creates networkFlowsStream client and
-// begins the streaming of network flows.
-func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, _ time.Duration) error {
-	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
-	defer ciliumCancel()
-
-	sendCiliumNetworkFlowsStream, err := sm.streamClient.client.SendKubernetesNetworkFlows(ciliumCtx)
+// connectNetworkFlowsStream establishes the network flows stream connection to
+// the server and stores the resulting stream client on the streamManager.
+func (sm *streamManager) connectNetworkFlowsStream(ctx context.Context, logger *zap.Logger) error {
+	sendNetworkFlowsStream, err := sm.streamClient.client.SendKubernetesNetworkFlows(ctx)
 	if err != nil {
 		logger.Error("Failed to connect to server", zap.Error(err))
 
 		return err
 	}
 
-	sm.streamClient.networkFlowsStream = sendCiliumNetworkFlowsStream
-	close(sm.networkFlowsReady)
+	sm.streamClient.networkFlowsStream = sendNetworkFlowsStream
 
-	logger.Debug("Starting to stream cilium network flows")
+	return nil
+}
 
-	err = sm.StreamCiliumNetworkFlows(ciliumCtx, logger)
+// connectAndStreamCiliumNetworkFlows creates networkFlowsStream client and
+// begins the streaming of network flows.
+func (sm *streamManager) connectAndStreamCiliumNetworkFlows(logger *zap.Logger, _ time.Duration) error {
+	ciliumCtx, ciliumCancel := context.WithCancel(context.Background())
+	defer ciliumCancel()
+
+	err := sm.StreamCiliumNetworkFlows(ciliumCtx, logger)
 	if err != nil {
 		if errors.Is(err, hubble.ErrHubbleNotFound) || errors.Is(err, hubble.ErrNoPortsAvailable) {
 			logger.Warn("Disabling Cilium flow collection", zap.Error(err))
@@ -688,19 +690,7 @@ func (sm *streamManager) connectAndStreamCalicoNetworkFlows(logger *zap.Logger, 
 	calicoCtx, calicoCancel := context.WithCancel(context.Background())
 	defer calicoCancel()
 
-	sendCalicoNetworkFlowsStream, err := sm.streamClient.client.SendKubernetesNetworkFlows(calicoCtx)
-	if err != nil {
-		logger.Error("Failed to connect to server", zap.Error(err))
-
-		return err
-	}
-
-	sm.streamClient.networkFlowsStream = sendCalicoNetworkFlowsStream
-	close(sm.networkFlowsReady)
-
-	logger.Debug("Starting to stream calico network flows")
-
-	err = sm.StreamCalicoNetworkFlows(calicoCtx, logger)
+	err := sm.StreamCalicoNetworkFlows(calicoCtx, logger)
 	if err != nil {
 		if errors.Is(err, ErrGoldmaneNotFound) {
 			logger.Warn("Disabling Calico flow collection", zap.Error(err))
@@ -720,17 +710,7 @@ func (sm *streamManager) connectAndStreamFalcoNetworkFlows(logger *zap.Logger, _
 	falcoCtx, falcoCancel := context.WithCancel(context.Background())
 	defer falcoCancel()
 
-	sendFalcoNetworkFlows, err := sm.streamClient.client.SendKubernetesNetworkFlows(falcoCtx)
-	if err != nil {
-		logger.Error("Failed to connect to server", zap.Error(err))
-
-		return err
-	}
-
-	sm.streamClient.networkFlowsStream = sendFalcoNetworkFlows
-	close(sm.networkFlowsReady)
-
-	err = sm.StreamFalcoNetworkFlows(falcoCtx, logger)
+	err := sm.StreamFalcoNetworkFlows(falcoCtx, logger)
 	if err != nil {
 		logger.Error("Failed to stream Falco network flows", zap.Error(err))
 
@@ -822,17 +802,7 @@ func (sm *streamManager) connectAndStreamOVNKNetworkFlows(logger *zap.Logger, _ 
 	ovnkContext, ovnkCancel := context.WithCancel(context.Background())
 	defer ovnkCancel()
 
-	sendOVNKNetworkFlows, err := sm.streamClient.client.SendKubernetesNetworkFlows(ovnkContext)
-	if err != nil {
-		logger.Error("Failed to connect to server", zap.Error(err))
-
-		return err
-	}
-
-	sm.streamClient.networkFlowsStream = sendOVNKNetworkFlows
-	close(sm.networkFlowsReady)
-
-	err = sm.StreamOVNKNetworkFlows(ovnkContext, logger)
+	err := sm.StreamOVNKNetworkFlows(ovnkContext, logger)
 	if err != nil {
 		logger.Error("Failed to stream OVN-K network flows", zap.Error(err))
 
@@ -899,7 +869,7 @@ func (sm *streamManager) manageStream(
 	}
 }
 
-// determineFlowCollector determines the flow collector type and returns the flow collector type, stream function, and the corresponding done channel.
+// determineFlowCollector determines the flow collector type and returns the flow collector type, stream function, and the corresponding networkFlowsDone channel.
 // The priority order is: Cilium > Calico > OVN-K > Falco.
 func determineFlowCollector(ctx context.Context, logger *zap.Logger, sm *streamManager, envMap EnvironmentConfig, clientset *kubernetes.Clientset) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
 	switch {
@@ -1011,7 +981,6 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					1000,           // TODO: Make the maxFlows capacity configurable.
 					make(chan pb.Flow, 100),
 				),
-				networkFlowsReady: make(chan struct{}),
 			}
 
 			resourceDone := make(chan struct{})
@@ -1044,10 +1013,6 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				envMap.StreamSuccessPeriod,
 			)
 
-			ovnkDone := make(chan struct{})
-			falcoDone := make(chan struct{})
-			ciliumDone := make(chan struct{})
-			calicoDone := make(chan struct{})
 			flowCacheRunDone := make(chan struct{})
 			flowCacheOutReaderDone := make(chan struct{})
 
@@ -1073,13 +1038,13 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				return
 			}
 
-			flowCollector, streamFunc, doneChannel := determineFlowCollector(ctx, logger, sm, envMap, clientset)
+			flowCollector, streamFunc, networkFlowsDone := determineFlowCollector(ctx, logger, sm, envMap, clientset)
 			sm.streamClient.flowCollector = flowCollector
 
 			go sm.manageStream(
 				logger.With(zap.String("stream", "SendKubernetesNetworkFlows")),
 				streamFunc,
-				doneChannel,
+				networkFlowsDone,
 				envMap.KeepalivePeriods.KubernetesNetworkFlows,
 				envMap.StreamSuccessPeriod,
 			)
@@ -1087,20 +1052,17 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			go func() {
 				defer close(flowCacheOutReaderDone)
 
-				// wait until the flow collector is initialized, or bail if the context is canceled
-				select {
-				case <-sm.networkFlowsReady:
-					// proceed
-				case <-authConContext.Done():
-					logger.Info("Failed to start sending network flows from cache", zap.Error(authConContext.Err()))
+				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(authConContext)
+				defer ctxCancelFlowCacheOutReader()
+
+				err := sm.connectNetworkFlowsStream(ctxFlowCacheOutReader, logger)
+				if err != nil {
+					logger.Error("Failed to connect to network flows stream", zap.Error(err))
 
 					return
 				}
 
-				ctxFlowCacheOutReader, ctxCancelFlowCacheOutReader := context.WithCancel(authConContext)
-				defer ctxCancelFlowCacheOutReader()
-
-				err := sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger, envMap.KeepalivePeriods.KubernetesNetworkFlows)
+				err = sm.startFlowCacheOutReader(ctxFlowCacheOutReader, logger, envMap.KeepalivePeriods.KubernetesNetworkFlows)
 				if err != nil {
 					logger.Info("Failed to send network flow from cache", zap.Error(err))
 
@@ -1113,20 +1075,14 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			logger.Info("All streams are open and running")
 
 			select {
-			case <-ciliumDone:
-				failureReason = "Cilium network flow stream closed"
-			case <-calicoDone:
-				failureReason = "Calico network flow stream closed"
-			case <-falcoDone:
-				failureReason = "Falco network flow stream closed"
 			case <-resourceDone:
 				failureReason = "Resource stream closed"
 			case <-logDone:
 				failureReason = "Log stream closed"
 			case <-configDone:
 				failureReason = "Configuration update stream closed"
-			case <-ovnkDone:
-				failureReason = "OVN-K network flow stream closed"
+			case <-networkFlowsDone:
+				failureReason = sm.streamClient.flowCollector.String() + " network flow stream closed"
 			case <-flowCacheOutReaderDone:
 				failureReason = "Flow cache reader failed"
 			case <-flowCacheRunDone:
