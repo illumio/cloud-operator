@@ -26,6 +26,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller/goldmane"
 	"github.com/illumio/cloud-operator/internal/controller/hubble"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
@@ -583,7 +584,7 @@ func (sm *streamManager) StreamCalicoNetworkFlows(ctx context.Context, logger *z
 	if calicoFlowCollector == nil {
 		logger.Info("Failed to initialize Calico Goldmane flow collector; disabling flow collector")
 
-		return ErrGoldmaneNotFound
+		return goldmane.ErrGoldmaneNotFound
 	}
 
 	err := calicoFlowCollector.exportCalicoFlows(ctx, sm)
@@ -692,7 +693,7 @@ func (sm *streamManager) connectAndStreamCalicoNetworkFlows(logger *zap.Logger, 
 
 	err := sm.StreamCalicoNetworkFlows(calicoCtx, logger)
 	if err != nil {
-		if errors.Is(err, ErrGoldmaneNotFound) {
+		if errors.Is(err, goldmane.ErrGoldmaneNotFound) {
 			logger.Warn("Disabling Calico flow collection", zap.Error(err))
 
 			return ErrStopRetries

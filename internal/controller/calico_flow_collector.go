@@ -4,35 +4,15 @@ package controller
 
 import (
 	"context"
-	cryptotls "crypto/tls"
-	"crypto/x509"
-	"errors"
 	"fmt"
 	"strconv"
 
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 
 	goldmanepb "github.com/illumio/cloud-operator/api/illumio/cloud/goldmane/v1"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-)
-
-const (
-	// goldmaneServiceName is the name of the Goldmane service in Kubernetes.
-	goldmaneServiceName = "goldmane"
-	// goldmaneServicePort is the port of the Goldmane service.
-	goldmaneServicePort = 7443
-	// goldmaneMTLSSecretName is the name of the secret containing the mTLS certificates.
-	goldmaneMTLSSecretName = "goldmane-key-pair"
-)
-
-var (
-	// ErrGoldmaneNotFound indicates that the Goldmane service was not found in the cluster.
-	ErrGoldmaneNotFound = errors.New("goldmane service not found")
+	"github.com/illumio/cloud-operator/internal/controller/goldmane"
 )
 
 // CalicoFlowCollector collects flows from Calico Goldmane running in this cluster.
@@ -50,105 +30,28 @@ func newCalicoFlowCollector(ctx context.Context, logger *zap.Logger, calicoNames
 	}
 
 	// Step 1: Discover Goldmane service
-	goldmaneAddress, err := discoverGoldmane(ctx, logger, calicoNamespace, clientset)
+	service, err := goldmane.DiscoverGoldmane(ctx, calicoNamespace, clientset, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover Goldmane: %w", err)
 	}
 
+	goldmaneAddress := goldmane.GetAddressFromService(service)
+
 	// Step 2: Get TLS config from secret
-	tlsConfig, err := getGoldmaneTLSConfig(ctx, clientset, logger, calicoNamespace)
+	tlsConfig, err := goldmane.GetTLSConfig(ctx, clientset, logger, calicoNamespace)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Goldmane TLS config: %w", err)
 	}
 
 	// Step 3: Connect to Goldmane
-	conn, err := connectToGoldmane(ctx, logger, goldmaneAddress, tlsConfig)
+	conn, err := goldmane.ConnectToGoldmane(logger, goldmaneAddress, tlsConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Goldmane: %w", err)
 	}
 
-	logger.Info("Successfully connected to Calico Goldmane",
-		zap.String("address", goldmaneAddress))
-
 	flowsClient := goldmanepb.NewFlowsClient(conn)
 
 	return &CalicoFlowCollector{logger: logger, client: flowsClient}, nil
-}
-
-// discoverGoldmane discovers the Goldmane service in the given namespace.
-func discoverGoldmane(ctx context.Context, logger *zap.Logger, calicoNamespace string, clientset *kubernetes.Clientset) (string, error) {
-	logger.Debug("Discovering Goldmane service", zap.String("namespace", calicoNamespace))
-
-	service, err := clientset.CoreV1().Services(calicoNamespace).Get(ctx, goldmaneServiceName, metav1.GetOptions{})
-	if err != nil {
-		logger.Debug("Goldmane service not found", zap.String("namespace", calicoNamespace), zap.Error(err))
-
-		return "", ErrGoldmaneNotFound
-	}
-
-	// Construct the service address
-	address := fmt.Sprintf("%s.%s.svc:%d", service.Name, service.Namespace, goldmaneServicePort)
-	logger.Debug("Goldmane service discovered", zap.String("address", address))
-
-	return address, nil
-}
-
-// getGoldmaneTLSConfig retrieves the TLS configuration from the Goldmane secret.
-func getGoldmaneTLSConfig(ctx context.Context, clientset *kubernetes.Clientset, logger *zap.Logger, calicoNamespace string) (*cryptotls.Config, error) {
-	logger.Debug("Getting Goldmane TLS config", zap.String("namespace", calicoNamespace))
-
-	secret, err := clientset.CoreV1().Secrets(calicoNamespace).Get(ctx, goldmaneMTLSSecretName, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get Goldmane secret: %w", err)
-	}
-
-	// Extract certificate and key from secret
-	certPEM, ok := secret.Data["tls.crt"]
-	if !ok {
-		return nil, fmt.Errorf("tls.crt not found in secret %s", goldmaneMTLSSecretName)
-	}
-
-	keyPEM, ok := secret.Data["tls.key"]
-	if !ok {
-		return nil, fmt.Errorf("tls.key not found in secret %s", goldmaneMTLSSecretName)
-	}
-
-	// Parse the certificate and key
-	cert, err := cryptotls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse certificate and key: %w", err)
-	}
-
-	// Create a CA cert pool using the same certificate as the CA
-	// (Goldmane uses self-signed certificates)
-	caCertPool := x509.NewCertPool()
-	if !caCertPool.AppendCertsFromPEM(certPEM) {
-		return nil, errors.New("failed to add CA certificate to pool")
-	}
-
-	tlsConfig := &cryptotls.Config{
-		Certificates: []cryptotls.Certificate{cert},
-		RootCAs:      caCertPool,
-		MinVersion:   cryptotls.VersionTLS12,
-	}
-
-	return tlsConfig, nil
-}
-
-// connectToGoldmane establishes a gRPC connection to the Goldmane service.
-func connectToGoldmane(_ context.Context, logger *zap.Logger, address string, tlsConfig *cryptotls.Config) (*grpc.ClientConn, error) {
-	logger.Debug("Connecting to Goldmane", zap.String("address", address))
-
-	creds := credentials.NewTLS(tlsConfig)
-
-	conn, err := grpc.NewClient(address,
-		grpc.WithTransportCredentials(creds),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to dial Goldmane: %w", err)
-	}
-
-	return conn, nil
 }
 
 // exportCalicoFlows streams flows from Goldmane and sends them to the flow cache.

@@ -2,7 +2,7 @@
 
 syntax = "proto3";
 
-package illumio.cloud.goldmane.v1;
+package goldmane;
 
 option go_package = "github.com/illumio/cloud-operator/api/illumio/cloud/goldmane/v1;goldmanepb";
 

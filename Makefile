@@ -1,6 +1,6 @@
 # Variables
 APP_NAME := operator
-DOCKER_USERNAME := aaronnguyenillumio
+DOCKER_USERNAME := pki619
 DOCKER_IMAGE := $(DOCKER_USERNAME)/$(APP_NAME)
 LOCAL_REGISTRY := localhost:5000
 LOCAL_IMAGE := $(LOCAL_REGISTRY)/$(APP_NAME)
@@ -34,13 +34,13 @@ clean:
 .PHONY: docker-build
 docker-build:
 	@echo "Building Docker image..."
-	docker buildx build --platform linux/amd64,linux/arm64 --load -t $(DOCKER_IMAGE):latest .
+	docker buildx build --platform linux/amd64,linux/arm64 --load -t $(DOCKER_IMAGE):calicof .
 
 # Push Docker image to Docker Hub
 .PHONY: docker-push
 docker-push:
 	@echo "Pushing Docker image to Docker Hub..."
-	docker push $(DOCKER_IMAGE):latest
+	docker push $(DOCKER_IMAGE):calicof
 
 # Deploy target (build and push Docker image to Docker Hub)
 .PHONY: deploy
