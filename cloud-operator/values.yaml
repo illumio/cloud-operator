@@ -41,6 +41,11 @@ onboardingSecret:
 service:
   clusterIP: ""
 
+calico:
+  # The namespace in which Calico's Goldmane service is deployed.
+  # cloud-operator uses this to discover and connect to Goldmane for flow collection.
+  namespace: "calico-system"
+
 openshift:
   # The namespace in which OVN-k is deployed.
   # cloud-operator uses this to determine whether OVN-k is deployed, in which
