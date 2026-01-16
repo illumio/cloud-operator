@@ -5,6 +5,14 @@
         "affinity": {
             "type": "object"
         },
+        "calico": {
+            "type": "object",
+            "properties": {
+                "namespace": {
+                    "type": "string"
+                }
+            }
+        },
         "clusterCredsSecret": {
             "type": "object",
             "properties": {
