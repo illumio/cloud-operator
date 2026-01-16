@@ -1,3 +1,5 @@
 *local.yaml
 cloud-operator-*.tgz
 .DS_Store
+# IDE
+.idea/
