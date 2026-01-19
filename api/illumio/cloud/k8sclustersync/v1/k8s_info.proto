@@ -193,6 +193,8 @@ enum FlowCollector {
   FLOW_COLLECTOR_FALCO = 3;
   // Indicates that OVN-Kubernetes is deployed and configured for collecting network flows.
   FLOW_COLLECTOR_OVNK = 4;
+  // Indicates that Calico CNI is deployed with Goldmane and is used for collecting network flows.
+  FLOW_COLLECTOR_CALICO = 5;
 }
 
 // Message sent by the operator in a KubernetesResources request stream.
@@ -291,6 +293,84 @@ message CiliumFlow {
   repeated Policy egress_denied_by = 13;
   // The CiliumNetworkPolicies denying the ingress of the flow.
   repeated Policy ingress_denied_by = 14;
+}
+
+// A flow received from Calico Goldmane using the Flows service's Stream RPC.
+message CalicoFlow {
+  // Time when the flow started.
+  google.protobuf.Timestamp start_time = 1;
+  // Time when the flow ended.
+  google.protobuf.Timestamp end_time = 2;
+  // Source workload name (aggregated with wildcard for pod hash).
+  string source_name = 3;
+  // Source namespace.
+  string source_namespace = 4;
+  // Source type (e.g., WorkloadEndpoint, Network).
+  string source_type = 5;
+  // Destination workload name (aggregated with wildcard for pod hash).
+  string dest_name = 6;
+  // Destination namespace.
+  string dest_namespace = 7;
+  // Destination type (e.g., WorkloadEndpoint, Network).
+  string dest_type = 8;
+  // Destination port.
+  uint32 dest_port = 9;
+  // Destination service name.
+  string dest_service_name = 10;
+  // Destination service namespace.
+  string dest_service_namespace = 11;
+  // Destination service port name.
+  string dest_service_port_name = 12;
+  // Destination service port.
+  uint32 dest_service_port = 13;
+  // Protocol (e.g., tcp, udp).
+  string proto = 14;
+  // Reporter (Src or Dst).
+  string reporter = 15;
+  // Action (Allow, Deny).
+  string action = 16;
+  // Source labels.
+  repeated string source_labels = 17;
+  // Destination labels.
+  repeated string dest_labels = 18;
+  // Packets received.
+  uint64 packets_in = 19;
+  // Packets sent.
+  uint64 packets_out = 20;
+  // Bytes received.
+  uint64 bytes_in = 21;
+  // Bytes sent.
+  uint64 bytes_out = 22;
+  // Number of connections started.
+  uint64 num_connections_started = 23;
+  // Number of connections completed.
+  uint64 num_connections_completed = 24;
+  // Number of live connections.
+  uint64 num_connections_live = 25;
+  // Policies information.
+  CalicoPolicies policies = 26;
+}
+
+// CalicoPolicies contains the policy information for a Calico flow.
+message CalicoPolicies {
+  // Policies that were enforced for this flow.
+  repeated CalicoPolicy enforced_policies = 1;
+  // Policies that are pending for this flow.
+  repeated CalicoPolicy pending_policies = 2;
+}
+
+// CalicoPolicy represents a single Calico network policy.
+message CalicoPolicy {
+  // Kind of policy (e.g., NetworkPolicy, Profile).
+  string kind = 1;
+  // Namespace of the policy (if applicable).
+  string namespace = 2;
+  // Name of the policy.
+  string name = 3;
+  // Tier of the policy.
+  string tier = 4;
+  // Action of the policy (Allow, Deny).
+  string action = 5;
 }
 
 // Service contains Service header fields of a flow.
@@ -435,6 +515,7 @@ message SendKubernetesNetworkFlowsRequest {
 
     CiliumFlow cilium_flow = 1;
     FiveTupleFlow five_tuple_flow = 2;
+    CalicoFlow calico_flow = 4;
   }
 }
 
