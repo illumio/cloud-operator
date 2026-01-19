@@ -587,6 +587,12 @@ func (sm *streamManager) StreamCalicoNetworkFlows(ctx context.Context, logger *z
 		return goldmane.ErrGoldmaneNotFound
 	}
 
+	defer func() {
+		if err := calicoFlowCollector.Close(); err != nil {
+			logger.Warn("Failed to close Goldmane gRPC connection", zap.Error(err))
+		}
+	}()
+
 	err := calicoFlowCollector.exportCalicoFlows(ctx, sm)
 	if err != nil {
 		logger.Warn("Failed to collect and export flows from Calico Goldmane", zap.Error(err))
