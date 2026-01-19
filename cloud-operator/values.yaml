@@ -61,6 +61,11 @@ openshift:
   # OpenShift with OVN-k, because port 4739 is not open in that case.
   workerNodeCidrs: []
 
+calico:
+  # The namespace in which Calico's Goldmane service is deployed.
+  # cloud-operator uses this to discover and connect to Goldmane for flow collection.
+  namespace: "calico-system"
+
 falco:
   enabled: false
   namespace: falco
