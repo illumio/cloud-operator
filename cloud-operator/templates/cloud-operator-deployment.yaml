@@ -52,6 +52,8 @@ spec:
               protocol: UDP
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
+            - name: CALICO_NAMESPACE
+              value: "{{ .Values.calico.namespace }}"
             - name: CILIUM_NAMESPACES
               value: "{{ join " " .Values.cilium.namespaces }}"
             - name: CLUSTER_CREDS_SECRET
