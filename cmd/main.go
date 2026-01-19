@@ -94,6 +94,7 @@ func bindEnv(logger *zap.Logger, key, envVar string) {
 func logStartupConfig(logger *zap.Logger, envConfig stream.Config) {
 	logger.Info("Starting application",
 		zap.Duration("aws_vpc_cni_logs_polling_interval", viper.GetDuration("aws_vpc_cni_logs_polling_interval")),
+		zap.String("calico_namespace", viper.GetString("calico_namespace")),
 		zap.Strings("cilium_namespaces", viper.GetStringSlice("cilium_namespaces")),
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
 		zap.String("cluster_name", envConfig.ClusterName),
@@ -137,6 +138,7 @@ func main() {
 
 	// Bind specific environment variables to keys
 	bindEnv(logger, "aws_vpc_cni_logs_polling_interval", "AWS_VPC_CNI_LOGS_POLLING_INTERVAL")
+	bindEnv(logger, "calico_namespace", "CALICO_NAMESPACE")
 	bindEnv(logger, "cilium_namespaces", "CILIUM_NAMESPACES")
 	bindEnv(logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
 	bindEnv(logger, "cluster_name", "CLUSTER_NAME")
@@ -167,6 +169,7 @@ func main() {
 
 	// Set default values
 	viper.SetDefault("aws_vpc_cni_logs_polling_interval", "1s")
+	viper.SetDefault("calico_namespace", "calico-system")
 	viper.SetDefault("cilium_namespaces", []string{"kube-system", "gke-managed-dpv2-observability"})
 	viper.SetDefault("cluster_creds", "clustercreds")
 	viper.SetDefault("eks_auto_mode_log_path", collector.DefaultNetworkPolicyAgentLogPath)
