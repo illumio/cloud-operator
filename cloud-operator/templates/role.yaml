@@ -36,3 +36,21 @@ rules:
   resourceNames: ["hubble-relay-client-certs"]
   verbs: ["get"]
 {{- end }}
+{{- if (lookup "v1" "Namespace" "" .Values.calico.namespace) }}
+---
+# Role to read Goldmane service and secret in Calico namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: goldmane-reader
+  namespace: {{ .Values.calico.namespace }}
+rules:
+- apiGroups: [""]
+  resources: ["services"]
+  resourceNames: ["goldmane"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["goldmane-key-pair"]
+  verbs: ["get"]
+{{- end }}
