@@ -98,15 +98,21 @@ tests:
           value: "openshift-ovn-kubernetes"
       - equal:
           path: spec.template.spec.containers[0].env[15].name
-          value: "IPFIX_COLLECTOR_PORT"
+          value: "CALICO_NAMESPACE"
       - equal:
           path: spec.template.spec.containers[0].env[15].value
-          value: "4739"
+          value: "calico-system"
       - equal:
           path: spec.template.spec.containers[0].env[16].name
-          value: "VERBOSE_DEBUGGING"
+          value: "IPFIX_COLLECTOR_PORT"
       - equal:
           path: spec.template.spec.containers[0].env[16].value
+          value: "4739"
+      - equal:
+          path: spec.template.spec.containers[0].env[17].name
+          value: "VERBOSE_DEBUGGING"
+      - equal:
+          path: spec.template.spec.containers[0].env[17].value
           value: "false"
 
   # Test for replicaCount value
