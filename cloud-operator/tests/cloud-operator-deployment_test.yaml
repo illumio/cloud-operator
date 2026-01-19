@@ -29,16 +29,16 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].env[0].name
-          value: "CILIUM_NAMESPACES"
+          value: "CALICO_NAMESPACE"
       - equal:
           path: spec.template.spec.containers[0].env[0].value
-          value: "kube-system gke-managed-dpv2-observability"
+          value: "calico-system"
       - equal:
           path: spec.template.spec.containers[0].env[1].name
-          value: "CLUSTER_CREDS_SECRET"
+          value: "CILIUM_NAMESPACES"
       - equal:
           path: spec.template.spec.containers[0].env[1].value
-          value: "clustercreds"
+          value: "kube-system gke-managed-dpv2-observability"
       - equal:
           path: spec.template.spec.containers[0].env[2].name
           value: "EKS_AUTO_MODE_LOG_PATH"
