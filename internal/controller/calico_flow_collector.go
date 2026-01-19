@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	goldmanepb "github.com/illumio/cloud-operator/api/illumio/cloud/goldmane/v1"
@@ -19,6 +20,7 @@ import (
 type CalicoFlowCollector struct {
 	logger *zap.Logger
 	client goldmanepb.FlowsClient
+	conn   *grpc.ClientConn
 }
 
 // newCalicoFlowCollector connects to Calico Goldmane, sets up a Flows client,
@@ -51,7 +53,16 @@ func newCalicoFlowCollector(ctx context.Context, logger *zap.Logger, calicoNames
 
 	flowsClient := goldmanepb.NewFlowsClient(conn)
 
-	return &CalicoFlowCollector{logger: logger, client: flowsClient}, nil
+	return &CalicoFlowCollector{logger: logger, client: flowsClient, conn: conn}, nil
+}
+
+// Close closes the gRPC connection to Goldmane.
+func (c *CalicoFlowCollector) Close() error {
+	if c.conn != nil {
+		return c.conn.Close()
+	}
+
+	return nil
 }
 
 // exportCalicoFlows streams flows from Goldmane and sends them to the flow cache.
@@ -159,7 +170,7 @@ func convertGoldmaneFlow(resp *goldmanepb.StreamResponse) *pb.CalicoFlow {
 	return calicoFlow
 }
 
-// convertGoldmanePolicies converts Goldmane Policies to CalicoPolices.
+// convertGoldmanePolicies converts Goldmane Policies to CalicoPolicies.
 func convertGoldmanePolicies(policies *goldmanepb.Policies) *pb.CalicoPolicies {
 	if policies == nil {
 		return nil
