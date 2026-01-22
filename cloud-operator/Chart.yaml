@@ -7,6 +7,6 @@ version: "1.0.0"
 icon: "https://cdn.prod.website-files.com/63cdb40b25368837c04197b3/643479525f557e4bffc2e3ca_Combination_Mark.svg"
 dependencies:
   - name: falco
-    version: "4.17.0"
+    version: "7.2.0"
     repository: "https://falcosecurity.github.io/charts/"
     condition: falco.enabled
