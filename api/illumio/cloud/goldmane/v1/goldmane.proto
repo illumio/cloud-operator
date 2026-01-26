@@ -1,0 +1,71 @@
+// Copyright 2024 Illumio, Inc. All Rights Reserved.
+
+syntax = "proto3";
+
+package goldmane;
+
+option go_package = "github.com/illumio/cloud-operator/api/illumio/cloud/goldmane/v1;goldmanepb";
+
+// StreamRequest initiates a flow stream from Goldmane
+message StreamRequest {}
+
+// StreamResponse contains a single flow from Goldmane
+message StreamResponse {
+  string id = 1;
+  Flow flow = 2;
+}
+
+// Flow represents a network flow in Goldmane's format
+message Flow {
+  FlowKey Key = 1;
+  string start_time = 2;
+  string end_time = 3;
+  repeated string source_labels = 4;
+  repeated string dest_labels = 5;
+  string packets_in = 6;
+  string packets_out = 7;
+  string bytes_in = 8;
+  string bytes_out = 9;
+  string num_connections_started = 10;
+  string num_connections_completed = 11;
+  string num_connections_live = 12;
+}
+
+// FlowKey uniquely identifies a flow
+message FlowKey {
+  string source_name = 1;
+  string source_namespace = 2;
+  string source_type = 3;
+  string dest_name = 4;
+  string dest_namespace = 5;
+  string dest_type = 6;
+  string dest_port = 7;
+  string dest_service_name = 8;
+  string dest_service_namespace = 9;
+  string dest_service_port_name = 10;
+  string dest_service_port = 11;
+  string proto = 12;
+  string reporter = 13;
+  string action = 14;
+  Policies policies = 15;
+}
+
+// Policies contains enforced and pending policies for a flow
+message Policies {
+  repeated Policy enforced_policies = 1;
+  repeated Policy pending_policies = 2;
+}
+
+// Policy represents a single Calico network policy
+message Policy {
+  string kind = 1;
+  string namespace = 2;
+  string name = 3;
+  string tier = 4;
+  string action = 5;
+}
+
+// Flows service provides network flow streaming from Goldmane
+service Flows {
+  rpc Stream(StreamRequest) returns (stream StreamResponse);
+}

@@ -95,6 +95,8 @@ spec:
               value: "{{ .Values.env.httpsProxy | default "" }}"
             - name: OVNK_NAMESPACE
               value: "{{ .Values.openshift.ovnkNamespace }}"
+            - name: CALICO_NAMESPACE
+              value: "{{ .Values.calico.namespace }}"
             - name: IPFIX_COLLECTOR_PORT
               value: "{{ .Values.env.ipfixCollectorPort }}"
             - name: VERBOSE_DEBUGGING
