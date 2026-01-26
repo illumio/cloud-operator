@@ -116,6 +116,7 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 			)
 		} else {
 			lg := opts.Logger.Debug
+
 			if givingUp {
 				lg = opts.Logger.Error
 			}
