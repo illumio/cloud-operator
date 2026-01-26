@@ -8,6 +8,8 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
 type backoffOpts struct {
@@ -103,16 +105,27 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 		// Give up after failing more than SevereErrorThreshold times
 		givingUp := s.consecutiveFailures >= opts.SevereErrorThreshold
 
-		lg := opts.Logger.Debug
-		if givingUp {
-			lg = opts.Logger.Error
-		}
+		// Check if this is a known TLS error that will be retried with different settings
+		isRecoverableTLSError := errors.Is(err, tls.ErrTLSALPNHandshakeFailed) || errors.Is(err, tls.ErrNoTLSHandshakeFailed)
 
-		lg("Error in backoff function",
-			zap.Bool("severe_failure", givingUp),
-			zap.Int("consecutive_failures", s.consecutiveFailures),
-			zap.Error(err),
-		)
+		if isRecoverableTLSError {
+			// TLS errors are expected when connecting to Hubble Relay - we'll retry with different TLS settings
+			opts.Logger.Info("TLS connection failed, will retry with adjusted settings",
+				zap.String("reason", err.Error()),
+				zap.Int("attempt", s.consecutiveFailures+1),
+			)
+		} else {
+			lg := opts.Logger.Debug
+			if givingUp {
+				lg = opts.Logger.Error
+			}
+
+			lg("Error in backoff function",
+				zap.Bool("severe_failure", givingUp),
+				zap.Int("consecutive_failures", s.consecutiveFailures),
+				zap.Error(err),
+			)
+		}
 
 		if !givingUp {
 			s.AddBackoff(1)
