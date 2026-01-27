@@ -265,7 +265,6 @@ func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
 	flowObj := flow.GetFlow()
 	// Check for nil fields
 	if flowObj.GetTime() == nil ||
-		flowObj.GetNodeName() == "" ||
 		flowObj.GetTrafficDirection().String() == "" ||
 		flowObj.GetVerdict().String() == "" ||
 		flowObj.GetIP() == nil ||
