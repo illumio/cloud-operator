@@ -180,12 +180,15 @@ func (sm *streamManager) disableSubsystemCausingError(err error, logger *zap.Log
 	switch {
 	case errors.Is(err, tls.ErrTLSALPNHandshakeFailed):
 		logger.Info("Disabling ALPN for Cilium connection, will retry")
+
 		sm.streamClient.tlsAuthProperties.DisableALPN = true
 	case errors.Is(err, tls.ErrNoTLSHandshakeFailed):
 		logger.Info("Disabling TLS for Cilium connection, will retry")
+
 		sm.streamClient.tlsAuthProperties.DisableTLS = true
 	default:
 		logger.Warn("Disabling Cilium flow collection due to unrecoverable error", zap.Error(err))
+
 		sm.streamClient.disableNetworkFlowsCilium = true
 	}
 }
