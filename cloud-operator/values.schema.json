@@ -5,6 +5,18 @@
         "affinity": {
             "type": "object"
         },
+        "cilium": {
+            "type": "object",
+            "properties": {
+                "namespaces": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "List of namespaces where Cilium Hubble Relay may be deployed"
+                }
+            }
+        },
         "clusterCredsSecret": {
             "type": "object",
             "properties": {
