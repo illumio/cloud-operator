@@ -92,21 +92,27 @@ tests:
           value: ""
       - equal:
           path: spec.template.spec.containers[0].env[14].name
-          value: "OVNK_NAMESPACE"
+          value: "CILIUM_NAMESPACES"
       - equal:
           path: spec.template.spec.containers[0].env[14].value
-          value: "openshift-ovn-kubernetes"
+          value: "kube-system,gke-managed-dpv2-observability"
       - equal:
           path: spec.template.spec.containers[0].env[15].name
-          value: "IPFIX_COLLECTOR_PORT"
+          value: "OVNK_NAMESPACE"
       - equal:
           path: spec.template.spec.containers[0].env[15].value
-          value: "4739"
+          value: "openshift-ovn-kubernetes"
       - equal:
           path: spec.template.spec.containers[0].env[16].name
-          value: "VERBOSE_DEBUGGING"
+          value: "IPFIX_COLLECTOR_PORT"
       - equal:
           path: spec.template.spec.containers[0].env[16].value
+          value: "4739"
+      - equal:
+          path: spec.template.spec.containers[0].env[17].name
+          value: "VERBOSE_DEBUGGING"
+      - equal:
+          path: spec.template.spec.containers[0].env[17].value
           value: "false"
 
   # Test for replicaCount value

@@ -6,11 +6,17 @@ import (
 	"container/list"
 	"context"
 	"io"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+)
+
+const (
+	// flowStatsLogInterval is how often flow statistics are logged.
+	flowStatsLogInterval = 30 * time.Second
 )
 
 // FlowCache caches flows to be exported.
@@ -31,6 +37,13 @@ type FlowCache struct {
 	inFlows chan pb.Flow
 	// outFlows contains flows that have been evicted from the cache.
 	outFlows chan pb.Flow
+
+	// Flow statistics counters (atomic for thread safety)
+	flowsReceived atomic.Uint64
+	flowsCached   atomic.Uint64
+	flowsSent     atomic.Uint64
+	flowsSkipped  atomic.Uint64
+	flowsEvicted  atomic.Uint64
 }
 
 var _ io.Closer = &FlowCache{}
@@ -61,6 +74,8 @@ func (c *FlowCache) Close() error {
 
 // CacheFlow aggregates and caches the given flow.
 func (c *FlowCache) CacheFlow(ctx context.Context, flow pb.Flow) error {
+	c.flowsReceived.Add(1)
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -75,10 +90,16 @@ func (c *FlowCache) Run(ctx context.Context, logger *zap.Logger) error {
 	timer := time.NewTimer(c.activeTimeout)
 	defer timer.Stop()
 
+	statsTicker := time.NewTicker(flowStatsLogInterval)
+	defer statsTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+
+		case <-statsTicker.C:
+			c.logFlowStats(logger)
 
 		case <-timer.C:
 			c.evictExpiredFlows(ctx, logger)
@@ -95,6 +116,8 @@ func (c *FlowCache) Run(ctx context.Context, logger *zap.Logger) error {
 
 		case flow := <-c.inFlows:
 			if c.shouldSkipFlow(flow) {
+				c.flowsSkipped.Add(1)
+
 				continue
 			}
 
@@ -105,6 +128,7 @@ func (c *FlowCache) Run(ctx context.Context, logger *zap.Logger) error {
 			}
 
 			c.addFlowToCache(flow)
+			c.flowsCached.Add(1)
 			c.resetTimerForNextExpiration(timer, logger)
 		}
 	}
@@ -129,11 +153,13 @@ func (c *FlowCache) evictExpiredFlows(ctx context.Context, logger *zap.Logger) {
 
 		c.queue.Remove(frontElem)
 		delete(c.cache, flow.Key())
+		c.flowsEvicted.Add(1)
 
 		select {
 		case <-ctx.Done():
 			return
 		case c.outFlows <- flow:
+			c.flowsSent.Add(1)
 		}
 	}
 }
@@ -165,11 +191,13 @@ func (c *FlowCache) evictOldestFlow(ctx context.Context, logger *zap.Logger) err
 	}
 
 	delete(c.cache, flow.Key())
+	c.flowsEvicted.Add(1)
 
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	case c.outFlows <- flow:
+		c.flowsSent.Add(1)
 	}
 
 	return nil
@@ -197,4 +225,24 @@ func (c *FlowCache) resetTimerForNextExpiration(timer *time.Timer, logger *zap.L
 func resetTimer(timer *time.Timer, timestamp time.Time, timeout time.Duration) {
 	delay := time.Until(timestamp.Add(timeout))
 	timer.Reset(delay)
+}
+
+// logFlowStats logs periodic statistics about flow processing.
+func (c *FlowCache) logFlowStats(logger *zap.Logger) {
+	received := c.flowsReceived.Load()
+	cached := c.flowsCached.Load()
+	sent := c.flowsSent.Load()
+	skipped := c.flowsSkipped.Load()
+	evicted := c.flowsEvicted.Load()
+	currentCacheSize := len(c.cache)
+
+	logger.Info("Flow statistics",
+		zap.Uint64("received", received),
+		zap.Uint64("cached", cached),
+		zap.Uint64("sent", sent),
+		zap.Uint64("skipped_duplicates", skipped),
+		zap.Uint64("evicted", evicted),
+		zap.Int("current_cache_size", currentCacheSize),
+		zap.Int("max_cache_size", c.maxFlows),
+	)
 }
