@@ -93,6 +93,8 @@ spec:
               value: "{{ .Values.env.streamSuccessPeriods.auth }}"
             - name: HTTPS_PROXY
               value: "{{ .Values.env.httpsProxy | default "" }}"
+            - name: CILIUM_NAMESPACES
+              value: "{{ join "," .Values.cilium.namespaces }}"
             - name: OVNK_NAMESPACE
               value: "{{ .Values.openshift.ovnkNamespace }}"
             - name: IPFIX_COLLECTOR_PORT

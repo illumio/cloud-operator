@@ -41,6 +41,14 @@ onboardingSecret:
 service:
   clusterIP: ""
 
+cilium:
+  # The namespaces in which Cilium may be deployed.
+  # cloud-operator will search for the Hubble Relay service in each namespace,
+  # in this order.
+  namespaces:
+    - kube-system
+    - gke-managed-dpv2-observability
+
 openshift:
   # The namespace in which OVN-k is deployed.
   # cloud-operator uses this to determine whether OVN-k is deployed, in which

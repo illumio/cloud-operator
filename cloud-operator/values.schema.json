@@ -5,6 +5,17 @@
         "affinity": {
             "type": "object"
         },
+        "cilium": {
+            "type": "object",
+            "properties": {
+                "namespaces": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "clusterCredsSecret": {
             "type": "object",
             "properties": {
