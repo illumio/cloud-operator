@@ -257,6 +257,7 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 
 			return err
 		}
+		sm.stats.IncrementFlowsReceived()
 	}
 }
 
