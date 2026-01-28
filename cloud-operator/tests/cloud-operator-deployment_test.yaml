@@ -95,7 +95,7 @@ tests:
           value: "CILIUM_NAMESPACES"
       - equal:
           path: spec.template.spec.containers[0].env[14].value
-          value: "kube-system,gke-managed-dpv2-observability"
+          value: "kube-system gke-managed-dpv2-observability"
       - equal:
           path: spec.template.spec.containers[0].env[15].name
           value: "OVNK_NAMESPACE"
