@@ -60,9 +60,11 @@ func TestStreamStats_GetAndResetStats(t *testing.T) {
 	for range 5 {
 		stats.IncrementFlowsReceived()
 	}
+
 	for range 3 {
 		stats.IncrementFlowsSentToClusterSync()
 	}
+
 	for range 7 {
 		stats.IncrementResourceMutations()
 	}
@@ -92,7 +94,8 @@ func TestStreamStats_GetAndResetStats_EmptyStats(t *testing.T) {
 
 func TestStreamStats_ConcurrentAccess(t *testing.T) {
 	stats := NewStreamStats()
-	iterations := 1000
+
+	const iterations uint64 = 1000
 
 	// Run concurrent increments
 	done := make(chan struct{})
@@ -101,6 +104,7 @@ func TestStreamStats_ConcurrentAccess(t *testing.T) {
 		for range iterations {
 			stats.IncrementFlowsReceived()
 		}
+
 		done <- struct{}{}
 	}()
 
@@ -108,6 +112,7 @@ func TestStreamStats_ConcurrentAccess(t *testing.T) {
 		for range iterations {
 			stats.IncrementFlowsSentToClusterSync()
 		}
+
 		done <- struct{}{}
 	}()
 
@@ -115,6 +120,7 @@ func TestStreamStats_ConcurrentAccess(t *testing.T) {
 		for range iterations {
 			stats.IncrementResourceMutations()
 		}
+
 		done <- struct{}{}
 	}()
 
@@ -125,9 +131,9 @@ func TestStreamStats_ConcurrentAccess(t *testing.T) {
 
 	flowsReceived, flowsSent, mutations := stats.GetAndResetStats()
 
-	assert.Equal(t, uint64(iterations), flowsReceived)
-	assert.Equal(t, uint64(iterations), flowsSent)
-	assert.Equal(t, uint64(iterations), mutations)
+	assert.Equal(t, iterations, flowsReceived)
+	assert.Equal(t, iterations, flowsSent)
+	assert.Equal(t, iterations, mutations)
 }
 
 func TestStartStatsLogger_DisabledWithZeroInterval(t *testing.T) {
@@ -190,7 +196,8 @@ func TestStartStatsLogger_StopsOnContextCancel(t *testing.T) {
 func TestStartStatsLogger_LogsAtInterval(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	stats := NewStreamStats()
-	ctx, cancel := context.WithCancel(context.Background())
+
+	ctx, cancel := context.WithCancel(context.Background()) //nolint:modernize // need manual cancel control for testing
 	defer cancel()
 
 	// Start with a short interval

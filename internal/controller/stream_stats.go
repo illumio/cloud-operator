@@ -46,6 +46,7 @@ func (s *StreamStats) GetAndResetStats() (flowsReceived, flowsSent, mutations ui
 	flowsReceived = s.flowsReceived.Swap(0)
 	flowsSent = s.flowsSentToClusterSync.Swap(0)
 	mutations = s.resourceMutations.Swap(0)
+
 	return
 }
 
@@ -53,6 +54,7 @@ func (s *StreamStats) GetAndResetStats() (flowsReceived, flowsSent, mutations ui
 func StartStatsLogger(ctx context.Context, logger *zap.Logger, stats *StreamStats, interval time.Duration) {
 	if interval <= 0 {
 		logger.Info("Stream stats logging disabled (interval <= 0)")
+
 		return
 	}
 
@@ -66,6 +68,7 @@ func StartStatsLogger(ctx context.Context, logger *zap.Logger, stats *StreamStat
 			select {
 			case <-ctx.Done():
 				logger.Info("Stream stats logger stopped")
+
 				return
 			case <-ticker.C:
 				flowsReceived, flowsSent, mutations := stats.GetAndResetStats()
