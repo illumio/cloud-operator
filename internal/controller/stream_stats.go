@@ -42,6 +42,9 @@ func (s *StreamStats) IncrementResourceMutations() {
 }
 
 // GetAndResetStats returns the current stats and resets all counters to zero.
+// Note: Each counter is reset atomically, but the three resets are not atomic
+// as a group. Increments occurring between individual resets will be counted
+// in the next reporting period.
 func (s *StreamStats) GetAndResetStats() (flowsReceived, flowsSent, mutations uint64) {
 	flowsReceived = s.flowsReceived.Swap(0)
 	flowsSent = s.flowsSentToClusterSync.Swap(0)
@@ -51,7 +54,12 @@ func (s *StreamStats) GetAndResetStats() (flowsReceived, flowsSent, mutations ui
 }
 
 // StartStatsLogger starts a goroutine that logs stream statistics at the configured interval.
+// If stats or logger is nil, the function returns immediately without starting the logger.
 func StartStatsLogger(ctx context.Context, logger *zap.Logger, stats *StreamStats, interval time.Duration) {
+	if stats == nil || logger == nil {
+		return
+	}
+
 	if interval <= 0 {
 		logger.Info("Stream stats logging disabled (interval <= 0)")
 

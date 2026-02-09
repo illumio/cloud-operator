@@ -400,6 +400,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 			if err != nil {
 				return err
 			}
+
 			sm.stats.IncrementResourceMutations()
 		}
 	}
@@ -530,6 +531,7 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 			if err != nil {
 				return err
 			}
+
 			sm.stats.IncrementFlowsSentToClusterSync()
 		}
 	}
@@ -603,6 +605,7 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 
 				return err
 			}
+
 			sm.stats.IncrementFlowsReceived()
 		}
 	}

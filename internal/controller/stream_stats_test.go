@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -97,37 +98,35 @@ func TestStreamStats_ConcurrentAccess(t *testing.T) {
 
 	const iterations uint64 = 1000
 
-	// Run concurrent increments
-	done := make(chan struct{})
+	var wg sync.WaitGroup
+
+	wg.Add(3)
 
 	go func() {
+		defer wg.Done()
+
 		for range iterations {
 			stats.IncrementFlowsReceived()
 		}
-
-		done <- struct{}{}
 	}()
 
 	go func() {
+		defer wg.Done()
+
 		for range iterations {
 			stats.IncrementFlowsSentToClusterSync()
 		}
-
-		done <- struct{}{}
 	}()
 
 	go func() {
+		defer wg.Done()
+
 		for range iterations {
 			stats.IncrementResourceMutations()
 		}
-
-		done <- struct{}{}
 	}()
 
-	// Wait for all goroutines to complete
-	<-done
-	<-done
-	<-done
+	wg.Wait()
 
 	flowsReceived, flowsSent, mutations := stats.GetAndResetStats()
 
@@ -216,4 +215,20 @@ func TestStartStatsLogger_LogsAtInterval(t *testing.T) {
 	assert.Equal(t, uint64(0), stats.flowsReceived.Load())
 	assert.Equal(t, uint64(0), stats.flowsSentToClusterSync.Load())
 	assert.Equal(t, uint64(0), stats.resourceMutations.Load())
+}
+
+func TestStartStatsLogger_NilStats(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+	ctx := context.Background()
+
+	// Should not panic with nil stats
+	StartStatsLogger(ctx, logger, nil, time.Second)
+}
+
+func TestStartStatsLogger_NilLogger(t *testing.T) {
+	stats := NewStreamStats()
+	ctx := context.Background()
+
+	// Should not panic with nil logger
+	StartStatsLogger(ctx, nil, stats, time.Second)
 }

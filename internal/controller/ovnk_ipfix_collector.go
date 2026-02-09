@@ -197,6 +197,7 @@ func (sm *streamManager) processIPFIXMessage(ctx context.Context, logger *zap.Lo
 
 					return err
 				}
+
 				sm.stats.IncrementFlowsReceived()
 			}
 		default:
