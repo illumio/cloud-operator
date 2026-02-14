@@ -65,6 +65,7 @@ type streamManager struct {
 	streamClient       *streamClient
 	FlowCache          *FlowCache
 	verboseDebugging   bool
+	stats              *StreamStats
 }
 
 type KeepalivePeriods struct {
@@ -115,6 +116,9 @@ type EnvironmentConfig struct {
 	HttpsProxy string
 	// Whether to enable verbose debugging.
 	VerboseDebugging bool
+	// StatsLogInterval is the interval at which stream statistics are logged.
+	// Set to 0 to disable stats logging.
+	StatsLogInterval time.Duration
 }
 
 var resources = []string{
@@ -396,6 +400,8 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 			if err != nil {
 				return err
 			}
+
+			sm.stats.IncrementResourceMutations()
 		}
 	}
 }
@@ -525,6 +531,8 @@ func (sm *streamManager) startFlowCacheOutReader(ctx context.Context, logger *za
 			if err != nil {
 				return err
 			}
+
+			sm.stats.IncrementFlowsSentToClusterSync()
 		}
 	}
 }
@@ -597,6 +605,8 @@ func (sm *streamManager) StreamFalcoNetworkFlows(ctx context.Context, logger *za
 
 				return err
 			}
+
+			sm.stats.IncrementFlowsReceived()
 		}
 	}
 }
@@ -912,6 +922,8 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				ipfixCollectorPort: envMap.IPFIXCollectorPort,
 			}
 
+			stats := NewStreamStats()
+
 			sm := &streamManager{
 				verboseDebugging:   envMap.VerboseDebugging,
 				streamClient:       streamClient,
@@ -921,7 +933,11 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					1000,           // TODO: Make the maxFlows capacity configurable.
 					make(chan pb.Flow, 100),
 				),
+				stats: stats,
 			}
+
+			// Start periodic stats logger
+			StartStatsLogger(authConContext, logger, stats, envMap.StatsLogInterval)
 
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
