@@ -99,17 +99,46 @@ falco:
         priority: WARNING
 
 env:
-  tlsSkipVerify: false
+  # The URL of the HTTPS proxy to be used by cloud-operator to connect to
+  # Illumio CloudSecure. If not set, no proxy will be used.
+  httpsProxy: ""
+
+  # The UDP port on which cloud-operator is receiving IPFIX messages.
+  # Currently, only OVS/OVN-k flow templates are supported, and cloud-operator
+  # only listens on this port if it detects at startup that OVN-k is installed.
+  # UDP 4739 is the standard port for IPFIX over UDP and should not be changed.
+  ipfixCollectorPort: 4739
+
+  # The API URL used by cloud-operator to onboard itself if onboardingSecret
+  # is set and clusterCredsSecret is not set.
+  # This variable may only be modified for testing.
   onboardingEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
-  tokenEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
+
+  # The interval between log entries with statistics about
+  # the flows and resource mutations that were sent to the server.
+  statsLogPeriod: "30m"
+
+  # The intervals between keepalive messages sent over each stream.
   streamKeepalivePeriods:
+    configuration: "10s"
     kubernetesResources: "10s"
     kubernetesNetworkFlows: "10s"
     logs: "10s"
-    configuration: "10s"
+
+  # The duration that a stream be in a connected state for it to be considered
+  # successfully connected.
   streamSuccessPeriods:
-    connect: "1h"
     auth: "2h"
-  httpsProxy: ""
-  ipfixCollectorPort: 4739
+    connect: "1h"
+
+  # If true, disables the verification of TLS certificates of API endpoints.
+  # This variable may only be modified for testing.
+  tlsSkipVerify: false
+
+  # The API URL used by cloud-operator to authenticate itself after it has been
+  # onboarded.
+  # This variable may only be modified for testing.
+  tokenEndpoint: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
+
+  # If true, enables verbose debugging.
   verboseDebugging: false

@@ -23,7 +23,7 @@ spec:
     # that runs on every worker node in OpenShift OVN-k clusters.
     - ports:
         - protocol: UDP
-          port: 4739
+          port: {{ .Values.env.ipfixCollectorPort }}
       {{- if .Values.openshift.workerNodeCidrs }}
       from:
         {{- range .Values.openshift.workerNodeCidrs }}

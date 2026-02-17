@@ -23,7 +23,7 @@ jobs:
 
       - name: Install helm-unittest plugin
         run: |
-          helm plugin install https://github.com/helm-unittest/helm-unittest.git
+          helm plugin install --version v1.0.3 https://github.com/helm-unittest/helm-unittest.git
 
       - name: Run Helm lint and unit tests
         run: |

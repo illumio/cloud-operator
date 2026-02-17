@@ -48,6 +48,9 @@
                 "onboardingEndpoint": {
                     "type": "string"
                 },
+                "statsLogPeriod": {
+                    "type": "string"
+                },
                 "streamKeepalivePeriods": {
                     "type": "object",
                     "properties": {

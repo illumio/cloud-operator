@@ -6,6 +6,7 @@ ARG GCI_VERSION=v0.13.7
 ARG GOLANGCI_VERSION=v2.5.0
 ARG GOPS_VERSION=v0.3.29
 ARG HELM_VERSION=v3.19.0
+ARG HELM_UNITTEST_VERSION=v1.0.3
 ARG KIND_VERSION=v0.30.0
 ARG SBOM_UTILITY=v0.18.1
 ARG SYFT_VERSION=v1.31.0
@@ -47,6 +48,8 @@ RUN go install github.com/bufbuild/buf/cmd/buf@${BUF_VERSION} \
     && go install sigs.k8s.io/kind@${KIND_VERSION} \
     && go install github.com/CycloneDX/sbom-utility@${SBOM_UTILITY} \
     && go install github.com/anchore/syft/cmd/syft@${SYFT_VERSION}
+
+RUN helm plugin install --version ${HELM_UNITTEST_VERSION} https://github.com/helm-unittest/helm-unittest.git
 
 USER root
 

@@ -53,24 +53,24 @@ func (s *StreamStats) GetAndResetStats() (flowsReceived, flowsSent, mutations ui
 	return
 }
 
-// StartStatsLogger starts a goroutine that logs stream statistics at the configured interval.
+// StartStatsLogger starts a goroutine that logs stream statistics at the configured period.
 // If stats or logger is nil, the function returns immediately without starting the logger.
-func StartStatsLogger(ctx context.Context, logger *zap.Logger, stats *StreamStats, interval time.Duration) {
+func StartStatsLogger(ctx context.Context, logger *zap.Logger, stats *StreamStats, period time.Duration) {
 	if stats == nil || logger == nil {
 		return
 	}
 
-	if interval <= 0 {
-		logger.Info("Stream stats logging disabled (interval <= 0)")
+	if period <= 0 {
+		logger.Info("Stream stats logging disabled (period <= 0)")
 
 		return
 	}
 
 	go func() {
-		ticker := time.NewTicker(interval)
+		ticker := time.NewTicker(period)
 		defer ticker.Stop()
 
-		logger.Info("Stream stats logger started", zap.Duration("interval", interval))
+		logger.Info("Stream stats logger started", zap.Duration("period", period))
 
 		for {
 			select {
@@ -81,7 +81,7 @@ func StartStatsLogger(ctx context.Context, logger *zap.Logger, stats *StreamStat
 			case <-ticker.C:
 				flowsReceived, flowsSent, mutations := stats.GetAndResetStats()
 				logger.Info("Stream statistics",
-					zap.Duration("period", interval),
+					zap.Duration("period", period),
 					zap.Uint64("flows_received", flowsReceived),
 					zap.Uint64("flows_sent_to_cluster_sync", flowsSent),
 					zap.Uint64("resource_mutations", mutations),
