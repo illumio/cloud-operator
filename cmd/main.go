@@ -35,15 +35,15 @@ import (
 const (
 	defaultPodNamespace = "illumio-cloud"
 
-	defaultStreamKeepalivePeriodKubernetesResources    = "10s"
-	defaultStreamKeepalivePeriodKubernetesNetworkFlows = "10s"
-	defaultStreamKeepalivePeriodLogs                   = "10s"
+	defaultStatsLogPeriod = "30m"
+
 	defaultStreamKeepalivePeriodConfiguration          = "10s"
+	defaultStreamKeepalivePeriodKubernetesNetworkFlows = "10s"
+	defaultStreamKeepalivePeriodKubernetesResources    = "10s"
+	defaultStreamKeepalivePeriodLogs                   = "10s"
 
-	defaultStreamSuccessPeriodConnect = "1h"
 	defaultStreamSuccessPeriodAuth    = "2h"
-
-	defaultStatsLogInterval = "30m"
+	defaultStreamSuccessPeriodConnect = "1h"
 )
 
 // newHealthHandler returns an HTTP HandlerFunc that checks the health of the
@@ -85,92 +85,90 @@ func main() {
 	viper.AutomaticEnv()
 
 	// Bind specific environment variables to keys
-	bindEnv(logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
 	bindEnv(logger, "cilium_namespaces", "CILIUM_NAMESPACES")
+	bindEnv(logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
 	bindEnv(logger, "https_proxy", "HTTPS_PROXY")
 	bindEnv(logger, "ipfix_collector_port", "IPFIX_COLLECTOR_PORT")
 	bindEnv(logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
 	bindEnv(logger, "onboarding_client_secret", "ONBOARDING_CLIENT_SECRET")
 	bindEnv(logger, "onboarding_endpoint", "ONBOARDING_ENDPOINT")
 	bindEnv(logger, "ovnk_namespace", "OVNK_NAMESPACE")
-	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
-	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
-	bindEnv(logger, "stream_keepalive_period_kubernetes_resources", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES")
-	bindEnv(logger, "stream_keepalive_period_kubernetes_network_flows", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS")
-	bindEnv(logger, "stream_keepalive_period_logs", "STREAM_KEEPALIVE_PERIOD_LOGS")
-	bindEnv(logger, "stream_keepalive_period_configuration", "STREAM_KEEPALIVE_PERIOD_CONFIGURATION")
 	bindEnv(logger, "pod_namespace", "POD_NAMESPACE")
-	bindEnv(logger, "stream_success_period_connect", "STREAM_SUCCESS_PERIOD_CONNECT")
+	bindEnv(logger, "stats_log_period", "STATS_LOG_PERIOD")
+	bindEnv(logger, "stream_keepalive_period_configuration", "STREAM_KEEPALIVE_PERIOD_CONFIGURATION")
+	bindEnv(logger, "stream_keepalive_period_kubernetes_network_flows", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS")
+	bindEnv(logger, "stream_keepalive_period_kubernetes_resources", "STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES")
+	bindEnv(logger, "stream_keepalive_period_logs", "STREAM_KEEPALIVE_PERIOD_LOGS")
 	bindEnv(logger, "stream_success_period_auth", "STREAM_SUCCESS_PERIOD_AUTH")
-	bindEnv(logger, "https_proxy", "HTTPS_PROXY")
+	bindEnv(logger, "stream_success_period_connect", "STREAM_SUCCESS_PERIOD_CONNECT")
+	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
+	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "verbose_debugging", "VERBOSE_DEBUGGING")
-	bindEnv(logger, "stats_log_interval", "STATS_LOG_INTERVAL")
+
 	// Set default values
-	viper.SetDefault("cluster_creds", "clustercreds")
 	viper.SetDefault("cilium_namespaces", []string{"kube-system", "gke-managed-dpv2-observability"})
+	viper.SetDefault("cluster_creds", "clustercreds")
 	viper.SetDefault("https_proxy", "")
 	viper.SetDefault("ipfix_collector_port", "4739")
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
 	viper.SetDefault("ovnk_namespace", "openshift-ovn-kubernetes")
-	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
-	viper.SetDefault("tls_skip_verify", false)
-	viper.SetDefault("stream_keepalive_period_kubernetes_resources", defaultStreamKeepalivePeriodKubernetesResources)
-	viper.SetDefault("stream_keepalive_period_kubernetes_network_flows", defaultStreamKeepalivePeriodKubernetesNetworkFlows)
-	viper.SetDefault("stream_keepalive_period_logs", defaultStreamKeepalivePeriodLogs)
-	viper.SetDefault("stream_keepalive_period_configuration", defaultStreamKeepalivePeriodConfiguration)
 	viper.SetDefault("pod_namespace", defaultPodNamespace)
-	viper.SetDefault("stream_success_period_connect", defaultStreamSuccessPeriodConnect)
+	viper.SetDefault("stats_log_period", defaultStatsLogPeriod)
+	viper.SetDefault("stream_keepalive_period_configuration", defaultStreamKeepalivePeriodConfiguration)
+	viper.SetDefault("stream_keepalive_period_kubernetes_network_flows", defaultStreamKeepalivePeriodKubernetesNetworkFlows)
+	viper.SetDefault("stream_keepalive_period_kubernetes_resources", defaultStreamKeepalivePeriodKubernetesResources)
+	viper.SetDefault("stream_keepalive_period_logs", defaultStreamKeepalivePeriodLogs)
 	viper.SetDefault("stream_success_period_auth", defaultStreamSuccessPeriodAuth)
-	viper.SetDefault("https_proxy", "")
+	viper.SetDefault("stream_success_period_connect", defaultStreamSuccessPeriodConnect)
+	viper.SetDefault("tls_skip_verify", false)
+	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("verbose_debugging", false)
-	viper.SetDefault("stats_log_interval", defaultStatsLogInterval)
 
 	envConfig := controller.EnvironmentConfig{
-		ClusterCreds:           viper.GetString("cluster_creds"),
-		CiliumNamespaces:       viper.GetStringSlice("cilium_namespaces"),
-		HttpsProxy:             viper.GetString("https_proxy"),
-		IPFIXCollectorPort:     viper.GetString("ipfix_collector_port"),
+		CiliumNamespaces:   viper.GetStringSlice("cilium_namespaces"),
+		ClusterCreds:       viper.GetString("cluster_creds"),
+		HttpsProxy:         viper.GetString("https_proxy"),
+		IPFIXCollectorPort: viper.GetString("ipfix_collector_port"),
+		KeepalivePeriods: controller.KeepalivePeriods{
+			Configuration:          viper.GetDuration("stream_keepalive_period_configuration"),
+			KubernetesNetworkFlows: viper.GetDuration("stream_keepalive_period_kubernetes_network_flows"),
+			KubernetesResources:    viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
+			Logs:                   viper.GetDuration("stream_keepalive_period_logs"),
+		},
 		OnboardingClientID:     viper.GetString("onboarding_client_id"),
 		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
 		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
 		OVNKNamespace:          viper.GetString("ovnk_namespace"),
-		TokenEndpoint:          viper.GetString("token_endpoint"),
-		TlsSkipVerify:          viper.GetBool("tls_skip_verify"),
-		KeepalivePeriods: controller.KeepalivePeriods{
-			KubernetesResources:    viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
-			KubernetesNetworkFlows: viper.GetDuration("stream_keepalive_period_kubernetes_network_flows"),
-			Logs:                   viper.GetDuration("stream_keepalive_period_logs"),
-			Configuration:          viper.GetDuration("stream_keepalive_period_configuration"),
-		},
-		PodNamespace: viper.GetString("pod_namespace"),
-		StreamSuccessPeriod: controller.StreamSuccessPeriod{
-			Connect: viper.GetDuration("stream_success_period_connect"),
+		PodNamespace:           viper.GetString("pod_namespace"),
+		StatsLogPeriod:         viper.GetDuration("stats_log_period"),
+		StreamSuccessPeriods: controller.StreamSuccessPeriods{
 			Auth:    viper.GetDuration("stream_success_period_auth"),
+			Connect: viper.GetDuration("stream_success_period_connect"),
 		},
+		TlsSkipVerify:    viper.GetBool("tls_skip_verify"),
+		TokenEndpoint:    viper.GetString("token_endpoint"),
 		VerboseDebugging: viper.GetBool("verbose_debugging"),
-		StatsLogInterval: viper.GetDuration("stats_log_interval"),
 	}
 
 	logger.Info("Starting application",
-		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
 		zap.Strings("cilium_namespaces", envConfig.CiliumNamespaces),
+		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
 		zap.String("https_proxy", envConfig.HttpsProxy),
+		zap.String("ipfix_collector_port", envConfig.IPFIXCollectorPort),
 		zap.String("onboarding_client_id", envConfig.OnboardingClientID),
 		zap.String("onboarding_endpoint", envConfig.OnboardingEndpoint),
 		zap.String("ovnk_namespace", envConfig.OVNKNamespace),
-		zap.String("ipfix_collector_port", envConfig.IPFIXCollectorPort),
-		zap.String("token_endpoint", envConfig.TokenEndpoint),
-		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
-		zap.Duration("stream_keepalive_period_kubernetes_resources", envConfig.KeepalivePeriods.KubernetesResources),
-		zap.Duration("stream_keepalive_period_kubernetes_network_flows", envConfig.KeepalivePeriods.KubernetesNetworkFlows),
-		zap.Duration("stream_keepalive_period_logs", envConfig.KeepalivePeriods.Logs),
-		zap.Duration("stream_keepalive_period_configuration", envConfig.KeepalivePeriods.Configuration),
 		zap.String("pod_namespace", envConfig.PodNamespace),
-		zap.Duration("stream_success_period_connect", envConfig.StreamSuccessPeriod.Connect),
-		zap.Duration("stream_success_period_auth", envConfig.StreamSuccessPeriod.Auth),
-		zap.String("https_proxy", envConfig.HttpsProxy),
+		zap.Duration("stats_log_period", envConfig.StatsLogPeriod),
+		zap.Duration("stream_keepalive_period_configuration", envConfig.KeepalivePeriods.Configuration),
+		zap.Duration("stream_keepalive_period_kubernetes_network_flows", envConfig.KeepalivePeriods.KubernetesNetworkFlows),
+		zap.Duration("stream_keepalive_period_kubernetes_resources", envConfig.KeepalivePeriods.KubernetesResources),
+		zap.Duration("stream_keepalive_period_logs", envConfig.KeepalivePeriods.Logs),
+		zap.Duration("stream_success_period_auth", envConfig.StreamSuccessPeriods.Auth),
+		zap.Duration("stream_success_period_connect", envConfig.StreamSuccessPeriods.Connect),
+		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
+		zap.String("token_endpoint", envConfig.TokenEndpoint),
 		zap.Bool("verbose_debugging", envConfig.VerboseDebugging),
-		zap.Duration("stats_log_interval", envConfig.StatsLogInterval),
 	)
 
 	// Start the gops agent

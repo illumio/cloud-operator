@@ -69,15 +69,15 @@ type streamManager struct {
 }
 
 type KeepalivePeriods struct {
-	KubernetesNetworkFlows time.Duration
-	Logs                   time.Duration
-	KubernetesResources    time.Duration
 	Configuration          time.Duration
+	KubernetesNetworkFlows time.Duration
+	KubernetesResources    time.Duration
+	Logs                   time.Duration
 }
 
-type StreamSuccessPeriod struct {
-	Connect time.Duration
+type StreamSuccessPeriods struct {
 	Auth    time.Duration
+	Connect time.Duration
 }
 
 type watcherInfo struct {
@@ -91,34 +91,34 @@ type EnvironmentConfig struct {
 	CiliumNamespaces []string
 	// K8s cluster secret name.
 	ClusterCreds string
+	// HTTP Proxy URL
+	HttpsProxy string
+	// Port for the IPFIX collector
+	IPFIXCollectorPort string
+	// KeepalivePeriods specifies the period (minus jitter) between two keepalives sent on each stream
+	KeepalivePeriods KeepalivePeriods
 	// Client ID for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
 	OnboardingClientID string
 	// Client secret for onboarding. "" if not specified, i.e. if the operator is not meant to onboard itself.
 	OnboardingClientSecret string
 	// URL of the onboarding endpoint.
 	OnboardingEndpoint string
-	// Port for the IPFIX collector
-	IPFIXCollectorPort string
 	// Namespace of OVN-Kubernetes
 	OVNKNamespace string
-	// URL of the token endpoint.
-	TokenEndpoint string
-	// Whether to skip TLS certificate verification when starting a stream.
-	TlsSkipVerify bool
-	// KeepalivePeriods specifies the period (minus jitter) between two keepalives sent on each stream
-	KeepalivePeriods KeepalivePeriods
 	// PodNamespace is the namespace where the cloud-operator is deployed
 	PodNamespace string
+	// StatsLogPeriod is the period between log entries containing stream stats.
+	// Set to 0 to disable stats logging.
+	StatsLogPeriod time.Duration
 	// How long must a stream be in a state for our exponentialBackoff function to
 	// consider it a success.
-	StreamSuccessPeriod StreamSuccessPeriod
-	// HTTP Proxy URL
-	HttpsProxy string
+	StreamSuccessPeriods StreamSuccessPeriods
+	// Whether to skip TLS certificate verification when starting a stream.
+	TlsSkipVerify bool
+	// URL of the token endpoint.
+	TokenEndpoint string
 	// Whether to enable verbose debugging.
 	VerboseDebugging bool
-	// StatsLogInterval is the interval at which stream statistics are logged.
-	// Set to 0 to disable stats logging.
-	StatsLogInterval time.Duration
 }
 
 var resources = []string{
@@ -772,7 +772,7 @@ func (sm *streamManager) manageStream(
 	connectAndStream func(*zap.Logger, time.Duration) error,
 	done chan struct{},
 	keepalivePeriod time.Duration,
-	streamSuccessPeriod StreamSuccessPeriod,
+	streamSuccessPeriod StreamSuccessPeriods,
 ) {
 	defer close(done)
 
@@ -937,7 +937,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			}
 
 			// Start periodic stats logger
-			StartStatsLogger(authConContext, logger, stats, envMap.StatsLogInterval)
+			StartStatsLogger(authConContext, logger, stats, envMap.StatsLogPeriod)
 
 			resourceDone := make(chan struct{})
 			logDone := make(chan struct{})
@@ -950,7 +950,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				sm.connectAndStreamResources,
 				resourceDone,
 				envMap.KeepalivePeriods.KubernetesResources,
-				envMap.StreamSuccessPeriod,
+				envMap.StreamSuccessPeriods,
 			)
 
 			go sm.manageStream(
@@ -958,7 +958,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				sm.connectAndStreamLogs,
 				logDone,
 				envMap.KeepalivePeriods.Logs,
-				envMap.StreamSuccessPeriod,
+				envMap.StreamSuccessPeriods,
 			)
 
 			go sm.manageStream(
@@ -966,7 +966,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				sm.connectAndStreamConfigurationUpdates,
 				configDone,
 				envMap.KeepalivePeriods.Configuration,
-				envMap.StreamSuccessPeriod,
+				envMap.StreamSuccessPeriods,
 			)
 
 			flowCacheRunDone := make(chan struct{})
@@ -1002,7 +1002,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				streamFunc,
 				networkFlowsDone,
 				envMap.KeepalivePeriods.KubernetesNetworkFlows,
-				envMap.StreamSuccessPeriod,
+				envMap.StreamSuccessPeriods,
 			)
 
 			go func() {
