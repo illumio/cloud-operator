@@ -55,57 +55,63 @@ tests:
           value: "POD_NAMESPACE"
       - equal:
           path: spec.template.spec.containers[0].env[9].name
-          value: "STREAM_KEEPALIVE_PERIOD_CONFIGURATION"
+          value: "STATS_LOG_PERIOD"
       - equal:
           path: spec.template.spec.containers[0].env[9].value
-          value: "10s"
+          value: "30m"
       - equal:
           path: spec.template.spec.containers[0].env[10].name
-          value: "STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS"
+          value: "STREAM_KEEPALIVE_PERIOD_CONFIGURATION"
       - equal:
           path: spec.template.spec.containers[0].env[10].value
           value: "10s"
       - equal:
           path: spec.template.spec.containers[0].env[11].name
-          value: "STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES"
+          value: "STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS"
       - equal:
           path: spec.template.spec.containers[0].env[11].value
           value: "10s"
       - equal:
           path: spec.template.spec.containers[0].env[12].name
-          value: "STREAM_KEEPALIVE_PERIOD_LOGS"
+          value: "STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES"
       - equal:
           path: spec.template.spec.containers[0].env[12].value
           value: "10s"
       - equal:
           path: spec.template.spec.containers[0].env[13].name
-          value: "STREAM_SUCCESS_PERIOD_AUTH"
+          value: "STREAM_KEEPALIVE_PERIOD_LOGS"
       - equal:
           path: spec.template.spec.containers[0].env[13].value
-          value: "2h"
+          value: "10s"
       - equal:
           path: spec.template.spec.containers[0].env[14].name
-          value: "STREAM_SUCCESS_PERIOD_CONNECT"
+          value: "STREAM_SUCCESS_PERIOD_AUTH"
       - equal:
           path: spec.template.spec.containers[0].env[14].value
-          value: "1h"
+          value: "2h"
       - equal:
           path: spec.template.spec.containers[0].env[15].name
-          value: "TLS_SKIP_VERIFY"
+          value: "STREAM_SUCCESS_PERIOD_CONNECT"
       - equal:
           path: spec.template.spec.containers[0].env[15].value
-          value: "true"
+          value: "1h"
       - equal:
           path: spec.template.spec.containers[0].env[16].name
-          value: "TOKEN_ENDPOINT"
+          value: "TLS_SKIP_VERIFY"
       - equal:
           path: spec.template.spec.containers[0].env[16].value
-          value: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[17].name
-          value: "VERBOSE_DEBUGGING"
+          value: "TOKEN_ENDPOINT"
       - equal:
           path: spec.template.spec.containers[0].env[17].value
+          value: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
+      - equal:
+          path: spec.template.spec.containers[0].env[18].name
+          value: "VERBOSE_DEBUGGING"
+      - equal:
+          path: spec.template.spec.containers[0].env[18].value
           value: "false"
 
   # Test for replicaCount value
