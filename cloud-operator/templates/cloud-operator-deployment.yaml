@@ -52,7 +52,7 @@ spec:
           ports:
             - containerPort: 8080
             - containerPort: 5000
-            - containerPort: 4739
+            - containerPort: {{ .Values.env.ipfixCollectorPort }}
               protocol: UDP
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
