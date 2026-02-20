@@ -184,12 +184,15 @@ func (sm *streamManager) disableSubsystemCausingError(err error, logger *zap.Log
 	switch {
 	case errors.Is(err, tls.ErrTLSALPNHandshakeFailed):
 		logger.Info("Disabling ALPN for Cilium connection, will retry")
+
 		sm.streamClient.tlsAuthProperties.DisableALPN = true
 	case errors.Is(err, tls.ErrNoTLSHandshakeFailed):
 		logger.Info("Disabling TLS for Cilium connection, will retry")
+
 		sm.streamClient.tlsAuthProperties.DisableTLS = true
 	default:
 		logger.Warn("Disabling Cilium flow collection due to unrecoverable error", zap.Error(err))
+
 		sm.streamClient.disableNetworkFlowsCilium = true
 	}
 }
@@ -564,7 +567,12 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 
 	err := ciliumFlowCollector.exportCiliumFlows(ctx, sm)
 	if err != nil {
-		logger.Debug("Cilium flow collection interrupted, will retry", zap.Error(err))
+		if errors.Is(err, tls.ErrTLSALPNHandshakeFailed) || errors.Is(err, tls.ErrNoTLSHandshakeFailed) {
+			logger.Debug("Cilium flow collection interrupted due to TLS handshake, will retry", zap.Error(err))
+		} else {
+			logger.Warn("Cilium flow collection interrupted, will retry", zap.Error(err))
+		}
+
 		sm.disableSubsystemCausingError(err, logger)
 
 		return err

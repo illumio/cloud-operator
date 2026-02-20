@@ -5,6 +5,7 @@ package controller
 import (
 	"context"
 	cryptotls "crypto/tls"
+	"errors"
 	"fmt"
 
 	"github.com/cilium/cilium/api/v1/flow"
@@ -63,9 +64,9 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 		// Step 3: Get TLS config (unless disabled)
 		tlsConfig, err = hubble.GetTLSConfig(ctx, clientset, logger, ciliumHubbleMTLSSecretName, ciliumNamespace)
 		if err != nil {
-			logger.Info("TLS certificates not found, proceeding without mTLS",
+			logger.Info("Failed to obtain TLS configuration, proceeding without mTLS",
 				zap.String("namespace", ciliumNamespace),
-				zap.String("reason", err.Error()))
+				zap.Error(err))
 
 			tlsConfig = nil
 		}
@@ -220,7 +221,11 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 	stream, err := observerClient.GetFlows(ctx, req)
 	if err != nil {
 		err = tls.AsTLSHandshakeError(err)
-		fm.logger.Debug("Failed to get network flows from Hubble Relay", zap.Error(err))
+		if errors.Is(err, tls.ErrTLSALPNHandshakeFailed) || errors.Is(err, tls.ErrNoTLSHandshakeFailed) {
+			fm.logger.Debug("Failed to get network flows due to TLS handshake, will retry", zap.Error(err))
+		} else {
+			fm.logger.Warn("Failed to get network flows from Hubble Relay", zap.Error(err))
+		}
 
 		return err
 	}
