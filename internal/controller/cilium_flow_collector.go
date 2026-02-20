@@ -63,13 +63,15 @@ func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNames
 		// Step 3: Get TLS config (unless disabled)
 		tlsConfig, err = hubble.GetTLSConfig(ctx, clientset, logger, ciliumHubbleMTLSSecretName, ciliumNamespace)
 		if err != nil {
-			logger.Warn("Failed to get TLS config", zap.String("namespace", ciliumNamespace), zap.Error(err))
+			logger.Info("TLS certificates not found, proceeding without mTLS",
+				zap.String("namespace", ciliumNamespace),
+				zap.String("reason", err.Error()))
 
 			tlsConfig = nil
 		}
 
 		if tlsAuthProperties.DisableTLS {
-			logger.Info("TLS is disabled via configuration")
+			logger.Debug("Retrying connection to Hubble Relay without TLS")
 
 			tlsConfig = nil
 		}
@@ -218,10 +220,12 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 	stream, err := observerClient.GetFlows(ctx, req)
 	if err != nil {
 		err = tls.AsTLSHandshakeError(err)
-		fm.logger.Error("Error getting network flows", zap.Error(err))
+		fm.logger.Debug("Failed to get network flows from Hubble Relay", zap.Error(err))
 
 		return err
 	}
+
+	fm.logger.Info("Started collecting Cilium network flows")
 
 	defer func() {
 		err = stream.CloseSend()
