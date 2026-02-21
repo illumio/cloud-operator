@@ -180,13 +180,19 @@ func ServerIsHealthy() bool {
 // we have a nicely typed error. If we recognize the specific error,
 // then disable JUST the subsystem that caused it. If we do not
 // recognize the error, then just give up entirely on exporting Cilium flows.
-func (sm *streamManager) disableSubsystemCausingError(err error) {
+func (sm *streamManager) disableSubsystemCausingError(err error, logger *zap.Logger) {
 	switch {
 	case errors.Is(err, tls.ErrTLSALPNHandshakeFailed):
+		logger.Info("Disabling ALPN for Hubble Relay connection; will retry connecting")
+
 		sm.streamClient.tlsAuthProperties.DisableALPN = true
 	case errors.Is(err, tls.ErrNoTLSHandshakeFailed):
+		logger.Info("Disabling TLS for Hubble Relay connection; will retry connecting")
+
 		sm.streamClient.tlsAuthProperties.DisableTLS = true
 	default:
+		logger.Warn("Disabling network flow collection from Hubble Relay due to unrecoverable error", zap.Error(err))
+
 		sm.streamClient.disableNetworkFlowsCilium = true
 	}
 }
@@ -561,8 +567,13 @@ func (sm *streamManager) StreamCiliumNetworkFlows(ctx context.Context, logger *z
 
 	err := ciliumFlowCollector.exportCiliumFlows(ctx, sm)
 	if err != nil {
-		logger.Warn("Failed to collect and export flows from Cilium Hubble Relay", zap.Error(err))
-		sm.disableSubsystemCausingError(err)
+		if errors.Is(err, tls.ErrTLSALPNHandshakeFailed) || errors.Is(err, tls.ErrNoTLSHandshakeFailed) {
+			logger.Debug("Network flow collection from Hubble Relay interrupted due to failing TLS handshake; will retry connecting", zap.Error(err))
+		} else {
+			logger.Warn("Network flow collection from Hubble Relay interrupted; will retry connecting", zap.Error(err))
+		}
+
+		sm.disableSubsystemCausingError(err, logger)
 
 		return err
 	}
