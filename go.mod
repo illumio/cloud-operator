@@ -1,6 +1,6 @@
 module github.com/illumio/cloud-operator
 
-go 1.24.4
+go 1.25.0
 
 require (
 	github.com/cilium/cilium v1.18.6
@@ -63,7 +63,7 @@ require (
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/term v0.39.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
-	golang.org/x/time v0.14.0
+	golang.org/x/time v0.15.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
