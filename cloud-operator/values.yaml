@@ -142,3 +142,7 @@ env:
 
   # If true, enables verbose debugging.
   verboseDebugging: false
+
+  # GRPC internal log verbosity level (0=disabled, 1=basic, 2=verbose).
+  # Captures connection states, TLS handshakes, and transport events.
+  grpcInternalLogVerbosity: 1

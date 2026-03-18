@@ -102,6 +102,8 @@ spec:
               value: "{{ .Values.env.tokenEndpoint }}"
             - name: VERBOSE_DEBUGGING
               value: "{{ .Values.env.verboseDebugging }}"
+            - name: GRPC_INTERNAL_LOG_VERBOSITY
+              value: "{{ .Values.env.grpcInternalLogVerbosity }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
