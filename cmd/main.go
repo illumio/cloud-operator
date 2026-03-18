@@ -104,7 +104,7 @@ func main() {
 	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "verbose_debugging", "VERBOSE_DEBUGGING")
-	bindEnv(logger, "grpc_internal_log_verbosity", "GRPC_INTERNAL_LOG_VERBOSITY")
+	bindEnv(logger, "grpc_internal_logging", "GRPC_INTERNAL_LOGGING")
 
 	// Set default values
 	viper.SetDefault("cilium_namespaces", []string{"kube-system", "gke-managed-dpv2-observability"})
@@ -124,13 +124,10 @@ func main() {
 	viper.SetDefault("tls_skip_verify", false)
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("verbose_debugging", false)
-	viper.SetDefault("grpc_internal_log_verbosity", 1) // 0=disabled, 1=basic, 2=verbose
+	viper.SetDefault("grpc_internal_logging", false)
 
-	// Setup GRPC internal logging to capture connection states, TLS handshakes, transport events
-	grpcVerbosity := viper.GetInt("grpc_internal_log_verbosity")
-	if grpcVerbosity > 0 {
-		controller.SetupGRPCInternalLogging(logger, grpcVerbosity)
-		logger.Info("GRPC internal logging enabled", zap.Int("verbosity", grpcVerbosity))
+	if viper.GetBool("grpc_internal_logging") {
+		controller.SetupGRPCInternalLogging(logger)
 	}
 
 	envConfig := controller.EnvironmentConfig{
@@ -163,7 +160,6 @@ func main() {
 		zap.Strings("cilium_namespaces", envConfig.CiliumNamespaces),
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
 		zap.String("https_proxy", envConfig.HttpsProxy),
-		zap.Int("grpc_internal_log_verbosity", grpcVerbosity),
 		zap.String("ipfix_collector_port", envConfig.IPFIXCollectorPort),
 		zap.String("onboarding_client_id", envConfig.OnboardingClientID),
 		zap.String("onboarding_endpoint", envConfig.OnboardingEndpoint),

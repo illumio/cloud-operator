@@ -6,122 +6,155 @@ import (
 	"testing"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc/grpclog"
 )
 
 func TestGRPCInternalLogger_ImplementsInterface(t *testing.T) {
 	logger := zap.NewNop()
-	grpcLogger := NewGRPCInternalLogger(logger, 2)
+	grpcLogger := NewGRPCInternalLogger(logger)
 
 	// Verify it implements grpclog.LoggerV2
 	var _ grpclog.LoggerV2 = grpcLogger
 }
 
-func TestGRPCInternalLogger_Info(t *testing.T) {
-	core, logs := observer.New(zap.InfoLevel)
+func TestGRPCInternalLogger_Info_DemotedToDebug(t *testing.T) {
+	core, logs := observer.New(zap.DebugLevel)
 	logger := zap.New(core)
-	grpcLogger := NewGRPCInternalLogger(logger, 2)
+	grpcLogger := NewGRPCInternalLogger(logger)
 
 	grpcLogger.Info("test message")
 
 	if logs.Len() != 1 {
-		t.Errorf("expected 1 log entry, got %d", logs.Len())
+		t.Fatalf("expected 1 log entry, got %d", logs.Len())
+	}
+
+	entry := logs.All()[0]
+	if entry.Level != zapcore.DebugLevel {
+		t.Errorf("expected DEBUG level, got %s", entry.Level)
+	}
+	if entry.Message != "test message" {
+		t.Errorf("expected message 'test message', got '%s'", entry.Message)
 	}
 }
 
-func TestGRPCInternalLogger_Infof(t *testing.T) {
-	core, logs := observer.New(zap.InfoLevel)
+func TestGRPCInternalLogger_Infof_DemotedToDebug(t *testing.T) {
+	core, logs := observer.New(zap.DebugLevel)
 	logger := zap.New(core)
-	grpcLogger := NewGRPCInternalLogger(logger, 2)
+	grpcLogger := NewGRPCInternalLogger(logger)
 
 	grpcLogger.Infof("test %s %d", "message", 42)
 
 	if logs.Len() != 1 {
-		t.Errorf("expected 1 log entry, got %d", logs.Len())
+		t.Fatalf("expected 1 log entry, got %d", logs.Len())
+	}
+
+	entry := logs.All()[0]
+	if entry.Level != zapcore.DebugLevel {
+		t.Errorf("expected DEBUG level, got %s", entry.Level)
+	}
+	if entry.Message != "test message 42" {
+		t.Errorf("expected message 'test message 42', got '%s'", entry.Message)
 	}
 }
 
-func TestGRPCInternalLogger_Warning(t *testing.T) {
-	core, logs := observer.New(zap.WarnLevel)
+func TestGRPCInternalLogger_Warning_MapsToWarn(t *testing.T) {
+	core, logs := observer.New(zap.DebugLevel)
 	logger := zap.New(core)
-	grpcLogger := NewGRPCInternalLogger(logger, 2)
+	grpcLogger := NewGRPCInternalLogger(logger)
 
 	grpcLogger.Warning("warning message")
 
 	if logs.Len() != 1 {
-		t.Errorf("expected 1 log entry, got %d", logs.Len())
+		t.Fatalf("expected 1 log entry, got %d", logs.Len())
+	}
+
+	entry := logs.All()[0]
+	if entry.Level != zapcore.WarnLevel {
+		t.Errorf("expected WARN level, got %s", entry.Level)
+	}
+	if entry.Message != "warning message" {
+		t.Errorf("expected message 'warning message', got '%s'", entry.Message)
 	}
 }
 
-func TestGRPCInternalLogger_Warningf(t *testing.T) {
-	core, logs := observer.New(zap.WarnLevel)
+func TestGRPCInternalLogger_Warningf_MapsToWarn(t *testing.T) {
+	core, logs := observer.New(zap.DebugLevel)
 	logger := zap.New(core)
-	grpcLogger := NewGRPCInternalLogger(logger, 2)
+	grpcLogger := NewGRPCInternalLogger(logger)
 
-	grpcLogger.Warningf("warning %s", "message")
+	grpcLogger.Warningf("warning %s", "formatted")
 
 	if logs.Len() != 1 {
-		t.Errorf("expected 1 log entry, got %d", logs.Len())
+		t.Fatalf("expected 1 log entry, got %d", logs.Len())
+	}
+
+	entry := logs.All()[0]
+	if entry.Level != zapcore.WarnLevel {
+		t.Errorf("expected WARN level, got %s", entry.Level)
+	}
+	if entry.Message != "warning formatted" {
+		t.Errorf("expected message 'warning formatted', got '%s'", entry.Message)
 	}
 }
 
-func TestGRPCInternalLogger_Error(t *testing.T) {
-	core, logs := observer.New(zap.ErrorLevel)
+func TestGRPCInternalLogger_Error_MapsToError(t *testing.T) {
+	core, logs := observer.New(zap.DebugLevel)
 	logger := zap.New(core)
-	grpcLogger := NewGRPCInternalLogger(logger, 2)
+	grpcLogger := NewGRPCInternalLogger(logger)
 
 	grpcLogger.Error("error message")
 
 	if logs.Len() != 1 {
-		t.Errorf("expected 1 log entry, got %d", logs.Len())
+		t.Fatalf("expected 1 log entry, got %d", logs.Len())
+	}
+
+	entry := logs.All()[0]
+	if entry.Level != zapcore.ErrorLevel {
+		t.Errorf("expected ERROR level, got %s", entry.Level)
+	}
+	if entry.Message != "error message" {
+		t.Errorf("expected message 'error message', got '%s'", entry.Message)
 	}
 }
 
-func TestGRPCInternalLogger_Errorf(t *testing.T) {
-	core, logs := observer.New(zap.ErrorLevel)
+func TestGRPCInternalLogger_Errorf_MapsToError(t *testing.T) {
+	core, logs := observer.New(zap.DebugLevel)
 	logger := zap.New(core)
-	grpcLogger := NewGRPCInternalLogger(logger, 2)
+	grpcLogger := NewGRPCInternalLogger(logger)
 
-	grpcLogger.Errorf("error %s", "message")
+	grpcLogger.Errorf("error %s", "formatted")
 
 	if logs.Len() != 1 {
-		t.Errorf("expected 1 log entry, got %d", logs.Len())
+		t.Fatalf("expected 1 log entry, got %d", logs.Len())
+	}
+
+	entry := logs.All()[0]
+	if entry.Level != zapcore.ErrorLevel {
+		t.Errorf("expected ERROR level, got %s", entry.Level)
+	}
+	if entry.Message != "error formatted" {
+		t.Errorf("expected message 'error formatted', got '%s'", entry.Message)
 	}
 }
 
-func TestGRPCInternalLogger_Verbosity(t *testing.T) {
+func TestGRPCInternalLogger_VAlwaysReturnsTrue(t *testing.T) {
 	logger := zap.NewNop()
+	grpcLogger := NewGRPCInternalLogger(logger)
 
-	tests := []struct {
-		name           string
-		configuredVerb int
-		requestedVerb  int
-		expected       bool
-	}{
-		{"verbosity 0, request 0", 0, 0, true},
-		{"verbosity 0, request 1", 0, 1, false},
-		{"verbosity 1, request 0", 1, 0, true},
-		{"verbosity 1, request 1", 1, 1, true},
-		{"verbosity 1, request 2", 1, 2, false},
-		{"verbosity 2, request 2", 2, 2, true},
-		{"verbosity 2, request 3", 2, 3, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			grpcLogger := NewGRPCInternalLogger(logger, tt.configuredVerb)
-			if got := grpcLogger.V(tt.requestedVerb); got != tt.expected {
-				t.Errorf("V(%d) = %v, want %v", tt.requestedVerb, got, tt.expected)
-			}
-		})
+	// V() should always return true since we control visibility via log level
+	for i := range 10 {
+		if !grpcLogger.V(i) {
+			t.Errorf("V(%d) = false, want true", i)
+		}
 	}
 }
 
 func TestGRPCInternalLogger_HasComponentField(t *testing.T) {
-	core, logs := observer.New(zap.InfoLevel)
+	core, logs := observer.New(zap.DebugLevel)
 	logger := zap.New(core)
-	grpcLogger := NewGRPCInternalLogger(logger, 2)
+	grpcLogger := NewGRPCInternalLogger(logger)
 
 	grpcLogger.Info("test")
 

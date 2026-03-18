@@ -113,6 +113,12 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[18].value
           value: "false"
+      - equal:
+          path: spec.template.spec.containers[0].env[19].name
+          value: "GRPC_INTERNAL_LOGGING"
+      - equal:
+          path: spec.template.spec.containers[0].env[19].value
+          value: "false"
 
   # Test for replicaCount value
   - it: should set the correct number of replicas
