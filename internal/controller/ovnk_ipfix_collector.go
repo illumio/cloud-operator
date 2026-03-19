@@ -41,7 +41,7 @@ const ipfixMessageMaxLength = 65535
 
 // isOVNKDeployed checks for the presence of the `openshift-ovn-kubernetes` namespace, detection based on OVN-K namespace, this is configurable.
 // https://ovn-kubernetes.io/installation/launching-ovn-kubernetes-on-kind/#run-the-kind-deployment-with-podman
-func (sm *streamManager) isOVNKDeployed(ctx context.Context, logger *zap.Logger, ovnkNamespace string, clientset *kubernetes.Clientset) bool {
+func (sm *streamManager) isOVNKDeployed(ctx context.Context, logger *zap.Logger, ovnkNamespace string, clientset kubernetes.Interface) bool {
 	logger.Debug("Checking for OVN-K deployment")
 
 	_, err := clientset.CoreV1().Namespaces().Get(ctx, ovnkNamespace, metav1.GetOptions{})
