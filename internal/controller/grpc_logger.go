@@ -29,7 +29,7 @@ type ClientConnInterface interface {
 // BufferedGrpcWriteSyncer is a custom zap writesync that writes to a grpc stream
 // In case stream is not connected it will buffer to memory.
 type BufferedGrpcWriteSyncer struct {
-	client              pb.KubernetesInfoService_SendLogsClient
+	client              LogStream
 	conn                ClientConnInterface
 	buffer              []string
 	mutex               sync.Mutex
@@ -225,7 +225,7 @@ func (b *BufferedGrpcWriteSyncer) sendLogEntry(jsonMessage string) error {
 }
 
 // UpdateClient updates the gRPC connection and connection in the BufferedGrpcWriteSyncer.
-func (b *BufferedGrpcWriteSyncer) UpdateClient(client pb.KubernetesInfoService_SendLogsClient, conn ClientConnInterface) {
+func (b *BufferedGrpcWriteSyncer) UpdateClient(client LogStream, conn ClientConnInterface) {
 	b.mutex.Lock()
 	b.client = client
 	b.conn = conn
