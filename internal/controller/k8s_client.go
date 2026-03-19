@@ -1,4 +1,4 @@
-// Copyright 2024 Illumio, Inc. All Rights Reserved.
+// Copyright 2026 Illumio, Inc. All Rights Reserved.
 
 package controller
 
@@ -15,6 +15,33 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
+
+// KubernetesClient abstracts Kubernetes API operations.
+type KubernetesClient interface {
+	// GetClientset returns the underlying kubernetes.Interface.
+	GetClientset() kubernetes.Interface
+
+	// GetDynamicClient returns the dynamic client for unstructured resources.
+	GetDynamicClient() dynamic.Interface
+
+	// GetDiscoveryClient returns the discovery client for API discovery.
+	GetDiscoveryClient() discovery.DiscoveryInterface
+
+	// GetSecret retrieves a secret by name from the specified namespace.
+	GetSecret(ctx context.Context, namespace, name string) (*corev1.Secret, error)
+
+	// CreateSecret creates a new secret in the specified namespace.
+	CreateSecret(ctx context.Context, namespace string, secret *corev1.Secret) (*corev1.Secret, error)
+
+	// UpdateSecret updates an existing secret.
+	UpdateSecret(ctx context.Context, namespace string, secret *corev1.Secret) (*corev1.Secret, error)
+
+	// ListResources lists resources of a given type.
+	ListResources(ctx context.Context, gvr schema.GroupVersionResource, namespace string) (*unstructured.UnstructuredList, error)
+
+	// WatchResources watches for changes to resources of a given type.
+	WatchResources(ctx context.Context, gvr schema.GroupVersionResource, namespace string, resourceVersion string) (watch.Interface, error)
+}
 
 // realKubernetesClient implements KubernetesClient using actual K8s clients.
 type realKubernetesClient struct {
