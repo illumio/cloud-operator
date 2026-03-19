@@ -16,18 +16,14 @@ import (
 	"sync"
 	"time"
 
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller/hubble"
+	"github.com/illumio/cloud-operator/internal/pkg/tls"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/controller/hubble"
-	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
 type StreamType string
@@ -48,10 +44,10 @@ type streamClient struct {
 	disableNetworkFlowsCilium bool
 	tlsAuthProperties         tls.AuthProperties
 	flowCollector             pb.FlowCollector
-	logStream                 pb.KubernetesInfoService_SendLogsClient
-	networkFlowsStream        pb.KubernetesInfoService_SendKubernetesNetworkFlowsClient
-	resourceStream            pb.KubernetesInfoService_SendKubernetesResourcesClient
-	configStream              pb.KubernetesInfoService_GetConfigurationUpdatesClient
+	logStream                 LogStream
+	networkFlowsStream        NetworkFlowsStream
+	resourceStream            ResourceStream
+	configStream              ConfigStream
 }
 
 type deadlockDetector struct {
@@ -66,6 +62,8 @@ type streamManager struct {
 	FlowCache          *FlowCache
 	verboseDebugging   bool
 	stats              *StreamStats
+	k8sClient          KubernetesClient
+	clock              Clock
 }
 
 type KeepalivePeriods struct {
@@ -199,7 +197,7 @@ func (sm *streamManager) disableSubsystemCausingError(err error, logger *zap.Log
 
 // buildResourceApiGroupMap creates a mapping between Kubernetes resources and their corresponding API groups.
 // It uses the discovery client to fetch all available API groups and resources, then maps the requested resources to their API groups.
-func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset *kubernetes.Clientset, logger *zap.Logger) (map[string]string, error) {
+func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface, logger *zap.Logger) (map[string]string, error) {
 	// Map to store resource-to-API group mapping
 	resourceAPIGroupMap := make(map[string]string)
 
@@ -209,8 +207,8 @@ func (sm *streamManager) buildResourceApiGroupMap(resources []string, clientset 
 		resourceSet[resource] = struct{}{}
 	}
 
-	// Create a discovery client for fetching API groups and resources
-	discoveryClient := discovery.NewDiscoveryClient(clientset.RESTClient())
+	// Use the discovery client from the clientset
+	discoveryClient := clientset.Discovery()
 
 	apiGroups, err := discoveryClient.ServerGroups()
 	if err != nil {
@@ -259,28 +257,11 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 		dd.processingResources = false
 	}()
 
-	clusterConfig, err := rest.InClusterConfig()
-	if err != nil {
-		logger.Error("Error getting in-cluster config", zap.Error(err))
-
-		return err
-	}
-	// Create a dynamic client
-	dynamicClient, err := dynamic.NewForConfig(clusterConfig)
-	if err != nil {
-		logger.Error("Error creating dynamic client", zap.Error(err))
-
-		return err
-	}
-
-	clientset, err := NewClientSet()
-	if err != nil {
-		logger.Error("Failed to create clientset", zap.Error(err))
-
-		return err
-	}
+	dynamicClient := sm.k8sClient.GetDynamicClient()
+	clientset := sm.k8sClient.GetClientset()
 
 	// Build resourceAPIGroupMap from Kubernetes API.
+	var err error
 	resourceAPIGroupMap, err = sm.buildResourceApiGroupMap(resources, clientset, logger)
 	if err != nil {
 		logger.Error("Failed to build resource api group map", zap.Error(err))
@@ -835,7 +816,7 @@ func (sm *streamManager) manageStream(
 }
 
 // determineFlowCollector determines the flow collector type and returns the flow collector type, stream function, and the corresponding networkFlowsDone channel.
-func determineFlowCollector(ctx context.Context, logger *zap.Logger, sm *streamManager, envMap EnvironmentConfig, clientset *kubernetes.Clientset) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
+func determineFlowCollector(ctx context.Context, logger *zap.Logger, sm *streamManager, envMap EnvironmentConfig, clientset kubernetes.Interface) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
 	switch {
 	case sm.findHubbleRelay(ctx, logger) != nil && !sm.streamClient.disableNetworkFlowsCilium:
 		sm.streamClient.tlsAuthProperties.DisableALPN = false
@@ -935,6 +916,17 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 
 			stats := NewStreamStats()
 
+			// Create the Kubernetes client for dependency injection
+			k8sClient, err := NewRealKubernetesClient()
+			if err != nil {
+				logger.Error("Failed to create Kubernetes client", zap.Error(err))
+				authConContextCancel()
+
+				failureReason = "Failed to create Kubernetes client"
+
+				break
+			}
+
 			sm := &streamManager{
 				verboseDebugging:   envMap.VerboseDebugging,
 				streamClient:       streamClient,
@@ -944,7 +936,9 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 					1000,           // TODO: Make the maxFlows capacity configurable.
 					make(chan pb.Flow, 100),
 				),
-				stats: stats,
+				stats:     stats,
+				k8sClient: k8sClient,
+				clock:     NewRealClock(),
 			}
 
 			// Start periodic stats logger
@@ -997,15 +991,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				}
 			}()
 
-			clientset, err := NewClientSet()
-			if err != nil {
-				logger.Error("Failed to create clientset", zap.Error(err))
-				authConContextCancel()
-
-				return
-			}
-
-			flowCollector, streamFunc, networkFlowsDone := determineFlowCollector(ctx, logger, sm, envMap, clientset)
+			flowCollector, streamFunc, networkFlowsDone := determineFlowCollector(ctx, logger, sm, envMap, k8sClient.GetClientset())
 			sm.streamClient.flowCollector = flowCollector
 
 			go sm.manageStream(
