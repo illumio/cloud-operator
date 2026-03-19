@@ -62,23 +62,25 @@ func TestMarshalLogObject(t *testing.T) {
 
 func TestExponentialBackoff_SucceedsOnFirstAttempt(t *testing.T) {
 	attempts := 0
-	//nolint:unparam // action must return error to match exponentialBackoff signature
+	// Action succeeds first, then fails to terminate the loop.
 	action := func() error {
 		attempts++
+		if attempts == 1 {
+			return nil // First attempt succeeds
+		}
 
-		return nil
+		return assert.AnError // Fail after to trigger termination
 	}
 
 	opts := backoffOpts{
 		InitialBackoff:       1 * time.Millisecond,
 		MaxBackoff:           10 * time.Millisecond,
 		MaxJitterPct:         0.0,
-		SevereErrorThreshold: 3,
+		SevereErrorThreshold: 1, // Give up quickly after failures start
 		ExponentialFactor:    2.0,
 		Logger:               zap.NewNop(),
 	}
 
-	// Run with timeout - success path keeps looping, so we just verify it runs
 	done := make(chan error, 1)
 
 	go func() {
@@ -86,30 +88,35 @@ func TestExponentialBackoff_SucceedsOnFirstAttempt(t *testing.T) {
 	}()
 
 	select {
-	case <-time.After(50 * time.Millisecond):
-		// Success path loops forever calling action, so timeout is expected
-		assert.Positive(t, attempts, "Should have attempted at least once")
-	case err := <-done:
-		t.Fatalf("exponentialBackoff returned unexpectedly: %v", err)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("exponentialBackoff did not terminate in time")
+	case <-done:
+		assert.GreaterOrEqual(t, attempts, 1, "Should have attempted at least once")
 	}
 }
 
 func TestExponentialBackoff_RetriesOnFailure(t *testing.T) {
 	attempts := 0
+	// Fail first 2 attempts, succeed on 3rd, then fail to terminate.
 	action := func() error {
 		attempts++
+
 		if attempts < 3 {
-			return assert.AnError
+			return assert.AnError // Fail first 2 attempts
 		}
 
-		return nil
+		if attempts == 3 {
+			return nil // Succeed on 3rd attempt (resets failure counter)
+		}
+
+		return assert.AnError // Fail after to trigger termination
 	}
 
 	opts := backoffOpts{
 		InitialBackoff:       1 * time.Millisecond,
 		MaxBackoff:           10 * time.Millisecond,
 		MaxJitterPct:         0.0,
-		SevereErrorThreshold: 5,
+		SevereErrorThreshold: 3, // Allow retries to reach attempt 3
 		ExponentialFactor:    2.0,
 		Logger:               zap.NewNop(),
 	}
@@ -121,10 +128,10 @@ func TestExponentialBackoff_RetriesOnFailure(t *testing.T) {
 	}()
 
 	select {
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("exponentialBackoff did not terminate in time")
+	case <-done:
 		assert.GreaterOrEqual(t, attempts, 3, "Should have retried at least 3 times")
-	case err := <-done:
-		t.Fatalf("exponentialBackoff returned unexpectedly: %v", err)
 	}
 }
 
@@ -161,42 +168,36 @@ func TestExponentialBackoff_GivesUpAfterThreshold(t *testing.T) {
 
 func TestExponentialBackoff_RespectsMaxBackoff(t *testing.T) {
 	attempts := 0
-	startTime := time.Now()
 
-	var attemptTimes []time.Duration
+	var attemptTimes []time.Time
 
 	action := func() error {
 		attempts++
 
-		attemptTimes = append(attemptTimes, time.Since(startTime))
+		attemptTimes = append(attemptTimes, time.Now())
 
-		if attempts >= 5 {
-			return nil
-		}
-
-		return assert.AnError
+		return assert.AnError // Always fail to test backoff timing
 	}
 
 	opts := backoffOpts{
 		InitialBackoff:       1 * time.Millisecond,
 		MaxBackoff:           5 * time.Millisecond,
 		MaxJitterPct:         0.0,
-		SevereErrorThreshold: 10,
+		SevereErrorThreshold: 5, // Will give up after 5 failures
 		ExponentialFactor:    2.0,
 		Logger:               zap.NewNop(),
 	}
 
-	done := make(chan error, 1)
+	_ = exponentialBackoff(opts, action)
 
-	go func() {
-		done <- exponentialBackoff(opts, action)
-	}()
+	// Verify we got enough attempts to test backoff
+	assert.GreaterOrEqual(t, attempts, 5, "Should have attempted at least 5 times")
 
-	select {
-	case <-time.After(500 * time.Millisecond):
-		assert.GreaterOrEqual(t, attempts, 5)
-	case err := <-done:
-		t.Fatalf("exponentialBackoff returned unexpectedly: %v", err)
+	// Verify backoff intervals don't exceed MaxBackoff
+	// With exponential backoff: 1ms, 2ms, 4ms, 5ms (capped), 5ms (capped)
+	for i := 1; i < len(attemptTimes); i++ {
+		interval := attemptTimes[i].Sub(attemptTimes[i-1])
+		assert.LessOrEqual(t, interval, 10*time.Millisecond, "Backoff interval should not greatly exceed MaxBackoff")
 	}
 }
 
