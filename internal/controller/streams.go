@@ -16,14 +16,15 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/controller/hubble"
-	"github.com/illumio/cloud-operator/internal/pkg/tls"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller/hubble"
+	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
 type StreamType string
@@ -262,6 +263,7 @@ func (sm *streamManager) StreamResources(ctx context.Context, logger *zap.Logger
 
 	// Build resourceAPIGroupMap from Kubernetes API.
 	var err error
+
 	resourceAPIGroupMap, err = sm.buildResourceApiGroupMap(resources, clientset, logger)
 	if err != nil {
 		logger.Error("Failed to build resource api group map", zap.Error(err))

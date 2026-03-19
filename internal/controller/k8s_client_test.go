@@ -165,15 +165,15 @@ func TestRealKubernetesClient_ListResources_ClusterScoped(t *testing.T) {
 	assert.NotNil(t, result)
 }
 
-// Verify the interface is properly implemented
+// Verify the interface is properly implemented.
 func TestRealKubernetesClient_ImplementsInterface(t *testing.T) {
 	fakeClientset := k8sfake.NewSimpleClientset()
 	fakeDynamic := fake.NewSimpleDynamicClient(runtime.NewScheme())
 
-	var _ KubernetesClient = NewRealKubernetesClientFromClients(fakeClientset, fakeDynamic)
+	var _ = NewRealKubernetesClientFromClients(fakeClientset, fakeDynamic)
 }
 
-// Test with nil dynamic client (edge case)
+// Test with nil dynamic client (edge case).
 func TestRealKubernetesClient_GetDynamicClient_Nil(t *testing.T) {
 	fakeClientset := k8sfake.NewSimpleClientset()
 	client := NewRealKubernetesClientFromClients(fakeClientset, nil)
@@ -183,7 +183,7 @@ func TestRealKubernetesClient_GetDynamicClient_Nil(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-// Helper to get kubernetes.Interface for type checking
+// Helper to get kubernetes.Interface for type checking.
 func getClientsetInterface(client KubernetesClient) kubernetes.Interface {
 	return client.GetClientset()
 }

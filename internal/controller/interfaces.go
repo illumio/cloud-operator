@@ -6,7 +6,6 @@ import (
 	"context"
 	"time"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -14,6 +13,8 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 // KubernetesClient abstracts Kubernetes API operations.
@@ -45,25 +46,25 @@ type KubernetesClient interface {
 
 // LogStream abstracts the SendLogs gRPC stream.
 type LogStream interface {
-	Send(*pb.SendLogsRequest) error
+	Send(req *pb.SendLogsRequest) error
 	Recv() (*pb.SendLogsResponse, error)
 }
 
 // ConfigStream abstracts the GetConfigurationUpdates gRPC stream.
 type ConfigStream interface {
-	Send(*pb.GetConfigurationUpdatesRequest) error
+	Send(req *pb.GetConfigurationUpdatesRequest) error
 	Recv() (*pb.GetConfigurationUpdatesResponse, error)
 }
 
 // ResourceStream abstracts the SendKubernetesResources gRPC stream.
 type ResourceStream interface {
-	Send(*pb.SendKubernetesResourcesRequest) error
+	Send(req *pb.SendKubernetesResourcesRequest) error
 	Recv() (*pb.SendKubernetesResourcesResponse, error)
 }
 
 // NetworkFlowsStream abstracts the SendKubernetesNetworkFlows gRPC stream.
 type NetworkFlowsStream interface {
-	Send(*pb.SendKubernetesNetworkFlowsRequest) error
+	Send(req *pb.SendKubernetesNetworkFlowsRequest) error
 	Recv() (*pb.SendKubernetesNetworkFlowsResponse, error)
 }
 

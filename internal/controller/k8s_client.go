@@ -102,6 +102,7 @@ func (c *realKubernetesClient) ListResources(ctx context.Context, gvr schema.Gro
 	if namespace == "" {
 		return c.dynamicClient.Resource(gvr).List(ctx, metav1.ListOptions{})
 	}
+
 	return c.dynamicClient.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{})
 }
 
@@ -113,5 +114,6 @@ func (c *realKubernetesClient) WatchResources(ctx context.Context, gvr schema.Gr
 	if namespace == "" {
 		return c.dynamicClient.Resource(gvr).Watch(ctx, opts)
 	}
+
 	return c.dynamicClient.Resource(gvr).Namespace(namespace).Watch(ctx, opts)
 }

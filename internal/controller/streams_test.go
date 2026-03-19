@@ -6,10 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
-	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
 )
 
 func TestServerIsHealthy_ReturnsTrue_WhenNotProcessing(t *testing.T) {
@@ -159,10 +161,10 @@ func TestDisableSubsystemCausingError_DisablesCilium_OnUnknownError(t *testing.T
 }
 
 func TestStreamType_Constants(t *testing.T) {
-	assert.Equal(t, StreamType("network_flows"), STREAM_NETWORK_FLOWS)
-	assert.Equal(t, StreamType("resources"), STREAM_RESOURCES)
-	assert.Equal(t, StreamType("logs"), STREAM_LOGS)
-	assert.Equal(t, StreamType("configuration"), STREAM_CONFIGURATION)
+	assert.Equal(t, STREAM_NETWORK_FLOWS, StreamType("network_flows"))
+	assert.Equal(t, STREAM_RESOURCES, StreamType("resources"))
+	assert.Equal(t, STREAM_LOGS, StreamType("logs"))
+	assert.Equal(t, STREAM_CONFIGURATION, StreamType("configuration"))
 }
 
 func TestEnvironmentConfig_Defaults(t *testing.T) {
@@ -209,7 +211,7 @@ func TestWatcherInfo_Fields(t *testing.T) {
 	}
 
 	assert.Equal(t, "pods", info.resource)
-	assert.Equal(t, "", info.apiGroup)
+	assert.Empty(t, info.apiGroup)
 	assert.Equal(t, "12345", info.resourceVersion)
 }
 
@@ -238,30 +240,32 @@ func TestDeadlockDetector_ConcurrentAccess(t *testing.T) {
 	done := make(chan bool)
 
 	// Start multiple goroutines accessing dd concurrently
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
-			for j := 0; j < 100; j++ {
+			for range 100 {
 				_ = ServerIsHealthy()
 			}
+
 			done <- true
 		}()
 	}
 
 	// Start goroutines that modify dd
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		go func() {
-			for j := 0; j < 50; j++ {
+			for range 50 {
 				dd.mutex.Lock()
 				dd.processingResources = !dd.processingResources
 				dd.timeStarted = time.Now()
 				dd.mutex.Unlock()
 			}
+
 			done <- true
 		}()
 	}
 
 	// Wait for all goroutines
-	for i := 0; i < 15; i++ {
+	for range 15 {
 		<-done
 	}
 }
@@ -279,7 +283,7 @@ func TestStreamManager_WithMockClock(t *testing.T) {
 	assert.Equal(t, mockClock.now, sm.clock.Now())
 }
 
-// testClock is a simple mock clock for testing
+// testClock is a simple mock clock for testing.
 type testClock struct {
 	now time.Time
 }
@@ -303,6 +307,7 @@ func (c *testClock) NewTicker(d time.Duration) Ticker {
 func (c *testClock) After(d time.Duration) <-chan time.Time {
 	ch := make(chan time.Time, 1)
 	ch <- c.now.Add(d)
+
 	return ch
 }
 
@@ -333,7 +338,7 @@ func TestRealClock_Implementation(t *testing.T) {
 	// Test Since
 	past := time.Now().Add(-1 * time.Hour)
 	since := clock.Since(past)
-	assert.True(t, since >= 1*time.Hour)
+	assert.GreaterOrEqual(t, since, 1*time.Hour)
 
 	// Test NewTimer
 	timer := clock.NewTimer(1 * time.Millisecond)
@@ -424,12 +429,12 @@ func TestParsePodNetworkInfo_InvalidInput(t *testing.T) {
 	// Test with empty input
 	result, err := parsePodNetworkInfo("")
 	assert.Nil(t, result)
-	assert.ErrorIs(t, err, ErrFalcoEventIsNotFlow)
+	require.ErrorIs(t, err, ErrFalcoEventIsNotFlow)
 
 	// Test with incomplete input
 	result, err = parsePodNetworkInfo("incomplete data")
 	assert.Nil(t, result)
-	assert.ErrorIs(t, err, ErrFalcoEventIsNotFlow)
+	require.ErrorIs(t, err, ErrFalcoEventIsNotFlow)
 }
 
 func TestFilterIllumioTraffic(t *testing.T) {

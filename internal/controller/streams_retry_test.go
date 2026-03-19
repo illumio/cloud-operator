@@ -62,8 +62,10 @@ func TestMarshalLogObject(t *testing.T) {
 
 func TestExponentialBackoff_SucceedsOnFirstAttempt(t *testing.T) {
 	attempts := 0
+	//nolint:unparam // action must return error to match exponentialBackoff signature
 	action := func() error {
 		attempts++
+
 		return nil
 	}
 
@@ -78,6 +80,7 @@ func TestExponentialBackoff_SucceedsOnFirstAttempt(t *testing.T) {
 
 	// Run with timeout - success path keeps looping, so we just verify it runs
 	done := make(chan error, 1)
+
 	go func() {
 		done <- exponentialBackoff(opts, action)
 	}()
@@ -85,7 +88,7 @@ func TestExponentialBackoff_SucceedsOnFirstAttempt(t *testing.T) {
 	select {
 	case <-time.After(50 * time.Millisecond):
 		// Success path loops forever calling action, so timeout is expected
-		assert.Greater(t, attempts, 0, "Should have attempted at least once")
+		assert.Positive(t, attempts, "Should have attempted at least once")
 	case err := <-done:
 		t.Fatalf("exponentialBackoff returned unexpectedly: %v", err)
 	}
@@ -98,6 +101,7 @@ func TestExponentialBackoff_RetriesOnFailure(t *testing.T) {
 		if attempts < 3 {
 			return assert.AnError
 		}
+
 		return nil
 	}
 
@@ -111,6 +115,7 @@ func TestExponentialBackoff_RetriesOnFailure(t *testing.T) {
 	}
 
 	done := make(chan error, 1)
+
 	go func() {
 		done <- exponentialBackoff(opts, action)
 	}()
@@ -127,6 +132,7 @@ func TestExponentialBackoff_GivesUpAfterThreshold(t *testing.T) {
 	attempts := 0
 	action := func() error {
 		attempts++
+
 		return assert.AnError
 	}
 
@@ -141,7 +147,7 @@ func TestExponentialBackoff_GivesUpAfterThreshold(t *testing.T) {
 
 	err := exponentialBackoff(opts, action)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	// UnhappyPathResetBackoff resets consecutiveFailures to 0 before returning
 	// so the error message will say "failed 0 times"
 	assert.Contains(t, err.Error(), "failed")
@@ -156,14 +162,18 @@ func TestExponentialBackoff_GivesUpAfterThreshold(t *testing.T) {
 func TestExponentialBackoff_RespectsMaxBackoff(t *testing.T) {
 	attempts := 0
 	startTime := time.Now()
+
 	var attemptTimes []time.Duration
 
 	action := func() error {
 		attempts++
+
 		attemptTimes = append(attemptTimes, time.Since(startTime))
+
 		if attempts >= 5 {
 			return nil
 		}
+
 		return assert.AnError
 	}
 
@@ -177,6 +187,7 @@ func TestExponentialBackoff_RespectsMaxBackoff(t *testing.T) {
 	}
 
 	done := make(chan error, 1)
+
 	go func() {
 		done <- exponentialBackoff(opts, action)
 	}()

@@ -26,7 +26,7 @@ func TestRealClock_Since(t *testing.T) {
 	past := time.Now().Add(-1 * time.Second)
 	duration := clock.Since(past)
 
-	assert.True(t, duration >= 1*time.Second)
+	assert.GreaterOrEqual(t, duration, 1*time.Second)
 }
 
 func TestRealClock_NewTimer(t *testing.T) {
