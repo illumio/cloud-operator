@@ -26,7 +26,7 @@ import (
 type ResourceManagerConfig struct {
 	ResourceName  string
 	ApiGroup      string
-	Clientset     *kubernetes.Clientset
+	Clientset     kubernetes.Interface
 	BaseLogger    *zap.Logger
 	DynamicClient dynamic.Interface
 	StreamManager *streamManager
@@ -40,7 +40,7 @@ type ResourceManager struct {
 	// apiGroup identifies the Kubernetes API group for this resource
 	apiGroup string
 	// Clientset providing access to k8s api.
-	clientset *kubernetes.Clientset
+	clientset kubernetes.Interface
 	// Logger provides structured logging interface.
 	logger *zap.Logger
 	// DynamicClient offers generic Kubernetes API operations.
