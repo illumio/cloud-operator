@@ -94,14 +94,17 @@ func DetermineFlowCollector(ctx context.Context, logger *zap.Logger, sm *stream.
 		sm.Client.TlsAuthProperties.DisableALPN = false
 		sm.Client.TlsAuthProperties.DisableTLS = false
 
+		//nolint:contextcheck // context is used for setup, stream functions manage their own context
 		return pb.FlowCollector_FLOW_COLLECTOR_CILIUM, func(l *zap.Logger, d time.Duration) error {
 			return ConnectAndStreamCilium(sm, l, d)
 		}, make(chan struct{})
 	case collector.IsOVNKDeployed(ctx, logger, envMap.OVNKNamespace, clientset):
+		//nolint:contextcheck // context is used for setup, stream functions manage their own context
 		return pb.FlowCollector_FLOW_COLLECTOR_OVNK, func(l *zap.Logger, d time.Duration) error {
 			return ConnectAndStreamOVNK(sm, l, d)
 		}, make(chan struct{})
 	default:
+		//nolint:contextcheck // context is used for setup, stream functions manage their own context
 		return pb.FlowCollector_FLOW_COLLECTOR_FALCO, func(l *zap.Logger, d time.Duration) error {
 			return ConnectAndStreamFalco(sm, l, d)
 		}, make(chan struct{})

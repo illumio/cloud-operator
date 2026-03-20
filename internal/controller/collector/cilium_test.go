@@ -14,6 +14,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
+//nolint:maintidx // table-driven test with comprehensive test cases
 func TestConvertCiliumFlow(t *testing.T) {
 	tests := map[string]struct {
 		input    *observer.GetFlowsResponse
