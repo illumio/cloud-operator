@@ -4,6 +4,7 @@ package k8sclient
 
 import (
 	"context"
+	"net/http"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,12 +51,29 @@ type realClient struct {
 	config        *rest.Config
 }
 
+// disableProxyTransport wraps the config to disable HTTP proxy.
+// This ensures consistent behavior with NewClientSet which also disables proxy.
+func disableProxyTransport(config *rest.Config) {
+	config.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
+		if transport, ok := rt.(*http.Transport); ok {
+			customTransport := transport.Clone()
+			customTransport.Proxy = nil
+
+			return customTransport
+		}
+
+		return rt
+	}
+}
+
 // NewClient creates a new Client that uses real K8s APIs.
 func NewClient() (Client, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, err
 	}
+
+	disableProxyTransport(config)
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -76,6 +94,8 @@ func NewClient() (Client, error) {
 
 // NewClientFromConfig creates a Client from an existing config.
 func NewClientFromConfig(config *rest.Config) (Client, error) {
+	disableProxyTransport(config)
+
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return nil, err

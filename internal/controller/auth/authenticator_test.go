@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"testing"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -199,21 +198,6 @@ func (suite *AuthTestSuite) TestWriteK8sSecret() {
 			}
 		})
 	}
-}
-
-func TestIsRunningInCluster(t *testing.T) {
-	t.Run("Running in cluster", func(t *testing.T) {
-		t.Setenv("KUBERNETES_SERVICE_HOST", "localhost")
-
-		assert.True(t, IsRunningInCluster())
-	})
-
-	t.Run("Not running in cluster", func(t *testing.T) {
-		err := os.Unsetenv("KUBERNETES_SERVICE_HOST")
-		require.NoError(t, err)
-
-		assert.False(t, IsRunningInCluster())
-	})
 }
 
 // TestParseToken tests the ParseToken function.

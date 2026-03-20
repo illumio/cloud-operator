@@ -30,7 +30,7 @@ type Client struct {
 	Conn                      *grpc.ClientConn
 	GrpcClient                pb.KubernetesInfoServiceClient
 	FalcoEventChan            chan string
-	IpfixCollectorPort        string
+	IPFIXCollectorPort        string
 	DisableNetworkFlowsCilium bool
 	TlsAuthProperties         tls.AuthProperties
 	FlowCollector             pb.FlowCollector

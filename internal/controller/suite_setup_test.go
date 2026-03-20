@@ -16,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/testhelper"
 )
 
@@ -40,7 +41,7 @@ func (suite *ControllerTestSuite) SetupSuite() {
 		suite.T().Fatal("Failed to set up test cluster " + err.Error())
 	}
 	// Create a new clientset
-	suite.clientset, err = NewClientSet()
+	suite.clientset, err = k8sclient.NewClientSet()
 	if err != nil {
 		suite.T().Fatal("Failed to get client set " + err.Error())
 	}

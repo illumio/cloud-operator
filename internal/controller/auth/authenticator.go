@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -107,12 +106,6 @@ func writeClusterCredentialsIntoK8sSecret(ctx context.Context, clientset kuberne
 	}
 
 	return nil
-}
-
-// IsRunningInCluster helps determine if the application is running inside a Kubernetes cluster.
-func IsRunningInCluster() bool {
-	// This can be based on the existence of a service account token, environment variables, or similar.
-	return os.Getenv("KUBERNETES_SERVICE_HOST") != ""
 }
 
 // SetUpOAuthConnection establishes a gRPC connection using OAuth credentials and logging the process.

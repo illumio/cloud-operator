@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 )
 
 // ptrBool is a helper function to create pointers to bool values (used in metav1.OwnerReference)
@@ -49,7 +50,7 @@ func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 	}
 	logger := zap.NewNop()
 
-	clientset, err := NewClientSet()
+	clientset, err := k8sclient.NewClientSet()
 	if err != nil {
 		logger.Error("Failed to create clientset", zap.Error(err))
 		suite.T().Error("could not create clientset")
@@ -122,7 +123,7 @@ func TestGetMetadataFromResource(t *testing.T) {
 func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 	logger := zap.NewNop()
 
-	clientset, err := NewClientSet()
+	clientset, err := k8sclient.NewClientSet()
 	if err != nil {
 		logger.Error("Failed to create clientset", zap.Error(err))
 		suite.T().Fatalf("could not create clientset: %v", err)
@@ -350,7 +351,7 @@ func (suite *ControllerTestSuite) TestGetProviderIdNodeSpec() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			clientset, _ := NewClientSet()
+			clientset, _ := k8sclient.NewClientSet()
 			if tt.node != nil {
 				_, err := clientset.CoreV1().Nodes().Create(context.TODO(), tt.node, metav1.CreateOptions{})
 				suite.Require().NoError(err)
@@ -443,7 +444,7 @@ func (suite *ControllerTestSuite) TestGetNodeIpAddresses() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			clientset, _ := NewClientSet()
+			clientset, _ := k8sclient.NewClientSet()
 			if tt.node != nil {
 				_, err := clientset.CoreV1().Nodes().Create(context.TODO(), tt.node, metav1.CreateOptions{})
 				suite.Require().NoError(err)
@@ -477,7 +478,7 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 		},
 	}
 
-	clientset, err := NewClientSet()
+	clientset, err := k8sclient.NewClientSet()
 	if err != nil {
 		suite.T().Fatal("Failed to get client set " + err.Error())
 	}

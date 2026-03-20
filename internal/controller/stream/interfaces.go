@@ -6,12 +6,6 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-// LogStream abstracts the SendLogs gRPC stream.
-type LogStream interface {
-	Send(req *pb.SendLogsRequest) error
-	Recv() (*pb.SendLogsResponse, error)
-}
-
 // ConfigStream abstracts the GetConfigurationUpdates gRPC stream.
 type ConfigStream interface {
 	Send(req *pb.GetConfigurationUpdatesRequest) error

@@ -11,19 +11,13 @@ import (
 
 	"github.com/illumio/cloud-operator/internal/controller/collector"
 	"github.com/illumio/cloud-operator/internal/controller/hubble"
-	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
 // FindHubbleRelay returns a *collector.CiliumFlowCollector if hubble relay is found.
 func FindHubbleRelay(ctx context.Context, logger *zap.Logger, sm *stream.Manager) *collector.CiliumFlowCollector {
-	clientset, err := k8sclient.NewClientSet()
-	if err != nil {
-		logger.Error("Failed to create clientset for Cilium discovery", zap.Error(err))
-
-		return nil
-	}
+	clientset := sm.K8sClient.GetClientset()
 
 	ciliumFlowCollector, err := collector.NewCiliumFlowCollector(ctx, logger, clientset, sm.Client.CiliumNamespaces, sm.Client.TlsAuthProperties)
 	if err != nil {

@@ -89,32 +89,37 @@ func TestJitterTime(t *testing.T) {
 		name         string
 		base         time.Duration
 		maxJitterPct float64
-		expected     time.Duration
+		minExpected  time.Duration
+		maxExpected  time.Duration
 	}{
 		{
 			name:         "10% jitter on 100ms",
 			base:         100 * time.Millisecond,
 			maxJitterPct: 0.10,
-			expected:     95 * time.Millisecond,
+			minExpected:  90 * time.Millisecond,  // base * (1 - maxJitterPct)
+			maxExpected:  100 * time.Millisecond, // base * 1
 		},
 		{
 			name:         "20% jitter on 100ms",
 			base:         100 * time.Millisecond,
 			maxJitterPct: 0.20,
-			expected:     90 * time.Millisecond,
+			minExpected:  80 * time.Millisecond,
+			maxExpected:  100 * time.Millisecond,
 		},
 		{
 			name:         "no jitter",
 			base:         100 * time.Millisecond,
 			maxJitterPct: 0.0,
-			expected:     100 * time.Millisecond,
+			minExpected:  100 * time.Millisecond,
+			maxExpected:  100 * time.Millisecond,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := jitterTime(tt.base, tt.maxJitterPct)
-			assert.Equal(t, tt.expected, result)
+			assert.GreaterOrEqual(t, result, tt.minExpected, "result should be >= min")
+			assert.LessOrEqual(t, result, tt.maxExpected, "result should be <= max")
 		})
 	}
 }

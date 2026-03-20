@@ -5,6 +5,7 @@ package flows
 import (
 	"context"
 	"errors"
+	"math/rand"
 	"regexp"
 	"time"
 
@@ -62,7 +63,12 @@ func StartCacheOutReader(ctx context.Context, sm *stream.Manager, logger *zap.Lo
 			if err != nil {
 				return err
 			}
-		case flow := <-sm.FlowCache.OutFlows:
+		case flow, ok := <-sm.FlowCache.OutFlows:
+			if !ok {
+				// Flow cache channel closed; exit reader gracefully.
+				return nil
+			}
+
 			err := sm.SendNetworkFlowRequest(logger, flow)
 			if err != nil {
 				return err
@@ -111,7 +117,10 @@ func DetermineFlowCollector(ctx context.Context, logger *zap.Logger, sm *stream.
 	}
 }
 
-// jitterTime subtracts a percentage from the base time to introduce jitter.
+// jitterTime subtracts a random percentage from the base time to introduce jitter.
+// maxJitterPct must be in the range [0, 1).
 func jitterTime(base time.Duration, maxJitterPct float64) time.Duration {
-	return time.Duration(float64(base) * (1. - maxJitterPct*0.5))
+	jitterPct := rand.Float64() * maxJitterPct //nolint:gosec
+
+	return time.Duration(float64(base) * (1. - jitterPct))
 }

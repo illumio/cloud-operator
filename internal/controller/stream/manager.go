@@ -151,7 +151,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				GrpcClient:         client,
 				CiliumNamespaces:   envMap.CiliumNamespaces,
 				FalcoEventChan:     falcoEventChan,
-				IpfixCollectorPort: envMap.IPFIXCollectorPort,
+				IPFIXCollectorPort: envMap.IPFIXCollectorPort,
 			}
 
 			stats := NewStats()

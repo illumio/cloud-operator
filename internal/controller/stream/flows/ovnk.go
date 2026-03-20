@@ -14,7 +14,7 @@ import (
 
 // StreamOVNK handles the OVN-K network flow stream.
 func StreamOVNK(ctx context.Context, sm *stream.Manager, logger *zap.Logger) error {
-	ovnkCollector := collector.NewOVNKCollector(logger, sm.Client.IpfixCollectorPort, NewFlowSinkAdapter(sm))
+	ovnkCollector := collector.NewOVNKCollector(logger, sm.Client.IPFIXCollectorPort, NewFlowSinkAdapter(sm))
 
 	err := ovnkCollector.StartIPFIXCollector(ctx)
 	if err != nil {
