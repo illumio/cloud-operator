@@ -27,10 +27,8 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config"
@@ -202,12 +200,10 @@ func main() {
 	ctx := context.Background()
 
 	streamFuncs := stream.StreamFuncs{
-		Resources: resources.ConnectAndStream,
-		Logs:      logs.ConnectAndStream,
-		Config:    config.ConnectAndStream,
-		DetermineFlowCollector: func(ctx context.Context, logger *zap.Logger, sm *stream.Manager, envMap stream.EnvironmentConfig, clientset kubernetes.Interface) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
-			return flows.DetermineFlowCollector(ctx, logger, sm, envMap, clientset)
-		},
+		Resources:                 resources.ConnectAndStream,
+		Logs:                      logs.ConnectAndStream,
+		Config:                    config.ConnectAndStream,
+		DetermineFlowCollector:    flows.DetermineFlowCollector,
 		ConnectNetworkFlowsStream: flows.ConnectNetworkFlowsStream,
 		StartCacheOutReader:       flows.StartCacheOutReader,
 	}
