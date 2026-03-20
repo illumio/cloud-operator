@@ -89,9 +89,9 @@ func convertObjectToMetadata(obj metav1.Object) metav1.ObjectMeta {
 	return objMetadata
 }
 
-// getObjectMetadataFromRuntimeObject safely extracts metadata from any Kubernetes runtime.Object.
+// GetObjectMetadataFromRuntimeObject safely extracts metadata from any Kubernetes runtime.Object.
 // It returns a pointer to a metav1.ObjectMeta structure if successful, along with any error encountered.
-func getObjectMetadataFromRuntimeObject(obj runtime.Object) (*metav1.ObjectMeta, error) {
+func GetObjectMetadataFromRuntimeObject(obj runtime.Object) (*metav1.ObjectMeta, error) {
 	objectMeta, err := meta.Accessor(obj)
 	if err != nil {
 		return nil, err
@@ -102,9 +102,9 @@ func getObjectMetadataFromRuntimeObject(obj runtime.Object) (*metav1.ObjectMeta,
 	return &convertedObjMeta, nil
 }
 
-// getMetadatafromResource extracts the metav1.ObjectMeta from an unstructured.Unstructured resource.
+// GetMetadataFromResource extracts the metav1.ObjectMeta from an unstructured.Unstructured resource.
 // It utilizes the unstructured's inherent methods to access the metadata directly.
-func getMetadatafromResource(logger *zap.Logger, resource unstructured.Unstructured) (*metav1.ObjectMeta, error) {
+func GetMetadataFromResource(logger *zap.Logger, resource unstructured.Unstructured) (*metav1.ObjectMeta, error) {
 	// Convert unstructured object to a map.
 	itemMap := resource.Object
 	// Extract metadata from map.
@@ -130,8 +130,8 @@ func getMetadatafromResource(logger *zap.Logger, resource unstructured.Unstructu
 	}
 }
 
-// convertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
-func convertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, clientset kubernetes.Interface, resource string) *pb.KubernetesObjectData {
+// ConvertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
+func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, clientset kubernetes.Interface, resource string) *pb.KubernetesObjectData {
 	ownerReferences := convertOwnerReferences(obj.GetOwnerReferences())
 
 	objMetadata := &pb.KubernetesObjectData{

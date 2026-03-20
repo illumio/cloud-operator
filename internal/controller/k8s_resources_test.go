@@ -5,8 +5,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"flag"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -19,11 +17,7 @@ import (
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
@@ -61,7 +55,7 @@ func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 		suite.T().Error("could not create clientset")
 	}
 	// Execute the function under test.
-	got := convertMetaObjectToMetadata(context.Background(), configMap, clientset, "configMap")
+	got := ConvertMetaObjectToMetadata(context.Background(), configMap, clientset, "configMap")
 
 	// Define what you expect to get.
 	want := metav1.ObjectMeta{
@@ -77,49 +71,6 @@ func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 	}
 }
 
-func TestRemoveListSuffix(t *testing.T) {
-	tests := map[string]struct {
-		input          string
-		expectedOutput string
-	}{
-		"empty string": {
-			input:          "",
-			expectedOutput: "",
-		},
-		"no List suffix": {
-			input:          "Pod",
-			expectedOutput: "Pod",
-		},
-		"with List suffix": {
-			input:          "PodList",
-			expectedOutput: "Pod",
-		},
-		"multiple capitalizations": {
-			input:          "StatefulSetList",
-			expectedOutput: "StatefulSet",
-		},
-		"List suffix at the end": {
-			input:          "ReplicaSetList",
-			expectedOutput: "ReplicaSet",
-		},
-		"string with List at the start": {
-			input:          "ListPod",
-			expectedOutput: "ListPod", // Since "List" is at the start, it shouldn't be removed
-		},
-		"string with embedded List": {
-			input:          "MyListPod",
-			expectedOutput: "MyListPod", // Should not remove the "List" that appears inside the string
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			result := removeListSuffix(tt.input)
-
-			assert.Equal(t, tt.expectedOutput, result, "test failed: %s", name)
-		})
-	}
-}
 func TestGetObjectMetadataFromRuntimeObject(t *testing.T) {
 	// A successful case with a valid Kubernetes object.
 	pod := &v1.Pod{
@@ -130,7 +81,7 @@ func TestGetObjectMetadataFromRuntimeObject(t *testing.T) {
 		},
 	}
 
-	metaData, err := getObjectMetadataFromRuntimeObject(pod)
+	metaData, err := GetObjectMetadataFromRuntimeObject(pod)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -160,7 +111,7 @@ func TestGetMetadataFromResource(t *testing.T) {
 	}
 
 	// Call the function under test.
-	metadata, _ := getMetadatafromResource(logger, resource)
+	metadata, _ := GetMetadataFromResource(logger, resource)
 
 	// Validate the results.
 	if metadata.Name != "test-pod" || metadata.Namespace != "test-namespace" || metadata.Labels["app"] != "test-app" {
@@ -202,7 +153,7 @@ func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 	}
 
 	// Ensure proper error handling
-	result := convertMetaObjectToMetadata(context.Background(), objMeta, clientset, resource)
+	result := ConvertMetaObjectToMetadata(context.Background(), objMeta, clientset, resource)
 
 	suite.Equal(expected, result)
 }
@@ -540,176 +491,6 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 
 			ips := getPodIPAddresses(context.TODO(), tt.podName, clientset, tt.namespace)
 			suite.Len(ips, tt.expectedIPs)
-		})
-	}
-}
-
-func (suite *ControllerTestSuite) TestFetchResources() {
-	// Create dynamic client
-	var kubeconfig *string
-	if home := homedir.HomeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-	}
-
-	flag.Parse()
-
-	clusterConfig, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
-	if err != nil {
-		suite.T().Fatal("Could not get config", "error", err)
-	}
-
-	if err != nil {
-		suite.T().Fatal("Error creating cluster config", "error", err)
-	}
-
-	dynamicClient, err := dynamic.NewForConfig(clusterConfig)
-	if err != nil {
-		suite.T().Fatal("Error creating dynamic client", "error", err)
-	}
-
-	resourceManager := &ResourceManager{
-		dynamicClient: dynamicClient,
-		logger:        suite.logger,
-	}
-	tests := map[string]struct {
-		resource  schema.GroupVersionResource
-		namespace string
-		expectErr bool
-	}{
-		"valid namespace": {
-			resource:  schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"},
-			namespace: "default",
-			expectErr: false,
-		},
-		"invalid namespace": {
-			resource:  schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"},
-			namespace: "nonexistent-namespace",
-			expectErr: false,
-		},
-		"empty result": {
-			resource:  schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nonexistent-resource"},
-			namespace: "default",
-			expectErr: true,
-		},
-	}
-
-	for name, tc := range tests {
-		suite.Run(name, func() {
-			ctx := context.Background()
-
-			resources, err := resourceManager.FetchResources(ctx, tc.resource, tc.namespace)
-			if tc.expectErr {
-				suite.Error(err)
-			} else {
-				suite.Require().NoError(err)
-				suite.NotNil(resources)
-
-				if name == "invalid namespace" {
-					suite.Empty(resources.Items)
-				}
-			}
-		})
-	}
-}
-
-func (suite *ControllerTestSuite) TestExtractObjectMetas() {
-	tests := map[string]struct {
-		inputResources *unstructured.UnstructuredList
-		expectedMetas  []metav1.ObjectMeta
-		expectedError  bool
-		expectedErrMsg string
-	}{
-		"success": {
-			inputResources: &unstructured.UnstructuredList{
-				Items: []unstructured.Unstructured{
-					{
-						Object: map[string]interface{}{
-							"apiVersion": "v1",
-							"kind":       "Pod",
-							"metadata": map[string]interface{}{
-								"name":      "test-pod1",
-								"namespace": "test-namespace",
-								"labels": map[string]string{
-									"app": "test-app",
-								},
-							},
-						},
-					},
-					{
-						Object: map[string]interface{}{
-							"apiVersion": "v1",
-							"kind":       "Pod",
-							"metadata": map[string]interface{}{
-								"name":      "test-pod2",
-								"namespace": "test-namespace",
-								"labels": map[string]string{
-									"app": "test-app",
-								},
-							},
-						},
-					},
-				},
-			},
-			expectedMetas: []metav1.ObjectMeta{
-				{Name: "test-pod1", Namespace: "test-namespace"},
-				{Name: "test-pod2", Namespace: "test-namespace"},
-			},
-			expectedError: false,
-		},
-		"metadata extraction error": {
-			inputResources: &unstructured.UnstructuredList{
-				Items: []unstructured.Unstructured{
-					{
-						Object: map[string]interface{}{
-							"apiVersion": "v1",
-							"kind":       "Pod",
-							"metadata_misspelled": map[string]interface{}{
-								"name":      "test-pod1",
-								"namespace": "test-namespace",
-								"labels": map[string]string{
-									"app": "test-app",
-								},
-							},
-						},
-					},
-				},
-			},
-			expectedMetas:  nil,
-			expectedError:  true,
-			expectedErrMsg: "could not grab metadata from a resource",
-		},
-		"empty resource list": {
-			inputResources: &unstructured.UnstructuredList{
-				Items: []unstructured.Unstructured{},
-			},
-			expectedMetas: []metav1.ObjectMeta{},
-			expectedError: false,
-		},
-	}
-
-	for name, tc := range tests {
-		suite.Run(name, func() {
-			resourceManager := ResourceManager{logger: suite.logger}
-			// Call the function under test
-			objectMetas, err := resourceManager.ExtractObjectMetas(tc.inputResources)
-
-			// Simplify comparison
-			for i, obj := range objectMetas {
-				objectMetas[i] = metav1.ObjectMeta{
-					Name:      obj.Name,
-					Namespace: obj.Namespace,
-				}
-			}
-			// Assert the results
-			if tc.expectedError {
-				suite.Require().Error(err)
-				suite.EqualError(err, tc.expectedErrMsg)
-			} else {
-				suite.Require().NoError(err)
-				suite.Equal(tc.expectedMetas, objectMetas)
-			}
 		})
 	}
 }

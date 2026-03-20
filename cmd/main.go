@@ -27,10 +27,16 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
-	"github.com/illumio/cloud-operator/internal/controller"
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
+	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/config"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows"
+	"github.com/illumio/cloud-operator/internal/controller/stream/logs"
+	"github.com/illumio/cloud-operator/internal/controller/stream/resources"
 )
 
 const (
@@ -125,12 +131,12 @@ func main() {
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("verbose_debugging", false)
 
-	envConfig := controller.EnvironmentConfig{
+	envConfig := stream.EnvironmentConfig{
 		CiliumNamespaces:   viper.GetStringSlice("cilium_namespaces"),
 		ClusterCreds:       viper.GetString("cluster_creds"),
 		HttpsProxy:         viper.GetString("https_proxy"),
 		IPFIXCollectorPort: viper.GetString("ipfix_collector_port"),
-		KeepalivePeriods: controller.KeepalivePeriods{
+		KeepalivePeriods: stream.KeepalivePeriods{
 			Configuration:          viper.GetDuration("stream_keepalive_period_configuration"),
 			KubernetesNetworkFlows: viper.GetDuration("stream_keepalive_period_kubernetes_network_flows"),
 			KubernetesResources:    viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
@@ -142,7 +148,7 @@ func main() {
 		OVNKNamespace:          viper.GetString("ovnk_namespace"),
 		PodNamespace:           viper.GetString("pod_namespace"),
 		StatsLogPeriod:         viper.GetDuration("stats_log_period"),
-		StreamSuccessPeriods: controller.StreamSuccessPeriods{
+		SuccessPeriods: stream.SuccessPeriods{
 			Auth:    viper.GetDuration("stream_success_period_auth"),
 			Connect: viper.GetDuration("stream_success_period_connect"),
 		},
@@ -165,8 +171,8 @@ func main() {
 		zap.Duration("stream_keepalive_period_kubernetes_network_flows", envConfig.KeepalivePeriods.KubernetesNetworkFlows),
 		zap.Duration("stream_keepalive_period_kubernetes_resources", envConfig.KeepalivePeriods.KubernetesResources),
 		zap.Duration("stream_keepalive_period_logs", envConfig.KeepalivePeriods.Logs),
-		zap.Duration("stream_success_period_auth", envConfig.StreamSuccessPeriods.Auth),
-		zap.Duration("stream_success_period_connect", envConfig.StreamSuccessPeriods.Connect),
+		zap.Duration("stream_success_period_auth", envConfig.SuccessPeriods.Auth),
+		zap.Duration("stream_success_period_connect", envConfig.SuccessPeriods.Connect),
 		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
 		zap.String("token_endpoint", envConfig.TokenEndpoint),
 		zap.Bool("verbose_debugging", envConfig.VerboseDebugging),
@@ -177,7 +183,7 @@ func main() {
 		logger.Error("Failed to start gops agent", zap.Error(err))
 	}
 
-	http.HandleFunc("/healthz", newHealthHandler(controller.ServerIsHealthy))
+	http.HandleFunc("/healthz", newHealthHandler(stream.ServerIsHealthy))
 	healthChecker := &http.Server{
 		Addr:              ":8080",
 		ReadHeaderTimeout: 10 * time.Second,
@@ -194,5 +200,17 @@ func main() {
 	}()
 
 	ctx := context.Background()
-	controller.ConnectStreams(ctx, logger, envConfig, bufferedGrpcSyncer)
+
+	streamFuncs := stream.StreamFuncs{
+		Resources: resources.ConnectAndStream,
+		Logs:      logs.ConnectAndStream,
+		Config:    config.ConnectAndStream,
+		DetermineFlowCollector: func(ctx context.Context, logger *zap.Logger, sm *stream.Manager, envMap stream.EnvironmentConfig, clientset kubernetes.Interface) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
+			return flows.DetermineFlowCollector(ctx, logger, sm, envMap, clientset)
+		},
+		ConnectNetworkFlowsStream: flows.ConnectNetworkFlowsStream,
+		StartCacheOutReader:       flows.StartCacheOutReader,
+	}
+
+	stream.ConnectStreams(ctx, logger, envConfig, bufferedGrpcSyncer, streamFuncs)
 }
