@@ -1,6 +1,6 @@
 // Copyright 2025 Illumio, Inc. All Rights Reserved.
 
-package controller
+package collector
 
 import (
 	"bytes"
@@ -32,6 +32,13 @@ type OVNKFlow struct {
 	EndTimestamp    *timestamppb.Timestamp
 }
 
+// OVNKCollector collects IPFIX flows from OVN-Kubernetes.
+type OVNKCollector struct {
+	logger             *zap.Logger
+	ipfixCollectorPort string
+	flowSink           FlowSink
+}
+
 // https://datatracker.ietf.org/doc/rfc7011/
 // The IPFIX Message Header 16-bit Length field limits the length of an
 // IPFIX Message to 65535 octets, including the header.  A Collecting
@@ -39,9 +46,18 @@ type OVNKFlow struct {
 // 65535 octets.
 const ipfixMessageMaxLength = 65535
 
-// isOVNKDeployed checks for the presence of the `openshift-ovn-kubernetes` namespace, detection based on OVN-K namespace, this is configurable.
+// NewOVNKCollector creates a new OVN-K IPFIX collector.
+func NewOVNKCollector(logger *zap.Logger, ipfixCollectorPort string, flowSink FlowSink) *OVNKCollector {
+	return &OVNKCollector{
+		logger:             logger,
+		ipfixCollectorPort: ipfixCollectorPort,
+		flowSink:           flowSink,
+	}
+}
+
+// IsOVNKDeployed checks for the presence of the OVN-Kubernetes namespace.
 // https://ovn-kubernetes.io/installation/launching-ovn-kubernetes-on-kind/#run-the-kind-deployment-with-podman
-func (sm *streamManager) isOVNKDeployed(ctx context.Context, logger *zap.Logger, ovnkNamespace string, clientset kubernetes.Interface) bool {
+func IsOVNKDeployed(ctx context.Context, logger *zap.Logger, ovnkNamespace string, clientset kubernetes.Interface) bool {
 	logger.Debug("Checking for OVN-K deployment")
 
 	_, err := clientset.CoreV1().Namespaces().Get(ctx, ovnkNamespace, metav1.GetOptions{})
@@ -56,18 +72,18 @@ func (sm *streamManager) isOVNKDeployed(ctx context.Context, logger *zap.Logger,
 	return true
 }
 
-// startOVNKIPFIXCollector starts a UDP listener for OVN-K IPFIX flows.
+// StartIPFIXCollector starts a UDP listener for OVN-K IPFIX flows.
 // It processes packets directly and handles context cancellation gracefully.
-func (sm *streamManager) startOVNKIPFIXCollector(ctx context.Context, logger *zap.Logger) error {
-	logger = logger.With(
-		zap.String("address", sm.streamClient.ipfixCollectorPort),
+func (c *OVNKCollector) StartIPFIXCollector(ctx context.Context) error {
+	logger := c.logger.With(
+		zap.String("address", c.ipfixCollectorPort),
 	)
 	logger.Info("Starting OVN-K IPFIX collector")
 	logger.Debug("Listening on IPFIX port")
 
 	var listenerConfig net.ListenConfig
 
-	listener, err := listenerConfig.ListenPacket(ctx, "udp", ":"+sm.streamClient.ipfixCollectorPort)
+	listener, err := listenerConfig.ListenPacket(ctx, "udp", ":"+c.ipfixCollectorPort)
 	if err != nil {
 		logger.Fatal("Failed to listen on IPFIX port", zap.Error(err))
 	}
@@ -81,7 +97,7 @@ func (sm *streamManager) startOVNKIPFIXCollector(ctx context.Context, logger *za
 
 	logger.Info("OVN-K IPFIX collector listening")
 
-	templateSystem, err := newTemplateSystem(logger)
+	templateSystem, err := NewTemplateSystem(logger)
 	if err != nil {
 		logger.Error("Failed to create template set", zap.Error(err))
 
@@ -108,7 +124,7 @@ func (sm *streamManager) startOVNKIPFIXCollector(ctx context.Context, logger *za
 				return
 			}
 
-			err = sm.processIPFIXMessage(ctx, logger, buf[:n], templateSystem)
+			err = c.processIPFIXMessage(ctx, logger, buf[:n], templateSystem)
 			if err != nil {
 				logger.Error("Failed to process IPFIX message", zap.Error(err))
 			}
@@ -122,9 +138,9 @@ func (sm *streamManager) startOVNKIPFIXCollector(ctx context.Context, logger *za
 	return ctx.Err()
 }
 
-// newTemplateSystem creates a template system for IPFIX message.
+// NewTemplateSystem creates a template system for IPFIX message.
 // It reads the template set from a binary file and adds it to the template system.
-func newTemplateSystem(logger *zap.Logger) (*netflows.BasicTemplateSystem, error) {
+func NewTemplateSystem(logger *zap.Logger) (*netflows.BasicTemplateSystem, error) {
 	// Decode the template set and add it to the template system
 	templateSystem := netflows.CreateTemplateSystem()
 
@@ -145,7 +161,7 @@ func newTemplateSystem(logger *zap.Logger) (*netflows.BasicTemplateSystem, error
 
 // processIPFIXMessage decodes and processes a single IPFIX packet.
 // Extracts data records, converts them into FiveTupleFlow objects, and caches them.
-func (sm *streamManager) processIPFIXMessage(ctx context.Context, logger *zap.Logger, packet []byte, templateSystem *netflows.BasicTemplateSystem) error {
+func (c *OVNKCollector) processIPFIXMessage(ctx context.Context, logger *zap.Logger, packet []byte, templateSystem *netflows.BasicTemplateSystem) error {
 	decodedMessage, err := netflows.DecodeMessage(bytes.NewBuffer(packet), templateSystem)
 	if err != nil {
 		return err
@@ -162,21 +178,21 @@ func (sm *streamManager) processIPFIXMessage(ctx context.Context, logger *zap.Lo
 		switch flowSet := flowSet.(type) {
 		case netflows.DataFlowSet:
 			for _, dataRecord := range flowSet.Records {
-				ovnkFlow, err := processDataRecord(dataRecord, ipFixPacket.ExportTime)
+				ovnkFlow, err := ProcessDataRecord(dataRecord, ipFixPacket.ExportTime)
 				if err != nil {
 					logger.Debug("Skipping data record due to parsing error", zap.Error(err))
 
 					continue
 				}
 
-				layer3Message, err := createLayer3Message(ovnkFlow.SourceIP, ovnkFlow.DestinationIP, ovnkFlow.IPVersion)
+				layer3Message, err := CreateLayer3Message(ovnkFlow.SourceIP, ovnkFlow.DestinationIP, ovnkFlow.IPVersion)
 				if err != nil {
 					logger.Debug("Failed to create layer3 message from OVN-K flow", zap.Error(err))
 
 					continue
 				}
 
-				layer4Message, err := createLayer4Message(ovnkFlow.Protocol, uint32(ovnkFlow.SourcePort), uint32(ovnkFlow.DestinationPort), ovnkFlow.IPVersion)
+				layer4Message, err := CreateLayer4Message(ovnkFlow.Protocol, uint32(ovnkFlow.SourcePort), uint32(ovnkFlow.DestinationPort), ovnkFlow.IPVersion)
 				if err != nil {
 					logger.Debug("Failed to create layer4 message from OVN-K flow", zap.Error(err))
 
@@ -191,14 +207,14 @@ func (sm *streamManager) processIPFIXMessage(ctx context.Context, logger *zap.Lo
 					},
 				}
 
-				err = sm.FlowCache.CacheFlow(ctx, convertOvnkFlow)
+				err = c.flowSink.CacheFlow(ctx, convertOvnkFlow)
 				if err != nil {
 					logger.Error("Failed to cache flow from OVN-K", zap.Error(err))
 
 					return err
 				}
 
-				sm.stats.IncrementFlowsReceived()
+				c.flowSink.IncrementFlowsReceived()
 			}
 		default:
 			// Ignore other types.
@@ -208,9 +224,9 @@ func (sm *streamManager) processIPFIXMessage(ctx context.Context, logger *zap.Lo
 	return nil
 }
 
-// parseIPv4Address converts a byte slice into an IPv4 address string.
+// ParseIPv4Address converts a byte slice into an IPv4 address string.
 // Returns an error if the slice is not the correct size.
-func parseIPv4Address(b []byte) (string, error) {
+func ParseIPv4Address(b []byte) (string, error) {
 	if len(b) < 4 {
 		return "", errors.New("insufficient data to parse IPv4 address")
 	}
@@ -220,9 +236,9 @@ func parseIPv4Address(b []byte) (string, error) {
 	return ip.String(), nil
 }
 
-// parseIPv6Address converts a byte slice into an IPv6 address string.
+// ParseIPv6Address converts a byte slice into an IPv6 address string.
 // Returns an error if the slice is not the correct size.
-func parseIPv6Address(b []byte) (string, error) {
+func ParseIPv6Address(b []byte) (string, error) {
 	if len(b) < 16 {
 		return "", errors.New("insufficient data to parse IPv6 address")
 	}
@@ -235,9 +251,9 @@ func parseIPv6Address(b []byte) (string, error) {
 	return ip.String(), nil
 }
 
-// parsePort converts a byte slice into a uint16 port number using BigEndian encoding.
+// ParsePort converts a byte slice into a uint16 port number using BigEndian encoding.
 // Returns an error if the slice is not the correct size.
-func parsePort(decodedValue []byte) (uint16, error) {
+func ParsePort(decodedValue []byte) (uint16, error) {
 	if len(decodedValue) < 2 {
 		return 0, errors.New("insufficient data to parse port")
 	}
@@ -245,9 +261,9 @@ func parsePort(decodedValue []byte) (uint16, error) {
 	return binary.BigEndian.Uint16(decodedValue), nil
 }
 
-// parseProtocol converts a byte slice into a protocol string based on IANA protocol numbers.
+// ParseProtocol converts a byte slice into a protocol string based on IANA protocol numbers.
 // Returns an error if the slice is not the correct size or the protocol is unknown.
-func parseProtocol(decodedValue []byte) (string, error) {
+func ParseProtocol(decodedValue []byte) (string, error) {
 	if len(decodedValue) < 1 {
 		return "", errors.New("insufficient data to parse protocol")
 	}
@@ -266,9 +282,9 @@ func parseProtocol(decodedValue []byte) (string, error) {
 	}
 }
 
-// parseIPVersion converts a byte slice into an IP version string (e.g., "ipv4" or "ipv6").
+// ParseIPVersion converts a byte slice into an IP version string (e.g., "ipv4" or "ipv6").
 // Returns an error if the slice is not the correct size or the IP version is unknown.
-func parseIPVersion(decodedValue []byte) (string, error) {
+func ParseIPVersion(decodedValue []byte) (string, error) {
 	if len(decodedValue) < 1 {
 		return "", errors.New("insufficient data to parse IP version")
 	}
@@ -283,9 +299,9 @@ func parseIPVersion(decodedValue []byte) (string, error) {
 	}
 }
 
-// processDataRecord processes a single data record and converts it into an OVNFlow.
+// ProcessDataRecord processes a single data record and converts it into an OVNFlow.
 // If any parsing step fails, it returns an error and skips the record.
-func processDataRecord(dataRecord netflows.DataRecord, exportTime uint32) (OVNKFlow, error) {
+func ProcessDataRecord(dataRecord netflows.DataRecord, exportTime uint32) (OVNKFlow, error) {
 	ovnkFlow := OVNKFlow{}
 
 	for _, field := range dataRecord.Values {
@@ -296,56 +312,56 @@ func processDataRecord(dataRecord netflows.DataRecord, exportTime uint32) (OVNKF
 
 		switch field.Type {
 		case 8: // sourceIPv4Address
-			sourceIP, err := parseIPv4Address(fieldBytes)
+			sourceIP, err := ParseIPv4Address(fieldBytes)
 			if err != nil {
 				return OVNKFlow{}, err
 			}
 
 			ovnkFlow.SourceIP = sourceIP
 		case 12: // destinationIPv4Address
-			destinationIP, err := parseIPv4Address(fieldBytes)
+			destinationIP, err := ParseIPv4Address(fieldBytes)
 			if err != nil {
 				return OVNKFlow{}, err
 			}
 
 			ovnkFlow.DestinationIP = destinationIP
 		case 27: // sourceIPv6Address
-			sourceIP, err := parseIPv6Address(fieldBytes)
+			sourceIP, err := ParseIPv6Address(fieldBytes)
 			if err != nil {
 				return OVNKFlow{}, err
 			}
 
 			ovnkFlow.SourceIP = sourceIP
 		case 28: // destinationIPv6Address
-			destinationIP, err := parseIPv6Address(fieldBytes)
+			destinationIP, err := ParseIPv6Address(fieldBytes)
 			if err != nil {
 				return OVNKFlow{}, err
 			}
 
 			ovnkFlow.DestinationIP = destinationIP
 		case 7: // sourcePort
-			sourcePort, err := parsePort(fieldBytes)
+			sourcePort, err := ParsePort(fieldBytes)
 			if err != nil {
 				return OVNKFlow{}, err
 			}
 
 			ovnkFlow.SourcePort = sourcePort
 		case 11: // destinationPort
-			destinationPort, err := parsePort(fieldBytes)
+			destinationPort, err := ParsePort(fieldBytes)
 			if err != nil {
 				return OVNKFlow{}, err
 			}
 
 			ovnkFlow.DestinationPort = destinationPort
 		case 4: // protocol
-			protocol, err := parseProtocol(fieldBytes)
+			protocol, err := ParseProtocol(fieldBytes)
 			if err != nil {
 				return OVNKFlow{}, err
 			}
 
 			ovnkFlow.Protocol = protocol
 		case 60: // ipVersion
-			ipVersion, err := parseIPVersion(fieldBytes)
+			ipVersion, err := ParseIPVersion(fieldBytes)
 			if err != nil {
 				return OVNKFlow{}, err
 			}

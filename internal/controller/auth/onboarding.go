@@ -1,6 +1,6 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package controller
+package auth
 
 import (
 	"bytes"
@@ -14,8 +14,10 @@ import (
 
 	"go.uber.org/zap"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
+// OnboardResponse represents the response from the onboarding endpoint.
 type OnboardResponse struct {
 	ClusterClientID     string `json:"cluster_client_id"`
 	ClusterClientSecret string `json:"cluster_client_secret"`
@@ -124,8 +126,8 @@ func OnboardCluster(ctx context.Context, tlsSkipVerify bool, onboardingEndpoint,
 	return responseData.ClusterClientID, responseData.ClusterClientSecret, nil
 }
 
-// getFirstAudience extracts the first audience from the claims map.
-func getFirstAudience(logger *zap.Logger, claims map[string]interface{}) (string, error) {
+// GetFirstAudience extracts the first audience from the claims map.
+func GetFirstAudience(logger *zap.Logger, claims map[string]interface{}) (string, error) {
 	aud, ok := claims["aud"]
 	if !ok {
 		err := errors.New("audience claim not found")
@@ -171,15 +173,12 @@ func getFirstAudience(logger *zap.Logger, claims map[string]interface{}) (string
 }
 
 // GetClusterID returns the uid of the k8s cluster's kube-system namespace, which is used as the cluster's globally unique ID.
-func GetClusterID(ctx context.Context, logger *zap.Logger) (string, error) {
-	clientset, err := NewClientSet()
-	if err != nil {
-		logger.Error("Error creating clientset", zap.Error(err))
-	}
-
+func GetClusterID(ctx context.Context, logger *zap.Logger, clientset kubernetes.Interface) (string, error) {
 	namespace, err := clientset.CoreV1().Namespaces().Get(ctx, "kube-system", v1.GetOptions{})
 	if err != nil {
 		logger.Error("Could not find kube-system namespace", zap.Error(err))
+
+		return "", err
 	}
 
 	return string(namespace.UID), nil

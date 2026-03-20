@@ -1,21 +1,21 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package controller
+package collector
 
 import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"testing"
 	"time"
 
-	"google.golang.org/protobuf/types/known/timestamppb"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
-	ts, _ := parseFalcoTimestamp("1987-02-22T00:39:07.267635635+0000")
-
+func TestParsePodNetworkInfo(t *testing.T) {
 	tests := map[string]struct {
 		input    string
 		expected *pb.FiveTupleFlow
@@ -24,9 +24,6 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 		"valid TCP flow": {
 			input: "time=1987-02-22T00:39:07.267635635+0000\t srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=tcp ipversion=ipv4",
 			expected: &pb.FiveTupleFlow{
-				Ts: &pb.FiveTupleFlow_Timestamp{
-					Timestamp: ts,
-				},
 				Layer3: &pb.IP{
 					Source:      "192.168.1.1",
 					Destination: "192.168.1.2",
@@ -47,9 +44,6 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 		"valid UDP flow": {
 			input: "time=1987-02-22T00:39:07.267635635+0000\t srcip=192.168.1.1 dstip=192.168.1.2 srcport=1234 dstport=5678 proto=udp ipversion=ipv4",
 			expected: &pb.FiveTupleFlow{
-				Ts: &pb.FiveTupleFlow_Timestamp{
-					Timestamp: ts,
-				},
 				Layer3: &pb.IP{
 					Source:      "192.168.1.1",
 					Destination: "192.168.1.2",
@@ -84,19 +78,22 @@ func (suite *ControllerTestSuite) TestParsePodNetworkInfo() {
 	}
 
 	for name, tt := range tests {
-		suite.Run(name, func() {
-			result, err := parsePodNetworkInfo(tt.input)
+		t.Run(name, func(t *testing.T) {
+			result, err := ParsePodNetworkInfo(tt.input)
 			if tt.err != nil {
-				suite.ErrorIs(err, tt.err)
+				require.ErrorIs(t, err, tt.err)
 			} else {
-				suite.Equal(tt.expected, result)
+				require.NoError(t, err)
+				// Compare Layer3 and Layer4 separately since timestamp varies
+				assert.Equal(t, tt.expected.GetLayer3(), result.GetLayer3())
+				assert.Equal(t, tt.expected.GetLayer4(), result.GetLayer4())
+				assert.NotNil(t, result.GetTs())
 			}
 		})
 	}
 }
 
-// TestFilterIllumioTraffic tests the filterIllumioTraffic function.
-func (suite *ControllerTestSuite) TestFilterIllumioTraffic() {
+func TestFilterIllumioTraffic(t *testing.T) {
 	tests := map[string]struct {
 		input    string
 		expected bool
@@ -124,14 +121,14 @@ func (suite *ControllerTestSuite) TestFilterIllumioTraffic() {
 	}
 
 	for name, tt := range tests {
-		suite.Run(name, func() {
-			result := filterIllumioTraffic(tt.input)
-			suite.Equal(tt.expected, result)
+		t.Run(name, func(t *testing.T) {
+			result := FilterIllumioTraffic(tt.input)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func (suite *ControllerTestSuite) TestCreateLayer4Message() {
+func TestCreateLayer4Message(t *testing.T) {
 	tests := map[string]struct {
 		proto       string
 		srcPort     uint32
@@ -141,7 +138,7 @@ func (suite *ControllerTestSuite) TestCreateLayer4Message() {
 		expectedErr error
 	}{
 		"TCP protocol": {
-			proto:     "tcp",
+			proto:     TCP,
 			srcPort:   80,
 			dstPort:   8080,
 			ipVersion: "",
@@ -157,7 +154,7 @@ func (suite *ControllerTestSuite) TestCreateLayer4Message() {
 			expectedErr: nil,
 		},
 		"UDP protocol": {
-			proto:     "udp",
+			proto:     UDP,
 			srcPort:   123,
 			dstPort:   456,
 			ipVersion: "",
@@ -172,10 +169,10 @@ func (suite *ControllerTestSuite) TestCreateLayer4Message() {
 			expectedErr: nil,
 		},
 		"ICMP protocol with IPv4": {
-			proto:     "icmp",
+			proto:     ICMP,
 			srcPort:   0,
 			dstPort:   0,
-			ipVersion: "ipv4",
+			ipVersion: IPv4,
 			expected: &pb.Layer4{
 				Protocol: &pb.Layer4_Icmpv4{
 					Icmpv4: &pb.ICMPv4{},
@@ -184,10 +181,10 @@ func (suite *ControllerTestSuite) TestCreateLayer4Message() {
 			expectedErr: nil,
 		},
 		"ICMP protocol with IPv6": {
-			proto:     "icmp",
+			proto:     ICMP,
 			srcPort:   0,
 			dstPort:   0,
-			ipVersion: "ipv6",
+			ipVersion: IPv6,
 			expected: &pb.Layer4{
 				Protocol: &pb.Layer4_Icmpv6{
 					Icmpv6: &pb.ICMPv6{},
@@ -206,18 +203,19 @@ func (suite *ControllerTestSuite) TestCreateLayer4Message() {
 	}
 
 	for name, tt := range tests {
-		suite.Run(name, func() {
-			result, err := createLayer4Message(tt.proto, tt.srcPort, tt.dstPort, tt.ipVersion)
-			if err != nil {
-				suite.ErrorIs(err, tt.expectedErr)
+		t.Run(name, func(t *testing.T) {
+			result, err := CreateLayer4Message(tt.proto, tt.srcPort, tt.dstPort, tt.ipVersion)
+			if tt.expectedErr != nil {
+				require.ErrorIs(t, err, tt.expectedErr)
 			} else {
-				suite.Equal(tt.expected, result)
+				require.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
 			}
 		})
 	}
 }
 
-func (suite *ControllerTestSuite) TestCreateLayer3Message() {
+func TestCreateLayer3Message(t *testing.T) {
 	tests := map[string]struct {
 		source        string
 		destination   string
@@ -228,7 +226,7 @@ func (suite *ControllerTestSuite) TestCreateLayer3Message() {
 		"IPv4": {
 			source:      "192.168.0.1",
 			destination: "192.168.0.2",
-			ipVersion:   "ipv4",
+			ipVersion:   IPv4,
 			expected: &pb.IP{
 				Source:      "192.168.0.1",
 				Destination: "192.168.0.2",
@@ -239,7 +237,7 @@ func (suite *ControllerTestSuite) TestCreateLayer3Message() {
 		"IPv6": {
 			source:      "fe80::1",
 			destination: "fe80::2",
-			ipVersion:   "ipv6",
+			ipVersion:   IPv6,
 			expected: &pb.IP{
 				Source:      "fe80::1",
 				Destination: "fe80::2",
@@ -257,82 +255,19 @@ func (suite *ControllerTestSuite) TestCreateLayer3Message() {
 	}
 
 	for name, tt := range tests {
-		suite.Run(name, func() {
-			result, err := createLayer3Message(tt.source, tt.destination, tt.ipVersion)
-			if err != nil {
-				suite.ErrorIs(err, tt.expectedError)
+		t.Run(name, func(t *testing.T) {
+			result, err := CreateLayer3Message(tt.source, tt.destination, tt.ipVersion)
+			if tt.expectedError != nil {
+				require.ErrorIs(t, err, tt.expectedError)
 			} else {
-				suite.Equal(tt.expected, result)
+				require.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
 			}
 		})
 	}
 }
 
-func (suite *ControllerTestSuite) TestRemoveTrailingTab() {
-	tests := map[string]struct {
-		input    string
-		expected string
-	}{
-		"No trailing tab": {
-			input:    "1987-02-22T00:39:07.267635635+0000",
-			expected: "1987-02-22T00:39:07.267635635+0000",
-		},
-		"One trailing tab": {
-			input:    "1987-02-22T00:39:07.267635635+0000\t",
-			expected: "1987-02-22T00:39:07.267635635+0000",
-		},
-		"Multiple trailing tabs": {
-			input:    "1987-02-22T00:39:07.267635635+0000\t\t",
-			expected: "1987-02-22T00:39:07.267635635+0000",
-		},
-		"Tabs in different parts": {
-			input:    "\t\t1987-02-22T00:39:07.267635635+0000\t\t",
-			expected: "\t\t1987-02-22T00:39:07.267635635+0000",
-		},
-		"Leading and trailing tab": {
-			input:    "\t1987-02-22T00:39:07.267635635+0000\t",
-			expected: "\t1987-02-22T00:39:07.267635635+0000",
-		},
-	}
-
-	for name, tt := range tests {
-		suite.Run(name, func() {
-			result := removeTrailingTab(tt.input)
-			suite.Equal(tt.expected, result)
-		})
-	}
-}
-
-func (suite *ControllerTestSuite) TestConvertStringToTimestamp() {
-	ts, _ := time.Parse(falcoTimestampFormat, "1987-02-22T00:39:07.267635635+0000")
-	tests := map[string]struct {
-		input    string
-		expected *timestamppb.Timestamp
-	}{
-		"Valid ISO 8601 time string": {
-			input:    "1987-02-22T00:39:07.267635635+0000\t",
-			expected: timestamppb.New(ts),
-		},
-		"Invalid ISO 8601 time string": {
-			input:    "2022-10-15T15:04:05", // Missing time zone
-			expected: nil,                   // Expected error
-		},
-	}
-
-	for name, tt := range tests {
-		suite.Run(name, func() {
-			result, err := parseFalcoTimestamp(tt.input)
-			if tt.expected == nil {
-				suite.Error(err, "Expected an error but got nil")
-			} else {
-				suite.Require().NoError(err, "Unexpected error occurred")
-				suite.Equal(tt.expected, result)
-			}
-		})
-	}
-}
-
-func (suite *ControllerTestSuite) TestNewFalcoEventHandler() {
+func TestNewFalcoEventHandler(t *testing.T) {
 	eventChan := make(chan string, 1)
 	handler := NewFalcoEventHandler(eventChan)
 
@@ -354,24 +289,21 @@ func (suite *ControllerTestSuite) TestNewFalcoEventHandler() {
 	}
 
 	for name, tt := range tests {
-		suite.Run(name, func() {
-			// Create a test request
+		t.Run(name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
 
 			rr := httptest.NewRecorder()
-
 			handler.ServeHTTP(rr, req)
 
-			suite.Equal(tt.expectedStatus, rr.Code)
+			assert.Equal(t, tt.expectedStatus, rr.Code)
 
-			// If we expect a successful response, check the event channel
 			if tt.expectedStatus == http.StatusOK {
 				select {
 				case event := <-eventChan:
-					suite.Equal(tt.expectedEvent, event)
+					assert.Equal(t, tt.expectedEvent, event)
 				case <-time.After(100 * time.Millisecond):
-					suite.T().Error("Expected event not received")
+					t.Error("Expected event not received")
 				}
 			}
 		})

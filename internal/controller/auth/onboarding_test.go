@@ -1,6 +1,6 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package controller
+package auth
 
 import (
 	"context"
@@ -8,13 +8,18 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
-func (suite *ControllerTestSuite) TestOnboard() {
+func (suite *AuthTestSuite) TestOnboard() {
 	ctx := context.Background()
 	// Create a development encoder config
 	encoderConfig := zap.NewDevelopmentEncoderConfig()
@@ -98,21 +103,21 @@ func (suite *ControllerTestSuite) TestOnboard() {
 	}
 }
 
-func (suite *ControllerTestSuite) TestGetFirstAudience() {
+func (suite *AuthTestSuite) TestGetFirstAudience() {
 	tests := map[string]struct {
-		claims         map[string]interface{}
+		claims         map[string]any
 		expected       string
 		expectedError  bool
 		expectedErrMsg string
 	}{
 		"audience claim not found": {
-			claims:         map[string]interface{}{},
+			claims:         map[string]any{},
 			expected:       "",
 			expectedError:  true,
 			expectedErrMsg: "audience claim not found",
 		},
 		"audience claim is not a slice": {
-			claims: map[string]interface{}{
+			claims: map[string]any{
 				"aud": "not a slice",
 			},
 			expected:       "",
@@ -120,24 +125,24 @@ func (suite *ControllerTestSuite) TestGetFirstAudience() {
 			expectedErrMsg: "audience claim is not a slice",
 		},
 		"audience slice is empty": {
-			claims: map[string]interface{}{
-				"aud": []interface{}{},
+			claims: map[string]any{
+				"aud": []any{},
 			},
 			expected:       "",
 			expectedError:  true,
 			expectedErrMsg: "audience slice is empty",
 		},
 		"first audience claim is not a string": {
-			claims: map[string]interface{}{
-				"aud": []interface{}{123},
+			claims: map[string]any{
+				"aud": []any{123},
 			},
 			expected:       "",
 			expectedError:  true,
 			expectedErrMsg: "first audience claim is not a string",
 		},
 		"valid audience claim": {
-			claims: map[string]interface{}{
-				"aud": []interface{}{"exampleAudience"},
+			claims: map[string]any{
+				"aud": []any{"exampleAudience"},
 			},
 			expected:      "exampleAudience",
 			expectedError: false,
@@ -146,7 +151,7 @@ func (suite *ControllerTestSuite) TestGetFirstAudience() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			got, err := getFirstAudience(suite.logger, tt.claims)
+			got, err := GetFirstAudience(suite.logger, tt.claims)
 			if tt.expectedError {
 				suite.Require().Error(err)
 				suite.EqualErrorf(err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
@@ -159,27 +164,26 @@ func (suite *ControllerTestSuite) TestGetFirstAudience() {
 }
 
 // TestGetClusterID tests the GetClusterID function.
-func (suite *ControllerTestSuite) TestGetClusterID() {
-	logger := suite.logger
+func TestGetClusterID(t *testing.T) {
+	logger := zap.NewNop()
 	ctx := context.Background()
 
-	// Manually retrieve the expected UID of the kube-system namespace
-	clientset, err := NewClientSet()
-	suite.Require().NoError(err)
-
-	namespace, err := clientset.CoreV1().Namespaces().Get(ctx, "kube-system", v1.GetOptions{})
-	suite.Require().NoError(err)
-
-	expectedUID := string(namespace.UID)
+	// Create a fake clientset with kube-system namespace
+	fakeClientset := fake.NewSimpleClientset(&v1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "kube-system",
+			UID:  "test-cluster-uid-12345",
+		},
+	})
 
 	// Call the GetClusterID function
-	clusterID, err := GetClusterID(ctx, logger)
-	suite.Require().NoError(err)
-	suite.NotEmpty(clusterID)
+	clusterID, err := GetClusterID(ctx, logger, fakeClientset)
+	require.NoError(t, err)
+	assert.NotEmpty(t, clusterID)
 
 	// Check if the returned UID matches the expected UID
-	suite.Equal(expectedUID, clusterID)
+	assert.Equal(t, "test-cluster-uid-12345", clusterID)
 
 	// Log the cluster ID for verification
-	suite.T().Logf("Cluster ID: %s", clusterID)
+	t.Logf("Cluster ID: %s", clusterID)
 }

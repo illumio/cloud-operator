@@ -1,10 +1,11 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package controller
+package collector
 
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -32,8 +33,11 @@ type FalcoEvent struct {
 	IpVersion string `json:"prototype"`
 }
 
-// falcoTimestampFormat  is the format of timestamp strings received from Falco.
+// falcoTimestampFormat is the format of timestamp strings received from Falco.
 const falcoTimestampFormat = "2006-01-02T15:04:05.999999999-0700"
+
+// Regex pattern for parsing Falco events.
+var reParsePodNetworkInfo = regexp.MustCompile(`\b(\w+)=([^\s)]+)`)
 
 // removeTrailingTab removes the trailing tab character from the input string if it exists.
 // Within the falco network logs, the timestamp comes with a trailing '\t', this function
@@ -42,7 +46,7 @@ func removeTrailingTab(time string) string {
 	return strings.TrimRight(time, "\t")
 }
 
-// parseFalcoTimestamp  parses the input string value in a Falco's timestamp format that is similar to RFC3339 and returns a timestamppb.Timestamp.
+// parseFalcoTimestamp parses the input string value in a Falco's timestamp format that is similar to RFC3339 and returns a timestamppb.Timestamp.
 func parseFalcoTimestamp(value string) (*timestamppb.Timestamp, error) {
 	value = removeTrailingTab(value)
 
@@ -55,8 +59,8 @@ func parseFalcoTimestamp(value string) (*timestamppb.Timestamp, error) {
 	return timestamppb.New(t), nil
 }
 
-// parsePodNetworkInfo parses the input string to extract network information into a FiveTupleFlow message.
-func parsePodNetworkInfo(input string) (*pb.FiveTupleFlow, error) {
+// ParsePodNetworkInfo parses the input string to extract network information into a FiveTupleFlow message.
+func ParsePodNetworkInfo(input string) (*pb.FiveTupleFlow, error) {
 	var info FalcoEvent
 	// Regular expression to extract the key-value pairs from the input string
 	matches := reParsePodNetworkInfo.FindAllStringSubmatch(input, -1)
@@ -92,7 +96,7 @@ func parsePodNetworkInfo(input string) (*pb.FiveTupleFlow, error) {
 		return nil, ErrFalcoEventIsNotFlow
 	}
 
-	layer3Message, err := createLayer3Message(info.SrcIP, info.DstIP, info.IpVersion)
+	layer3Message, err := CreateLayer3Message(info.SrcIP, info.DstIP, info.IpVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +111,7 @@ func parsePodNetworkInfo(input string) (*pb.FiveTupleFlow, error) {
 		return nil, ErrFalcoInvalidPort
 	}
 
-	layer4Message, err := createLayer4Message(info.Proto, uint32(srcPort), uint32(dstPort), info.IpVersion)
+	layer4Message, err := CreateLayer4Message(info.Proto, uint32(srcPort), uint32(dstPort), info.IpVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -149,62 +153,7 @@ func NewFalcoEventHandler(eventChan chan<- string) http.HandlerFunc {
 	}
 }
 
-// filterIllumioTraffic filters out events related to Illumio network traffic.
-func filterIllumioTraffic(body string) bool {
+// FilterIllumioTraffic filters out events related to Illumio network traffic.
+func FilterIllumioTraffic(body string) bool {
 	return strings.Contains(body, "illumio_network_traffic")
-}
-
-func createLayer3Message(source string, destination string, ipVersion string) (*pb.IP, error) {
-	switch ipVersion {
-	case IPv4:
-		return &pb.IP{Source: source, Destination: destination, IpVersion: pb.IPVersion_IP_VERSION_IPV4}, nil
-	case IPv6:
-		return &pb.IP{Source: source, Destination: destination, IpVersion: pb.IPVersion_IP_VERSION_IPV6}, nil
-	default:
-		// If this is IPVersion_IP_VERSION_IP_NOT_USED_UNSPECIFIED we want to drop this packet.
-		return nil, ErrFalcoIncompleteL3Flow
-	}
-}
-
-// createLayer4Message converts event protocol and ports to a Layer4 proto message.
-func createLayer4Message(proto string, srcPort, dstPort uint32, ipVersion string) (*pb.Layer4, error) {
-	switch proto {
-	case TCP:
-		return &pb.Layer4{
-			Protocol: &pb.Layer4_Tcp{
-				Tcp: &pb.TCP{
-					SourcePort:      srcPort,
-					DestinationPort: dstPort,
-					Flags:           &pb.TCPFlags{},
-				},
-			},
-		}, nil
-	case UDP:
-		return &pb.Layer4{
-			Protocol: &pb.Layer4_Udp{
-				Udp: &pb.UDP{
-					SourcePort:      srcPort,
-					DestinationPort: dstPort,
-				},
-			},
-		}, nil
-	case ICMP:
-		switch ipVersion {
-		case IPv4:
-			return &pb.Layer4{
-				Protocol: &pb.Layer4_Icmpv4{
-					Icmpv4: &pb.ICMPv4{},
-				},
-			}, nil
-		case IPv6:
-			return &pb.Layer4{
-				Protocol: &pb.Layer4_Icmpv6{
-					Icmpv6: &pb.ICMPv6{},
-				},
-			}, nil
-		}
-	default:
-	}
-
-	return nil, ErrFalcoIncompleteL4Flow
 }

@@ -1,9 +1,10 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package controller
+package logging
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -21,6 +22,14 @@ const (
 	keepAlivePeriod  = 10 * time.Second
 )
 
+// LogStream abstracts the SendLogs gRPC stream.
+type LogStream interface {
+	Send(req *pb.SendLogsRequest) error
+	Recv() (*pb.SendLogsResponse, error)
+	CloseSend() error
+}
+
+// ClientConnInterface abstracts gRPC connection state checking.
 type ClientConnInterface interface {
 	GetState() connectivity.State
 	Close() error
@@ -138,6 +147,13 @@ func (b *BufferedGrpcWriteSyncer) sendLogsKeepalive() error {
 	})
 }
 
+// jitterTime subtracts a percentage from the base time, in order to introduce jitter.
+func jitterTime(base time.Duration, maxJitterPct float64) time.Duration {
+	jitterPct := rand.Float64() * maxJitterPct //nolint:gosec
+
+	return time.Duration(float64(base) * (1. - jitterPct))
+}
+
 // run flushes the buffer at the configured interval until Stop is called.
 func (b *BufferedGrpcWriteSyncer) run() {
 	ticker := time.NewTicker(logFlushInterval)
@@ -233,8 +249,8 @@ func (b *BufferedGrpcWriteSyncer) UpdateClient(client LogStream, conn ClientConn
 	b.mutex.Unlock()
 }
 
-// updateLogLevel sets the logger's log level based on the response from the server.
-func (b *BufferedGrpcWriteSyncer) updateLogLevel(level pb.LogLevel) {
+// UpdateLogLevel sets the logger's log level based on the response from the server.
+func (b *BufferedGrpcWriteSyncer) UpdateLogLevel(level pb.LogLevel) {
 	switch level {
 	case pb.LogLevel_LOG_LEVEL_UNSPECIFIED:
 		b.logger.Warn("Unspecified log level received, defaulting to INFO")
@@ -254,6 +270,30 @@ func (b *BufferedGrpcWriteSyncer) updateLogLevel(level pb.LogLevel) {
 	default:
 		b.logger.Warn("Unknown log level received, defaulting to INFO")
 		b.logLevel.SetLevel(zapcore.InfoLevel)
+	}
+}
+
+// SetDone sets the done channel for the BufferedGrpcWriteSyncer.
+func (b *BufferedGrpcWriteSyncer) SetDone(done chan struct{}) {
+	b.done = done
+}
+
+// GetLogLevel returns the current log level (for testing).
+func (b *BufferedGrpcWriteSyncer) GetLogLevel() zapcore.Level {
+	return b.logLevel.Level()
+}
+
+// NewBufferedGrpcWriteSyncerForTest creates a BufferedGrpcWriteSyncer for testing with a logger.
+func NewBufferedGrpcWriteSyncerForTest(logger *zap.Logger) *BufferedGrpcWriteSyncer {
+	return &BufferedGrpcWriteSyncer{
+		client:              nil,
+		conn:                nil,
+		buffer:              make([]string, 0, logMaxBufferSize),
+		done:                make(chan struct{}),
+		lostLogEntriesCount: 0,
+		keepAlivePeriod:     keepAlivePeriod,
+		logger:              logger,
+		logLevel:            zap.NewAtomicLevel(),
 	}
 }
 

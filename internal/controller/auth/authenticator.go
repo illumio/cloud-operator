@@ -1,6 +1,6 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package controller
+package auth
 
 import (
 	"context"
@@ -21,7 +21,6 @@ import (
 	"google.golang.org/grpc/keepalive"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 )
 
 const (
@@ -29,30 +28,42 @@ const (
 	SecretFieldClientSecret = "client_secret"
 )
 
+// AuthConfig holds configuration for authentication operations.
+type AuthConfig struct {
+	ClusterCreds           string
+	PodNamespace           string
+	OnboardingClientID     string
+	OnboardingClientSecret string
+	OnboardingEndpoint     string
+	TlsSkipVerify          bool
+}
+
 var kacp = keepalive.ClientParameters{
 	Time:                10 * time.Second, // send pings every 10 seconds if there is no activity
 	Timeout:             10 * time.Second, // wait 10s for ping ack before considering the connection dead
 	PermitWithoutStream: true,             // send pings even without active streams
 }
 
-func GetClusterCredentials(ctx context.Context, logger *zap.Logger, envMap EnvironmentConfig) (string, string, error) {
-	clientID, clientSecret, err := readClusterCredentialsFromK8sSecret(ctx, envMap.ClusterCreds, envMap.PodNamespace)
+// GetClusterCredentials retrieves cluster credentials from a Kubernetes secret,
+// or onboards the cluster if credentials are not found.
+func GetClusterCredentials(ctx context.Context, logger *zap.Logger, clientset kubernetes.Interface, config AuthConfig) (string, string, error) {
+	clientID, clientSecret, err := readClusterCredentialsFromK8sSecret(ctx, clientset, config.ClusterCreds, config.PodNamespace)
 	if err != nil {
 		return "", "", err
 	}
 
 	if clientID == "" || clientSecret == "" {
-		if envMap.OnboardingClientID == "" || envMap.OnboardingClientSecret == "" {
+		if config.OnboardingClientID == "" || config.OnboardingClientSecret == "" {
 			return "", "", errors.New("onboarding credentials are not configured")
 		}
 
-		clientID, clientSecret, err = OnboardCluster(ctx, envMap.TlsSkipVerify, envMap.OnboardingEndpoint,
-			envMap.OnboardingClientID, envMap.OnboardingClientSecret, logger)
+		clientID, clientSecret, err = OnboardCluster(ctx, config.TlsSkipVerify, config.OnboardingEndpoint,
+			config.OnboardingClientID, config.OnboardingClientSecret, logger)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to onboard cluster: %w", err)
 		}
 
-		err = writeClusterCredentialsIntoK8sSecret(ctx, clientID, clientSecret, envMap.ClusterCreds, envMap.PodNamespace)
+		err = writeClusterCredentialsIntoK8sSecret(ctx, clientset, clientID, clientSecret, config.ClusterCreds, config.PodNamespace)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to write cluster credentials into k8s secret: %w", err)
 		}
@@ -62,12 +73,7 @@ func GetClusterCredentials(ctx context.Context, logger *zap.Logger, envMap Envir
 }
 
 // readClusterCredentialsFromK8sSecret takes a secretName and reads the file.
-func readClusterCredentialsFromK8sSecret(ctx context.Context, secretName string, podNamespace string) (string, string, error) {
-	clientset, err := NewClientSet()
-	if err != nil {
-		return "", "", fmt.Errorf("failed to create k8s client set to read cluster credentials from k8s secret: %w", err)
-	}
-
+func readClusterCredentialsFromK8sSecret(ctx context.Context, clientset kubernetes.Interface, secretName string, podNamespace string) (string, string, error) {
 	secret, err := clientset.CoreV1().Secrets(podNamespace).Get(ctx, secretName, metav1.GetOptions{})
 	if err != nil {
 		return "", "", fmt.Errorf("failed to read cluster credentials from k8s secret: %w", err)
@@ -80,12 +86,7 @@ func readClusterCredentialsFromK8sSecret(ctx context.Context, secretName string,
 }
 
 // writeClusterCredentialsIntoK8sSecret updates the data in an existing Kubernetes Secret without overwriting annotations or labels.
-func writeClusterCredentialsIntoK8sSecret(ctx context.Context, clusterClientID, clusterClusterSecret, clusterCreds string, podNamespace string) error {
-	clientset, err := NewClientSet()
-	if err != nil {
-		return fmt.Errorf("failed to create k8s client set to write cluster credentials into k8s secret: %w", err)
-	}
-
+func writeClusterCredentialsIntoK8sSecret(ctx context.Context, clientset kubernetes.Interface, clusterClientID, clusterClusterSecret, clusterCreds string, podNamespace string) error {
 	secretsClient := clientset.CoreV1().Secrets(podNamespace)
 	// Fetch the existing Secret to preserve metadata
 	existingSecret, err := secretsClient.Get(ctx, clusterCreds, metav1.GetOptions{})
@@ -106,25 +107,6 @@ func writeClusterCredentialsIntoK8sSecret(ctx context.Context, clusterClientID, 
 	}
 
 	return nil
-}
-
-// newClientForConfig contains only the transport wrapping logic to avoid http proxy env variable.
-func newClientForConfig(config *rest.Config) (*kubernetes.Clientset, error) {
-	// Use WrapTransport to customize the transport for this specific client.
-	config.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
-		if transport, ok := rt.(*http.Transport); ok {
-			// Clone the transport to avoid modifying a shared one.
-			customTransport := transport.Clone()
-			// Explicitly disable the proxy.
-			customTransport.Proxy = nil
-
-			return customTransport
-		}
-
-		return rt
-	}
-
-	return kubernetes.NewForConfig(config)
 }
 
 // IsRunningInCluster helps determine if the application is running inside a Kubernetes cluster.
@@ -169,7 +151,7 @@ func SetUpOAuthConnection(
 		return nil, err
 	}
 
-	aud, err := getFirstAudience(logger, claims)
+	aud, err := GetFirstAudience(logger, claims)
 	if err != nil {
 		logger.Error("Error pulling audience out of token", zap.Error(err))
 

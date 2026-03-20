@@ -1,6 +1,6 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package controller
+package collector
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"github.com/cilium/cilium/api/v1/flow"
 	observer "github.com/cilium/cilium/api/v1/observer"
 	"go.uber.org/zap"
+	"k8s.io/client-go/kubernetes"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/hubble"
@@ -30,14 +31,9 @@ const (
 	ciliumHubbleMTLSSecretName string = "hubble-relay-client-certs" //nolint:gosec
 )
 
-// newCiliumFlowCollector connects to Cilium Hubble Relay, sets up an Observer client,
+// NewCiliumFlowCollector connects to Cilium Hubble Relay, sets up an Observer client,
 // and returns a new Collector using it. It tries namespaces until discovery succeeds.
-func newCiliumFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespaces []string, tlsAuthProperties tls.AuthProperties) (*CiliumFlowCollector, error) {
-	clientset, err := NewClientSet()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create new client set: %w", err)
-	}
-
+func NewCiliumFlowCollector(ctx context.Context, logger *zap.Logger, clientset kubernetes.Interface, ciliumNamespaces []string, tlsAuthProperties tls.AuthProperties) (*CiliumFlowCollector, error) {
 	var hubbleAddress string
 
 	var tlsConfig *cryptotls.Config
@@ -197,8 +193,8 @@ func convertCiliumPolicies(policies []*flow.Policy) []*pb.Policy {
 	return protoPolicies
 }
 
-// exportCiliumFlows makes one stream gRPC call to hubble-relay to collect, convert, and export flows into the given stream.
-func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *streamManager) error {
+// ExportCiliumFlows makes one stream gRPC call to hubble-relay to collect, convert, and export flows into the given stream.
+func (fm *CiliumFlowCollector) ExportCiliumFlows(ctx context.Context, flowSink FlowSink) error {
 	req := &observer.GetFlowsRequest{
 		Number: ciliumHubbleRelayMaxFlowCount,
 		Follow: true,
@@ -248,32 +244,32 @@ func (fm *CiliumFlowCollector) exportCiliumFlows(ctx context.Context, sm *stream
 		default:
 		}
 
-		flow, err := stream.Recv()
+		flowResp, err := stream.Recv()
 		if err != nil {
 			fm.logger.Warn("Failed to get flow log from stream", zap.Error(err))
 
 			return err
 		}
 
-		ciliumFlow := convertCiliumFlow(flow)
+		ciliumFlow := ConvertCiliumFlow(flowResp)
 		if ciliumFlow == nil {
 			continue
 		}
 
-		err = sm.FlowCache.CacheFlow(ctx, ciliumFlow)
+		err = flowSink.CacheFlow(ctx, ciliumFlow)
 		if err != nil {
 			fm.logger.Error("Failed to cache flow", zap.Error(err))
 
 			return err
 		}
 
-		sm.stats.IncrementFlowsReceived()
+		flowSink.IncrementFlowsReceived()
 	}
 }
 
-// convertCiliumFlow converts a GetFlowsResponse object to a CiliumFlow object.
-func convertCiliumFlow(flow *observer.GetFlowsResponse) *pb.CiliumFlow {
-	flowObj := flow.GetFlow()
+// ConvertCiliumFlow converts a GetFlowsResponse object to a CiliumFlow object.
+func ConvertCiliumFlow(flowResp *observer.GetFlowsResponse) *pb.CiliumFlow {
+	flowObj := flowResp.GetFlow()
 	// Check for nil fields
 	if flowObj.GetTime() == nil ||
 		flowObj.GetTrafficDirection().String() == "" ||

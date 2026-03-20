@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller/auth"
 	"github.com/illumio/cloud-operator/internal/version"
 )
 
@@ -99,16 +100,16 @@ func (sm *streamManager) createMutationObject(metadata *pb.KubernetesObjectData,
 
 // sendClusterMetadata sends a message to indicate current cluster metadata.
 func (sm *streamManager) sendClusterMetadata(ctx context.Context, logger *zap.Logger) error {
-	clusterUid, err := GetClusterID(ctx, logger)
+	clientset, err := NewClientSet()
 	if err != nil {
-		logger.Error("Error getting cluster id", zap.Error(err))
+		logger.Error("Error creating clientset", zap.Error(err))
 
 		return err
 	}
 
-	clientset, err := NewClientSet()
+	clusterUid, err := auth.GetClusterID(ctx, logger, clientset)
 	if err != nil {
-		logger.Error("Error creating clientset", zap.Error(err))
+		logger.Error("Error getting cluster id", zap.Error(err))
 
 		return err
 	}

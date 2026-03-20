@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller/collector"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
@@ -427,14 +428,14 @@ func TestStreamManager_WithFlowCache(t *testing.T) {
 
 func TestParsePodNetworkInfo_InvalidInput(t *testing.T) {
 	// Test with empty input
-	result, err := parsePodNetworkInfo("")
+	result, err := collector.ParsePodNetworkInfo("")
 	assert.Nil(t, result)
-	require.ErrorIs(t, err, ErrFalcoEventIsNotFlow)
+	require.ErrorIs(t, err, collector.ErrFalcoEventIsNotFlow)
 
 	// Test with incomplete input
-	result, err = parsePodNetworkInfo("incomplete data")
+	result, err = collector.ParsePodNetworkInfo("incomplete data")
 	assert.Nil(t, result)
-	require.ErrorIs(t, err, ErrFalcoEventIsNotFlow)
+	require.ErrorIs(t, err, collector.ErrFalcoEventIsNotFlow)
 }
 
 func TestFilterIllumioTraffic(t *testing.T) {
@@ -451,7 +452,7 @@ func TestFilterIllumioTraffic(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := filterIllumioTraffic(tt.input)
+			result := collector.FilterIllumioTraffic(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

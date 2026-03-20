@@ -29,7 +29,8 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/klog/v2"
 
-	controller "github.com/illumio/cloud-operator/internal/controller"
+	"github.com/illumio/cloud-operator/internal/controller"
+	"github.com/illumio/cloud-operator/internal/controller/logging"
 )
 
 const (
@@ -71,9 +72,9 @@ func bindEnv(logger *zap.Logger, key, envVar string) {
 func main() {
 	// Create a buffered grpc write syncer without a valid gRPC connection initially
 	// Using nil for the `pb.KubernetesInfoService_KubernetesLogsClient`.
-	bufferedGrpcSyncer := controller.NewBufferedGrpcWriteSyncer()
+	bufferedGrpcSyncer := logging.NewBufferedGrpcWriteSyncer()
 
-	logger := controller.NewProductionGRPCLogger(bufferedGrpcSyncer)
+	logger := logging.NewProductionGRPCLogger(bufferedGrpcSyncer)
 	defer logger.Sync() //nolint:errcheck
 
 	// Convert zap.Logger to logr.Logger

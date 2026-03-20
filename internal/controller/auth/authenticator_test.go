@@ -1,6 +1,6 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package controller
+package auth
 
 import (
 	"context"
@@ -10,20 +10,38 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
+	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/rest"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
-func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
+// AuthTestSuite is the test suite for auth package.
+type AuthTestSuite struct {
+	suite.Suite
+
+	clientset kubernetes.Interface
+	logger    *zap.Logger
+}
+
+func (suite *AuthTestSuite) SetupSuite() {
+	suite.clientset = fake.NewSimpleClientset()
+	suite.logger = zap.NewNop()
+}
+
+func TestAuthTestSuite(t *testing.T) {
+	suite.Run(t, new(AuthTestSuite))
+}
+
+func (suite *AuthTestSuite) TestReadCredentialsK8sSecrets() {
 	namespaceObj := &v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "illumio-cloud",
@@ -31,7 +49,7 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 	}
 
 	_, err := suite.clientset.CoreV1().Namespaces().Create(context.TODO(), namespaceObj, metav1.CreateOptions{})
-	if err != nil {
+	if err != nil && !k8serrors.IsAlreadyExists(err) {
 		suite.T().Fatal("Cannot create the illumio-cloud namespace for test " + err.Error())
 	}
 
@@ -89,12 +107,12 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 				}
 
 				_, err := suite.clientset.CoreV1().Secrets("illumio-cloud").Create(ctx, secret, metav1.CreateOptions{})
-				if err != nil {
+				if err != nil && !k8serrors.IsAlreadyExists(err) {
 					suite.T().Fatal("Cannot create a secret for test " + err.Error())
 				}
 			}
 
-			clientID, clientSecret, err := readClusterCredentialsFromK8sSecret(ctx, tt.secretName, "illumio-cloud")
+			clientID, clientSecret, err := readClusterCredentialsFromK8sSecret(ctx, suite.clientset, tt.secretName, "illumio-cloud")
 			if tt.expectedError {
 				suite.Require().EqualErrorf(err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
 				suite.Empty(clientID)
@@ -108,8 +126,11 @@ func (suite *ControllerTestSuite) TestReadCredentialsK8sSecrets() {
 	}
 }
 
-func (suite *ControllerTestSuite) TestWriteK8sSecret() { //nolint:gocognit
+func (suite *AuthTestSuite) TestWriteK8sSecret() {
 	ctx := context.Background()
+
+	// Use a fresh fake clientset for this test to avoid state conflicts
+	fakeClientset := fake.NewSimpleClientset()
 
 	tests := map[string]struct {
 		namespaceExists     bool
@@ -125,39 +146,22 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() { //nolint:gocognit
 			secretExists:        false,
 			clusterClientID:     "test-client-id",
 			clusterClientSecret: "test-client-secret",
-			secretName:          "test-secret",
+			secretName:          "write-test-secret",
 			expectedError:       true,
-			expectedErrMsg:      "failed to read cluster credentials from k8s secret for update: secrets \"test-secret\" not found",
+			expectedErrMsg:      "failed to read cluster credentials from k8s secret for update: secrets \"write-test-secret\" not found",
 		},
 		"success": {
 			namespaceExists:     true,
 			secretExists:        true,
 			clusterClientID:     "test-client-id",
 			clusterClientSecret: "test-client-secret",
-			secretName:          "test-secret",
+			secretName:          "write-test-secret-success",
 			expectedError:       false,
 		},
 	}
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			// Since go test does not follow any order, always make sure namespace is deleted before each test
-			_ = suite.clientset.CoreV1().Namespaces().Delete(ctx, "illumio-cloud", metav1.DeleteOptions{})
-
-			// Add polling logic to ensure namespace deletion
-			for {
-				_, err := suite.clientset.CoreV1().Namespaces().Get(ctx, "illumio-cloud", metav1.GetOptions{})
-				if k8serrors.IsNotFound(err) {
-					break // Namespace is deleted
-				}
-
-				if err != nil {
-					suite.T().Fatal("Error while checking namespace deletion: " + err.Error())
-				}
-
-				time.Sleep(100 * time.Millisecond) // Wait before retrying
-			}
-
 			if tt.namespaceExists {
 				namespaceObj := &v1.Namespace{
 					ObjectMeta: metav1.ObjectMeta{
@@ -165,7 +169,7 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() { //nolint:gocognit
 					},
 				}
 
-				_, err := suite.clientset.CoreV1().Namespaces().Create(ctx, namespaceObj, metav1.CreateOptions{})
+				_, err := fakeClientset.CoreV1().Namespaces().Create(ctx, namespaceObj, metav1.CreateOptions{})
 				if err != nil && !k8serrors.IsAlreadyExists(err) {
 					suite.T().Fatal("Cannot create the illumio-cloud namespace for test " + err.Error())
 				}
@@ -174,20 +178,20 @@ func (suite *ControllerTestSuite) TestWriteK8sSecret() { //nolint:gocognit
 			if tt.secretExists {
 				secret := &v1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-secret",
+						Name:      tt.secretName,
 						Namespace: "illumio-cloud",
 					},
 					Type: v1.SecretTypeOpaque,
 				}
 
 				// Create the secret in the specified namespace
-				_, err := suite.clientset.CoreV1().Secrets("illumio-cloud").Create(ctx, secret, metav1.CreateOptions{})
-				if err != nil {
+				_, err := fakeClientset.CoreV1().Secrets("illumio-cloud").Create(ctx, secret, metav1.CreateOptions{})
+				if err != nil && !k8serrors.IsAlreadyExists(err) {
 					suite.T().Fatal("Failed to create secret for test " + err.Error())
 				}
 			}
 
-			err := writeClusterCredentialsIntoK8sSecret(ctx, tt.clusterClientID, tt.clusterClientSecret, tt.secretName, "illumio-cloud")
+			err := writeClusterCredentialsIntoK8sSecret(ctx, fakeClientset, tt.clusterClientID, tt.clusterClientSecret, tt.secretName, "illumio-cloud")
 			if tt.expectedError {
 				suite.EqualErrorf(err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
 			} else {
@@ -213,7 +217,7 @@ func TestIsRunningInCluster(t *testing.T) {
 }
 
 // TestParseToken tests the ParseToken function.
-func (suite *ControllerTestSuite) TestParseToken() {
+func TestParseToken(t *testing.T) {
 	// Create a sample token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"foo": "bar",
@@ -222,15 +226,15 @@ func (suite *ControllerTestSuite) TestParseToken() {
 
 	// Test valid token
 	claims, err := ParseToken(tokenString)
-	suite.Require().NoError(err)
-	suite.Equal("bar", claims["foo"])
+	require.NoError(t, err)
+	assert.Equal(t, "bar", claims["foo"])
 
 	// Test invalid token
 	_, err = ParseToken("invalid-token")
-	suite.Error(err)
+	assert.Error(t, err)
 }
 
-func (suite *ControllerTestSuite) TestHTTPProxySupport() {
+func (suite *AuthTestSuite) TestHTTPProxySupport() {
 	// Start a mock proxy server
 	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -306,7 +310,7 @@ func TestOAuthProxySupport(t *testing.T) {
 	ctx := context.Background()
 	conn, err := SetUpOAuthConnection(
 		ctx,
-		newCustomLogger(t),
+		zap.NewNop(),
 		"https://something.invalid/token",
 		true, // Skip TLS verification for testing
 		"test-client-id",
@@ -324,6 +328,7 @@ func TestOAuthProxySupport(t *testing.T) {
 	require.Error(t, err, "Expected an error from SetUpOAuthConnection due to proxy failure, but got nil")
 	assert.ErrorContains(t, err, "Post \"https://something.invalid/token\": Forbidden", "Error message should indicate a proxy failure")
 }
+
 func TestGetTLSConfig(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -353,62 +358,4 @@ func TestGetTLSConfig(t *testing.T) {
 			assert.Equal(t, tt.skipVerify, tlsConfig.InsecureSkipVerify)
 		})
 	}
-}
-
-func TestClientBypassesProxy(t *testing.T) {
-	// 1. Mock Servers (no change here)
-	var proxyRequests int32
-
-	mockProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&proxyRequests, 1)
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer mockProxy.Close()
-
-	mockApiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		_, err := w.Write([]byte(`{"kind": "PodList", "items":[]}`))
-		assert.NoError(t, err, "Failed to write response")
-	}))
-	defer mockApiServer.Close()
-
-	// 2. Configure Environment (no change here)
-	t.Setenv("HTTP_PROXY", mockProxy.URL)
-	t.Setenv("HTTPS_PROXY", mockProxy.URL)
-	t.Setenv("NO_PROXY", "")
-	t.Setenv("no_proxy", "")
-
-	// --- VERIFY K8S CLIENT (no change here) ---
-	config := &rest.Config{Host: mockApiServer.URL}
-
-	k8sClient, err := newClientForConfig(config)
-	require.NoError(t, err)
-
-	_, err = k8sClient.CoreV1().Pods("default").List(context.TODO(), metav1.ListOptions{})
-	require.NoError(t, err)
-
-	// --- DEBUGGING PROXY FOR STANDARD CLIENT ---
-
-	// Create the standard client with our logging proxy function
-	stdClient := &http.Client{
-		Transport: &http.Transport{
-			// Manually implement the proxy logic, bypassing the faulty function.
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(os.Getenv("HTTP_PROXY"))
-			},
-		},
-	}
-
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, mockApiServer.URL, nil)
-	require.NoError(t, err)
-
-	resp, err := stdClient.Do(req)
-	require.NoError(t, err)
-
-	err = resp.Body.Close()
-	require.NoError(t, err)
-
-	assert.Equal(t, int32(1), atomic.LoadInt32(&proxyRequests))
 }

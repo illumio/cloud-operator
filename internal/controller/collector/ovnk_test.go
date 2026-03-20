@@ -1,70 +1,55 @@
 // Copyright 2025 Illumio, Inc. All Rights Reserved.
 
-package controller
+package collector
 
 import (
 	"context"
 	"testing"
-	"time"
 
 	netflows "github.com/netsampler/goflow2/decoders/netflow"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
-func (suite *ControllerTestSuite) TestIsOVNKDeployed() {
+func TestIsOVNKDeployed(t *testing.T) {
 	tests := map[string]struct {
 		namespaceExists bool
 		expectedResult  bool
 	}{
 		"OVNK namespace exists": {
-			namespaceExists: false,
-			expectedResult:  false,
-		},
-		"OVNK namespace does not exist": {
 			namespaceExists: true,
 			expectedResult:  true,
+		},
+		"OVNK namespace does not exist": {
+			namespaceExists: false,
+			expectedResult:  false,
 		},
 	}
 
 	for name, tt := range tests {
-		suite.Run(name, func() {
+		t.Run(name, func(t *testing.T) {
+			clientset := fake.NewSimpleClientset()
 			if tt.namespaceExists {
-				_, err := suite.clientset.CoreV1().Namespaces().Create(context.TODO(), &v1.Namespace{
+				_, err := clientset.CoreV1().Namespaces().Create(context.TODO(), &v1.Namespace{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "openshift-ovn-kubernetes",
 					},
 				}, metav1.CreateOptions{})
-				suite.Require().NoError(err)
-			} else {
-				// Add polling logic to ensure namespace deletion
-				for {
-					err := suite.clientset.CoreV1().Namespaces().Delete(context.TODO(), "openshift-ovn-kubernetes", metav1.DeleteOptions{})
-					if errors.IsNotFound(err) {
-						break // Namespace is deleted
-					}
-
-					if err != nil {
-						suite.T().Fatal("Error while checking namespace deletion: " + err.Error())
-					}
-
-					time.Sleep(100 * time.Millisecond) // Wait before retrying
-				}
+				require.NoError(t, err)
 			}
 
 			logger := zap.NewNop()
-			sm := &streamManager{}
-			result := sm.isOVNKDeployed(context.TODO(), logger, "openshift-ovn-kubernetes", suite.clientset)
-			suite.Equal(tt.expectedResult, result)
+			result := IsOVNKDeployed(context.TODO(), logger, "openshift-ovn-kubernetes", clientset)
+			assert.Equal(t, tt.expectedResult, result)
 		})
 	}
 }
 
-func TestConvertProtocol(t *testing.T) {
+func TestParseProtocol(t *testing.T) {
 	tests := map[string]struct {
 		input    []byte
 		expected string
@@ -72,22 +57,22 @@ func TestConvertProtocol(t *testing.T) {
 	}{
 		"ICMP protocol": {
 			input:    []byte{1},
-			expected: "icmp",
+			expected: ICMP,
 			err:      false,
 		},
 		"TCP protocol": {
 			input:    []byte{6},
-			expected: "tcp",
+			expected: TCP,
 			err:      false,
 		},
 		"UDP protocol": {
 			input:    []byte{17},
-			expected: "udp",
+			expected: UDP,
 			err:      false,
 		},
 		"SCTP protocol": {
 			input:    []byte{132},
-			expected: "sctp",
+			expected: SCTP,
 			err:      false,
 		},
 		"Unknown protocol": {
@@ -99,7 +84,7 @@ func TestConvertProtocol(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result, err := parseProtocol(tt.input)
+			result, err := ParseProtocol(tt.input)
 			if tt.err {
 				assert.Error(t, err)
 			} else {
@@ -130,7 +115,7 @@ func TestParseIPv4Address(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result, err := parseIPv4Address(tt.input)
+			result, err := ParseIPv4Address(tt.input)
 			if tt.err {
 				assert.Error(t, err)
 			} else {
@@ -161,7 +146,7 @@ func TestParseIPv6Address(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result, err := parseIPv6Address(tt.input)
+			result, err := ParseIPv6Address(tt.input)
 			if tt.err {
 				assert.Error(t, err)
 			} else {
@@ -192,38 +177,7 @@ func TestParsePort(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result, err := parsePort(tt.input)
-			if tt.err {
-				assert.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.expected, result)
-			}
-		})
-	}
-}
-
-func TestParseProtocol(t *testing.T) {
-	tests := map[string]struct {
-		input    []byte
-		expected string
-		err      bool
-	}{
-		"TCP protocol": {
-			input:    []byte{6},
-			expected: "tcp",
-			err:      false,
-		},
-		"Unknown protocol": {
-			input:    []byte{255},
-			expected: "",
-			err:      true,
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			result, err := parseProtocol(tt.input)
+			result, err := ParsePort(tt.input)
 			if tt.err {
 				assert.Error(t, err)
 			} else {
@@ -242,7 +196,12 @@ func TestParseIPVersion(t *testing.T) {
 	}{
 		"IPv4 version": {
 			input:    []byte{4},
-			expected: "ipv4",
+			expected: IPv4,
+			err:      false,
+		},
+		"IPv6 version": {
+			input:    []byte{6},
+			expected: IPv6,
 			err:      false,
 		},
 		"Unknown version": {
@@ -254,7 +213,7 @@ func TestParseIPVersion(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result, err := parseIPVersion(tt.input)
+			result, err := ParseIPVersion(tt.input)
 			if tt.err {
 				assert.Error(t, err)
 			} else {
@@ -277,7 +236,7 @@ func TestProcessDataRecord(t *testing.T) {
 					{Type: 8, Value: []byte{192, 168, 1, 1}},  // Source IP
 					{Type: 12, Value: []byte{192, 168, 1, 2}}, // Destination IP
 					{Type: 7, Value: []byte{0, 80}},           // Source Port
-					{Type: 11, Value: []byte{31, 144}},        // Destination Port
+					{Type: 11, Value: []byte{31, 144}},        // Destination Port (8080)
 					{Type: 4, Value: []byte{6}},               // Protocol (TCP)
 					{Type: 60, Value: []byte{4}},              // IP Version (IPv4)
 				},
@@ -287,12 +246,12 @@ func TestProcessDataRecord(t *testing.T) {
 				DestinationIP:   "192.168.1.2",
 				SourcePort:      80,
 				DestinationPort: 8080,
-				Protocol:        "tcp",
-				IPVersion:       "ipv4",
+				Protocol:        TCP,
+				IPVersion:       IPv4,
 			},
 			err: false,
 		},
-		"Invalid data record": {
+		"Invalid data record - bad source IP": {
 			input: netflows.DataRecord{
 				Values: []netflows.DataField{
 					{Type: 8, Value: []byte{192, 168}}, // Invalid Source IP
@@ -305,7 +264,7 @@ func TestProcessDataRecord(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result, err := processDataRecord(tt.input, 0)
+			result, err := ProcessDataRecord(tt.input, 0)
 			if tt.err {
 				assert.Error(t, err)
 			} else {
@@ -314,4 +273,31 @@ func TestProcessDataRecord(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewOVNKCollector(t *testing.T) {
+	logger := zap.NewNop()
+	flowSink := &mockFlowSink{}
+
+	collector := NewOVNKCollector(logger, "4739", flowSink)
+
+	assert.NotNil(t, collector)
+	assert.Equal(t, "4739", collector.ipfixCollectorPort)
+	assert.NotNil(t, collector.flowSink)
+}
+
+// mockFlowSink is a simple mock implementation of FlowSink for testing.
+type mockFlowSink struct {
+	flowsCached   int
+	flowsReceived int
+}
+
+func (m *mockFlowSink) CacheFlow(_ context.Context, _ any) error {
+	m.flowsCached++
+
+	return nil
+}
+
+func (m *mockFlowSink) IncrementFlowsReceived() {
+	m.flowsReceived++
 }

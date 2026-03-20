@@ -11,9 +11,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc/metadata"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller/logging"
 )
 
 // Mock for the GetConfigurationUpdatesClient.
@@ -81,17 +83,14 @@ type ConfigStreamTestSuite struct {
 	suite.Suite
 
 	mockClient *MockConfigUpdateClient
-	grpcSyncer *BufferedGrpcWriteSyncer
+	grpcSyncer *logging.BufferedGrpcWriteSyncer
 	mockLogger *zap.Logger
 }
 
 func (suite *ConfigStreamTestSuite) SetupTest() {
 	suite.mockClient = new(MockConfigUpdateClient)
 	suite.mockLogger = zap.NewNop() // Use a no-op zap.Logger instead of SugaredLogger
-	suite.grpcSyncer = &BufferedGrpcWriteSyncer{
-		logger:   suite.mockLogger,
-		logLevel: zap.NewAtomicLevel(),
-	}
+	suite.grpcSyncer = logging.NewBufferedGrpcWriteSyncerForTest(suite.mockLogger)
 }
 
 // Test that log-level updates are applied correctly.
@@ -120,7 +119,7 @@ func (suite *ConfigStreamTestSuite) TestLogLevelUpdate() {
 	suite.Require().NoError(err)
 
 	// Verify that log level was updated
-	suite.Equal(zap.DebugLevel, suite.grpcSyncer.logLevel.Level())
+	suite.Equal(zapcore.DebugLevel, suite.grpcSyncer.GetLogLevel())
 
 	// Ensure all expectations were met
 	suite.mockClient.AssertExpectations(suite.T())

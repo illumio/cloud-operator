@@ -1,4 +1,4 @@
-package controller
+package logging
 
 import (
 	"context"
@@ -161,7 +161,7 @@ func (suite *BufferedGrpcWriteSyncerTestSuite) TestUpdateLogLevel() {
 
 	for grpcLevel, expectedZapLevel := range logLevels {
 		suite.Run(fmt.Sprintf("Set log level %v", grpcLevel), func() {
-			suite.grpcSyncer.updateLogLevel(grpcLevel)
+			suite.grpcSyncer.UpdateLogLevel(grpcLevel)
 			suite.Equal(expectedZapLevel, suite.grpcSyncer.logLevel.Level())
 		})
 	}
