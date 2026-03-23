@@ -5,6 +5,8 @@ package k8sclient
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,6 +17,8 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/homedir"
 )
 
 // Client abstracts Kubernetes API operations.
@@ -66,30 +70,36 @@ func disableProxyTransport(config *rest.Config) {
 	}
 }
 
+// IsRunningInCluster returns true if the application is running inside a Kubernetes cluster.
+func IsRunningInCluster() bool {
+	return os.Getenv("KUBERNETES_SERVICE_HOST") != ""
+}
+
 // NewClient creates a new Client that uses real K8s APIs.
+// It supports both in-cluster and out-of-cluster (kubeconfig) execution.
 func NewClient() (Client, error) {
-	config, err := rest.InClusterConfig()
+	config, err := getKubeConfig()
 	if err != nil {
 		return nil, err
 	}
 
-	disableProxyTransport(config)
+	return NewClientFromConfig(config)
+}
 
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, err
+// getKubeConfig returns a Kubernetes config based on the execution environment.
+// It uses kubeconfig if KUBECONFIG is set or running outside a cluster,
+// otherwise it uses in-cluster config.
+func getKubeConfig() (*rest.Config, error) {
+	if os.Getenv("KUBECONFIG") != "" || !IsRunningInCluster() {
+		var kubeconfig string
+		if home := homedir.HomeDir(); home != "" {
+			kubeconfig = filepath.Join(home, ".kube", "config")
+		}
+
+		return clientcmd.BuildConfigFromFlags("", kubeconfig)
 	}
 
-	dynamicClient, err := dynamic.NewForConfig(config)
-	if err != nil {
-		return nil, err
-	}
-
-	return &realClient{
-		clientset:     clientset,
-		dynamicClient: dynamicClient,
-		config:        config,
-	}, nil
+	return rest.InClusterConfig()
 }
 
 // NewClientFromConfig creates a Client from an existing config.

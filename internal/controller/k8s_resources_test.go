@@ -50,13 +50,13 @@ func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 	}
 	logger := zap.NewNop()
 
-	clientset, err := k8sclient.NewClientSet()
+	k8sClient, err := k8sclient.NewClient()
 	if err != nil {
 		logger.Error("Failed to create clientset", zap.Error(err))
 		suite.T().Error("could not create clientset")
 	}
 	// Execute the function under test.
-	got := ConvertMetaObjectToMetadata(context.Background(), configMap, clientset, "configMap")
+	got := ConvertMetaObjectToMetadata(context.Background(), configMap, k8sClient.GetClientset(), "configMap")
 
 	// Define what you expect to get.
 	want := metav1.ObjectMeta{
@@ -123,12 +123,13 @@ func TestGetMetadataFromResource(t *testing.T) {
 func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 	logger := zap.NewNop()
 
-	clientset, err := k8sclient.NewClientSet()
+	k8sClient, err := k8sclient.NewClient()
 	if err != nil {
 		logger.Error("Failed to create clientset", zap.Error(err))
 		suite.T().Fatalf("could not create clientset: %v", err)
 	}
 
+	clientset := k8sClient.GetClientset()
 	sampleData := make(map[string]string)
 	resource := "test-resource"
 	creationTimestamp := metav1.Time{Time: time.Now()}
@@ -351,7 +352,9 @@ func (suite *ControllerTestSuite) TestGetProviderIdNodeSpec() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			clientset, _ := k8sclient.NewClientSet()
+			k8sClient, _ := k8sclient.NewClient()
+
+			clientset := k8sClient.GetClientset()
 			if tt.node != nil {
 				_, err := clientset.CoreV1().Nodes().Create(context.TODO(), tt.node, metav1.CreateOptions{})
 				suite.Require().NoError(err)
@@ -444,7 +447,9 @@ func (suite *ControllerTestSuite) TestGetNodeIpAddresses() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			clientset, _ := k8sclient.NewClientSet()
+			k8sClient, _ := k8sclient.NewClient()
+
+			clientset := k8sClient.GetClientset()
 			if tt.node != nil {
 				_, err := clientset.CoreV1().Nodes().Create(context.TODO(), tt.node, metav1.CreateOptions{})
 				suite.Require().NoError(err)
@@ -478,10 +483,12 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 		},
 	}
 
-	clientset, err := k8sclient.NewClientSet()
+	k8sClient, err := k8sclient.NewClient()
 	if err != nil {
 		suite.T().Fatal("Failed to get client set " + err.Error())
 	}
+
+	clientset := k8sClient.GetClientset()
 
 	for name, tt := range tests {
 		suite.Run(name, func() {

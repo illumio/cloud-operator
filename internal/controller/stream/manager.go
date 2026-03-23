@@ -305,10 +305,12 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 
 // NewAuthenticatedConnection gets a valid token and creates a connection to CloudSecure.
 func NewAuthenticatedConnection(ctx context.Context, logger *zap.Logger, envMap EnvironmentConfig) (*grpc.ClientConn, pb.KubernetesInfoServiceClient, error) {
-	clientset, err := k8sclient.NewClientSet()
+	k8sClient, err := k8sclient.NewClient()
 	if err != nil {
 		return nil, nil, err
 	}
+
+	clientset := k8sClient.GetClientset()
 
 	authConfig := auth.AuthConfig{
 		ClusterCreds:           envMap.ClusterCreds,

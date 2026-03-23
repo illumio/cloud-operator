@@ -23,7 +23,7 @@ import (
 type ControllerTestSuite struct {
 	suite.Suite
 
-	clientset *kubernetes.Clientset
+	clientset kubernetes.Interface
 	logger    *zap.Logger
 }
 
@@ -41,10 +41,12 @@ func (suite *ControllerTestSuite) SetupSuite() {
 		suite.T().Fatal("Failed to set up test cluster " + err.Error())
 	}
 	// Create a new clientset
-	suite.clientset, err = k8sclient.NewClientSet()
+	k8sClient, err := k8sclient.NewClient()
 	if err != nil {
 		suite.T().Fatal("Failed to get client set " + err.Error())
 	}
+
+	suite.clientset = k8sClient.GetClientset()
 }
 
 func (suite *ControllerTestSuite) TearDownSuite() {
