@@ -12,7 +12,6 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/auth"
-	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/version"
 )
 
@@ -100,12 +99,7 @@ func (sm *Manager) CreateMutationObject(metadata *pb.KubernetesObjectData, event
 
 // SendClusterMetadata sends cluster metadata to CloudSecure.
 func (sm *Manager) SendClusterMetadata(ctx context.Context, logger *zap.Logger) error {
-	clientset, err := k8sclient.NewClientSet()
-	if err != nil {
-		logger.Error("Error creating clientset", zap.Error(err))
-
-		return err
-	}
+	clientset := sm.K8sClient.GetClientset()
 
 	clusterUid, err := auth.GetClusterID(ctx, logger, clientset)
 	if err != nil {
