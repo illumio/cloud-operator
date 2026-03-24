@@ -9,6 +9,8 @@ import (
 )
 
 var resourceList = []string{
+	"ciliumclusterwidenetworkpolicies",
+	"ciliumnetworkpolicies",
 	"cronjobs",
 	"customresourcedefinitions",
 	"daemonsets",

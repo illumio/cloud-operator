@@ -107,6 +107,11 @@ func (r *Watcher) WatchK8sResources(ctx context.Context, cancel context.CancelFu
 
 // DynamicListResources lists a specified resource dynamically and sends down the current gRPC stream.
 func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) (string, error) {
+	// For Cilium policies, we need the full unstructured object to extract the spec
+	if controller.IsCiliumPolicy(r.resourceName) {
+		return r.listCiliumResources(ctx, logger)
+	}
+
 	objs, resourceListVersion, resourceK8sKind, apiGroup, apiVersion, err := r.ListResources(ctx, metav1.NamespaceAll)
 	if err != nil {
 		return "", err
@@ -132,6 +137,36 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 	}
 
 	return resourceListVersion, nil
+}
+
+// listCiliumResources handles listing Cilium network policies with full spec conversion.
+func (r *Watcher) listCiliumResources(ctx context.Context, logger *zap.Logger) (string, error) {
+	unstructuredResources, err := r.FetchResources(ctx, metav1.NamespaceAll)
+	if err != nil {
+		return "", err
+	}
+
+	for i := range unstructuredResources.Items {
+		item := &unstructuredResources.Items[i]
+		metadataObj := controller.ConvertUnstructuredToCiliumPolicy(item)
+
+		err = r.resourcesClient.SendObjectData(logger, metadataObj)
+		if err != nil {
+			r.logger.Error("Cannot send Cilium policy metadata", zap.Error(err))
+
+			return "", err
+		}
+	}
+
+	r.logger.Debug("Successfully sent Cilium policies", zap.Int("count", len(unstructuredResources.Items)))
+
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	default:
+	}
+
+	return unstructuredResources.GetResourceVersion(), nil
 }
 
 //nolint:gocognit // function is complex by nature (watch loop)
@@ -368,13 +403,30 @@ func getResourceVersionFromBookmark(event watch.Event) (string, error) {
 }
 
 func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation) (string, error) {
-	convertedData, err := controller.GetObjectMetadataFromRuntimeObject(event.Object)
-	if err != nil {
-		return "", fmt.Errorf("failed to convert runtime.Object to metav1.ObjectMeta: %w", err)
+	if event.Object == nil {
+		return "", fmt.Errorf("event object is nil")
 	}
 
 	resourceGvk := event.Object.GetObjectKind().GroupVersionKind()
-	metadataObj := controller.ConvertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resourceGvk.Kind, resourceGvk.Group, resourceGvk.Version)
+
+	var metadataObj *pb.KubernetesObjectData
+
+	// Handle Cilium policies specially to extract full spec
+	if controller.IsCiliumPolicy(resourceGvk.Kind) {
+		unstructuredObj, ok := event.Object.(*unstructured.Unstructured)
+		if !ok {
+			return "", fmt.Errorf("failed to convert event object to unstructured for Cilium policy")
+		}
+
+		metadataObj = controller.ConvertUnstructuredToCiliumPolicy(unstructuredObj)
+	} else {
+		convertedData, err := controller.GetObjectMetadataFromRuntimeObject(event.Object)
+		if err != nil {
+			return "", fmt.Errorf("failed to convert runtime.Object to metav1.ObjectMeta: %w", err)
+		}
+
+		metadataObj = controller.ConvertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resourceGvk.Kind, resourceGvk.Group, resourceGvk.Version)
+	}
 
 	mutation := r.resourcesClient.CreateMutationObject(metadataObj, event.Type)
 
