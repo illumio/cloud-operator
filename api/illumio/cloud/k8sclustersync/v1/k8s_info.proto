@@ -45,6 +45,8 @@ message KubernetesObjectData {
     KubernetesNodeData node = 101;
     KubernetesServiceData service = 102;
     KubernetesNetworkPolicyData network_policy = 103;
+    KubernetesCiliumNetworkPolicyData cilium_network_policy = 104;
+    KubernetesCiliumClusterwideNetworkPolicyData cilium_clusterwide_network_policy = 105;
   }
 }
 
@@ -95,6 +97,81 @@ message KubernetesNetworkPolicyData {
   LabelSelector pod_selector = 3; // Pod selector for the policy
   repeated NetworkPolicyRule ingress_rules = 4; // Ingress rules for the policy
   repeated NetworkPolicyRule egress_rules = 5; // Egress rules for the policy
+}
+
+// KubernetesCiliumNetworkPolicyData contains information specific to a CiliumNetworkPolicy object.
+// CiliumNetworkPolicy is a namespaced policy that applies to pods selected by the endpoint selector.
+// https://docs.cilium.io/en/stable/security/policy/language/#ciliumnetworkpolicy
+message KubernetesCiliumNetworkPolicyData {
+  // Endpoint selector selects the pods to which this policy applies.
+  // Uses Cilium's endpoint selector which supports label-based and identity-based selection.
+  LabelSelector endpoint_selector = 1;
+  // Ingress rules define allowed/denied incoming traffic.
+  repeated CiliumNetworkPolicyRule ingress_rules = 2;
+  // Egress rules define allowed/denied outgoing traffic.
+  repeated CiliumNetworkPolicyRule egress_rules = 3;
+  // IngressDeny rules explicitly deny incoming traffic.
+  repeated CiliumNetworkPolicyRule ingress_deny_rules = 4;
+  // EgressDeny rules explicitly deny outgoing traffic.
+  repeated CiliumNetworkPolicyRule egress_deny_rules = 5;
+}
+
+// KubernetesCiliumClusterwideNetworkPolicyData contains information specific to a CiliumClusterwideNetworkPolicy object.
+// CiliumClusterwideNetworkPolicy is a cluster-scoped policy that applies across all namespaces.
+// https://docs.cilium.io/en/stable/security/policy/language/#ciliumclusterwidenetworkpolicy
+message KubernetesCiliumClusterwideNetworkPolicyData {
+  // Endpoint selector selects the pods to which this policy applies cluster-wide.
+  LabelSelector endpoint_selector = 1;
+  // Node selector selects the nodes to which this policy applies (for host policies).
+  optional LabelSelector node_selector = 2;
+  // Ingress rules define allowed/denied incoming traffic.
+  repeated CiliumNetworkPolicyRule ingress_rules = 3;
+  // Egress rules define allowed/denied outgoing traffic.
+  repeated CiliumNetworkPolicyRule egress_rules = 4;
+  // IngressDeny rules explicitly deny incoming traffic.
+  repeated CiliumNetworkPolicyRule ingress_deny_rules = 5;
+  // EgressDeny rules explicitly deny outgoing traffic.
+  repeated CiliumNetworkPolicyRule egress_deny_rules = 6;
+}
+
+// CiliumNetworkPolicyRule defines a single Cilium ingress or egress rule.
+// Cilium rules support richer selectors including identity-based and CIDR-based selection.
+message CiliumNetworkPolicyRule {
+  // FromEndpoints selects source endpoints by labels (for ingress rules).
+  repeated LabelSelector from_endpoints = 1;
+  // ToEndpoints selects destination endpoints by labels (for egress rules).
+  repeated LabelSelector to_endpoints = 2;
+  // FromCIDR allows traffic from specific CIDR ranges.
+  repeated string from_cidr = 3;
+  // ToCIDR allows traffic to specific CIDR ranges.
+  repeated string to_cidr = 4;
+  // FromCIDRSet allows traffic from CIDR ranges with exceptions.
+  repeated CiliumCIDRSet from_cidr_set = 5;
+  // ToCIDRSet allows traffic to CIDR ranges with exceptions.
+  repeated CiliumCIDRSet to_cidr_set = 6;
+  // ToPorts specifies the allowed destination ports and protocols.
+  repeated CiliumPortRule to_ports = 7;
+  // FromEntities allows traffic from Cilium-defined entities (e.g., "world", "cluster", "host").
+  repeated string from_entities = 8;
+  // ToEntities allows traffic to Cilium-defined entities.
+  repeated string to_entities = 9;
+}
+
+// CiliumCIDRSet defines a CIDR range with optional exceptions.
+message CiliumCIDRSet {
+  string cidr = 1;
+  repeated string except = 2;
+}
+
+// CiliumPortRule defines allowed ports and protocols for Cilium policies.
+message CiliumPortRule {
+  repeated CiliumPort ports = 1;
+}
+
+// CiliumPort defines a single port with protocol.
+message CiliumPort {
+  string port = 1; // Port number or name
+  string protocol = 2; // TCP, UDP, SCTP, or ANY
 }
 
 // LabelSelector selects a k8s resource (e.g., a pod or namespace) by its labels.
