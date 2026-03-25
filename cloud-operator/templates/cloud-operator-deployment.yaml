@@ -60,6 +60,8 @@ spec:
               value: "{{ join " " .Values.cilium.namespaces }}"
             - name: CLUSTER_CREDS_SECRET
               value: "clustercreds"
+            - name: GRPC_INTERNAL_LOGGING
+              value: "{{ .Values.env.grpcInternalLogging }}"
             - name: HTTPS_PROXY
               value: "{{ .Values.env.httpsProxy | default "" }}"
             - name: IPFIX_COLLECTOR_PORT
