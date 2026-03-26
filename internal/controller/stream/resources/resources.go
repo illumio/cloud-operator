@@ -5,7 +5,6 @@ package resources
 import (
 	"context"
 	"maps"
-	"math/rand"
 	"slices"
 	"sync"
 	"time"
@@ -17,6 +16,7 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
 )
 
 var resourceList = []string{
@@ -141,7 +141,7 @@ func Stream(ctx context.Context, sm *stream.Manager, logger *zap.Logger, cancel 
 
 	setProcessingResources(false)
 
-	ticker := time.NewTicker(jitterTime(keepalivePeriod, 0.10))
+	ticker := time.NewTicker(timeutil.JitterTime(keepalivePeriod, 0.10))
 	defer ticker.Stop()
 
 	go func() {
@@ -186,7 +186,7 @@ func ConnectAndStream(sm *stream.Manager, logger *zap.Logger, keepalivePeriod ti
 		return err
 	}
 
-	sm.Client.ResourceStream = sendKubernetesResourcesStream
+	sm.Client.KubernetesResourcesStream = sendKubernetesResourcesStream
 
 	return Stream(ctx, sm, logger, cancel, keepalivePeriod)
 }
@@ -244,14 +244,6 @@ type watcherInfo struct {
 	resource        string
 	apiGroup        string
 	resourceVersion string
-}
-
-// jitterTime subtracts a random percentage from the base time to introduce jitter.
-// maxJitterPct must be in the range [0, 1).
-func jitterTime(base time.Duration, maxJitterPct float64) time.Duration {
-	jitterPct := rand.Float64() * maxJitterPct //nolint:gosec
-
-	return time.Duration(float64(base) * (1. - jitterPct))
 }
 
 func setProcessingResources(processing bool) {

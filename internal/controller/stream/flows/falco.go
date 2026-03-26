@@ -4,6 +4,7 @@ package flows
 
 import (
 	"context"
+	"regexp"
 	"time"
 
 	"go.uber.org/zap"
@@ -11,6 +12,8 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/collector"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
+
+var reIllumioTraffic = regexp.MustCompile(`\((.*?)\)`)
 
 // StreamFalco handles the falco network flow stream.
 func StreamFalco(ctx context.Context, sm *stream.Manager, logger *zap.Logger) error {

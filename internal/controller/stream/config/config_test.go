@@ -110,7 +110,7 @@ func (suite *ConfigStreamTestSuite) TestLogLevelUpdate() {
 	sm := &stream.Manager{
 		BufferedGrpcSyncer: suite.grpcSyncer,
 		Client: &stream.Client{
-			ConfigStream: suite.mockClient,
+			ConfigurationStream: suite.mockClient,
 		},
 	}
 
@@ -129,7 +129,7 @@ func (suite *ConfigStreamTestSuite) TestStreamEOF() {
 	sm := &stream.Manager{
 		BufferedGrpcSyncer: suite.grpcSyncer,
 		Client: &stream.Client{
-			ConfigStream: suite.mockClient,
+			ConfigurationStream: suite.mockClient,
 		},
 	}
 
@@ -146,7 +146,7 @@ func (suite *ConfigStreamTestSuite) TestStreamError() {
 	sm := &stream.Manager{
 		BufferedGrpcSyncer: suite.grpcSyncer,
 		Client: &stream.Client{
-			ConfigStream: suite.mockClient,
+			ConfigurationStream: suite.mockClient,
 		},
 	}
 
@@ -169,7 +169,7 @@ func (suite *ConfigStreamTestSuite) TestUnknownConfigurationUpdate() {
 	sm := &stream.Manager{
 		BufferedGrpcSyncer: suite.grpcSyncer,
 		Client: &stream.Client{
-			ConfigStream: suite.mockClient,
+			ConfigurationStream: suite.mockClient,
 		},
 	}
 

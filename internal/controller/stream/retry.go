@@ -6,11 +6,12 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"math/rand"
 	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
 )
 
 type backoffOpts struct {
@@ -118,7 +119,7 @@ func (s *state) AddBackoff(count int) {
 	for range count {
 		s.consecutiveFailures++
 
-		sleep := clamp(s.opts.InitialBackoff, jitterTime(s.backoff, s.opts.MaxJitterPct), s.opts.MaxBackoff)
+		sleep := clamp(s.opts.InitialBackoff, timeutil.JitterTime(s.backoff, s.opts.MaxJitterPct), s.opts.MaxBackoff)
 		s.opts.Logger.Debug("Backing off", zap.Duration("sleep", sleep), zap.Int("consecutive_failures", s.consecutiveFailures))
 		s.timer.Reset(sleep)
 		nextBackoff := time.Duration(float64(s.backoff) * s.opts.ExponentialFactor)
@@ -145,12 +146,4 @@ func (s *state) resetBackoff() {
 	s.consecutiveFailures = 0
 	s.backoff = s.opts.InitialBackoff
 	s.timer.Reset(s.opts.InitialBackoff)
-}
-
-// jitterTime subtracts a percentage from the base time to introduce jitter.
-// maxJitterPct must be in the range [0, 1).
-func jitterTime(base time.Duration, maxJitterPct float64) time.Duration {
-	jitterPct := rand.Float64() * maxJitterPct //nolint:gosec
-
-	return time.Duration(float64(base) * (1. - jitterPct))
 }

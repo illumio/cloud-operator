@@ -15,9 +15,13 @@ import (
 	"github.com/illumio/cloud-operator/internal/version"
 )
 
+// ResourceProcessingTimeout is the maximum time allowed for resource processing before
+// the server is considered unhealthy.
+const ResourceProcessingTimeout = 5 * time.Minute
+
 // SendToResourceStream sends a request to the resource stream.
 func (sm *Manager) SendToResourceStream(logger *zap.Logger, request *pb.SendKubernetesResourcesRequest) error {
-	if err := sm.Client.ResourceStream.Send(request); err != nil {
+	if err := sm.Client.KubernetesResourcesStream.Send(request); err != nil {
 		logger.Error("Failed to send request", zap.Stringer("request", request), zap.Error(err))
 
 		return err
@@ -58,7 +62,7 @@ func (sm *Manager) SendNetworkFlowRequest(logger *zap.Logger, flow interface{}) 
 		return fmt.Errorf("unsupported flow type: %T", flow)
 	}
 
-	if err := sm.Client.NetworkFlowsStream.Send(request); err != nil {
+	if err := sm.Client.KubernetesNetworkFlowsStream.Send(request); err != nil {
 		logger.Error("Failed to send network flow", zap.Error(err))
 
 		return err
@@ -144,13 +148,13 @@ func (sm *Manager) SendKeepalive(logger *zap.Logger, st Type) error {
 
 	switch st {
 	case TypeNetworkFlows:
-		err = sm.Client.NetworkFlowsStream.Send(&pb.SendKubernetesNetworkFlowsRequest{
+		err = sm.Client.KubernetesNetworkFlowsStream.Send(&pb.SendKubernetesNetworkFlowsRequest{
 			Request: &pb.SendKubernetesNetworkFlowsRequest_Keepalive{
 				Keepalive: &pb.Keepalive{},
 			},
 		})
 	case TypeResources:
-		err = sm.Client.ResourceStream.Send(&pb.SendKubernetesResourcesRequest{
+		err = sm.Client.KubernetesResourcesStream.Send(&pb.SendKubernetesResourcesRequest{
 			Request: &pb.SendKubernetesResourcesRequest_Keepalive{
 				Keepalive: &pb.Keepalive{},
 			},
@@ -162,7 +166,7 @@ func (sm *Manager) SendKeepalive(logger *zap.Logger, st Type) error {
 			},
 		})
 	case TypeConfiguration:
-		err = sm.Client.ConfigStream.Send(&pb.GetConfigurationUpdatesRequest{
+		err = sm.Client.ConfigurationStream.Send(&pb.GetConfigurationUpdatesRequest{
 			Request: &pb.GetConfigurationUpdatesRequest_Keepalive{
 				Keepalive: &pb.Keepalive{},
 			},
@@ -185,7 +189,7 @@ func ServerIsHealthy() bool {
 	dd.mutex.RLock()
 	defer dd.mutex.RUnlock()
 
-	if dd.processingResources && time.Since(dd.timeStarted) > 5*time.Minute {
+	if dd.processingResources && time.Since(dd.timeStarted) > ResourceProcessingTimeout {
 		return false
 	}
 

@@ -24,6 +24,9 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
 
+// MutationCheckpointInterval is the interval for logging mutation checkpoint messages.
+const MutationCheckpointInterval = 60 * time.Second
+
 // WatcherConfig holds the configuration for creating a new Watcher.
 type WatcherConfig struct {
 	ResourceName  string
@@ -180,8 +183,8 @@ func (r *Watcher) watchEvents(ctx context.Context, resourceVersion string, mutat
 					mutationCount += 1
 				}
 
-			case <-time.After(60 * time.Second):
-				logger.Debug("Processed mutations checkpoint", zap.Duration("period", 60*time.Second), zap.Int("mutation_count", mutationCount))
+			case <-time.After(MutationCheckpointInterval):
+				logger.Debug("Processed mutations checkpoint", zap.Duration("period", MutationCheckpointInterval), zap.Int("mutation_count", mutationCount))
 
 				mutationCount = 0
 			}

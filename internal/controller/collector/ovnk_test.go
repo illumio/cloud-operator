@@ -13,6 +13,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 func TestIsOVNKDeployed(t *testing.T) {
@@ -292,7 +294,7 @@ type mockFlowSink struct {
 	flowsReceived int
 }
 
-func (m *mockFlowSink) CacheFlow(_ context.Context, _ any) error {
+func (m *mockFlowSink) CacheFlow(_ context.Context, _ pb.Flow) error {
 	m.flowsCached++
 
 	return nil

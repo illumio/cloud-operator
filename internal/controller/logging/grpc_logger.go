@@ -4,7 +4,6 @@ package logging
 
 import (
 	"fmt"
-	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"google.golang.org/grpc/connectivity"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
 )
 
 const (
@@ -147,19 +147,12 @@ func (b *BufferedGrpcWriteSyncer) sendLogsKeepalive() error {
 	})
 }
 
-// jitterTime subtracts a percentage from the base time, in order to introduce jitter.
-func jitterTime(base time.Duration, maxJitterPct float64) time.Duration {
-	jitterPct := rand.Float64() * maxJitterPct //nolint:gosec
-
-	return time.Duration(float64(base) * (1. - jitterPct))
-}
-
 // run flushes the buffer at the configured interval until Stop is called.
 func (b *BufferedGrpcWriteSyncer) run() {
 	ticker := time.NewTicker(logFlushInterval)
 	defer ticker.Stop()
 
-	keepAliveTicker := time.NewTicker(jitterTime(keepAlivePeriod, 0.10))
+	keepAliveTicker := time.NewTicker(timeutil.JitterTime(keepAlivePeriod, 0.10))
 	defer keepAliveTicker.Stop()
 
 	for {

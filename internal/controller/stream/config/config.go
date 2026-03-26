@@ -6,13 +6,13 @@ import (
 	"context"
 	"errors"
 	"io"
-	"math/rand"
 	"time"
 
 	"go.uber.org/zap"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
 )
 
 // Stream handles the configuration update stream.
@@ -22,7 +22,7 @@ func Stream(ctx context.Context, sm *stream.Manager, logger *zap.Logger, keepali
 
 	go func() {
 		for {
-			resp, err := sm.Client.ConfigStream.Recv()
+			resp, err := sm.Client.ConfigurationStream.Recv()
 			if errors.Is(err, io.EOF) {
 				logger.Info("Server closed the GetConfigurationUpdates stream")
 
@@ -57,7 +57,7 @@ func Stream(ctx context.Context, sm *stream.Manager, logger *zap.Logger, keepali
 		}
 	}()
 
-	ticker := time.NewTicker(jitterTime(keepalivePeriod, 0.10))
+	ticker := time.NewTicker(timeutil.JitterTime(keepalivePeriod, 0.10))
 	defer ticker.Stop()
 
 	for {
@@ -91,7 +91,7 @@ func ConnectAndStream(sm *stream.Manager, logger *zap.Logger, keepalivePeriod ti
 		return err
 	}
 
-	sm.Client.ConfigStream = getConfigurationUpdatesStream
+	sm.Client.ConfigurationStream = getConfigurationUpdatesStream
 
 	err = Stream(configCtx, sm, logger, keepalivePeriod)
 	if err != nil {
@@ -101,12 +101,4 @@ func ConnectAndStream(sm *stream.Manager, logger *zap.Logger, keepalivePeriod ti
 	}
 
 	return nil
-}
-
-// jitterTime subtracts a random percentage from the base time to introduce jitter.
-// maxJitterPct must be in the range [0, 1).
-func jitterTime(base time.Duration, maxJitterPct float64) time.Duration {
-	jitterPct := rand.Float64() * maxJitterPct //nolint:gosec
-
-	return time.Duration(float64(base) * (1. - jitterPct))
 }

@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
 )
 
 func TestClamp(t *testing.T) {
@@ -199,7 +201,7 @@ func TestJitterTime(t *testing.T) {
 	base := 100 * time.Millisecond
 	maxJitterPct := 0.2
 
-	result := jitterTime(base, maxJitterPct)
+	result := timeutil.JitterTime(base, maxJitterPct)
 
 	assert.LessOrEqual(t, result, base)
 	assert.GreaterOrEqual(t, result, time.Duration(float64(base)*(1-maxJitterPct)))

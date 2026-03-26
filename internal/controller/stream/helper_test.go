@@ -100,7 +100,7 @@ func TestSendToResourceStream(t *testing.T) {
 	mockStream := &mockResourceStream{}
 	sm := &Manager{
 		Client: &Client{
-			ResourceStream: mockStream,
+			KubernetesResourcesStream: mockStream,
 		},
 	}
 
@@ -123,7 +123,7 @@ func TestSendObjectData(t *testing.T) {
 	mockStream := &mockResourceStream{}
 	sm := &Manager{
 		Client: &Client{
-			ResourceStream: mockStream,
+			KubernetesResourcesStream: mockStream,
 		},
 	}
 
@@ -148,7 +148,7 @@ func TestSendNetworkFlowRequest(t *testing.T) {
 	mockStream := &mockNetworkFlowsStream{}
 	sm := &Manager{
 		Client: &Client{
-			NetworkFlowsStream: mockStream,
+			KubernetesNetworkFlowsStream: mockStream,
 		},
 	}
 
@@ -201,7 +201,7 @@ func TestCreateMutationObject(t *testing.T) {
 	mockStream := &mockResourceStream{}
 	sm := &Manager{
 		Client: &Client{
-			ResourceStream: mockStream,
+			KubernetesResourcesStream: mockStream,
 		},
 	}
 
@@ -262,10 +262,10 @@ func TestSendKeepalive(t *testing.T) {
 	t.Run("resource stream", func(t *testing.T) {
 		sm := &Manager{
 			Client: &Client{
-				ResourceStream:     mockResourceStream,
-				NetworkFlowsStream: mockNetworkFlowsStream,
-				LogStream:          mockLogStream,
-				ConfigStream:       mockConfigStream,
+				KubernetesResourcesStream:    mockResourceStream,
+				KubernetesNetworkFlowsStream: mockNetworkFlowsStream,
+				LogStream:                    mockLogStream,
+				ConfigurationStream:          mockConfigStream,
 			},
 		}
 		err := sm.SendKeepalive(logger, TypeResources)
@@ -282,10 +282,10 @@ func TestSendKeepalive(t *testing.T) {
 	t.Run("network flows stream", func(t *testing.T) {
 		sm := &Manager{
 			Client: &Client{
-				ResourceStream:     mockResourceStream,
-				NetworkFlowsStream: mockNetworkFlowsStream,
-				LogStream:          mockLogStream,
-				ConfigStream:       mockConfigStream,
+				KubernetesResourcesStream:    mockResourceStream,
+				KubernetesNetworkFlowsStream: mockNetworkFlowsStream,
+				LogStream:                    mockLogStream,
+				ConfigurationStream:          mockConfigStream,
 			},
 		}
 		err := sm.SendKeepalive(logger, TypeNetworkFlows)
@@ -302,10 +302,10 @@ func TestSendKeepalive(t *testing.T) {
 	t.Run("log stream", func(t *testing.T) {
 		sm := &Manager{
 			Client: &Client{
-				ResourceStream:     mockResourceStream,
-				NetworkFlowsStream: mockNetworkFlowsStream,
-				LogStream:          mockLogStream,
-				ConfigStream:       mockConfigStream,
+				KubernetesResourcesStream:    mockResourceStream,
+				KubernetesNetworkFlowsStream: mockNetworkFlowsStream,
+				LogStream:                    mockLogStream,
+				ConfigurationStream:          mockConfigStream,
 			},
 		}
 		err := sm.SendKeepalive(logger, TypeLogs)
@@ -322,10 +322,10 @@ func TestSendKeepalive(t *testing.T) {
 	t.Run("config stream", func(t *testing.T) {
 		sm := &Manager{
 			Client: &Client{
-				ResourceStream:     mockResourceStream,
-				NetworkFlowsStream: mockNetworkFlowsStream,
-				LogStream:          mockLogStream,
-				ConfigStream:       mockConfigStream,
+				KubernetesResourcesStream:    mockResourceStream,
+				KubernetesNetworkFlowsStream: mockNetworkFlowsStream,
+				LogStream:                    mockLogStream,
+				ConfigurationStream:          mockConfigStream,
 			},
 		}
 		err := sm.SendKeepalive(logger, TypeConfiguration)
@@ -341,7 +341,7 @@ func TestSendKeepalive(t *testing.T) {
 }
 
 // Ensure mock types implement the interfaces.
-var _ ResourceStream = &mockResourceStream{}
-var _ NetworkFlowsStream = &mockNetworkFlowsStream{}
+var _ KubernetesResourcesStream = &mockResourceStream{}
+var _ KubernetesNetworkFlowsStream = &mockNetworkFlowsStream{}
 var _ logging.LogStream = &mockLogStream{}
-var _ ConfigStream = &mockConfigStream{}
+var _ ConfigurationStream = &mockConfigStream{}

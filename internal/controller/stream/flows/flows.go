@@ -4,9 +4,6 @@ package flows
 
 import (
 	"context"
-	"errors"
-	"math/rand"
-	"regexp"
 	"time"
 
 	"go.uber.org/zap"
@@ -15,9 +12,8 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/collector"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
 )
-
-var reIllumioTraffic = regexp.MustCompile(`\((.*?)\)`)
 
 // FlowSinkAdapter adapts stream.Manager to implement the collector.FlowSink interface.
 type FlowSinkAdapter struct {
@@ -26,13 +22,8 @@ type FlowSinkAdapter struct {
 }
 
 // CacheFlow caches a flow in the flow cache.
-func (f *FlowSinkAdapter) CacheFlow(ctx context.Context, flow any) error {
-	pbFlow, ok := flow.(pb.Flow)
-	if !ok {
-		return errors.New("flow is not a valid pb.Flow type")
-	}
-
-	return f.FlowCache.CacheFlow(ctx, pbFlow)
+func (f *FlowSinkAdapter) CacheFlow(ctx context.Context, flow pb.Flow) error {
+	return f.FlowCache.CacheFlow(ctx, flow)
 }
 
 // IncrementFlowsReceived increments the flows received counter.
@@ -51,7 +42,7 @@ func NewFlowSinkAdapter(sm *stream.Manager) *FlowSinkAdapter {
 // StartCacheOutReader starts a goroutine that reads flows from the flow cache
 // and sends them to the cloud secure.
 func StartCacheOutReader(ctx context.Context, sm *stream.Manager, logger *zap.Logger, keepalivePeriod time.Duration) error {
-	ticker := time.NewTicker(jitterTime(keepalivePeriod, 0.10))
+	ticker := time.NewTicker(timeutil.JitterTime(keepalivePeriod, 0.10))
 	defer ticker.Stop()
 
 	for {
@@ -88,7 +79,7 @@ func ConnectNetworkFlowsStream(ctx context.Context, sm *stream.Manager, logger *
 		return err
 	}
 
-	sm.Client.NetworkFlowsStream = sendNetworkFlowsStream
+	sm.Client.KubernetesNetworkFlowsStream = sendNetworkFlowsStream
 
 	return nil
 }
@@ -115,12 +106,4 @@ func DetermineFlowCollector(ctx context.Context, logger *zap.Logger, sm *stream.
 			return ConnectAndStreamFalco(sm, l, d)
 		}, make(chan struct{})
 	}
-}
-
-// jitterTime subtracts a random percentage from the base time to introduce jitter.
-// maxJitterPct must be in the range [0, 1).
-func jitterTime(base time.Duration, maxJitterPct float64) time.Duration {
-	jitterPct := rand.Float64() * maxJitterPct //nolint:gosec
-
-	return time.Duration(float64(base) * (1. - jitterPct))
 }

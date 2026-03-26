@@ -26,18 +26,18 @@ const (
 
 // Client holds the gRPC connection and stream clients.
 type Client struct {
-	CiliumNamespaces          []string
-	Conn                      *grpc.ClientConn
-	GrpcClient                pb.KubernetesInfoServiceClient
-	FalcoEventChan            chan string
-	IPFIXCollectorPort        string
-	DisableNetworkFlowsCilium bool
-	TlsAuthProperties         tls.AuthProperties
-	FlowCollector             pb.FlowCollector
-	LogStream                 logging.LogStream
-	NetworkFlowsStream        NetworkFlowsStream
-	ResourceStream            ResourceStream
-	ConfigStream              ConfigStream
+	CiliumNamespaces             []string
+	Conn                         *grpc.ClientConn
+	GrpcClient                   pb.KubernetesInfoServiceClient
+	FalcoEventChan               chan string
+	IPFIXCollectorPort           string
+	DisableNetworkFlowsCilium    bool
+	TlsAuthProperties            tls.AuthProperties
+	FlowCollector                pb.FlowCollector
+	LogStream                    logging.LogStream
+	KubernetesNetworkFlowsStream KubernetesNetworkFlowsStream
+	KubernetesResourcesStream    KubernetesResourcesStream
+	ConfigurationStream          ConfigurationStream
 }
 
 // Manager orchestrates all stream operations.
@@ -48,7 +48,6 @@ type Manager struct {
 	VerboseDebugging   bool
 	Stats              *Stats
 	K8sClient          k8sclient.Client
-	Clock              Clock
 }
 
 // KeepalivePeriods specifies the period between keepalives for each stream type.

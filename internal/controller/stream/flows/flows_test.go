@@ -12,6 +12,7 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
 )
 
 // MockFlow implements pb.Flow for testing.
@@ -55,18 +56,9 @@ func TestFlowSinkAdapter_CacheFlow(t *testing.T) {
 		Stats:     stats,
 	}
 
-	t.Run("valid flow", func(t *testing.T) {
-		flow := &MockFlow{startTimestamp: time.Now(), key: "test-flow"}
-		err := adapter.CacheFlow(context.Background(), flow)
-		require.NoError(t, err)
-	})
-
-	t.Run("invalid flow type", func(t *testing.T) {
-		invalidFlow := "not a flow"
-		err := adapter.CacheFlow(context.Background(), invalidFlow)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not a valid pb.Flow type")
-	})
+	flow := &MockFlow{startTimestamp: time.Now(), key: "test-flow"}
+	err := adapter.CacheFlow(context.Background(), flow)
+	require.NoError(t, err)
 }
 
 func TestFlowSinkAdapter_IncrementFlowsReceived(t *testing.T) {
@@ -117,7 +109,7 @@ func TestJitterTime(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := jitterTime(tt.base, tt.maxJitterPct)
+			result := timeutil.JitterTime(tt.base, tt.maxJitterPct)
 			assert.GreaterOrEqual(t, result, tt.minExpected, "result should be >= min")
 			assert.LessOrEqual(t, result, tt.maxExpected, "result should be <= max")
 		})

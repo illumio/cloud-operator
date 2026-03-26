@@ -19,6 +19,7 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/collector"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
+	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
 )
 
 // ManageStream manages any stream with backoff and reconnection logic.
@@ -37,11 +38,11 @@ func (sm *Manager) ManageStream(
 
 	funcWithBackoff := func() error {
 		return exponentialBackoff(backoffOpts{
-			InitialBackoff:       1 * time.Second,
-			MaxBackoff:           1 * time.Minute,
-			MaxJitterPct:         0.20,
-			SevereErrorThreshold: 10,
-			ExponentialFactor:    2.0,
+			InitialBackoff:       StreamInitialBackoff,
+			MaxBackoff:           StreamMaxBackoff,
+			MaxJitterPct:         StreamMaxJitterPct,
+			SevereErrorThreshold: StreamSevereErrorThreshold,
+			ExponentialFactor:    StreamExponentialFactor,
 			Logger: logger.With(
 				zap.String("name", "retry_connect_and_stream"),
 			),
@@ -51,9 +52,9 @@ func (sm *Manager) ManageStream(
 
 	funcWithBackoffAndReset := func() error {
 		return exponentialBackoff(backoffOpts{
-			InitialBackoff:       10 * time.Minute,
-			MaxBackoff:           10 * time.Second,
-			MaxJitterPct:         0.10,
+			InitialBackoff:       ResetInitialBackoff,
+			MaxBackoff:           ResetMaxBackoff,
+			MaxJitterPct:         ResetMaxJitterPct,
 			SevereErrorThreshold: math.MaxInt,
 			ExponentialFactor:    1,
 			Logger: logger.With(
@@ -104,21 +105,21 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 
 			falcoEvent := &http.Server{
 				Addr:              FalcoPort,
-				ReadHeaderTimeout: 5 * time.Second,
-				ReadTimeout:       5 * time.Second,
+				ReadHeaderTimeout: HTTPReadHeaderTimeout,
+				ReadTimeout:       HTTPReadTimeout,
 			}
 
 			logger.Info("Falco server listening", zap.String("address", FalcoPort))
 
 			err = falcoEvent.Serve(listener)
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Error("Falco server failed, restarting in 5 seconds", zap.Error(err))
-				time.Sleep(5 * time.Second)
+				logger.Error("Falco server failed, restarting", zap.Error(err), zap.Duration("delay", ServerRestartDelay))
+				time.Sleep(ServerRestartDelay)
 			}
 		}
 	}()
 
-	resetTimer := time.NewTimer(jitterTime(5*time.Second, 0.20))
+	resetTimer := time.NewTimer(timeutil.JitterTime(ConnectionRetryInterval, ConnectionRetryJitter))
 	attempt := 0
 
 	for {
@@ -138,7 +139,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			authConn, client, err := NewAuthenticatedConnection(authConContext, logger, envMap)
 			if err != nil {
 				logger.Error("Failed to establish initial connection; will retry", zap.Error(err))
-				resetTimer.Reset(jitterTime(10*time.Second, 0.20))
+				resetTimer.Reset(timeutil.JitterTime(ConnectionRetryAfterFailure, ConnectionRetryJitter))
 				authConContextCancel()
 
 				failureReason = "Failed to establish initial connection"
@@ -171,13 +172,12 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 				Client:             streamClient,
 				BufferedGrpcSyncer: bufferedGrpcSyncer,
 				FlowCache: NewFlowCache(
-					20*time.Second,
-					1000,
-					make(chan pb.Flow, 100),
+					FlowCacheActiveTimeout,
+					FlowCacheMaxSize,
+					make(chan pb.Flow, FlowChannelBufferSize),
 				),
 				Stats:     stats,
 				K8sClient: k8sClient,
-				Clock:     NewRealClock(),
 			}
 
 			StartStatsLogger(authConContext, logger, stats, envMap.StatsLogPeriod)
@@ -299,7 +299,7 @@ func ConnectStreams(ctx context.Context, logger *zap.Logger, envMap EnvironmentC
 			zap.String("failureReason", failureReason),
 			zap.Int("attempt", attempt),
 		)
-		resetTimer.Reset(jitterTime(5*time.Second, 0.20))
+		resetTimer.Reset(timeutil.JitterTime(ConnectionRetryInterval, ConnectionRetryJitter))
 	}
 }
 

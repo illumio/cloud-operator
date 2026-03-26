@@ -31,7 +31,7 @@ var (
 
 // FlowSink is the interface for caching network flows.
 type FlowSink interface {
-	CacheFlow(ctx context.Context, flow any) error
+	CacheFlow(ctx context.Context, flow pb.Flow) error
 	IncrementFlowsReceived()
 }
 
