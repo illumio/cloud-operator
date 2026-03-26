@@ -109,6 +109,7 @@ func main() {
 	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "verbose_debugging", "VERBOSE_DEBUGGING")
+	bindEnv(logger, "grpc_internal_logging", "GRPC_INTERNAL_LOGGING")
 
 	// Set default values
 	viper.SetDefault("cilium_namespaces", []string{"kube-system", "gke-managed-dpv2-observability"})
@@ -128,6 +129,11 @@ func main() {
 	viper.SetDefault("tls_skip_verify", false)
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("verbose_debugging", false)
+	viper.SetDefault("grpc_internal_logging", false)
+
+	if viper.GetBool("grpc_internal_logging") {
+		controller.SetupGRPCInternalLogging(logger)
+	}
 
 	envConfig := stream.EnvironmentConfig{
 		CiliumNamespaces:   viper.GetStringSlice("cilium_namespaces"),
