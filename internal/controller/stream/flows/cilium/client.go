@@ -43,13 +43,20 @@ func (c *ciliumClient) Run(ctx context.Context) error {
 	if err != nil {
 		c.logger.Error("Failed to create Cilium flow collector", zap.Error(err))
 
+		// Check if this is an unrecoverable error that should stop retries
+		if ShouldStopRetries(err) {
+			c.logger.Warn("Stopping Cilium flow collection retries due to unrecoverable error", zap.Error(err))
+
+			return errors.Join(stream.ErrStopRetries, err)
+		}
+
 		return err
 	}
 
 	if ciliumFlowCollector == nil {
 		c.logger.Info("Failed to initialize Cilium Hubble Relay flow collector; disabling flow collector")
 
-		return errors.New("hubble relay cannot be found")
+		return errors.Join(stream.ErrStopRetries, errors.New("hubble relay cannot be found"))
 	}
 
 	err = ciliumFlowCollector.ExportCiliumFlows(ctx, c.flowSink)
