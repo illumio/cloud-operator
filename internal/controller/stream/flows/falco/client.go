@@ -5,7 +5,6 @@ package falco
 import (
 	"context"
 	"regexp"
-	"sync"
 
 	"go.uber.org/zap"
 
@@ -24,9 +23,6 @@ type falcoClient struct {
 	flowCache      *stream.FlowCache
 	stats          *stream.Stats
 	falcoEventChan chan string
-
-	mutex  sync.RWMutex
-	closed bool
 }
 
 // Run collects flows from Falco events.
@@ -76,12 +72,8 @@ func (c *falcoClient) SendKeepalive(_ context.Context) error {
 	return nil
 }
 
-// Close marks the client as closed.
+// Close is a no-op for Falco client.
+// Shutdown is handled via context cancellation.
 func (c *falcoClient) Close() error {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	c.closed = true
-
 	return nil
 }

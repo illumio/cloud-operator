@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"sync"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -24,9 +23,6 @@ type logsClient struct {
 	conn               *grpc.ClientConn
 	logger             *zap.Logger
 	bufferedGrpcSyncer *logging.BufferedGrpcWriteSyncer
-
-	mutex  sync.RWMutex
-	closed bool
 }
 
 // Run receives log responses from the server until the stream closes.
@@ -64,12 +60,8 @@ func (c *logsClient) SendKeepalive(_ context.Context) error {
 	return nil
 }
 
-// Close marks the client as closed.
+// Close is a no-op for logs client.
+// Shutdown is handled via context cancellation.
 func (c *logsClient) Close() error {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	c.closed = true
-
 	return nil
 }

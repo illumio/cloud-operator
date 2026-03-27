@@ -5,7 +5,6 @@ package cilium
 import (
 	"context"
 	"errors"
-	"sync"
 
 	"go.uber.org/zap"
 
@@ -25,9 +24,6 @@ type ciliumClient struct {
 	ciliumNamespaces []string
 	tlsAuthProps     *tls.AuthProperties
 	k8sClient        stream.K8sClientGetter
-
-	mutex  sync.RWMutex
-	closed bool
 }
 
 // Run collects flows from Cilium Hubble Relay.
@@ -94,13 +90,9 @@ func (c *ciliumClient) SendKeepalive(_ context.Context) error {
 	return nil
 }
 
-// Close marks the client as closed.
+// Close is a no-op for Cilium client.
+// Shutdown is handled via context cancellation.
 func (c *ciliumClient) Close() error {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	c.closed = true
-
 	return nil
 }
 

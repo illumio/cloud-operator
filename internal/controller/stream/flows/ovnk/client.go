@@ -4,7 +4,6 @@ package ovnk
 
 import (
 	"context"
-	"sync"
 
 	"go.uber.org/zap"
 
@@ -20,9 +19,6 @@ type ovnkClient struct {
 	logger             *zap.Logger
 	ipfixCollectorPort string
 	flowSink           collector.FlowSink
-
-	mutex  sync.RWMutex
-	closed bool
 }
 
 // Run collects flows via IPFIX from OVN-Kubernetes.
@@ -44,12 +40,8 @@ func (c *ovnkClient) SendKeepalive(_ context.Context) error {
 	return nil
 }
 
-// Close marks the client as closed.
+// Close is a no-op for OVN-K client.
+// Shutdown is handled via context cancellation.
 func (c *ovnkClient) Close() error {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	c.closed = true
-
 	return nil
 }
