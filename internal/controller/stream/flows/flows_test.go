@@ -34,12 +34,7 @@ func TestNewFlowSinkAdapter(t *testing.T) {
 	flowCache := stream.NewFlowCache(10*time.Second, 100, outFlows)
 	stats := stream.NewStats()
 
-	sm := &stream.Manager{
-		FlowCache: flowCache,
-		Stats:     stats,
-	}
-
-	adapter := NewFlowSinkAdapter(sm)
+	adapter := NewFlowSinkAdapter(flowCache, stats)
 
 	assert.NotNil(t, adapter)
 	assert.Equal(t, flowCache, adapter.FlowCache)

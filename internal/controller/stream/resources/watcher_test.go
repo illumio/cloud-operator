@@ -15,8 +15,43 @@ import (
 	clientgotesting "k8s.io/client-go/testing"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
+
+// mockResourceStreamSender is a mock implementation of ResourceStreamSender for testing.
+type mockResourceStreamSender struct{}
+
+func (m *mockResourceStreamSender) SendObjectData(_ *zap.Logger, _ *pb.KubernetesObjectData) error {
+	return nil
+}
+
+func (m *mockResourceStreamSender) CreateMutationObject(metadata *pb.KubernetesObjectData, eventType watch.EventType) *pb.KubernetesResourceMutation {
+	var mutation *pb.KubernetesResourceMutation
+
+	switch eventType {
+	case watch.Added:
+		mutation = &pb.KubernetesResourceMutation{
+			Mutation: &pb.KubernetesResourceMutation_CreateResource{
+				CreateResource: metadata,
+			},
+		}
+	case watch.Deleted:
+		mutation = &pb.KubernetesResourceMutation{
+			Mutation: &pb.KubernetesResourceMutation_DeleteResource{
+				DeleteResource: metadata,
+			},
+		}
+	case watch.Modified:
+		mutation = &pb.KubernetesResourceMutation{
+			Mutation: &pb.KubernetesResourceMutation_UpdateResource{
+				UpdateResource: metadata,
+			},
+		}
+	case watch.Bookmark:
+	case watch.Error:
+	}
+
+	return mutation
+}
 
 // helper: minimal unstructured Namespace with name and rv
 func newUnstructuredNamespace(name, rv string) *unstructured.Unstructured {
@@ -62,10 +97,10 @@ func TestNewWatcher_StopsExistingAndReturnsNew(t *testing.T) {
 	})
 
 	rm := &Watcher{
-		resourceName:  "namespaces",
-		dynamicClient: dyn,
-		logger:        logger,
-		streamManager: &stream.Manager{},
+		resourceName:    "namespaces",
+		dynamicClient:   dyn,
+		logger:          logger,
+		resourcesClient: &mockResourceStreamSender{},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -93,10 +128,10 @@ func TestNewWatcher_PropagatesErrors(t *testing.T) {
 	})
 
 	rm := &Watcher{
-		resourceName:  "namespaces",
-		dynamicClient: dyn,
-		logger:        logger,
-		streamManager: &stream.Manager{},
+		resourceName:    "namespaces",
+		dynamicClient:   dyn,
+		logger:          logger,
+		resourcesClient: &mockResourceStreamSender{},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -111,9 +146,9 @@ func TestNewWatcher_PropagatesErrors(t *testing.T) {
 func TestProcessMutation_SendsCorrectMutationTypes(t *testing.T) {
 	logger := zap.NewNop()
 	rm := &Watcher{
-		resourceName:  "namespaces",
-		logger:        logger,
-		streamManager: &stream.Manager{},
+		resourceName:    "namespaces",
+		logger:          logger,
+		resourcesClient: &mockResourceStreamSender{},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -155,9 +190,9 @@ func TestProcessMutation_SendsCorrectMutationTypes(t *testing.T) {
 func TestProcessMutation_RespectsContextCancellation(t *testing.T) {
 	logger := zap.NewNop()
 	rm := &Watcher{
-		resourceName:  "namespaces",
-		logger:        logger,
-		streamManager: &stream.Manager{},
+		resourceName:    "namespaces",
+		logger:          logger,
+		resourcesClient: &mockResourceStreamSender{},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -175,9 +210,9 @@ func TestProcessMutation_RespectsContextCancellation(t *testing.T) {
 func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 	logger := zap.NewNop()
 	rm := &Watcher{
-		resourceName:  "namespaces",
-		logger:        logger,
-		streamManager: &stream.Manager{},
+		resourceName:    "namespaces",
+		logger:          logger,
+		resourcesClient: &mockResourceStreamSender{},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
