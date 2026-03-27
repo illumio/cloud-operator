@@ -16,13 +16,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/testhelper"
 )
 
 type ControllerTestSuite struct {
 	suite.Suite
 
-	clientset *kubernetes.Clientset
+	clientset kubernetes.Interface
 	logger    *zap.Logger
 }
 
@@ -40,10 +41,12 @@ func (suite *ControllerTestSuite) SetupSuite() {
 		suite.T().Fatal("Failed to set up test cluster " + err.Error())
 	}
 	// Create a new clientset
-	suite.clientset, err = NewClientSet()
+	k8sClient, err := k8sclient.NewClient()
 	if err != nil {
 		suite.T().Fatal("Failed to get client set " + err.Error())
 	}
+
+	suite.clientset = k8sClient.GetClientset()
 }
 
 func (suite *ControllerTestSuite) TearDownSuite() {
