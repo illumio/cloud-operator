@@ -8,7 +8,6 @@ import (
 	"maps"
 	"slices"
 	"sync"
-	"time"
 
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
@@ -295,6 +294,3 @@ func (c *resourcesClient) sendResourceSnapshotComplete() error {
 
 	return c.SendToStream(request)
 }
-
-// ResourceProcessingTimeout is the maximum time allowed for resource processing.
-const ResourceProcessingTimeout = 5 * time.Minute

@@ -85,7 +85,7 @@ func (c *ciliumClient) disableSubsystemCausingError(err error) {
 		c.logger.Info("Disabling TLS for Hubble Relay connection; will retry connecting")
 		c.tlsAuthProps.DisableTLS = true
 	default:
-		c.logger.Warn("Disabling network flow collection from Hubble Relay due to unrecoverable error", zap.Error(err))
+		c.logger.Warn("Network flow collection from Hubble Relay interrupted due to error; will retry connecting", zap.Error(err))
 	}
 }
 

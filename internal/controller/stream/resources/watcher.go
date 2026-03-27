@@ -24,7 +24,7 @@ import (
 )
 
 // ResourceStreamSender abstracts the operations for sending resources to CloudSecure.
-// This interface allows the Watcher to work with both the old stream.Manager and the new resourcesClient.
+// Implemented by resourcesClient.
 type ResourceStreamSender interface {
 	SendObjectData(logger *zap.Logger, metadata *pb.KubernetesObjectData) error
 	CreateMutationObject(metadata *pb.KubernetesObjectData, eventType watch.EventType) *pb.KubernetesResourceMutation

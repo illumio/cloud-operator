@@ -98,6 +98,12 @@ func ManageStream(
 
 	err := funcWithBackoffAndReset()
 	if err != nil {
+		if errors.Is(err, ErrStopRetries) {
+			streamLogger.Info("Stream stopped retrying", zap.Error(err))
+
+			return
+		}
+
 		streamLogger.Error("Failed to reset connectAndStream. Something is very wrong", zap.Error(err))
 	}
 }
@@ -329,10 +335,24 @@ func runStreamsOnce(
 // startFalcoServer starts the Falco HTTP server for receiving Falco events.
 func startFalcoServer(ctx context.Context, logger *zap.Logger) {
 	for {
+		select {
+		case <-ctx.Done():
+			logger.Info("Falco server shutting down")
+
+			return
+		default:
+		}
+
 		var listenerConfig net.ListenConfig
 
 		listener, err := listenerConfig.Listen(ctx, "tcp", FalcoPort)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				logger.Info("Falco server shutting down")
+
+				return
+			}
+
 			logger.Fatal("Failed to listen on Falco port", zap.String("address", FalcoPort), zap.Error(err))
 		}
 

@@ -35,7 +35,12 @@ func (c *falcoClient) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case falcoFlow := <-c.falcoEventChan:
+		case falcoFlow, ok := <-c.falcoEventChan:
+			if !ok {
+				// Channel closed; exit Run to avoid spinning on an empty receive.
+				return nil
+			}
+
 			if !collector.FilterIllumioTraffic(falcoFlow) {
 				continue
 			}
