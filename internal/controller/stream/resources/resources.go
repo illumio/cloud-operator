@@ -87,13 +87,13 @@ func Stream(ctx context.Context, sm *stream.Manager, logger *zap.Logger, cancel 
 		}
 
 		resourceManager := NewWatcher(WatcherConfig{
-			ResourceName:  resource,
-			ApiGroup:      apiGroup,
-			Clientset:     clientset,
-			BaseLogger:    logger,
-			DynamicClient: dynamicClient,
-			StreamManager: sm,
-			Limiter:       sharedLimiter,
+			ResourceName:    resource,
+			ApiGroup:        apiGroup,
+			Clientset:       clientset,
+			BaseLogger:      logger,
+			DynamicClient:   dynamicClient,
+			ResourcesClient: sm,
+			Limiter:         sharedLimiter,
 		})
 		resourceManagers[resource] = resourceManager
 

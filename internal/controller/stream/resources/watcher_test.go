@@ -62,10 +62,10 @@ func TestNewWatcher_StopsExistingAndReturnsNew(t *testing.T) {
 	})
 
 	rm := &Watcher{
-		resourceName:  "namespaces",
-		dynamicClient: dyn,
-		logger:        logger,
-		streamManager: &stream.Manager{},
+		resourceName:    "namespaces",
+		dynamicClient:   dyn,
+		logger:          logger,
+		resourcesClient: &stream.Manager{},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -93,10 +93,10 @@ func TestNewWatcher_PropagatesErrors(t *testing.T) {
 	})
 
 	rm := &Watcher{
-		resourceName:  "namespaces",
-		dynamicClient: dyn,
-		logger:        logger,
-		streamManager: &stream.Manager{},
+		resourceName:    "namespaces",
+		dynamicClient:   dyn,
+		logger:          logger,
+		resourcesClient: &stream.Manager{},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -111,9 +111,9 @@ func TestNewWatcher_PropagatesErrors(t *testing.T) {
 func TestProcessMutation_SendsCorrectMutationTypes(t *testing.T) {
 	logger := zap.NewNop()
 	rm := &Watcher{
-		resourceName:  "namespaces",
-		logger:        logger,
-		streamManager: &stream.Manager{},
+		resourceName:    "namespaces",
+		logger:          logger,
+		resourcesClient: &stream.Manager{},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -155,9 +155,9 @@ func TestProcessMutation_SendsCorrectMutationTypes(t *testing.T) {
 func TestProcessMutation_RespectsContextCancellation(t *testing.T) {
 	logger := zap.NewNop()
 	rm := &Watcher{
-		resourceName:  "namespaces",
-		logger:        logger,
-		streamManager: &stream.Manager{},
+		resourceName:    "namespaces",
+		logger:          logger,
+		resourcesClient: &stream.Manager{},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -175,9 +175,9 @@ func TestProcessMutation_RespectsContextCancellation(t *testing.T) {
 func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 	logger := zap.NewNop()
 	rm := &Watcher{
-		resourceName:  "namespaces",
-		logger:        logger,
-		streamManager: &stream.Manager{},
+		resourceName:    "namespaces",
+		logger:          logger,
+		resourcesClient: &stream.Manager{},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
