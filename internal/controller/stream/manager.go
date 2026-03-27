@@ -22,8 +22,8 @@ import (
 )
 
 // FlowCollectorDeterminer is a function that determines which flow collector to use.
-// It returns the factory for the determined collector, or nil if none available.
-type FlowCollectorDeterminer func(ctx context.Context, k8sClient K8sClientGetter) StreamClientFactory
+// It returns the enum and factory for the determined collector, or UNSPECIFIED and nil if none available.
+type FlowCollectorDeterminer func(ctx context.Context, k8sClient K8sClientGetter) (pb.FlowCollector, StreamClientFactory)
 
 // FactoryConfig holds all factories and configuration needed to run streams.
 type FactoryConfig struct {
@@ -69,7 +69,12 @@ func ManageStream(
 	streamLogger := logger.With(zap.String("stream", factory.Name()))
 
 	connectAndStream := func() error {
-		return runStreamWithKeepalive(ctx, streamLogger, grpcClient, factory, keepalivePeriod)
+		select {
+		case <-ctx.Done():
+			return ErrStopRetries
+		default:
+			return runStreamWithKeepalive(ctx, streamLogger, grpcClient, factory, keepalivePeriod)
+		}
 	}
 
 	funcWithBackoff := func() error {
@@ -220,7 +225,7 @@ func runStreamsOnce(
 	}
 
 	// Determine flow collector first (needed for resources stream to report correct collector)
-	flowCollectorFactory := determineFlowCollector(ctx, logger, k8sClient, factoryConfig)
+	flowCollectorType, flowCollectorFactory := determineFlowCollector(ctx, logger, k8sClient, factoryConfig)
 
 	// Set K8sClient and FlowCollector on resources factory
 	if setter, ok := factoryConfig.ResourcesFactory.(K8sClientSetter); ok {
@@ -228,10 +233,7 @@ func runStreamsOnce(
 	}
 
 	if setter, ok := factoryConfig.ResourcesFactory.(FlowCollectorSetter); ok {
-		if flowCollectorFactory != nil {
-			// Get the flow collector type from the factory name
-			setter.SetFlowCollector(flowCollectorFactory.Name())
-		}
+		setter.SetFlowCollector(flowCollectorType)
 	}
 
 	// Set connection on logs factory for BufferedGrpcWriteSyncer
@@ -240,7 +242,7 @@ func runStreamsOnce(
 	}
 
 	// Start stats logger
-	StartStatsLogger(authCtx, logger, factoryConfig.Stats, envMap.StatsLogPeriod)
+	StartStatsLogger(authCtx, logger, factoryConfig.Stats, factoryConfig.StatsLogPeriod)
 
 	// Create done channels for each stream
 	configDone := make(chan struct{})
@@ -378,21 +380,21 @@ func determineFlowCollector(
 	logger *zap.Logger,
 	k8sClient k8sclient.Client,
 	factoryConfig FactoryConfig,
-) StreamClientFactory {
+) (pb.FlowCollector, StreamClientFactory) {
 	if factoryConfig.DetermineFlowCollector == nil {
 		logger.Warn("No flow collector determiner configured")
 
-		return nil
+		return pb.FlowCollector_FLOW_COLLECTOR_UNSPECIFIED, nil
 	}
 
-	factory := factoryConfig.DetermineFlowCollector(ctx, k8sClient)
+	collectorType, factory := factoryConfig.DetermineFlowCollector(ctx, k8sClient)
 	if factory != nil {
 		logger.Info("Using flow collector", zap.String("collector", factory.Name()))
 	} else {
 		logger.Warn("No flow collector available")
 	}
 
-	return factory
+	return collectorType, factory
 }
 
 // ConnectionInfo holds the gRPC connection and client.

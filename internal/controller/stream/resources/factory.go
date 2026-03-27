@@ -56,15 +56,6 @@ func (f *Factory) SetK8sClient(client stream.K8sClientGetter) {
 
 // SetFlowCollector sets the flow collector type on the factory.
 // This is called after determining which flow collector to use.
-func (f *Factory) SetFlowCollector(collectorName string) {
-	switch collectorName {
-	case "CiliumFlowCollector":
-		f.FlowCollector = pb.FlowCollector_FLOW_COLLECTOR_CILIUM
-	case "OVNKFlowCollector":
-		f.FlowCollector = pb.FlowCollector_FLOW_COLLECTOR_OVNK
-	case "FalcoFlowCollector":
-		f.FlowCollector = pb.FlowCollector_FLOW_COLLECTOR_FALCO
-	default:
-		f.FlowCollector = pb.FlowCollector_FLOW_COLLECTOR_UNSPECIFIED
-	}
+func (f *Factory) SetFlowCollector(collector pb.FlowCollector) {
+	f.FlowCollector = collector
 }

@@ -63,5 +63,14 @@ func SetProcessingResources(processing bool) {
 	}
 }
 
-// FalcoPort is the port for the Falco HTTP server.
-const FalcoPort = ":5000"
+// ServerIsHealthy checks if a deadlock has occurred within the resource listing process.
+func ServerIsHealthy() bool {
+	dd.mutex.RLock()
+	defer dd.mutex.RUnlock()
+
+	if dd.processingResources && time.Since(dd.timeStarted) > ResourceProcessingTimeout {
+		return false
+	}
+
+	return true
+}

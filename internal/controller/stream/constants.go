@@ -57,3 +57,16 @@ const (
 	// FlowChannelBufferSize is the buffer size for flow channels.
 	FlowChannelBufferSize = 100
 )
+
+// Health Check Configuration.
+const (
+	// ResourceProcessingTimeout is the maximum time allowed for resource processing
+	// before the server is considered unhealthy.
+	ResourceProcessingTimeout = 5 * time.Minute
+)
+
+// Falco Configuration.
+const (
+	// FalcoPort is the port for the Falco HTTP server.
+	FalcoPort = ":5000"
+)

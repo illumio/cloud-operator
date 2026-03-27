@@ -74,7 +74,7 @@ type K8sClientSetter interface {
 // FlowCollectorSetter allows setting the flow collector type on a factory.
 // Used by resources factory to report the correct flow collector in cluster metadata.
 type FlowCollectorSetter interface {
-	SetFlowCollector(collectorName string)
+	SetFlowCollector(collector pb.FlowCollector)
 }
 
 // ConnSetter allows setting the gRPC connection on a factory.

@@ -116,7 +116,7 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger, 
 
 	select {
 	case <-ctx.Done():
-		return "", err
+		return "", ctx.Err()
 	default:
 	}
 

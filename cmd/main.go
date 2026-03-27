@@ -248,8 +248,8 @@ func main() {
 		SuccessPeriods:     envConfig.SuccessPeriods,
 		StatsLogPeriod:     envConfig.StatsLogPeriod,
 		// Flow collector determiner - called at runtime to pick Cilium/OVN-K/Falco
-		DetermineFlowCollector: func(ctx context.Context, k8sClient stream.K8sClientGetter) stream.StreamClientFactory {
-			_, factory := flows.DetermineFlowCollector(ctx, flows.FlowCollectorConfig{
+		DetermineFlowCollector: func(ctx context.Context, k8sClient stream.K8sClientGetter) (pb.FlowCollector, stream.StreamClientFactory) {
+			return flows.DetermineFlowCollector(ctx, flows.FlowCollectorConfig{
 				Logger:             logger,
 				FlowCache:          flowCache,
 				Stats:              stats,
@@ -260,8 +260,6 @@ func main() {
 				FalcoEventChan:     falcoEventChan,
 				TlsAuthProps:       tlsAuthProps,
 			})
-
-			return factory
 		},
 	}
 
