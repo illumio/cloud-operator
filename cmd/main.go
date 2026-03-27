@@ -36,6 +36,7 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows"
 	"github.com/illumio/cloud-operator/internal/controller/stream/logs"
 	"github.com/illumio/cloud-operator/internal/controller/stream/resources"
+	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
 const (
@@ -217,6 +218,9 @@ func main() {
 	// Create Falco event channel (needed even if not using Falco collector)
 	falcoEventChan := make(chan string)
 
+	// Create TlsAuthProps once - persists DisableTLS/DisableALPN flags across reconnections
+	tlsAuthProps := &tls.AuthProperties{}
+
 	// Create factory config with all stream factories
 	factoryConfig := stream.FactoryConfig{
 		ConfigFactory: &config.Factory{
@@ -254,6 +258,7 @@ func main() {
 				IPFIXCollectorPort: envConfig.IPFIXCollectorPort,
 				OVNKNamespace:      envConfig.OVNKNamespace,
 				FalcoEventChan:     falcoEventChan,
+				TlsAuthProps:       tlsAuthProps,
 			})
 
 			return factory

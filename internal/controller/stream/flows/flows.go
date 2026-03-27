@@ -63,11 +63,17 @@ func DetermineFlowCollector(ctx context.Context, config FlowCollectorConfig) (pb
 	if isCiliumAvailable(ctx, config.Logger, clientset, config.CiliumNamespaces, config.TlsAuthProps) {
 		config.Logger.Info("Using Cilium flow collector")
 
+		// Initialize TlsAuthProps if nil so DisableTLS/DisableALPN flags persist across retries
+		tlsAuthProps := config.TlsAuthProps
+		if tlsAuthProps == nil {
+			tlsAuthProps = &tls.AuthProperties{}
+		}
+
 		return pb.FlowCollector_FLOW_COLLECTOR_CILIUM, &cilium.Factory{
 			Logger:           config.Logger,
 			FlowSink:         flowSink,
 			CiliumNamespaces: config.CiliumNamespaces,
-			TlsAuthProps:     config.TlsAuthProps,
+			TlsAuthProps:     tlsAuthProps,
 			K8sClient:        config.K8sClient,
 		}
 	}
