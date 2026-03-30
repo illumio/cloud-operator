@@ -22,96 +22,102 @@ tests:
           value: "clustercreds"
       - equal:
           path: spec.template.spec.containers[0].env[2].name
-          value: "HTTPS_PROXY"
+          value: "GRPC_INTERNAL_LOGGING"
       - equal:
           path: spec.template.spec.containers[0].env[2].value
-          value: ""
+          value: "false"
       - equal:
           path: spec.template.spec.containers[0].env[3].name
-          value: "IPFIX_COLLECTOR_PORT"
+          value: "HTTPS_PROXY"
       - equal:
           path: spec.template.spec.containers[0].env[3].value
-          value: "4739"
+          value: ""
       - equal:
           path: spec.template.spec.containers[0].env[4].name
-          value: "ONBOARDING_CLIENT_ID"
+          value: "IPFIX_COLLECTOR_PORT"
+      - equal:
+          path: spec.template.spec.containers[0].env[4].value
+          value: "4739"
       - equal:
           path: spec.template.spec.containers[0].env[5].name
-          value: "ONBOARDING_CLIENT_SECRET"
+          value: "ONBOARDING_CLIENT_ID"
       - equal:
           path: spec.template.spec.containers[0].env[6].name
-          value: "ONBOARDING_ENDPOINT"
-      - equal:
-          path: spec.template.spec.containers[0].env[6].value
-          value: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
+          value: "ONBOARDING_CLIENT_SECRET"
       - equal:
           path: spec.template.spec.containers[0].env[7].name
-          value: "OVNK_NAMESPACE"
+          value: "ONBOARDING_ENDPOINT"
       - equal:
           path: spec.template.spec.containers[0].env[7].value
-          value: "openshift-ovn-kubernetes"
+          value: "https://cloud.illum.io/api/v1/k8s_cluster/onboard"
       - equal:
           path: spec.template.spec.containers[0].env[8].name
-          value: "POD_NAMESPACE"
+          value: "OVNK_NAMESPACE"
+      - equal:
+          path: spec.template.spec.containers[0].env[8].value
+          value: "openshift-ovn-kubernetes"
       - equal:
           path: spec.template.spec.containers[0].env[9].name
-          value: "STATS_LOG_PERIOD"
-      - equal:
-          path: spec.template.spec.containers[0].env[9].value
-          value: "30m"
+          value: "POD_NAMESPACE"
       - equal:
           path: spec.template.spec.containers[0].env[10].name
-          value: "STREAM_KEEPALIVE_PERIOD_CONFIGURATION"
+          value: "STATS_LOG_PERIOD"
       - equal:
           path: spec.template.spec.containers[0].env[10].value
-          value: "10s"
+          value: "30m"
       - equal:
           path: spec.template.spec.containers[0].env[11].name
-          value: "STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS"
+          value: "STREAM_KEEPALIVE_PERIOD_CONFIGURATION"
       - equal:
           path: spec.template.spec.containers[0].env[11].value
           value: "10s"
       - equal:
           path: spec.template.spec.containers[0].env[12].name
-          value: "STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES"
+          value: "STREAM_KEEPALIVE_PERIOD_KUBERNETES_NETWORK_FLOWS"
       - equal:
           path: spec.template.spec.containers[0].env[12].value
           value: "10s"
       - equal:
           path: spec.template.spec.containers[0].env[13].name
-          value: "STREAM_KEEPALIVE_PERIOD_LOGS"
+          value: "STREAM_KEEPALIVE_PERIOD_KUBERNETES_RESOURCES"
       - equal:
           path: spec.template.spec.containers[0].env[13].value
           value: "10s"
       - equal:
           path: spec.template.spec.containers[0].env[14].name
-          value: "STREAM_SUCCESS_PERIOD_AUTH"
+          value: "STREAM_KEEPALIVE_PERIOD_LOGS"
       - equal:
           path: spec.template.spec.containers[0].env[14].value
-          value: "2h"
+          value: "10s"
       - equal:
           path: spec.template.spec.containers[0].env[15].name
-          value: "STREAM_SUCCESS_PERIOD_CONNECT"
+          value: "STREAM_SUCCESS_PERIOD_AUTH"
       - equal:
           path: spec.template.spec.containers[0].env[15].value
-          value: "1h"
+          value: "2h"
       - equal:
           path: spec.template.spec.containers[0].env[16].name
-          value: "TLS_SKIP_VERIFY"
+          value: "STREAM_SUCCESS_PERIOD_CONNECT"
       - equal:
           path: spec.template.spec.containers[0].env[16].value
-          value: "true"
+          value: "1h"
       - equal:
           path: spec.template.spec.containers[0].env[17].name
-          value: "TOKEN_ENDPOINT"
+          value: "TLS_SKIP_VERIFY"
       - equal:
           path: spec.template.spec.containers[0].env[17].value
-          value: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[18].name
-          value: "VERBOSE_DEBUGGING"
+          value: "TOKEN_ENDPOINT"
       - equal:
           path: spec.template.spec.containers[0].env[18].value
+          value: "https://cloud.illum.io/api/v1/k8s_cluster/authenticate"
+      - equal:
+          path: spec.template.spec.containers[0].env[19].name
+          value: "VERBOSE_DEBUGGING"
+      - equal:
+          path: spec.template.spec.containers[0].env[19].value
           value: "false"
 
   # Test for replicaCount value

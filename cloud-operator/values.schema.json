@@ -39,6 +39,9 @@
         "env": {
             "type": "object",
             "properties": {
+                "grpcInternalLogging": {
+                    "type": "boolean"
+                },
                 "httpsProxy": {
                     "type": "string"
                 },
