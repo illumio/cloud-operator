@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -19,36 +17,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
-
-// NewClientSet returns a new Kubernetes clientset based on the execution environment.
-func NewClientSet() (*kubernetes.Clientset, error) {
-	var clusterConfig *rest.Config
-
-	var err error
-
-	if os.Getenv("KUBECONFIG") != "" || !IsRunningInCluster() {
-		var kubeconfig string
-		if home := homedir.HomeDir(); home != "" {
-			kubeconfig = filepath.Join(home, ".kube", "config")
-		}
-
-		clusterConfig, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-	} else {
-		clusterConfig, err = rest.InClusterConfig()
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return newClientForConfig(clusterConfig)
-}
 
 // convertObjectToMetadata extracts the ObjectMeta from a metav1.Object interface.
 func convertObjectToMetadata(obj metav1.Object) metav1.ObjectMeta {
@@ -64,9 +35,9 @@ func convertObjectToMetadata(obj metav1.Object) metav1.ObjectMeta {
 	return objMetadata
 }
 
-// getObjectMetadataFromRuntimeObject safely extracts metadata from any Kubernetes runtime.Object.
+// GetObjectMetadataFromRuntimeObject safely extracts metadata from any Kubernetes runtime.Object.
 // It returns a pointer to a metav1.ObjectMeta structure if successful, along with any error encountered.
-func getObjectMetadataFromRuntimeObject(obj runtime.Object) (*metav1.ObjectMeta, error) {
+func GetObjectMetadataFromRuntimeObject(obj runtime.Object) (*metav1.ObjectMeta, error) {
 	objectMeta, err := meta.Accessor(obj)
 	if err != nil {
 		return nil, err
@@ -77,9 +48,9 @@ func getObjectMetadataFromRuntimeObject(obj runtime.Object) (*metav1.ObjectMeta,
 	return &convertedObjMeta, nil
 }
 
-// getMetadatafromResource extracts the metav1.ObjectMeta from an unstructured.Unstructured resource.
+// GetMetadataFromResource extracts the metav1.ObjectMeta from an unstructured.Unstructured resource.
 // It utilizes the unstructured's inherent methods to access the metadata directly.
-func getMetadatafromResource(logger *zap.Logger, resource unstructured.Unstructured) (*metav1.ObjectMeta, error) {
+func GetMetadataFromResource(logger *zap.Logger, resource unstructured.Unstructured) (*metav1.ObjectMeta, error) {
 	// Convert unstructured object to a map.
 	itemMap := resource.Object
 	// Extract metadata from map.
@@ -105,8 +76,8 @@ func getMetadatafromResource(logger *zap.Logger, resource unstructured.Unstructu
 	}
 }
 
-// convertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
-func convertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, clientset *kubernetes.Clientset, resource string) *pb.KubernetesObjectData {
+// ConvertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
+func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, clientset kubernetes.Interface, resource string) *pb.KubernetesObjectData {
 	ownerReferences := convertOwnerReferences(obj.GetOwnerReferences())
 
 	objMetadata := &pb.KubernetesObjectData{
@@ -157,7 +128,7 @@ func convertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, cli
 }
 
 // getContentsOfNetworkPolicy gets the contents of a NetworkPolicy and returns it as a KubernetesNetworkPolicyData proto message.
-func getContentsOfNetworkPolicy(ctx context.Context, networkPolicyName string, clientset *kubernetes.Clientset, networkPolicyNamespace string) (*pb.KubernetesNetworkPolicyData, error) {
+func getContentsOfNetworkPolicy(ctx context.Context, networkPolicyName string, clientset kubernetes.Interface, networkPolicyNamespace string) (*pb.KubernetesNetworkPolicyData, error) {
 	networkPolicy, err := clientset.NetworkingV1().NetworkPolicies(networkPolicyNamespace).Get(ctx, networkPolicyName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
@@ -375,7 +346,7 @@ func convertIPBlockToProto(iPBlock *networkingv1.IPBlock) *pb.IPBlock {
 }
 
 // getNodeIpAddresses fetches the IP addresses of a node.
-func getNodeIpAddresses(ctx context.Context, clientset *kubernetes.Clientset, nodeName string) ([]string, error) {
+func getNodeIpAddresses(ctx context.Context, clientset kubernetes.Interface, nodeName string) ([]string, error) {
 	node, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
 		return nil, errors.New("failed to get node")
@@ -463,7 +434,7 @@ func combineIPAddresses(clusterIps []string, externalIps []string, loadBalancerI
 }
 
 // Convert ServiceAttributes to KubernetesServiceData.
-func convertToKubernetesServiceData(ctx context.Context, serviceName string, clientset *kubernetes.Clientset, namespace string) (*pb.KubernetesServiceData, error) {
+func convertToKubernetesServiceData(ctx context.Context, serviceName string, clientset kubernetes.Interface, namespace string) (*pb.KubernetesServiceData, error) {
 	service, err := clientset.CoreV1().Services(namespace).Get(ctx, serviceName, metav1.GetOptions{})
 	if err != nil {
 		return nil, errors.New("failed to get service")
@@ -540,7 +511,7 @@ func convertOwnerReferences(ownerReferences []metav1.OwnerReference) []*pb.Kuber
 }
 
 // getProviderIdNodeSpec uses a node name to return the providerID within the node's spec.
-func getProviderIdNodeSpec(ctx context.Context, clientset *kubernetes.Clientset, nodeName string) (string, error) {
+func getProviderIdNodeSpec(ctx context.Context, clientset kubernetes.Interface, nodeName string) (string, error) {
 	node, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
 		return "", err
@@ -554,7 +525,7 @@ func getProviderIdNodeSpec(ctx context.Context, clientset *kubernetes.Clientset,
 }
 
 // getPodIPAddresses uses a pod name and namespace to grab the hostIP addresses within the podStatus.
-func getPodIPAddresses(ctx context.Context, podName string, clientset *kubernetes.Clientset, namespace string) []v1.PodIP {
+func getPodIPAddresses(ctx context.Context, podName string, clientset kubernetes.Interface, namespace string) []v1.PodIP {
 	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
 		// Could be that the pod no longer exists
