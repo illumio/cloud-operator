@@ -292,3 +292,153 @@ func TestRemoveListSuffix(t *testing.T) {
 		})
 	}
 }
+
+func TestProcessMutation_BookmarkSendsNilMutation(t *testing.T) {
+	logger := zap.NewNop()
+	rm := &Watcher{
+		resourceName:    "namespaces",
+		logger:          logger,
+		resourcesClient: &mockResourceStreamSender{},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ch := make(chan *pb.KubernetesResourceMutation, 1)
+
+	u := newUnstructuredNamespace("n1", "99")
+
+	rv, err := rm.processMutation(ctx, watch.Event{Type: watch.Bookmark, Object: u}, ch)
+	if err != nil {
+		t.Fatalf("processMutation(Bookmark) error: %v", err)
+	}
+
+	if rv != "99" {
+		t.Errorf("expected resourceVersion '99', got %q", rv)
+	}
+
+	// Bookmark sends nil mutation to channel (CreateMutationObject returns nil for Bookmark)
+	m := <-ch
+	if m != nil {
+		t.Fatalf("expected nil mutation for Bookmark, got %#v", m)
+	}
+}
+
+func TestProcessMutation_ErrorEventSendsNilMutation(t *testing.T) {
+	logger := zap.NewNop()
+	rm := &Watcher{
+		resourceName:    "namespaces",
+		logger:          logger,
+		resourcesClient: &mockResourceStreamSender{},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ch := make(chan *pb.KubernetesResourceMutation, 1)
+
+	u := newUnstructuredNamespace("n1", "10")
+	_, err := rm.processMutation(ctx, watch.Event{Type: watch.Error, Object: u}, ch)
+
+	// Error event doesn't return error, it sends nil mutation
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// CreateMutationObject returns nil for Error event type
+	m := <-ch
+	if m != nil {
+		t.Fatalf("expected nil mutation for Error event, got %#v", m)
+	}
+}
+
+func TestProcessMutation_NilObject(t *testing.T) {
+	logger := zap.NewNop()
+	rm := &Watcher{
+		resourceName:    "namespaces",
+		logger:          logger,
+		resourcesClient: &mockResourceStreamSender{},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ch := make(chan *pb.KubernetesResourceMutation, 1)
+
+	_, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: nil}, ch)
+	if err == nil {
+		t.Fatalf("expected error for nil object, got nil")
+	}
+}
+
+func TestNewWatcher_CreatesWatcher(t *testing.T) {
+	logger := zap.NewNop()
+	scheme := runtime.NewScheme()
+	dyn := dynamicfake.NewSimpleDynamicClient(scheme)
+
+	fakeWatcher := watch.NewFake()
+	dyn.PrependWatchReactor("*", func(action clientgotesting.Action) (handled bool, ret watch.Interface, err error) {
+		return true, fakeWatcher, nil
+	})
+
+	rm := &Watcher{
+		resourceName:    "pods",
+		apiGroup:        "",
+		dynamicClient:   dyn,
+		logger:          logger,
+		resourcesClient: &mockResourceStreamSender{},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	w, err := rm.newWatcher(ctx, "1", logger)
+	if err != nil {
+		t.Fatalf("newWatcher error: %v", err)
+	}
+
+	if w == nil {
+		t.Fatalf("expected non-nil watcher")
+	}
+}
+
+func TestGetResourceVersionFromBookmark_ValidObject(t *testing.T) {
+	u := newUnstructuredNamespace("test", "123")
+	ev := watch.Event{Type: watch.Bookmark, Object: u}
+
+	rv, err := getResourceVersionFromBookmark(ev)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if rv != "123" {
+		t.Errorf("expected resourceVersion '123', got %q", rv)
+	}
+}
+
+func TestGetResourceVersionFromBookmark_NilObject(t *testing.T) {
+	ev := watch.Event{Type: watch.Bookmark, Object: nil}
+
+	rv, err := getResourceVersionFromBookmark(ev)
+	if err == nil {
+		t.Fatalf("expected error for nil object, got nil")
+	}
+
+	if rv != "" {
+		t.Errorf("expected empty resourceVersion, got %q", rv)
+	}
+}
+
+func TestGetResourceVersionFromBookmark_EmptyResourceVersion(t *testing.T) {
+	u := newUnstructuredNamespace("test", "")
+	ev := watch.Event{Type: watch.Bookmark, Object: u}
+
+	rv, err := getResourceVersionFromBookmark(ev)
+	if err == nil {
+		t.Fatalf("expected error for empty resourceVersion, got nil")
+	}
+
+	if rv != "" {
+		t.Errorf("expected empty resourceVersion, got %q", rv)
+	}
+}
