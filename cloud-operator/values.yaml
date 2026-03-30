@@ -99,6 +99,10 @@ falco:
         priority: WARNING
 
 env:
+  # If true, enables GRPC internal logging (connection states, TLS handshakes, transport events).
+  # These logs appear at DEBUG level, so they only show when log level is DEBUG.
+  grpcInternalLogging: false
+
   # The URL of the HTTPS proxy to be used by cloud-operator to connect to
   # Illumio CloudSecure. If not set, no proxy will be used.
   httpsProxy: ""
