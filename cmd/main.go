@@ -29,7 +29,13 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/klog/v2"
 
-	controller "github.com/illumio/cloud-operator/internal/controller"
+	"github.com/illumio/cloud-operator/internal/controller"
+	"github.com/illumio/cloud-operator/internal/controller/logging"
+	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/config"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows"
+	"github.com/illumio/cloud-operator/internal/controller/stream/logs"
+	"github.com/illumio/cloud-operator/internal/controller/stream/resources"
 )
 
 const (
@@ -71,9 +77,9 @@ func bindEnv(logger *zap.Logger, key, envVar string) {
 func main() {
 	// Create a buffered grpc write syncer without a valid gRPC connection initially
 	// Using nil for the `pb.KubernetesInfoService_KubernetesLogsClient`.
-	bufferedGrpcSyncer := controller.NewBufferedGrpcWriteSyncer()
+	bufferedGrpcSyncer := logging.NewBufferedGrpcWriteSyncer()
 
-	logger := controller.NewProductionGRPCLogger(bufferedGrpcSyncer)
+	logger := logging.NewProductionGRPCLogger(bufferedGrpcSyncer)
 	defer logger.Sync() //nolint:errcheck
 
 	// Convert zap.Logger to logr.Logger
@@ -104,6 +110,7 @@ func main() {
 	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "verbose_debugging", "VERBOSE_DEBUGGING")
+	bindEnv(logger, "grpc_internal_logging", "GRPC_INTERNAL_LOGGING")
 
 	// Set default values
 	viper.SetDefault("cilium_namespaces", []string{"kube-system", "gke-managed-dpv2-observability"})
@@ -123,13 +130,18 @@ func main() {
 	viper.SetDefault("tls_skip_verify", false)
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("verbose_debugging", false)
+	viper.SetDefault("grpc_internal_logging", false)
 
-	envConfig := controller.EnvironmentConfig{
+	if viper.GetBool("grpc_internal_logging") {
+		controller.SetupGRPCInternalLogging(logger)
+	}
+
+	envConfig := stream.EnvironmentConfig{
 		CiliumNamespaces:   viper.GetStringSlice("cilium_namespaces"),
 		ClusterCreds:       viper.GetString("cluster_creds"),
 		HttpsProxy:         viper.GetString("https_proxy"),
 		IPFIXCollectorPort: viper.GetString("ipfix_collector_port"),
-		KeepalivePeriods: controller.KeepalivePeriods{
+		KeepalivePeriods: stream.KeepalivePeriods{
 			Configuration:          viper.GetDuration("stream_keepalive_period_configuration"),
 			KubernetesNetworkFlows: viper.GetDuration("stream_keepalive_period_kubernetes_network_flows"),
 			KubernetesResources:    viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
@@ -141,7 +153,7 @@ func main() {
 		OVNKNamespace:          viper.GetString("ovnk_namespace"),
 		PodNamespace:           viper.GetString("pod_namespace"),
 		StatsLogPeriod:         viper.GetDuration("stats_log_period"),
-		StreamSuccessPeriods: controller.StreamSuccessPeriods{
+		SuccessPeriods: stream.SuccessPeriods{
 			Auth:    viper.GetDuration("stream_success_period_auth"),
 			Connect: viper.GetDuration("stream_success_period_connect"),
 		},
@@ -164,8 +176,8 @@ func main() {
 		zap.Duration("stream_keepalive_period_kubernetes_network_flows", envConfig.KeepalivePeriods.KubernetesNetworkFlows),
 		zap.Duration("stream_keepalive_period_kubernetes_resources", envConfig.KeepalivePeriods.KubernetesResources),
 		zap.Duration("stream_keepalive_period_logs", envConfig.KeepalivePeriods.Logs),
-		zap.Duration("stream_success_period_auth", envConfig.StreamSuccessPeriods.Auth),
-		zap.Duration("stream_success_period_connect", envConfig.StreamSuccessPeriods.Connect),
+		zap.Duration("stream_success_period_auth", envConfig.SuccessPeriods.Auth),
+		zap.Duration("stream_success_period_connect", envConfig.SuccessPeriods.Connect),
 		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
 		zap.String("token_endpoint", envConfig.TokenEndpoint),
 		zap.Bool("verbose_debugging", envConfig.VerboseDebugging),
@@ -176,7 +188,7 @@ func main() {
 		logger.Error("Failed to start gops agent", zap.Error(err))
 	}
 
-	http.HandleFunc("/healthz", newHealthHandler(controller.ServerIsHealthy))
+	http.HandleFunc("/healthz", newHealthHandler(stream.ServerIsHealthy))
 	healthChecker := &http.Server{
 		Addr:              ":8080",
 		ReadHeaderTimeout: 10 * time.Second,
@@ -193,5 +205,15 @@ func main() {
 	}()
 
 	ctx := context.Background()
-	controller.ConnectStreams(ctx, logger, envConfig, bufferedGrpcSyncer)
+
+	streamFuncs := stream.StreamFuncs{
+		Resources:                 resources.ConnectAndStream,
+		Logs:                      logs.ConnectAndStream,
+		Config:                    config.ConnectAndStream,
+		DetermineFlowCollector:    flows.DetermineFlowCollector,
+		ConnectNetworkFlowsStream: flows.ConnectNetworkFlowsStream,
+		StartCacheOutReader:       flows.StartCacheOutReader,
+	}
+
+	stream.ConnectStreams(ctx, logger, envConfig, bufferedGrpcSyncer, streamFuncs)
 }
