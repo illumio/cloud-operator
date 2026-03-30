@@ -47,13 +47,6 @@ type FactoryConfig struct {
 	DetermineFlowCollector FlowCollectorDeterminer
 }
 
-// ManagedStream represents a single managed stream with its factory and configuration.
-type ManagedStream struct {
-	Factory         StreamClientFactory
-	KeepalivePeriod time.Duration
-	Done            chan struct{}
-}
-
 // ManageStream manages a stream with backoff and reconnection logic.
 func ManageStream(
 	ctx context.Context,
@@ -395,12 +388,6 @@ func determineFlowCollector(
 	}
 
 	return collectorType, factory
-}
-
-// ConnectionInfo holds the gRPC connection and client.
-type ConnectionInfo struct {
-	Conn       *grpc.ClientConn
-	GrpcClient pb.KubernetesInfoServiceClient
 }
 
 // NewAuthenticatedConnection gets a valid token and creates a connection to CloudSecure.
