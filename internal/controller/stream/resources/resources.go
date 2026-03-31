@@ -33,6 +33,22 @@ var resourceList = []string{
 	"statefulsets",
 }
 
+// apiGroupVersions defines API versions for resource groups that don't use v1.
+// All other groups default to v1.
+var apiGroupVersions = map[string]string{
+	"cilium.io":          "v2",
+	"networking.k8s.aws": "v1alpha1", // future: EKS
+}
+
+// getVersionForGroup returns the API version for a given API group.
+// Returns "v1" for standard Kubernetes resources.
+func getVersionForGroup(group string) string {
+	if version, ok := apiGroupVersions[group]; ok {
+		return version
+	}
+	return "v1"
+}
+
 // buildResourceApiGroupMap creates a mapping between Kubernetes resources and their API groups.
 func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface, logger *zap.Logger) (map[string]string, error) {
 	resourceAPIGroupMap := make(map[string]string)
