@@ -151,3 +151,4 @@ func TestSetProcessingResources_Integration(t *testing.T) {
 		assert.True(t, stream.ServerIsHealthy())
 	})
 }
+

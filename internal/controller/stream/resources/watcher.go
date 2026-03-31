@@ -158,7 +158,7 @@ func (r *Watcher) listCiliumResources(ctx context.Context, logger *zap.Logger) (
 		}
 	}
 
-	r.logger.Debug("Successfully sent Cilium policies", zap.Int("count", len(unstructuredResources.Items)))
+	r.logger.Info("Successfully sent Cilium policies", zap.Int("count", len(unstructuredResources.Items)))
 
 	select {
 	case <-ctx.Done():
