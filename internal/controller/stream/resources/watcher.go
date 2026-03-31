@@ -88,7 +88,7 @@ func (r *Watcher) WatchK8sResources(ctx context.Context, cancel context.CancelFu
 
 // DynamicListResources lists a specified resource dynamically and sends down the current gRPC stream.
 func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger, apiGroup string) (string, error) {
-	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
+	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: getVersionForGroup(apiGroup), Resource: r.resourceName}
 
 	// For Cilium policies, we need the full unstructured object to extract the spec
 	if controller.IsCiliumPolicy(removeListSuffix(r.resourceName)) {
@@ -133,6 +133,11 @@ func (r *Watcher) listCiliumResources(ctx context.Context, logger *zap.Logger, o
 		item := &unstructuredResources.Items[i]
 		metadataObj := controller.ConvertUnstructuredToCiliumPolicy(item)
 
+		r.logger.Info("Sending Cilium policy",
+			zap.String("name", item.GetName()),
+			zap.String("namespace", item.GetNamespace()),
+			zap.String("kind", item.GetKind()))
+
 		err = r.streamManager.SendObjectData(logger, metadataObj)
 		if err != nil {
 			r.logger.Error("Cannot send Cilium policy metadata", zap.Error(err))
@@ -141,7 +146,7 @@ func (r *Watcher) listCiliumResources(ctx context.Context, logger *zap.Logger, o
 		}
 	}
 
-	r.logger.Debug("Successfully sent Cilium policies", zap.Int("count", len(unstructuredResources.Items)))
+	r.logger.Info("Successfully sent Cilium policies", zap.Int("count", len(unstructuredResources.Items)))
 
 	select {
 	case <-ctx.Done():
@@ -304,7 +309,7 @@ func (r *Watcher) newWatcher(ctx context.Context, resourceVersion string, logger
 		AllowWatchBookmarks: true,
 	}
 
-	objGVR := schema.GroupVersionResource{Group: r.apiGroup, Version: "v1", Resource: r.resourceName}
+	objGVR := schema.GroupVersionResource{Group: r.apiGroup, Version: getVersionForGroup(r.apiGroup), Resource: r.resourceName}
 
 	w, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
