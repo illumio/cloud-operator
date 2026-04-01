@@ -75,6 +75,32 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 		} else {
 			c.bufferedGrpcSyncer.UpdateLogLevel(update.UpdateConfiguration.GetLogLevel())
 		}
+
+	case *pb.GetConfigurationUpdatesResponse_NetworkPolicyData:
+		c.logger.Info("Received network policy data",
+			zap.String("id", update.NetworkPolicyData.GetId()),
+		)
+
+	case *pb.GetConfigurationUpdatesResponse_NetworkPolicySnapshotComplete:
+		c.logger.Info("Received network policy snapshot complete")
+
+	case *pb.GetConfigurationUpdatesResponse_NetworkPolicyMutation:
+		mutation := update.NetworkPolicyMutation
+		switch m := mutation.GetMutation().(type) {
+		case *pb.NetworkPolicyMutation_CreatePolicy:
+			c.logger.Info("Received create policy mutation",
+				zap.String("id", m.CreatePolicy.GetId()),
+			)
+		case *pb.NetworkPolicyMutation_UpdatePolicy:
+			c.logger.Info("Received update policy mutation",
+				zap.String("id", m.UpdatePolicy.GetId()),
+			)
+		case *pb.NetworkPolicyMutation_DeletePolicy:
+			c.logger.Info("Received delete policy mutation",
+				zap.String("id", m.DeletePolicy.GetId()),
+			)
+		}
+
 	default:
 		c.logger.Warn("Received unknown configuration update", zap.Any("response", resp))
 	}
