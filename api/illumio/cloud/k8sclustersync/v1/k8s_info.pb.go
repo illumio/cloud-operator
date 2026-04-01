@@ -3396,10 +3396,10 @@ func (*GetConfigurationUpdatesResponse_NetworkPolicyMutation) isGetConfiguration
 type NetworkPolicyData struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	PolicyName    string                 `protobuf:"bytes,3,opt,name=policy_name,json=policyName,proto3" json:"policy_name,omitempty"`
-	ResourceName  string                 `protobuf:"bytes,4,opt,name=resource_name,json=resourceName,proto3" json:"resource_name,omitempty"`
-	Policy        []byte                 `protobuf:"bytes,5,opt,name=policy,proto3" json:"policy,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Namespace     string                 `protobuf:"bytes,3,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Kind          string                 `protobuf:"bytes,4,opt,name=kind,proto3" json:"kind,omitempty"`
+	Resource      []byte                 `protobuf:"bytes,5,opt,name=resource,proto3" json:"resource,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3441,6 +3441,13 @@ func (x *NetworkPolicyData) GetId() string {
 	return ""
 }
 
+func (x *NetworkPolicyData) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
 func (x *NetworkPolicyData) GetNamespace() string {
 	if x != nil {
 		return x.Namespace
@@ -3448,23 +3455,16 @@ func (x *NetworkPolicyData) GetNamespace() string {
 	return ""
 }
 
-func (x *NetworkPolicyData) GetPolicyName() string {
+func (x *NetworkPolicyData) GetKind() string {
 	if x != nil {
-		return x.PolicyName
+		return x.Kind
 	}
 	return ""
 }
 
-func (x *NetworkPolicyData) GetResourceName() string {
+func (x *NetworkPolicyData) GetResource() []byte {
 	if x != nil {
-		return x.ResourceName
-	}
-	return ""
-}
-
-func (x *NetworkPolicyData) GetPolicy() []byte {
-	if x != nil {
-		return x.Policy
+		return x.Resource
 	}
 	return nil
 }
@@ -3952,14 +3952,13 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\rConfiguration\x12F\n" +
 	"\tlog_level\x18\x01 \x01(\x0e2).illumio.cloud.k8sclustersync.v1.LogLevelR\blogLevelB\n" +
 	"\n" +
-	"\bresponse\"\x9f\x01\n" +
+	"\bresponse\"\x85\x01\n" +
 	"\x11NetworkPolicyData\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1c\n" +
-	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x1f\n" +
-	"\vpolicy_name\x18\x03 \x01(\tR\n" +
-	"policyName\x12#\n" +
-	"\rresource_name\x18\x04 \x01(\tR\fresourceName\x12\x16\n" +
-	"\x06policy\x18\x05 \x01(\fR\x06policy\"\x1f\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1c\n" +
+	"\tnamespace\x18\x03 \x01(\tR\tnamespace\x12\x12\n" +
+	"\x04kind\x18\x04 \x01(\tR\x04kind\x12\x1a\n" +
+	"\bresource\x18\x05 \x01(\fR\bresource\"\x1f\n" +
 	"\x1dNetworkPolicySnapshotComplete\"\xb4\x02\n" +
 	"\x15NetworkPolicyMutation\x12Y\n" +
 	"\rcreate_policy\x18\x01 \x01(\v22.illumio.cloud.k8sclustersync.v1.NetworkPolicyDataH\x00R\fcreatePolicy\x12Y\n" +

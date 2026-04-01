@@ -499,10 +499,10 @@ message GetConfigurationUpdatesResponse {
 // Single network policy sent during snapshot or mutation phase.
 message NetworkPolicyData {
   string id = 1;
-  string namespace = 2;
-  string policy_name = 3;
-  string resource_name = 4;
-  bytes policy = 5;
+  string name = 2;
+  string namespace = 3;
+  string kind = 4;
+  bytes resource = 5;
 }
 
 // Signals end of snapshot phase.
