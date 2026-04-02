@@ -4,6 +4,7 @@ package logs
 
 import (
 	"context"
+	"fmt"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -48,7 +49,18 @@ func (f *Factory) Name() string {
 // SetConn sets the gRPC connection on the factory.
 // This is called after the connection is established in runStreamsOnce.
 func (f *Factory) SetConn(conn any) {
-	if c, ok := conn.(*grpc.ClientConn); ok {
-		f.Conn = c
+	if conn == nil {
+		f.Logger.Error("SetConn called with nil connection")
+
+		return
 	}
+
+	c, ok := conn.(*grpc.ClientConn)
+	if !ok {
+		f.Logger.Error("SetConn: unexpected connection type", zap.String("type", fmt.Sprintf("%T", conn)))
+
+		return
+	}
+
+	f.Conn = c
 }

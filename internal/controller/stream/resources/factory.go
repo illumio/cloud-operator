@@ -4,6 +4,7 @@ package resources
 
 import (
 	"context"
+	"fmt"
 
 	"go.uber.org/zap"
 
@@ -49,9 +50,20 @@ func (f *Factory) Name() string {
 // SetK8sClient sets the Kubernetes client on the factory.
 // This is called after the client is created in runStreamsOnce.
 func (f *Factory) SetK8sClient(client stream.K8sClientGetter) {
-	if c, ok := client.(k8sclient.Client); ok {
-		f.K8sClient = c
+	if client == nil {
+		f.Logger.Error("SetK8sClient called with nil client")
+
+		return
 	}
+
+	c, ok := client.(k8sclient.Client)
+	if !ok {
+		f.Logger.Error("SetK8sClient: unexpected client type", zap.String("type", fmt.Sprintf("%T", client)))
+
+		return
+	}
+
+	f.K8sClient = c
 }
 
 // SetFlowCollector sets the flow collector type on the factory.
