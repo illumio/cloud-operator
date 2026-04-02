@@ -131,7 +131,7 @@ func (suite *HubbleSuite) TestGetTLSConfig() {
 		suite.Run(name, func() {
 			logger := zap.NewExample()
 			ctx := context.Background()
-			clientset := fake.NewSimpleClientset(&v1.Secret{
+			clientset := fake.NewClientset(&v1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "hubble-relay-client-certs",
 					Namespace: "kube-system",
@@ -197,7 +197,7 @@ func (suite *HubbleSuite) TestGetHubbleMTLSCertificatesFromSecret() {
 		suite.Run(name, func() {
 			logger := zap.NewExample()
 			ctx := context.Background()
-			clientset := fake.NewSimpleClientset(&v1.Secret{
+			clientset := fake.NewClientset(&v1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "hubble-relay-client-certs",
 					Namespace: "kube-system",
@@ -238,7 +238,7 @@ func (suite *HubbleSuite) TestLoadMTLSConfigFromData() {
 func (suite *HubbleSuite) TestGetHubbleMTLSCertificatesFromSecret_MissingData() {
 	logger := zap.NewExample()
 	ctx := context.Background()
-	clientset := fake.NewSimpleClientset(&v1.Secret{
+	clientset := fake.NewClientset(&v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "hubble-relay-client-certs",
 			Namespace: "kube-system",
@@ -349,7 +349,7 @@ func (suite *HubbleSuite) TestDiscoverHubbleRelay() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			clientset := fake.NewSimpleClientset()
+			clientset := fake.NewClientset()
 			if tt.serviceToCreate != nil {
 				// Create the service in the namespace defined within its ObjectMeta
 				_, err := clientset.CoreV1().Services(tt.serviceToCreate.ObjectMeta.Namespace).Create(ctx, tt.serviceToCreate, metav1.CreateOptions{})
@@ -358,13 +358,16 @@ func (suite *HubbleSuite) TestDiscoverHubbleRelay() {
 
 			discoveredService, err := DiscoverCiliumHubbleRelay(ctx, tt.namespaceToQuery, clientset)
 
-			// Compare the returned service object
-			// Note: When comparing Kubernetes objects, fake clients might return copies.
-			// assert.Equal for testify usually handles deep comparisons for structs.
-			// If tt.expectedService is nil, discoveredService should also be nil.
-			// If there are issues with complex fields (like TypeMeta, ResourceVersion),
-			// you might need to use a more specific comparison (e.g., equality.Semantic.DeepEqual or field-by-field).
-			suite.Equal(tt.expectedService, discoveredService)
+			// Compare relevant fields only (NewClientset adds TypeMeta and ManagedFields)
+			if tt.expectedService == nil {
+				suite.Nil(discoveredService)
+			} else {
+				suite.Require().NotNil(discoveredService)
+				suite.Equal(tt.expectedService.Name, discoveredService.Name)
+				suite.Equal(tt.expectedService.Namespace, discoveredService.Namespace)
+				suite.Equal(tt.expectedService.Spec.ClusterIP, discoveredService.Spec.ClusterIP)
+				suite.Len(discoveredService.Spec.Ports, len(tt.expectedService.Spec.Ports))
+			}
 
 			// Compare the error
 			if tt.expectedError != nil {
