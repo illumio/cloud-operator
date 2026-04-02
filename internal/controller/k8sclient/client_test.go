@@ -17,7 +17,7 @@ import (
 )
 
 func TestNewClientFromClients(t *testing.T) {
-	fakeClientset := k8sfake.NewSimpleClientset()
+	fakeClientset := k8sfake.NewClientset()
 	scheme := runtime.NewScheme()
 	fakeDynamic := fake.NewSimpleDynamicClient(scheme)
 
@@ -29,7 +29,7 @@ func TestNewClientFromClients(t *testing.T) {
 }
 
 func TestClient_GetClientset(t *testing.T) {
-	fakeClientset := k8sfake.NewSimpleClientset()
+	fakeClientset := k8sfake.NewClientset()
 	client := NewClientFromClients(fakeClientset, nil)
 
 	result := client.GetClientset()
@@ -38,7 +38,7 @@ func TestClient_GetClientset(t *testing.T) {
 }
 
 func TestClient_GetDiscoveryClient(t *testing.T) {
-	fakeClientset := k8sfake.NewSimpleClientset()
+	fakeClientset := k8sfake.NewClientset()
 	client := NewClientFromClients(fakeClientset, nil)
 
 	discovery := client.GetDiscoveryClient()
@@ -56,7 +56,7 @@ func TestClient_GetSecret(t *testing.T) {
 			"key": []byte("value"),
 		},
 	}
-	fakeClientset := k8sfake.NewSimpleClientset(secret)
+	fakeClientset := k8sfake.NewClientset(secret)
 	client := NewClientFromClients(fakeClientset, nil)
 
 	result, err := client.GetSecret(context.Background(), "default", "test-secret")
@@ -67,7 +67,7 @@ func TestClient_GetSecret(t *testing.T) {
 }
 
 func TestClient_GetSecret_NotFound(t *testing.T) {
-	fakeClientset := k8sfake.NewSimpleClientset()
+	fakeClientset := k8sfake.NewClientset()
 	client := NewClientFromClients(fakeClientset, nil)
 
 	_, err := client.GetSecret(context.Background(), "default", "nonexistent")
@@ -76,7 +76,7 @@ func TestClient_GetSecret_NotFound(t *testing.T) {
 }
 
 func TestClient_CreateSecret(t *testing.T) {
-	fakeClientset := k8sfake.NewSimpleClientset()
+	fakeClientset := k8sfake.NewClientset()
 	client := NewClientFromClients(fakeClientset, nil)
 
 	secret := &corev1.Secret{
@@ -110,7 +110,7 @@ func TestClient_UpdateSecret(t *testing.T) {
 			"key": []byte("old-value"),
 		},
 	}
-	fakeClientset := k8sfake.NewSimpleClientset(existingSecret)
+	fakeClientset := k8sfake.NewClientset(existingSecret)
 	client := NewClientFromClients(fakeClientset, nil)
 
 	updatedSecret := &corev1.Secret{
@@ -137,7 +137,7 @@ func TestClient_ListResources(t *testing.T) {
 			gvr: "PodList",
 		},
 	)
-	fakeClientset := k8sfake.NewSimpleClientset()
+	fakeClientset := k8sfake.NewClientset()
 	client := NewClientFromClients(fakeClientset, fakeDynamic)
 
 	result, err := client.ListResources(context.Background(), gvr, "default")
@@ -154,7 +154,7 @@ func TestClient_ListResources_ClusterScoped(t *testing.T) {
 			gvr: "NodeList",
 		},
 	)
-	fakeClientset := k8sfake.NewSimpleClientset()
+	fakeClientset := k8sfake.NewClientset()
 	client := NewClientFromClients(fakeClientset, fakeDynamic)
 
 	result, err := client.ListResources(context.Background(), gvr, "")
@@ -164,7 +164,7 @@ func TestClient_ListResources_ClusterScoped(t *testing.T) {
 }
 
 func TestClient_GetDynamicClient_Nil(t *testing.T) {
-	fakeClientset := k8sfake.NewSimpleClientset()
+	fakeClientset := k8sfake.NewClientset()
 	client := NewClientFromClients(fakeClientset, nil)
 
 	result := client.GetDynamicClient()

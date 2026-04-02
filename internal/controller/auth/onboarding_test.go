@@ -169,7 +169,7 @@ func TestGetClusterID(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a fake clientset with kube-system namespace
-	fakeClientset := fake.NewSimpleClientset(&v1.Namespace{
+	fakeClientset := fake.NewClientset(&v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "kube-system",
 			UID:  "test-cluster-uid-12345",

@@ -34,7 +34,7 @@ func TestIsOVNKDeployed(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			clientset := fake.NewSimpleClientset()
+			clientset := fake.NewClientset()
 			if tt.namespaceExists {
 				_, err := clientset.CoreV1().Namespaces().Create(context.TODO(), &v1.Namespace{
 					ObjectMeta: metav1.ObjectMeta{

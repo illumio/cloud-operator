@@ -33,7 +33,7 @@ type AuthTestSuite struct {
 }
 
 func (suite *AuthTestSuite) SetupSuite() {
-	suite.clientset = fake.NewSimpleClientset()
+	suite.clientset = fake.NewClientset()
 	suite.logger = zap.NewNop()
 }
 
@@ -130,7 +130,7 @@ func (suite *AuthTestSuite) TestWriteK8sSecret() {
 	ctx := context.Background()
 
 	// Use a fresh fake clientset for this test to avoid state conflicts
-	fakeClientset := fake.NewSimpleClientset()
+	fakeClientset := fake.NewClientset()
 
 	tests := map[string]struct {
 		namespaceExists     bool
