@@ -3,7 +3,7 @@ module github.com/illumio/cloud-operator
 go 1.25.8
 
 require (
-	github.com/cilium/cilium v1.18.6
+	github.com/cilium/cilium v1.18.8
 	github.com/go-logr/zapr v1.3.0
 	github.com/netsampler/goflow2 v1.3.7
 	go.uber.org/zap v1.27.1
@@ -69,7 +69,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
-	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4 // indirect
+	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
