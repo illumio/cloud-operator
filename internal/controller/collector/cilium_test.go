@@ -3,11 +3,19 @@
 package collector
 
 import (
+	"context"
+	"errors"
+	"io"
 	"testing"
 
 	"github.com/cilium/cilium/api/v1/flow"
 	observer "github.com/cilium/cilium/api/v1/observer"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
@@ -470,4 +478,255 @@ func TestConvertCiliumPolicies(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+// mockObserverClient mocks the observer.ObserverClient interface.
+type mockObserverClient struct {
+	mock.Mock
+}
+
+func (m *mockObserverClient) GetFlows(ctx context.Context, in *observer.GetFlowsRequest, opts ...grpc.CallOption) (observer.Observer_GetFlowsClient, error) {
+	args := m.Called(ctx, in, opts)
+	if client, ok := args.Get(0).(observer.Observer_GetFlowsClient); ok {
+		return client, args.Error(1)
+	}
+
+	return nil, args.Error(1)
+}
+
+func (m *mockObserverClient) GetAgentEvents(ctx context.Context, in *observer.GetAgentEventsRequest, opts ...grpc.CallOption) (observer.Observer_GetAgentEventsClient, error) {
+	return nil, nil
+}
+
+func (m *mockObserverClient) GetDebugEvents(ctx context.Context, in *observer.GetDebugEventsRequest, opts ...grpc.CallOption) (observer.Observer_GetDebugEventsClient, error) {
+	return nil, nil
+}
+
+func (m *mockObserverClient) GetNodes(ctx context.Context, in *observer.GetNodesRequest, opts ...grpc.CallOption) (*observer.GetNodesResponse, error) {
+	return nil, nil
+}
+
+func (m *mockObserverClient) GetNamespaces(ctx context.Context, in *observer.GetNamespacesRequest, opts ...grpc.CallOption) (*observer.GetNamespacesResponse, error) {
+	return nil, nil
+}
+
+func (m *mockObserverClient) ServerStatus(ctx context.Context, in *observer.ServerStatusRequest, opts ...grpc.CallOption) (*observer.ServerStatusResponse, error) {
+	return nil, nil
+}
+
+// mockGetFlowsClient mocks the observer.Observer_GetFlowsClient stream.
+type mockGetFlowsClient struct {
+	mock.Mock
+	grpc.ClientStream
+}
+
+func (m *mockGetFlowsClient) Recv() (*observer.GetFlowsResponse, error) {
+	args := m.Called()
+	if resp, ok := args.Get(0).(*observer.GetFlowsResponse); ok {
+		return resp, args.Error(1)
+	}
+
+	return nil, args.Error(1)
+}
+
+func (m *mockGetFlowsClient) Header() (metadata.MD, error) {
+	return nil, nil
+}
+
+func (m *mockGetFlowsClient) Trailer() metadata.MD {
+	return nil
+}
+
+func (m *mockGetFlowsClient) CloseSend() error {
+	args := m.Called()
+
+	return args.Error(0)
+}
+
+func (m *mockGetFlowsClient) Context() context.Context {
+	return context.Background()
+}
+
+func (m *mockGetFlowsClient) SendMsg(msg interface{}) error {
+	return nil
+}
+
+func (m *mockGetFlowsClient) RecvMsg(msg interface{}) error {
+	return nil
+}
+
+// mockFlowSink mocks the FlowSink interface.
+type mockCiliumFlowSink struct {
+	mock.Mock
+}
+
+func (m *mockCiliumFlowSink) CacheFlow(ctx context.Context, flow pb.Flow) error {
+	args := m.Called(ctx, flow)
+
+	return args.Error(0)
+}
+
+func (m *mockCiliumFlowSink) IncrementFlowsReceived() {
+	m.Called()
+}
+
+func TestExportCiliumFlows_Success(t *testing.T) {
+	logger := zap.NewNop()
+	mockClient := &mockObserverClient{}
+	mockStream := &mockGetFlowsClient{}
+	mockSink := &mockCiliumFlowSink{}
+
+	collector := &CiliumFlowCollector{
+		logger: logger,
+		client: mockClient,
+	}
+
+	// Create a valid flow response
+	flowResp := &observer.GetFlowsResponse{
+		ResponseTypes: &observer.GetFlowsResponse_Flow{
+			Flow: &flow.Flow{
+				Time:             &timestamppb.Timestamp{Seconds: 1234567890},
+				TrafficDirection: flow.TrafficDirection_INGRESS,
+				Verdict:          flow.Verdict_FORWARDED,
+				IP:               &flow.IP{Source: "1.1.1.1", Destination: "2.2.2.2"},
+				L4:               &flow.Layer4{Protocol: &flow.Layer4_TCP{TCP: &flow.TCP{SourcePort: 80}}},
+				DestinationService: &flow.Service{},
+			},
+		},
+	}
+
+	mockClient.On("GetFlows", mock.Anything, mock.Anything, mock.Anything).Return(mockStream, nil).Once()
+	mockStream.On("Recv").Return(flowResp, nil).Once()
+	mockStream.On("Recv").Return(nil, io.EOF).Once()
+	mockStream.On("CloseSend").Return(nil).Once()
+	mockSink.On("CacheFlow", mock.Anything, mock.Anything).Return(nil).Once()
+	mockSink.On("IncrementFlowsReceived").Once()
+
+	err := collector.ExportCiliumFlows(context.Background(), mockSink)
+
+	require.Error(t, err) // io.EOF is expected
+	assert.Equal(t, io.EOF, err)
+	mockClient.AssertExpectations(t)
+	mockStream.AssertExpectations(t)
+	mockSink.AssertExpectations(t)
+}
+
+func TestExportCiliumFlows_GetFlowsError(t *testing.T) {
+	logger := zap.NewNop()
+	mockClient := &mockObserverClient{}
+	mockSink := &mockCiliumFlowSink{}
+
+	collector := &CiliumFlowCollector{
+		logger: logger,
+		client: mockClient,
+	}
+
+	expectedErr := errors.New("connection failed")
+	mockClient.On("GetFlows", mock.Anything, mock.Anything, mock.Anything).Return(nil, expectedErr).Once()
+
+	err := collector.ExportCiliumFlows(context.Background(), mockSink)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "connection failed")
+	mockClient.AssertExpectations(t)
+}
+
+func TestExportCiliumFlows_ContextCanceled(t *testing.T) {
+	logger := zap.NewNop()
+	mockClient := &mockObserverClient{}
+	mockStream := &mockGetFlowsClient{}
+	mockSink := &mockCiliumFlowSink{}
+
+	collector := &CiliumFlowCollector{
+		logger: logger,
+		client: mockClient,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	mockClient.On("GetFlows", mock.Anything, mock.Anything, mock.Anything).Return(mockStream, nil).Once()
+	mockStream.On("CloseSend").Return(nil).Once()
+
+	err := collector.ExportCiliumFlows(ctx, mockSink)
+
+	require.Error(t, err)
+	assert.Equal(t, context.Canceled, err)
+	mockClient.AssertExpectations(t)
+	mockStream.AssertExpectations(t)
+}
+
+func TestExportCiliumFlows_CacheFlowError(t *testing.T) {
+	logger := zap.NewNop()
+	mockClient := &mockObserverClient{}
+	mockStream := &mockGetFlowsClient{}
+	mockSink := &mockCiliumFlowSink{}
+
+	collector := &CiliumFlowCollector{
+		logger: logger,
+		client: mockClient,
+	}
+
+	flowResp := &observer.GetFlowsResponse{
+		ResponseTypes: &observer.GetFlowsResponse_Flow{
+			Flow: &flow.Flow{
+				Time:               &timestamppb.Timestamp{Seconds: 1234567890},
+				TrafficDirection:   flow.TrafficDirection_INGRESS,
+				Verdict:            flow.Verdict_FORWARDED,
+				IP:                 &flow.IP{Source: "1.1.1.1", Destination: "2.2.2.2"},
+				L4:                 &flow.Layer4{Protocol: &flow.Layer4_TCP{TCP: &flow.TCP{SourcePort: 80}}},
+				DestinationService: &flow.Service{},
+			},
+		},
+	}
+
+	cacheErr := errors.New("cache full")
+	mockClient.On("GetFlows", mock.Anything, mock.Anything, mock.Anything).Return(mockStream, nil).Once()
+	mockStream.On("Recv").Return(flowResp, nil).Once()
+	mockStream.On("CloseSend").Return(nil).Once()
+	mockSink.On("CacheFlow", mock.Anything, mock.Anything).Return(cacheErr).Once()
+
+	err := collector.ExportCiliumFlows(context.Background(), mockSink)
+
+	require.Error(t, err)
+	assert.Equal(t, cacheErr, err)
+	mockClient.AssertExpectations(t)
+	mockStream.AssertExpectations(t)
+	mockSink.AssertExpectations(t)
+}
+
+func TestExportCiliumFlows_SkipsNilConvertedFlow(t *testing.T) {
+	logger := zap.NewNop()
+	mockClient := &mockObserverClient{}
+	mockStream := &mockGetFlowsClient{}
+	mockSink := &mockCiliumFlowSink{}
+
+	collector := &CiliumFlowCollector{
+		logger: logger,
+		client: mockClient,
+	}
+
+	// Flow with nil Time will be converted to nil
+	invalidFlowResp := &observer.GetFlowsResponse{
+		ResponseTypes: &observer.GetFlowsResponse_Flow{
+			Flow: &flow.Flow{
+				Time: nil, // Will cause ConvertCiliumFlow to return nil
+			},
+		},
+	}
+
+	mockClient.On("GetFlows", mock.Anything, mock.Anything, mock.Anything).Return(mockStream, nil).Once()
+	mockStream.On("Recv").Return(invalidFlowResp, nil).Once()
+	mockStream.On("Recv").Return(nil, io.EOF).Once()
+	mockStream.On("CloseSend").Return(nil).Once()
+	// CacheFlow should NOT be called since the flow is nil
+
+	err := collector.ExportCiliumFlows(context.Background(), mockSink)
+
+	require.Error(t, err)
+	assert.Equal(t, io.EOF, err)
+	mockClient.AssertExpectations(t)
+	mockStream.AssertExpectations(t)
+	// mockSink.CacheFlow should not have been called
+	mockSink.AssertNotCalled(t, "CacheFlow")
 }

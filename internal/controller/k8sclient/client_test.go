@@ -4,6 +4,7 @@ package k8sclient
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -176,4 +177,109 @@ func TestIsRunningInCluster(t *testing.T) {
 	// This test just verifies the function doesn't panic
 	// Actual behavior depends on environment
 	_ = IsRunningInCluster()
+}
+
+func TestClient_WatchResources_Namespaced(t *testing.T) {
+	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
+	fakeDynamic := fake.NewSimpleDynamicClientWithCustomListKinds(
+		runtime.NewScheme(),
+		map[schema.GroupVersionResource]string{
+			gvr: "PodList",
+		},
+	)
+	fakeClientset := k8sfake.NewSimpleClientset()
+	client := NewClientFromClients(fakeClientset, fakeDynamic)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	watcher, err := client.WatchResources(ctx, gvr, "default", "")
+
+	require.NoError(t, err)
+	assert.NotNil(t, watcher)
+
+	// Clean up
+	watcher.Stop()
+}
+
+func TestClient_WatchResources_ClusterScoped(t *testing.T) {
+	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"}
+	fakeDynamic := fake.NewSimpleDynamicClientWithCustomListKinds(
+		runtime.NewScheme(),
+		map[schema.GroupVersionResource]string{
+			gvr: "NodeList",
+		},
+	)
+	fakeClientset := k8sfake.NewSimpleClientset()
+	client := NewClientFromClients(fakeClientset, fakeDynamic)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	watcher, err := client.WatchResources(ctx, gvr, "", "")
+
+	require.NoError(t, err)
+	assert.NotNil(t, watcher)
+
+	// Clean up
+	watcher.Stop()
+}
+
+func TestClient_WatchResources_WithResourceVersion(t *testing.T) {
+	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
+	fakeDynamic := fake.NewSimpleDynamicClientWithCustomListKinds(
+		runtime.NewScheme(),
+		map[schema.GroupVersionResource]string{
+			gvr: "PodList",
+		},
+	)
+	fakeClientset := k8sfake.NewSimpleClientset()
+	client := NewClientFromClients(fakeClientset, fakeDynamic)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	watcher, err := client.WatchResources(ctx, gvr, "default", "12345")
+
+	require.NoError(t, err)
+	assert.NotNil(t, watcher)
+
+	// Clean up
+	watcher.Stop()
+}
+
+func TestIsRunningInCluster_NotInCluster(t *testing.T) {
+	// Save current value
+	original := os.Getenv("KUBERNETES_SERVICE_HOST")
+	defer func() {
+		if original != "" {
+			os.Setenv("KUBERNETES_SERVICE_HOST", original)
+		} else {
+			os.Unsetenv("KUBERNETES_SERVICE_HOST")
+		}
+	}()
+
+	// Unset the env var
+	os.Unsetenv("KUBERNETES_SERVICE_HOST")
+
+	result := IsRunningInCluster()
+	assert.False(t, result)
+}
+
+func TestIsRunningInCluster_InCluster(t *testing.T) {
+	// Save current value
+	original := os.Getenv("KUBERNETES_SERVICE_HOST")
+	defer func() {
+		if original != "" {
+			os.Setenv("KUBERNETES_SERVICE_HOST", original)
+		} else {
+			os.Unsetenv("KUBERNETES_SERVICE_HOST")
+		}
+	}()
+
+	// Set the env var to simulate in-cluster
+	os.Setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+
+	result := IsRunningInCluster()
+	assert.True(t, result)
 }
