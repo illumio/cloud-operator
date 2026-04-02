@@ -1,4 +1,4 @@
-ARG VARIANT=1.24-bookworm
+ARG VARIANT=1.25-trixie
 FROM mcr.microsoft.com/vscode/devcontainers/go:${VARIANT}
 
 ARG BUF_VERSION=v1.63.0
@@ -21,7 +21,6 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     curl \
     git \
     gnupg \
-    software-properties-common \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
