@@ -55,28 +55,27 @@ jobs:
           curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
           sudo install minikube-linux-amd64 /usr/local/bin/minikube
 
-      - name: Start Minikube with Cilium CNI
+      - name: Start Minikube
         run: |
-          minikube start --driver=docker --cni=cilium --memory=4096
+          minikube start --driver=docker --memory=4096
 
-      - name: Wait for Minikube and Cilium to be ready
+      - name: Install Cilium CLI
         run: |
-          minikube kubectl -- get nodes
-          echo "Waiting for Cilium pods..."
-          kubectl wait --for=condition=ready pod -l k8s-app=cilium -n kube-system --timeout=300s
-
-      - name: Install Cilium CLI and Enable Hubble
-        run: |
-          # Install Cilium CLI
           CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
           curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-amd64.tar.gz
           sudo tar xzvfC cilium-linux-amd64.tar.gz /usr/local/bin
           rm cilium-linux-amd64.tar.gz
 
-          # Enable Hubble with Relay
-          cilium hubble enable --relay
+      - name: Install Cilium with Hubble
+        run: |
+          cilium install --set hubble.relay.enabled=true --set hubble.ui.enabled=false
+          echo "Waiting for Cilium to be ready..."
+          cilium status --wait
+          echo "Cilium is ready"
 
-          # Wait for Hubble Relay
+      - name: Enable Hubble Relay
+        run: |
+          cilium hubble enable --relay
           echo "Waiting for Hubble Relay..."
           kubectl wait --for=condition=ready pod -l k8s-app=hubble-relay -n kube-system --timeout=300s
           echo "Hubble Relay is ready"
