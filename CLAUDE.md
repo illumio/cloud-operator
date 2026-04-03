@@ -20,14 +20,33 @@ internal/controller/
 ├── collector/      # Flow collectors (Cilium, Falco, OVN-K)
 ├── stream/         # gRPC stream management (core package)
 │   ├── manager.go  # Entry point: ConnectStreams()
-│   ├── config/     # Configuration stream
+│   ├── interfaces.go # StreamClient, StreamClientFactory interfaces
+│   ├── config/     # Configuration stream (factory + client)
 │   ├── flows/      # Network flows stream
-│   ├── logs/       # Log stream
-│   └── resources/  # K8s resources stream
+│   │   ├── cilium/ # Cilium/Hubble flow collector
+│   │   ├── falco/  # Falco flow collector
+│   │   └── ovnk/   # OVN-Kubernetes flow collector
+│   ├── logs/       # Log stream (factory + client)
+│   └── resources/  # K8s resources stream (factory + client)
 ├── k8sclient/      # Kubernetes client wrapper
-├── logging/        # Buffered gRPC log syncer
+├── logging/        # Buffered gRPC log syncer, gRPC internal logging
 └── hubble/         # Cilium Hubble client
 ```
+
+## Factory Pattern
+
+Streams use the **StreamClient/StreamClientFactory** pattern for dependency injection and testability.
+
+**Interfaces** (`stream/interfaces.go`):
+- `StreamClient`: `Run(ctx)`, `SendKeepalive(ctx)`, `Close()`
+- `StreamClientFactory`: `NewStreamClient(ctx, grpcClient)`, `Name()`
+
+**Setter Interfaces** (for deferred dependency injection):
+- `K8sClientSetter`: Set K8s client after factory creation
+- `FlowCollectorSetter`: Set flow collector type after determination
+- `ConnSetter`: Set gRPC connection for logs stream
+
+**Flow**: Factories created in `main.go` → passed to `ConnectStreams()` → `runStreamsOnce()` injects runtime deps → `ManageStream()` creates clients
 
 ## Code Style
 
@@ -41,9 +60,12 @@ internal/controller/
 | What | Where |
 |------|-------|
 | Main orchestrator | `stream/manager.go:ConnectStreams()` |
+| Stream interfaces | `stream/interfaces.go` |
 | Auth flow | `auth/authenticator.go:SetUpOAuthConnection()` |
 | Flow caching | `stream/cache.go:FlowCache` |
+| Flow collector selection | `stream/flows/flows.go:DetermineFlowCollector()` |
 | Resource watching | `stream/resources/watcher.go` |
+| gRPC internal logging | `logging/grpc_internal_logger.go` |
 
 ## Configuration
 

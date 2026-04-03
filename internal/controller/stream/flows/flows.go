@@ -4,7 +4,6 @@ package flows
 
 import (
 	"context"
-	"time"
 
 	"go.uber.org/zap"
 	"k8s.io/client-go/kubernetes"
@@ -12,10 +11,13 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/collector"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
-	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cilium"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/falco"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/ovnk"
+	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
-// FlowSinkAdapter adapts stream.Manager to implement the collector.FlowSink interface.
+// FlowSinkAdapter adapts stream.FlowCache and Stats to implement the collector.FlowSink interface.
 type FlowSinkAdapter struct {
 	FlowCache *stream.FlowCache
 	Stats     *stream.Stats
@@ -31,79 +33,85 @@ func (f *FlowSinkAdapter) IncrementFlowsReceived() {
 	f.Stats.IncrementFlowsReceived()
 }
 
-// NewFlowSinkAdapter creates a new FlowSink adapter from stream.Manager.
-func NewFlowSinkAdapter(sm *stream.Manager) *FlowSinkAdapter {
+// NewFlowSinkAdapter creates a new FlowSink adapter.
+func NewFlowSinkAdapter(flowCache *stream.FlowCache, stats *stream.Stats) *FlowSinkAdapter {
 	return &FlowSinkAdapter{
-		FlowCache: sm.FlowCache,
-		Stats:     sm.Stats,
+		FlowCache: flowCache,
+		Stats:     stats,
 	}
 }
 
-// StartCacheOutReader starts a goroutine that reads flows from the flow cache
-// and sends them to the cloud secure.
-func StartCacheOutReader(ctx context.Context, sm *stream.Manager, logger *zap.Logger, keepalivePeriod time.Duration) error {
-	ticker := time.NewTicker(timeutil.JitterTime(keepalivePeriod, 0.10))
-	defer ticker.Stop()
+// FlowCollectorConfig holds configuration for determining and creating flow collectors.
+type FlowCollectorConfig struct {
+	Logger             *zap.Logger
+	FlowCache          *stream.FlowCache
+	Stats              *stream.Stats
+	K8sClient          stream.K8sClientGetter
+	CiliumNamespaces   []string
+	TlsAuthProps       *tls.AuthProperties
+	IPFIXCollectorPort string
+	OVNKNamespace      string
+	FalcoEventChan     chan string
+}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			err := sm.SendKeepalive(logger, stream.TypeNetworkFlows)
-			if err != nil {
-				return err
-			}
-		case flow, ok := <-sm.FlowCache.OutFlows:
-			if !ok {
-				// Flow cache channel closed; exit reader gracefully.
-				return nil
-			}
+// DetermineFlowCollector determines which flow collector to use and returns the appropriate factory.
+func DetermineFlowCollector(ctx context.Context, config FlowCollectorConfig) (pb.FlowCollector, stream.StreamClientFactory) {
+	clientset := config.K8sClient.GetClientset()
+	flowSink := NewFlowSinkAdapter(config.FlowCache, config.Stats)
 
-			err := sm.SendNetworkFlowRequest(logger, flow)
-			if err != nil {
-				return err
-			}
+	// Check for Cilium/Hubble
+	if isCiliumAvailable(ctx, config.Logger, clientset, config.CiliumNamespaces, config.TlsAuthProps) {
+		config.Logger.Info("Using Cilium flow collector")
 
-			sm.Stats.IncrementFlowsSentToClusterSync()
+		// Initialize TlsAuthProps if nil so DisableTLS/DisableALPN flags persist across retries
+		tlsAuthProps := config.TlsAuthProps
+		if tlsAuthProps == nil {
+			tlsAuthProps = &tls.AuthProperties{}
+		}
+
+		return pb.FlowCollector_FLOW_COLLECTOR_CILIUM, &cilium.Factory{
+			Logger:           config.Logger,
+			FlowSink:         flowSink,
+			CiliumNamespaces: config.CiliumNamespaces,
+			TlsAuthProps:     tlsAuthProps,
+			K8sClient:        config.K8sClient,
 		}
 	}
+
+	// Check for OVN-Kubernetes
+	if collector.IsOVNKDeployed(ctx, config.Logger, config.OVNKNamespace, clientset) {
+		config.Logger.Info("Using OVN-Kubernetes flow collector")
+
+		return pb.FlowCollector_FLOW_COLLECTOR_OVNK, &ovnk.Factory{
+			Logger:             config.Logger,
+			IPFIXCollectorPort: config.IPFIXCollectorPort,
+			FlowSink:           flowSink,
+		}
+	}
+
+	// Default to Falco
+	config.Logger.Info("Using Falco flow collector")
+
+	return pb.FlowCollector_FLOW_COLLECTOR_FALCO, &falco.Factory{
+		Logger:         config.Logger,
+		FlowCache:      config.FlowCache,
+		Stats:          config.Stats,
+		FalcoEventChan: config.FalcoEventChan,
+	}
 }
 
-// ConnectNetworkFlowsStream establishes the network flows stream connection.
-func ConnectNetworkFlowsStream(ctx context.Context, sm *stream.Manager, logger *zap.Logger) error {
-	sendNetworkFlowsStream, err := sm.Client.GrpcClient.SendKubernetesNetworkFlows(ctx)
+// isCiliumAvailable checks if Cilium Hubble Relay is available in the cluster.
+func isCiliumAvailable(ctx context.Context, logger *zap.Logger, clientset kubernetes.Interface, ciliumNamespaces []string, tlsAuthProps *tls.AuthProperties) bool {
+	if tlsAuthProps == nil {
+		tlsAuthProps = &tls.AuthProperties{}
+	}
+
+	ciliumCollector, err := collector.NewCiliumFlowCollector(ctx, logger, clientset, ciliumNamespaces, *tlsAuthProps)
 	if err != nil {
-		logger.Error("Failed to connect to server", zap.Error(err))
+		logger.Debug("Cilium not available", zap.Error(err))
 
-		return err
+		return false
 	}
 
-	sm.Client.KubernetesNetworkFlowsStream = sendNetworkFlowsStream
-
-	return nil
-}
-
-// DetermineFlowCollector determines the flow collector type and returns the appropriate stream function.
-func DetermineFlowCollector(ctx context.Context, logger *zap.Logger, sm *stream.Manager, envMap stream.EnvironmentConfig, clientset kubernetes.Interface) (pb.FlowCollector, func(*zap.Logger, time.Duration) error, chan struct{}) {
-	switch {
-	case FindHubbleRelay(ctx, logger, sm) != nil && !sm.Client.DisableNetworkFlowsCilium:
-		sm.Client.TlsAuthProperties.DisableALPN = false
-		sm.Client.TlsAuthProperties.DisableTLS = false
-
-		//nolint:contextcheck // context is used for setup, stream functions manage their own context
-		return pb.FlowCollector_FLOW_COLLECTOR_CILIUM, func(l *zap.Logger, d time.Duration) error {
-			return ConnectAndStreamCilium(sm, l, d)
-		}, make(chan struct{})
-	case collector.IsOVNKDeployed(ctx, logger, envMap.OVNKNamespace, clientset):
-		//nolint:contextcheck // context is used for setup, stream functions manage their own context
-		return pb.FlowCollector_FLOW_COLLECTOR_OVNK, func(l *zap.Logger, d time.Duration) error {
-			return ConnectAndStreamOVNK(sm, l, d)
-		}, make(chan struct{})
-	default:
-		//nolint:contextcheck // context is used for setup, stream functions manage their own context
-		return pb.FlowCollector_FLOW_COLLECTOR_FALCO, func(l *zap.Logger, d time.Duration) error {
-			return ConnectAndStreamFalco(sm, l, d)
-		}, make(chan struct{})
-	}
+	return ciliumCollector != nil
 }
