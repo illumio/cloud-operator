@@ -20,6 +20,8 @@ import (
 )
 
 var resourceList = []string{
+	"ciliumclusterwidenetworkpolicies",
+	"ciliumnetworkpolicies",
 	"cronjobs",
 	"customresourcedefinitions",
 	"daemonsets",
@@ -43,6 +45,22 @@ var resourceList = []string{
 }
 
 var resourceAPIGroupMap = make(map[string]string)
+
+// apiGroupVersions defines API versions for resource groups that don't use v1.
+// All other groups default to v1.
+var apiGroupVersions = map[string]string{
+	"cilium.io":          "v2",
+	"networking.k8s.aws": "v1alpha1", // future: EKS
+}
+
+// getVersionForGroup returns the API version for a given API group.
+// Returns "v1" for standard Kubernetes resources.
+func getVersionForGroup(group string) string {
+	if version, ok := apiGroupVersions[group]; ok {
+		return version
+	}
+	return "v1"
+}
 
 // Stream handles the resource stream.
 func Stream(ctx context.Context, sm *stream.Manager, logger *zap.Logger, cancel context.CancelFunc, keepalivePeriod time.Duration) error {
@@ -158,7 +176,12 @@ func Stream(ctx context.Context, sm *stream.Manager, logger *zap.Logger, cancel 
 			if err != nil {
 				return err
 			}
-		case mutation := <-mutationChan:
+		case mutation, ok := <-mutationChan:
+			if !ok {
+				// Channel closed, all watchers finished
+				return nil
+			}
+
 			request := &pb.SendKubernetesResourcesRequest{
 				Request: &pb.SendKubernetesResourcesRequest_KubernetesResourceMutation{
 					KubernetesResourceMutation: mutation,
