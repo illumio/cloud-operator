@@ -66,9 +66,21 @@ type FakeServer struct {
 }
 
 type ServerState struct {
-	ConnectionSuccessful bool
-	IncorrectCredentials bool
-	BadIntialCommit      bool
+	ConnectionSuccessful   bool
+	IncorrectCredentials   bool
+	BadIntialCommit        bool
+	CiliumFlowsReceived    int
+	FiveTupleFlowsReceived int
+}
+
+// RecordCiliumFlow increments the Cilium flow counter.
+func (s *ServerState) RecordCiliumFlow() {
+	s.CiliumFlowsReceived++
+}
+
+// RecordFiveTupleFlow increments the FiveTuple flow counter.
+func (s *ServerState) RecordFiveTupleFlow() {
+	s.FiveTupleFlowsReceived++
 }
 
 var (
@@ -254,9 +266,10 @@ func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_Send
 		case *pb.SendKubernetesNetworkFlowsRequest_Keepalive:
 			logger.Info("Received Keepalive for flows stream")
 		case *pb.SendKubernetesNetworkFlowsRequest_CiliumFlow:
-			time.Sleep(300 * time.Millisecond)
+			serverState.RecordCiliumFlow()
 			logger.Info("Received CiliumFlow")
 		case *pb.SendKubernetesNetworkFlowsRequest_FiveTupleFlow:
+			serverState.RecordFiveTupleFlow()
 			logger.Info("Received FiveTupleFlow")
 		}
 	}
