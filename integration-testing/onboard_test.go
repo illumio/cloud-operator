@@ -189,9 +189,11 @@ func TestClusterIsOnboarded(t *testing.T) {
 
 	// Verify the target cluster exists in the list
 	var targetCluster *Cluster
+
 	for i := range clusters {
 		if clusters[i].ID == clusterID {
 			targetCluster = &clusters[i]
+
 			break
 		}
 	}
@@ -204,6 +206,7 @@ func TestClusterIsOnboarded(t *testing.T) {
 
 	// Offboard ONLY the specific cluster
 	t.Logf("Offboarding cluster: %s", clusterID)
+
 	if err := offboardCluster(config, []string{clusterID}); err != nil {
 		t.Fatalf("Failed to offboard cluster %s: %v", clusterID, err)
 	}

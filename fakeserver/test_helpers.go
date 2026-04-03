@@ -14,11 +14,11 @@ import (
 
 // TestConfig holds configuration for integration tests.
 type TestConfig struct {
-	GRPCAddress    string
-	HTTPAddress    string
-	Timeout        time.Duration
-	PollInterval   time.Duration
-	EnableLogging  bool
+	GRPCAddress   string
+	HTTPAddress   string
+	Timeout       time.Duration
+	PollInterval  time.Duration
+	EnableLogging bool
 }
 
 // DefaultTestConfig returns sensible defaults for testing.
@@ -26,9 +26,9 @@ func DefaultTestConfig() TestConfig {
 	return TestConfig{
 		GRPCAddress:   "0.0.0.0:50051",
 		HTTPAddress:   "0.0.0.0:50053",
-		Timeout:       90 * time.Second,  // Reduced from 120s
+		Timeout:       90 * time.Second, // Reduced from 120s
 		PollInterval:  500 * time.Millisecond,
-		EnableLogging: true,  // Enable logging by default for debugging
+		EnableLogging: true, // Enable logging by default for debugging
 	}
 }
 
@@ -53,6 +53,8 @@ func CreateTestToken(audience string) string {
 
 // CreateTestLogger creates a logger for tests.
 func CreateTestLogger(t *testing.T, enabled bool) *zap.Logger {
+	t.Helper()
+
 	if !enabled {
 		return zap.NewNop()
 	}
@@ -79,6 +81,8 @@ type FakeServerTestHarness struct {
 
 // NewTestHarness creates a new test harness.
 func NewTestHarness(t *testing.T, config TestConfig) *FakeServerTestHarness {
+	t.Helper()
+
 	logger := CreateTestLogger(t, config.EnableLogging)
 	token := CreateTestToken("192.168.49.1:50051")
 	enhancedState := NewEnhancedServerState()
@@ -102,11 +106,14 @@ func NewTestHarness(t *testing.T, config TestConfig) *FakeServerTestHarness {
 // Start starts the fake server.
 func (h *FakeServerTestHarness) Start() error {
 	h.T.Log("Starting FakeServer...")
+
 	err := h.Server.start()
 	if err != nil {
 		return fmt.Errorf("failed to start FakeServer: %w", err)
 	}
+
 	h.T.Logf("FakeServer started on gRPC=%s, HTTP=%s", h.Config.GRPCAddress, h.Config.HTTPAddress)
+
 	return nil
 }
 
@@ -122,6 +129,7 @@ func (h *FakeServerTestHarness) WaitForCondition(condition func() bool, descript
 	h.T.Logf("Waiting for: %s (timeout: %v)", description, h.Config.Timeout)
 
 	timeout := time.After(h.Config.Timeout)
+
 	ticker := time.NewTicker(h.Config.PollInterval)
 	defer ticker.Stop()
 
@@ -134,13 +142,16 @@ func (h *FakeServerTestHarness) WaitForCondition(condition func() bool, descript
 			elapsed := time.Since(startTime)
 			h.T.Logf("TIMEOUT after %v (%d checks): %s", elapsed, checkCount, description)
 			h.LogCurrentState()
+
 			return fmt.Errorf("timeout waiting for: %s", description)
 
 		case <-ticker.C:
 			checkCount++
+
 			if condition() {
 				elapsed := time.Since(startTime)
 				h.T.Logf("SUCCESS after %v (%d checks): %s", elapsed, checkCount, description)
+
 				return nil
 			}
 
