@@ -55,13 +55,31 @@ jobs:
           curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
           sudo install minikube-linux-amd64 /usr/local/bin/minikube
 
-      - name: Start Minikube
+      - name: Start Minikube with Cilium CNI
         run: |
-          minikube start --driver=docker
+          minikube start --driver=docker --cni=cilium --memory=4096
 
-      - name: Wait for Minikube to be ready
+      - name: Wait for Minikube and Cilium to be ready
         run: |
           minikube kubectl -- get nodes
+          echo "Waiting for Cilium pods..."
+          kubectl wait --for=condition=ready pod -l k8s-app=cilium -n kube-system --timeout=300s
+
+      - name: Install Cilium CLI and Enable Hubble
+        run: |
+          # Install Cilium CLI
+          CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+          curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-amd64.tar.gz
+          sudo tar xzvfC cilium-linux-amd64.tar.gz /usr/local/bin
+          rm cilium-linux-amd64.tar.gz
+
+          # Enable Hubble with Relay
+          cilium hubble enable --relay
+
+          # Wait for Hubble Relay
+          echo "Waiting for Hubble Relay..."
+          kubectl wait --for=condition=ready pod -l k8s-app=hubble-relay -n kube-system --timeout=300s
+          echo "Hubble Relay is ready"
 
       - name: Set up Helm
         uses: azure/setup-helm@v5
@@ -96,12 +114,33 @@ jobs:
           --set env.tokenEndpoint=$TOKEN_ENDPOINT \
           --set env.tlsSkipVerify=$TLS_SKIP_VERIFY \
 
+      - name: Generate network traffic for Cilium flows
+        run: |
+          # Create test pods that generate traffic
+          kubectl run nginx --image=nginx --restart=Never
+          kubectl wait --for=condition=ready pod/nginx --timeout=120s
+
+          kubectl run curl-client --image=curlimages/curl --restart=Never -- sleep 300
+          kubectl wait --for=condition=ready pod/curl-client --timeout=120s
+
+          # Generate traffic
+          for i in {1..5}; do
+            kubectl exec curl-client -- curl -s --max-time 5 nginx || true
+            sleep 2
+          done
+          echo "Traffic generation complete"
+
       - name: Run Integration Tests
+        env:
+          CILIUM_ENABLED: "true"
         run: |
           # Run your test against the fake server
            kubectl wait --for=condition=ready pod -l app=cloud-operator -n illumio-cloud --timeout=300s && go test -v ./fakeserver/...
 
       - name: Fetch Kubernetes Pod logs
-        if: success() || failure()
+        if: always()
         run: |
-          kubectl logs -l app=cloud-operator -n illumio-cloud
+          echo "=== Operator logs ==="
+          kubectl logs -l app=cloud-operator -n illumio-cloud || true
+          echo "=== Cilium status ==="
+          cilium status || true
