@@ -486,15 +486,34 @@ message GetConfigurationUpdatesResponse {
   message Configuration {
     // The operator's log level.
     LogLevel log_level = 1;
-
-    // Additional configuration fields will be added here.
   }
 
   oneof response {
-    // Updates the operator's configuration.
     Configuration update_configuration = 1;
+    NetworkPolicyData network_policy_data = 2;
+    NetworkPolicySnapshotComplete network_policy_snapshot_complete = 3;
+    NetworkPolicyMutation network_policy_mutation = 4;
+  }
+}
 
-    // Additional configuration messages will be added here.
+// Single network policy sent during snapshot or mutation phase.
+message NetworkPolicyData {
+  string id = 1;
+  string name = 2;
+  string namespace = 3;
+  string kind = 4;
+  bytes resource = 5;
+}
+
+// Signals end of snapshot phase.
+message NetworkPolicySnapshotComplete {}
+
+// Single policy mutation.
+message NetworkPolicyMutation {
+  oneof mutation {
+    NetworkPolicyData create_policy = 1;
+    NetworkPolicyData update_policy = 2;
+    NetworkPolicyData delete_policy = 3;
   }
 }
 
