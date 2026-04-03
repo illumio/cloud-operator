@@ -4,7 +4,6 @@ package k8sclient
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -249,36 +248,16 @@ func TestClient_WatchResources_WithResourceVersion(t *testing.T) {
 }
 
 func TestIsRunningInCluster_NotInCluster(t *testing.T) {
-	// Save current value
-	original := os.Getenv("KUBERNETES_SERVICE_HOST")
-	defer func() {
-		if original != "" {
-			os.Setenv("KUBERNETES_SERVICE_HOST", original)
-		} else {
-			os.Unsetenv("KUBERNETES_SERVICE_HOST")
-		}
-	}()
-
-	// Unset the env var
-	os.Unsetenv("KUBERNETES_SERVICE_HOST")
+	// t.Setenv automatically restores the original value after the test
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
 
 	result := IsRunningInCluster()
 	assert.False(t, result)
 }
 
 func TestIsRunningInCluster_InCluster(t *testing.T) {
-	// Save current value
-	original := os.Getenv("KUBERNETES_SERVICE_HOST")
-	defer func() {
-		if original != "" {
-			os.Setenv("KUBERNETES_SERVICE_HOST", original)
-		} else {
-			os.Unsetenv("KUBERNETES_SERVICE_HOST")
-		}
-	}()
-
-	// Set the env var to simulate in-cluster
-	os.Setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+	// t.Setenv automatically restores the original value after the test
+	t.Setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
 
 	result := IsRunningInCluster()
 	assert.True(t, result)

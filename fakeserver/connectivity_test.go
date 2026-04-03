@@ -21,6 +21,7 @@ func TestOperatorConnectsSuccessfully(t *testing.T) {
 	// Start the server
 	err := harness.Start()
 	require.NoError(t, err, "Failed to start FakeServer")
+
 	defer harness.Stop()
 
 	// Wait for operator to connect
@@ -42,6 +43,7 @@ func TestOperatorReconnectsAfterServerRestart(t *testing.T) {
 
 	// Phase 1: Initial connection
 	t.Log("=== Phase 1: Initial connection ===")
+
 	err := harness.Start()
 	require.NoError(t, err, "Failed to start FakeServer")
 
@@ -56,6 +58,7 @@ func TestOperatorReconnectsAfterServerRestart(t *testing.T) {
 
 	err = harness.Start()
 	require.NoError(t, err, "Failed to restart FakeServer")
+
 	defer harness.Stop()
 
 	err = harness.WaitForConnection()
@@ -81,6 +84,7 @@ func TestOperatorHandlesInitialCommitFailure(t *testing.T) {
 	// Start the server
 	err := harness.Start()
 	require.NoError(t, err, "Failed to start FakeServer")
+
 	defer harness.Stop()
 
 	// Wait for operator to eventually connect (after retry)

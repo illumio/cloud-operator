@@ -561,7 +561,6 @@ func TestHandleWatchEvent_ErrorEvent(t *testing.T) {
 	ev := watch.Event{Type: watch.Error, Object: status}
 
 	rv, isMutation, err := rm.handleWatchEvent(ctx, ev, mutationChan, logger)
-
 	if err == nil {
 		t.Fatalf("expected error for Error event, got nil")
 	}
@@ -590,7 +589,6 @@ func TestHandleWatchEvent_BookmarkEvent(t *testing.T) {
 	ev := watch.Event{Type: watch.Bookmark, Object: u}
 
 	rv, isMutation, err := rm.handleWatchEvent(ctx, ev, mutationChan, logger)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -619,7 +617,6 @@ func TestHandleWatchEvent_AddedEvent(t *testing.T) {
 	ev := watch.Event{Type: watch.Added, Object: u}
 
 	rv, isMutation, err := rm.handleWatchEvent(ctx, ev, mutationChan, logger)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -658,7 +655,6 @@ func TestHandleWatchEvent_UnknownEventType(t *testing.T) {
 	ev := watch.Event{Type: watch.EventType("unknown"), Object: u}
 
 	rv, isMutation, err := rm.handleWatchEvent(ctx, ev, mutationChan, logger)
-
 	if err == nil {
 		t.Fatalf("expected error for unknown event type, got nil")
 	}
@@ -720,7 +716,7 @@ func TestFetchResources_Success(t *testing.T) {
 	logger := zap.NewNop()
 	scheme := runtime.NewScheme()
 
-	pod := newUnstructuredPod("test-pod", "default", "100")
+	pod := newUnstructuredPod("test-pod", "100")
 	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme,
 		map[schema.GroupVersionResource]string{
 			{Group: "", Version: "v1", Resource: "pods"}: "PodList",
@@ -739,7 +735,6 @@ func TestFetchResources_Success(t *testing.T) {
 	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
 
 	result, err := rm.FetchResources(ctx, gvr, "default")
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -765,6 +760,7 @@ func TestFetchResources_Forbidden(t *testing.T) {
 	)
 
 	forbiddenErr := apierrors.NewForbidden(schema.GroupResource{Resource: "pods"}, "", errors.New("forbidden"))
+
 	dyn.PrependReactor("list", "*", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
 		return true, nil, forbiddenErr
 	})
@@ -779,7 +775,6 @@ func TestFetchResources_Forbidden(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := rm.FetchResources(ctx, gvr, "default")
-
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -796,15 +791,14 @@ func TestExtractObjectMetas_Success(t *testing.T) {
 		logger: logger,
 	}
 
-	pod1 := newUnstructuredPod("pod1", "default", "100")
-	pod2 := newUnstructuredPod("pod2", "default", "101")
+	pod1 := newUnstructuredPod("pod1", "100")
+	pod2 := newUnstructuredPod("pod2", "101")
 
 	list := &unstructured.UnstructuredList{
 		Items: []unstructured.Unstructured{*pod1, *pod2},
 	}
 
 	metas, err := rm.ExtractObjectMetas(list)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -834,7 +828,6 @@ func TestExtractObjectMetas_EmptyList(t *testing.T) {
 	}
 
 	metas, err := rm.ExtractObjectMetas(list)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -848,7 +841,7 @@ func TestListResources_Success(t *testing.T) {
 	logger := zap.NewNop()
 	scheme := runtime.NewScheme()
 
-	pod := newUnstructuredPod("test-pod", "default", "100")
+	pod := newUnstructuredPod("test-pod", "100")
 	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
 
 	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme,
@@ -868,7 +861,6 @@ func TestListResources_Success(t *testing.T) {
 	ctx := context.Background()
 
 	metas, _, kind, err := rm.ListResources(ctx, gvr, metav1.NamespaceAll)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -884,13 +876,13 @@ func TestListResources_Success(t *testing.T) {
 	}
 }
 
-// helper: minimal unstructured Pod with name, namespace and rv
-func newUnstructuredPod(name, namespace, rv string) *unstructured.Unstructured {
+// helper: minimal unstructured Pod with name and rv in "default" namespace
+func newUnstructuredPod(name, rv string) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{}
 	obj.SetAPIVersion("v1")
 	obj.SetKind("Pod")
 	obj.SetName(name)
-	obj.SetNamespace(namespace)
+	obj.SetNamespace("default")
 	obj.SetResourceVersion(rv)
 
 	return obj

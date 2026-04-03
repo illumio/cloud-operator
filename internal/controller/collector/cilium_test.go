@@ -494,24 +494,24 @@ func (m *mockObserverClient) GetFlows(ctx context.Context, in *observer.GetFlows
 	return nil, args.Error(1)
 }
 
-func (m *mockObserverClient) GetAgentEvents(ctx context.Context, in *observer.GetAgentEventsRequest, opts ...grpc.CallOption) (observer.Observer_GetAgentEventsClient, error) {
-	return nil, nil
+func (m *mockObserverClient) GetAgentEvents(_ context.Context, _ *observer.GetAgentEventsRequest, _ ...grpc.CallOption) (observer.Observer_GetAgentEventsClient, error) {
+	return nil, nil //nolint:nilnil // stub method not used in tests
 }
 
-func (m *mockObserverClient) GetDebugEvents(ctx context.Context, in *observer.GetDebugEventsRequest, opts ...grpc.CallOption) (observer.Observer_GetDebugEventsClient, error) {
-	return nil, nil
+func (m *mockObserverClient) GetDebugEvents(_ context.Context, _ *observer.GetDebugEventsRequest, _ ...grpc.CallOption) (observer.Observer_GetDebugEventsClient, error) {
+	return nil, nil //nolint:nilnil // stub method not used in tests
 }
 
-func (m *mockObserverClient) GetNodes(ctx context.Context, in *observer.GetNodesRequest, opts ...grpc.CallOption) (*observer.GetNodesResponse, error) {
-	return nil, nil
+func (m *mockObserverClient) GetNodes(_ context.Context, _ *observer.GetNodesRequest, _ ...grpc.CallOption) (*observer.GetNodesResponse, error) {
+	return nil, nil //nolint:nilnil // stub method not used in tests
 }
 
-func (m *mockObserverClient) GetNamespaces(ctx context.Context, in *observer.GetNamespacesRequest, opts ...grpc.CallOption) (*observer.GetNamespacesResponse, error) {
-	return nil, nil
+func (m *mockObserverClient) GetNamespaces(_ context.Context, _ *observer.GetNamespacesRequest, _ ...grpc.CallOption) (*observer.GetNamespacesResponse, error) {
+	return nil, nil //nolint:nilnil // stub method not used in tests
 }
 
-func (m *mockObserverClient) ServerStatus(ctx context.Context, in *observer.ServerStatusRequest, opts ...grpc.CallOption) (*observer.ServerStatusResponse, error) {
-	return nil, nil
+func (m *mockObserverClient) ServerStatus(_ context.Context, _ *observer.ServerStatusRequest, _ ...grpc.CallOption) (*observer.ServerStatusResponse, error) {
+	return nil, nil //nolint:nilnil // stub method not used in tests
 }
 
 // mockGetFlowsClient mocks the observer.Observer_GetFlowsClient stream.
@@ -530,7 +530,7 @@ func (m *mockGetFlowsClient) Recv() (*observer.GetFlowsResponse, error) {
 }
 
 func (m *mockGetFlowsClient) Header() (metadata.MD, error) {
-	return nil, nil
+	return nil, nil //nolint:nilnil // stub method not used in tests
 }
 
 func (m *mockGetFlowsClient) Trailer() metadata.MD {
@@ -585,11 +585,11 @@ func TestExportCiliumFlows_Success(t *testing.T) {
 	flowResp := &observer.GetFlowsResponse{
 		ResponseTypes: &observer.GetFlowsResponse_Flow{
 			Flow: &flow.Flow{
-				Time:             &timestamppb.Timestamp{Seconds: 1234567890},
-				TrafficDirection: flow.TrafficDirection_INGRESS,
-				Verdict:          flow.Verdict_FORWARDED,
-				IP:               &flow.IP{Source: "1.1.1.1", Destination: "2.2.2.2"},
-				L4:               &flow.Layer4{Protocol: &flow.Layer4_TCP{TCP: &flow.TCP{SourcePort: 80}}},
+				Time:               &timestamppb.Timestamp{Seconds: 1234567890},
+				TrafficDirection:   flow.TrafficDirection_INGRESS,
+				Verdict:            flow.Verdict_FORWARDED,
+				IP:                 &flow.IP{Source: "1.1.1.1", Destination: "2.2.2.2"},
+				L4:                 &flow.Layer4{Protocol: &flow.Layer4_TCP{TCP: &flow.TCP{SourcePort: 80}}},
 				DestinationService: &flow.Service{},
 			},
 		},
@@ -681,6 +681,7 @@ func TestExportCiliumFlows_CacheFlowError(t *testing.T) {
 	}
 
 	cacheErr := errors.New("cache full")
+
 	mockClient.On("GetFlows", mock.Anything, mock.Anything, mock.Anything).Return(mockStream, nil).Once()
 	mockStream.On("Recv").Return(flowResp, nil).Once()
 	mockStream.On("CloseSend").Return(nil).Once()

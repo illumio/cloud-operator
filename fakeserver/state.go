@@ -31,10 +31,10 @@ type EnhancedServerState struct {
 	FlowsStream     StreamState
 
 	// Auth state
-	AuthRequests     int
-	OnboardRequests  int
-	LastAuthTime     time.Time
-	LastOnboardTime  time.Time
+	AuthRequests    int
+	OnboardRequests int
+	LastAuthTime    time.Time
+	LastOnboardTime time.Time
 
 	// Resource tracking
 	ResourceSnapshotComplete bool
@@ -55,6 +55,7 @@ func NewEnhancedServerState() *EnhancedServerState {
 func (s *EnhancedServerState) MarkConfigStreamOpened() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.ConfigStream.Opened = true
 	s.ConfigStream.LastActivity = time.Now()
 }
@@ -63,6 +64,7 @@ func (s *EnhancedServerState) MarkConfigStreamOpened() {
 func (s *EnhancedServerState) MarkLogsStreamOpened() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.LogsStream.Opened = true
 	s.LogsStream.LastActivity = time.Now()
 }
@@ -71,6 +73,7 @@ func (s *EnhancedServerState) MarkLogsStreamOpened() {
 func (s *EnhancedServerState) MarkResourcesStreamOpened() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.ResourcesStream.Opened = true
 	s.ResourcesStream.LastActivity = time.Now()
 }
@@ -79,6 +82,7 @@ func (s *EnhancedServerState) MarkResourcesStreamOpened() {
 func (s *EnhancedServerState) MarkFlowsStreamOpened() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.FlowsStream.Opened = true
 	s.FlowsStream.LastActivity = time.Now()
 }
@@ -89,6 +93,7 @@ func (s *EnhancedServerState) RecordKeepalive(stream string) {
 	defer s.mu.Unlock()
 
 	now := time.Now()
+
 	switch stream {
 	case "config":
 		s.ConfigStream.KeepalivesRecv++
@@ -109,6 +114,7 @@ func (s *EnhancedServerState) RecordKeepalive(stream string) {
 func (s *EnhancedServerState) RecordResourceSnapshot() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.ResourceSnapshotComplete = true
 	s.ConnectionSuccessful = true // Legacy compatibility
 }
@@ -117,6 +123,7 @@ func (s *EnhancedServerState) RecordResourceSnapshot() {
 func (s *EnhancedServerState) RecordAuthRequest() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.AuthRequests++
 	s.LastAuthTime = time.Now()
 }
@@ -125,6 +132,7 @@ func (s *EnhancedServerState) RecordAuthRequest() {
 func (s *EnhancedServerState) RecordOnboardRequest() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.OnboardRequests++
 	s.LastOnboardTime = time.Now()
 }
@@ -133,6 +141,7 @@ func (s *EnhancedServerState) RecordOnboardRequest() {
 func (s *EnhancedServerState) IsConnectionSuccessful() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	return s.ConnectionSuccessful
 }
 
@@ -140,6 +149,7 @@ func (s *EnhancedServerState) IsConnectionSuccessful() bool {
 func (s *EnhancedServerState) AllStreamsOpened() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	return s.ConfigStream.Opened &&
 		s.LogsStream.Opened &&
 		s.ResourcesStream.Opened
@@ -152,15 +162,15 @@ func (s *EnhancedServerState) GetSummary() map[string]interface{} {
 	defer s.mu.RUnlock()
 
 	return map[string]interface{}{
-		"connection_successful":     s.ConnectionSuccessful,
-		"config_stream_opened":      s.ConfigStream.Opened,
-		"logs_stream_opened":        s.LogsStream.Opened,
-		"resources_stream_opened":   s.ResourcesStream.Opened,
-		"flows_stream_opened":       s.FlowsStream.Opened,
+		"connection_successful":      s.ConnectionSuccessful,
+		"config_stream_opened":       s.ConfigStream.Opened,
+		"logs_stream_opened":         s.LogsStream.Opened,
+		"resources_stream_opened":    s.ResourcesStream.Opened,
+		"flows_stream_opened":        s.FlowsStream.Opened,
 		"resource_snapshot_complete": s.ResourceSnapshotComplete,
-		"auth_requests":             s.AuthRequests,
-		"onboard_requests":          s.OnboardRequests,
-		"resources_received":        s.ResourcesReceived,
-		"mutations_received":        s.MutationsReceived,
+		"auth_requests":              s.AuthRequests,
+		"onboard_requests":           s.OnboardRequests,
+		"resources_received":         s.ResourcesReceived,
+		"mutations_received":         s.MutationsReceived,
 	}
 }
