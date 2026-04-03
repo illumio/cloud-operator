@@ -33,11 +33,15 @@ func DefaultTestConfig() TestConfig {
 }
 
 // CreateTestToken creates a signed JWT token for testing.
+// Uses a fixed expiration time to ensure all tests generate identical tokens,
+// allowing the operator to reconnect across test restarts.
 func CreateTestToken(audience string) string {
+	// Use a fixed expiration time (year 2099) so token is deterministic
+	fixedExpiration := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC).Unix()
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": "token1",
 		"aud": []string{audience},
-		"exp": time.Now().Add(time.Hour * 72).Unix(),
+		"exp": fixedExpiration,
 	})
 
 	mySigningKey := []byte("secret")
