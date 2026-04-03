@@ -6,49 +6,7 @@ import (
 	"errors"
 	"sync"
 	"time"
-
-	"google.golang.org/grpc"
-
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
-	"github.com/illumio/cloud-operator/internal/controller/logging"
-	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
-
-type Type string
-
-const (
-	TypeNetworkFlows  = Type("network_flows")
-	TypeResources     = Type("resources")
-	TypeLogs          = Type("logs")
-	TypeConfiguration = Type("configuration")
-)
-
-// Client holds the gRPC connection and stream clients.
-type Client struct {
-	CiliumNamespaces             []string
-	Conn                         *grpc.ClientConn
-	GrpcClient                   pb.KubernetesInfoServiceClient
-	FalcoEventChan               chan string
-	IPFIXCollectorPort           string
-	DisableNetworkFlowsCilium    bool
-	TlsAuthProperties            tls.AuthProperties
-	FlowCollector                pb.FlowCollector
-	LogStream                    logging.LogStream
-	KubernetesNetworkFlowsStream KubernetesNetworkFlowsStream
-	KubernetesResourcesStream    KubernetesResourcesStream
-	ConfigurationStream          ConfigurationStream
-}
-
-// Manager orchestrates all stream operations.
-type Manager struct {
-	BufferedGrpcSyncer *logging.BufferedGrpcWriteSyncer
-	Client             *Client
-	FlowCache          *FlowCache
-	VerboseDebugging   bool
-	Stats              *Stats
-	K8sClient          k8sclient.Client
-}
 
 // KeepalivePeriods specifies the period between keepalives for each stream type.
 type KeepalivePeriods struct {
@@ -105,5 +63,14 @@ func SetProcessingResources(processing bool) {
 	}
 }
 
-// FalcoPort is the port for the Falco HTTP server.
-const FalcoPort = ":5000"
+// ServerIsHealthy checks if a deadlock has occurred within the resource listing process.
+func ServerIsHealthy() bool {
+	dd.mutex.RLock()
+	defer dd.mutex.RUnlock()
+
+	if dd.processingResources && time.Since(dd.timeStarted) > ResourceProcessingTimeout {
+		return false
+	}
+
+	return true
+}

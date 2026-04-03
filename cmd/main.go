@@ -29,13 +29,14 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/klog/v2"
 
-	"github.com/illumio/cloud-operator/internal/controller"
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows"
 	"github.com/illumio/cloud-operator/internal/controller/stream/logs"
 	"github.com/illumio/cloud-operator/internal/controller/stream/resources"
+	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
 const (
@@ -133,7 +134,7 @@ func main() {
 	viper.SetDefault("grpc_internal_logging", false)
 
 	if viper.GetBool("grpc_internal_logging") {
-		controller.SetupGRPCInternalLogging(logger)
+		logging.SetupGRPCInternalLogging(logger)
 	}
 
 	envConfig := stream.EnvironmentConfig{
@@ -206,14 +207,61 @@ func main() {
 
 	ctx := context.Background()
 
-	streamFuncs := stream.StreamFuncs{
-		Resources:                 resources.ConnectAndStream,
-		Logs:                      logs.ConnectAndStream,
-		Config:                    config.ConnectAndStream,
-		DetermineFlowCollector:    flows.DetermineFlowCollector,
-		ConnectNetworkFlowsStream: flows.ConnectNetworkFlowsStream,
-		StartCacheOutReader:       flows.StartCacheOutReader,
+	// Create shared components
+	stats := stream.NewStats()
+	flowCache := stream.NewFlowCache(
+		stream.FlowCacheActiveTimeout,
+		stream.FlowCacheMaxSize,
+		make(chan pb.Flow, stream.FlowChannelBufferSize),
+	)
+
+	// Create Falco event channel (needed even if not using Falco collector)
+	falcoEventChan := make(chan string)
+
+	// Create TlsAuthProps once - persists DisableTLS/DisableALPN flags across reconnections
+	tlsAuthProps := &tls.AuthProperties{}
+
+	// Create factory config with all stream factories
+	factoryConfig := stream.FactoryConfig{
+		ConfigFactory: &config.Factory{
+			Logger:             logger,
+			VerboseDebugging:   envConfig.VerboseDebugging,
+			BufferedGrpcSyncer: bufferedGrpcSyncer,
+		},
+		LogsFactory: &logs.Factory{
+			Logger:             logger,
+			BufferedGrpcSyncer: bufferedGrpcSyncer,
+		},
+		ResourcesFactory: &resources.Factory{
+			Logger: logger,
+			Stats:  stats,
+		},
+		NetworkFlowsFactory: &flows.NetworkFlowsFactory{
+			Logger:    logger,
+			FlowCache: flowCache,
+			Stats:     stats,
+		},
+		BufferedGrpcSyncer: bufferedGrpcSyncer,
+		FlowCache:          flowCache,
+		Stats:              stats,
+		KeepalivePeriods:   envConfig.KeepalivePeriods,
+		SuccessPeriods:     envConfig.SuccessPeriods,
+		StatsLogPeriod:     envConfig.StatsLogPeriod,
+		// Flow collector determiner - called at runtime to pick Cilium/OVN-K/Falco
+		DetermineFlowCollector: func(ctx context.Context, k8sClient stream.K8sClientGetter) (pb.FlowCollector, stream.StreamClientFactory) {
+			return flows.DetermineFlowCollector(ctx, flows.FlowCollectorConfig{
+				Logger:             logger,
+				FlowCache:          flowCache,
+				Stats:              stats,
+				K8sClient:          k8sClient,
+				CiliumNamespaces:   envConfig.CiliumNamespaces,
+				IPFIXCollectorPort: envConfig.IPFIXCollectorPort,
+				OVNKNamespace:      envConfig.OVNKNamespace,
+				FalcoEventChan:     falcoEventChan,
+				TlsAuthProps:       tlsAuthProps,
+			})
+		},
 	}
 
-	stream.ConnectStreams(ctx, logger, envConfig, bufferedGrpcSyncer, streamFuncs)
+	stream.ConnectStreams(ctx, logger, envConfig, factoryConfig, falcoEventChan)
 }
