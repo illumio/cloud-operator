@@ -1,0 +1,119 @@
+# Copyright 2026 Illumio, Inc. All Rights Reserved.
+# Sample ClusterNetworkPolicy for integration testing
+# Covers POC Scenarios: ingress/egress rules, pod selectors, CIDR, FQDN
+---
+apiVersion: networking.k8s.aws/v1alpha1
+kind: ClusterNetworkPolicy
+metadata:
+  name: test-allow-web-traffic
+spec:
+  priority: 100
+  tier: standard
+  subject:
+    pods:
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: test-namespace
+      podSelector:
+        matchLabels:
+          app: web
+  ingress:
+    - action: Accept
+      ports:
+        - portNumber:
+            port: 80
+            protocol: TCP
+        - portNumber:
+            port: 443
+            protocol: TCP
+      from:
+        - pods:
+            namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: test-namespace
+            podSelector:
+              matchLabels:
+                app: frontend
+  egress:
+    - action: Accept
+      ports:
+        - portNumber:
+            port: 5432
+            protocol: TCP
+      to:
+        - pods:
+            namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: test-namespace
+            podSelector:
+              matchLabels:
+                app: database
+---
+apiVersion: networking.k8s.aws/v1alpha1
+kind: ClusterNetworkPolicy
+metadata:
+  name: test-allow-external-cidr
+spec:
+  priority: 200
+  tier: standard
+  subject:
+    pods:
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: test-namespace
+      podSelector:
+        matchLabels:
+          app: api
+  ingress:
+    - action: Accept
+      ports:
+        - portNumber:
+            port: 8080
+            protocol: TCP
+      from:
+        - networks:
+            - "10.0.0.0/8"
+            - "192.168.1.0/24"
+  egress:
+    - action: Accept
+      to:
+        - domainNames:
+            - "api.example.com"
+            - "*.amazonaws.com"
+---
+apiVersion: networking.k8s.aws/v1alpha1
+kind: ClusterNetworkPolicy
+metadata:
+  name: test-namespace-selector
+spec:
+  priority: 300
+  tier: baseline
+  subject:
+    namespaces:
+      matchLabels:
+        environment: production
+  ingress:
+    - action: Deny
+      from:
+        - namespaces:
+            matchLabels:
+              environment: development
+---
+apiVersion: networking.k8s.aws/v1alpha1
+kind: ClusterNetworkPolicy
+metadata:
+  name: test-deny-all-ingress
+spec:
+  priority: 1000
+  tier: baseline
+  subject:
+    pods:
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: secure-namespace
+      podSelector: {}
+  ingress:
+    - action: Deny
+      from:
+        - networks:
+            - "0.0.0.0/0"

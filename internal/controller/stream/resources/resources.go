@@ -22,6 +22,7 @@ import (
 var resourceList = []string{
 	"ciliumclusterwidenetworkpolicies",
 	"ciliumnetworkpolicies",
+	"clusternetworkpolicies",
 	"cronjobs",
 	"customresourcedefinitions",
 	"daemonsets",
@@ -39,6 +40,7 @@ var resourceList = []string{
 	"pods",
 	"replicasets",
 	"replicationcontrollers",
+	"securitygrouppolicies",
 	"serviceaccounts",
 	"services",
 	"statefulsets",
@@ -49,8 +51,9 @@ var resourceAPIGroupMap = make(map[string]string)
 // apiGroupVersions defines API versions for resource groups that don't use v1.
 // All other groups default to v1.
 var apiGroupVersions = map[string]string{
-	"cilium.io":          "v2",
-	"networking.k8s.aws": "v1alpha1", // future: EKS
+	"cilium.io":            "v2",
+	"networking.k8s.aws":   "v1alpha1", // AWS EKS ClusterNetworkPolicy
+	"vpcresources.k8s.aws": "v1beta1",  // AWS EKS SecurityGroupPolicy
 }
 
 // getVersionForGroup returns the API version for a given API group.
