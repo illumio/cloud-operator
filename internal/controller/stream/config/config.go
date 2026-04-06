@@ -79,6 +79,7 @@ func Stream(ctx context.Context, sm *stream.Manager, logger *zap.Logger, keepali
 					if err := DeletePolicy(ctx, sm.K8sClient.GetDynamicClient(), logger, m.UpdatePolicy); err != nil {
 						logger.Error("Failed to delete policy for update", zap.Error(err))
 					}
+
 					if err := CreatePolicy(ctx, sm.K8sClient.GetDynamicClient(), logger, m.UpdatePolicy); err != nil {
 						logger.Error("Failed to create policy for update", zap.Error(err))
 					}

@@ -145,7 +145,7 @@ func TestCreatePolicy_InvalidJSON(t *testing.T) {
 	}
 
 	err := CreatePolicy(ctx, fakeDynamic, logger, policyData)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unmarshal")
 }
 
@@ -166,7 +166,7 @@ func TestCreatePolicy_UnknownKind(t *testing.T) {
 	}
 
 	err := CreatePolicy(ctx, fakeDynamic, logger, policyData)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown kind")
 }
 

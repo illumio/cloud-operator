@@ -34,6 +34,7 @@ func getVersionForGroup(group string) string {
 	if version, ok := apiGroupVersions[group]; ok {
 		return version
 	}
+
 	return "v1"
 }
 
@@ -43,6 +44,7 @@ func InitPolicyGVRCache(clientset kubernetes.Interface, logger *zap.Logger) erro
 	apiGroups, err := discoveryClient.ServerGroups()
 	if err != nil {
 		logger.Error("Error fetching API groups", zap.Error(err))
+
 		return err
 	}
 
@@ -53,6 +55,7 @@ func InitPolicyGVRCache(clientset kubernetes.Interface, logger *zap.Logger) erro
 				if apierrors.IsForbidden(err) {
 					continue
 				}
+
 				return err
 			}
 
@@ -77,6 +80,7 @@ func getGVR(kind string) (schema.GroupVersionResource, error) {
 	if !ok || gvr.Resource == "" {
 		return schema.GroupVersionResource{}, fmt.Errorf("unknown or unsupported kind: %s", kind)
 	}
+
 	return gvr, nil
 }
 
