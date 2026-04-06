@@ -4,6 +4,49 @@ package resources
 
 import "testing"
 
+func TestGetAWSKindFromResource(t *testing.T) {
+	tests := []struct {
+		name         string
+		resourceName string
+		expected     string
+	}{
+		{
+			name:         "clusternetworkpolicies returns ClusterNetworkPolicy",
+			resourceName: "clusternetworkpolicies",
+			expected:     "ClusterNetworkPolicy",
+		},
+		{
+			name:         "securitygrouppolicies returns SecurityGroupPolicy",
+			resourceName: "securitygrouppolicies",
+			expected:     "SecurityGroupPolicy",
+		},
+		{
+			name:         "unknown resource returns empty string",
+			resourceName: "pods",
+			expected:     "",
+		},
+		{
+			name:         "cilium resource returns empty string",
+			resourceName: "ciliumnetworkpolicies",
+			expected:     "",
+		},
+		{
+			name:         "empty string returns empty string",
+			resourceName: "",
+			expected:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getAWSKindFromResource(tt.resourceName)
+			if got != tt.expected {
+				t.Errorf("getAWSKindFromResource(%q) = %q, want %q", tt.resourceName, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestGetVersionForGroup(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -34,6 +77,11 @@ func TestGetVersionForGroup(t *testing.T) {
 			name:     "networking.k8s.aws group returns v1alpha1",
 			group:    "networking.k8s.aws",
 			expected: "v1alpha1",
+		},
+		{
+			name:     "vpcresources.k8s.aws group returns v1beta1",
+			group:    "vpcresources.k8s.aws",
+			expected: "v1beta1",
 		},
 		{
 			name:     "unknown group returns v1",

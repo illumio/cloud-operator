@@ -1,0 +1,234 @@
+# Copyright 2026 Illumio, Inc. All Rights Reserved.
+# CRD for AWS VPC CNI ClusterNetworkPolicy (networking.k8s.aws/v1alpha1)
+# Based on AWS VPC CNI network policy controller
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: clusternetworkpolicies.networking.k8s.aws
+spec:
+  group: networking.k8s.aws
+  names:
+    kind: ClusterNetworkPolicy
+    listKind: ClusterNetworkPolicyList
+    plural: clusternetworkpolicies
+    singular: clusternetworkpolicy
+    shortNames:
+      - cnp
+  scope: Cluster
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              properties:
+                priority:
+                  type: integer
+                  minimum: 1
+                  maximum: 1000
+                tier:
+                  type: string
+                  enum:
+                    - baseline
+                    - standard
+                    - extended
+                subject:
+                  type: object
+                  properties:
+                    pods:
+                      type: object
+                      properties:
+                        namespaceSelector:
+                          type: object
+                          properties:
+                            matchLabels:
+                              type: object
+                              additionalProperties:
+                                type: string
+                            matchExpressions:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  key:
+                                    type: string
+                                  operator:
+                                    type: string
+                                  values:
+                                    type: array
+                                    items:
+                                      type: string
+                        podSelector:
+                          type: object
+                          properties:
+                            matchLabels:
+                              type: object
+                              additionalProperties:
+                                type: string
+                            matchExpressions:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  key:
+                                    type: string
+                                  operator:
+                                    type: string
+                                  values:
+                                    type: array
+                                    items:
+                                      type: string
+                    namespaces:
+                      type: object
+                      properties:
+                        matchLabels:
+                          type: object
+                          additionalProperties:
+                            type: string
+                        matchExpressions:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              key:
+                                type: string
+                              operator:
+                                type: string
+                              values:
+                                type: array
+                                items:
+                                  type: string
+                ingress:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      action:
+                        type: string
+                        enum:
+                          - Accept
+                          - Deny
+                      ports:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            portNumber:
+                              type: object
+                              properties:
+                                port:
+                                  type: integer
+                                protocol:
+                                  type: string
+                      from:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            networks:
+                              type: array
+                              items:
+                                type: string
+                            pods:
+                              type: object
+                              properties:
+                                namespaceSelector:
+                                  type: object
+                                  properties:
+                                    matchLabels:
+                                      type: object
+                                      additionalProperties:
+                                        type: string
+                                podSelector:
+                                  type: object
+                                  properties:
+                                    matchLabels:
+                                      type: object
+                                      additionalProperties:
+                                        type: string
+                            namespaces:
+                              type: object
+                              properties:
+                                matchLabels:
+                                  type: object
+                                  additionalProperties:
+                                    type: string
+                egress:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      action:
+                        type: string
+                        enum:
+                          - Accept
+                          - Deny
+                      ports:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            portNumber:
+                              type: object
+                              properties:
+                                port:
+                                  type: integer
+                                protocol:
+                                  type: string
+                      to:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            networks:
+                              type: array
+                              items:
+                                type: string
+                            pods:
+                              type: object
+                              properties:
+                                namespaceSelector:
+                                  type: object
+                                  properties:
+                                    matchLabels:
+                                      type: object
+                                      additionalProperties:
+                                        type: string
+                                podSelector:
+                                  type: object
+                                  properties:
+                                    matchLabels:
+                                      type: object
+                                      additionalProperties:
+                                        type: string
+                            namespaces:
+                              type: object
+                              properties:
+                                matchLabels:
+                                  type: object
+                                  additionalProperties:
+                                    type: string
+                            domainNames:
+                              type: array
+                              items:
+                                type: string
+      additionalPrinterColumns:
+        - name: Priority
+          type: integer
+          jsonPath: .spec.priority
+        - name: Tier
+          type: string
+          jsonPath: .spec.tier
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp

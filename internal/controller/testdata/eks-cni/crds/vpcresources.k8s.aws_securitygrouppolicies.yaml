@@ -1,0 +1,85 @@
+# Copyright 2026 Illumio, Inc. All Rights Reserved.
+# CRD for AWS VPC CNI SecurityGroupPolicy (vpcresources.k8s.aws/v1beta1)
+# Based on AWS VPC CNI security group for pods
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: securitygrouppolicies.vpcresources.k8s.aws
+spec:
+  group: vpcresources.k8s.aws
+  names:
+    kind: SecurityGroupPolicy
+    listKind: SecurityGroupPolicyList
+    plural: securitygrouppolicies
+    singular: securitygrouppolicy
+    shortNames:
+      - sgp
+  scope: Namespaced
+  versions:
+    - name: v1beta1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              properties:
+                podSelector:
+                  type: object
+                  properties:
+                    matchLabels:
+                      type: object
+                      additionalProperties:
+                        type: string
+                    matchExpressions:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          key:
+                            type: string
+                          operator:
+                            type: string
+                          values:
+                            type: array
+                            items:
+                              type: string
+                serviceAccountSelector:
+                  type: object
+                  properties:
+                    matchLabels:
+                      type: object
+                      additionalProperties:
+                        type: string
+                    matchExpressions:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          key:
+                            type: string
+                          operator:
+                            type: string
+                          values:
+                            type: array
+                            items:
+                              type: string
+                securityGroups:
+                  type: object
+                  properties:
+                    groupIds:
+                      type: array
+                      items:
+                        type: string
+      additionalPrinterColumns:
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
