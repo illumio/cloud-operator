@@ -113,6 +113,8 @@ func main() {
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "verbose_debugging", "VERBOSE_DEBUGGING")
 	bindEnv(logger, "grpc_internal_logging", "GRPC_INTERNAL_LOGGING")
+	bindEnv(logger, "enable_vpc_cni_flows", "ENABLE_VPC_CNI_FLOWS")
+	bindEnv(logger, "vpc_cni_poll_interval", "VPC_CNI_POLL_INTERVAL")
 
 	// Set default values
 	viper.SetDefault("cilium_namespaces", []string{"kube-system", "gke-managed-dpv2-observability"})
@@ -133,6 +135,8 @@ func main() {
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("verbose_debugging", false)
 	viper.SetDefault("grpc_internal_logging", false)
+	viper.SetDefault("enable_vpc_cni_flows", false)
+	viper.SetDefault("vpc_cni_poll_interval", "5s")
 
 	if viper.GetBool("grpc_internal_logging") {
 		logging.SetupGRPCInternalLogging(logger)
@@ -173,6 +177,8 @@ func main() {
 		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
 		zap.String("token_endpoint", envConfig.TokenEndpoint),
 		zap.Bool("verbose_debugging", viper.GetBool("verbose_debugging")),
+		zap.Bool("enable_vpc_cni_flows", viper.GetBool("enable_vpc_cni_flows")),
+		zap.Duration("vpc_cni_poll_interval", viper.GetDuration("vpc_cni_poll_interval")),
 	)
 
 	// Start the gops agent
@@ -225,6 +231,8 @@ func main() {
 		IPFIXCollectorPort: viper.GetString("ipfix_collector_port"),
 		OVNKNamespace:      viper.GetString("ovnk_namespace"),
 		TlsAuthProps:       tlsAuthProps,
+		EnableVPCCNI:       viper.GetBool("enable_vpc_cni_flows"),
+		VPCCNIPollInterval: viper.GetDuration("vpc_cni_poll_interval"),
 	})
 
 	// Create factory config with all stream factories

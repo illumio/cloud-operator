@@ -13,6 +13,7 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cilium"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/falco"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/ovnk"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/vpccni"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
@@ -95,6 +96,20 @@ func DetectFlowCollector(ctx context.Context, config FlowCollectorConfig) (pb.Fl
 		}
 
 		return pb.FlowCollector_FLOW_COLLECTOR_OVNK, factory
+	}
+
+	// Check for AWS VPC CNI (EKS standard clusters)
+	if config.EnableVPCCNI && vpccni.IsVPCCNIAvailable(ctx, config.Logger, clientset) {
+		config.Logger.Info("Using AWS VPC CNI flow collector")
+
+		factory := &vpccni.Factory{
+			Logger:       config.Logger,
+			FlowSink:     flowSink,
+			K8sClient:    clientset,
+			PollInterval: config.VPCCNIPollInterval,
+		}
+
+		return pb.FlowCollector_FLOW_COLLECTOR_VPC_CNI, factory
 	}
 
 	// Default to Falco

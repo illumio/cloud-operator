@@ -4,6 +4,7 @@ package flows
 
 import (
 	"context"
+	"time"
 
 	"go.uber.org/zap"
 	"k8s.io/client-go/kubernetes"
@@ -52,4 +53,7 @@ type FlowCollectorConfig struct {
 	TlsAuthProps       *tls.AuthProperties
 	IPFIXCollectorPort string
 	OVNKNamespace      string
+	// VPC CNI configuration
+	EnableVPCCNI       bool
+	VPCCNIPollInterval time.Duration
 }
