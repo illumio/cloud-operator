@@ -25,6 +25,7 @@ type Factory struct {
 // NewStreamClient creates a new logs stream client.
 func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnInterface) (stream.StreamClient, error) {
 	grpcClient := pb.NewKubernetesInfoServiceClient(grpcConn)
+
 	grpcStream, err := grpcClient.SendLogs(ctx)
 	if err != nil {
 		f.Logger.Error("Failed to connect to logs stream", zap.Error(err))

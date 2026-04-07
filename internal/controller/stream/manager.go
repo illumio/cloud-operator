@@ -231,6 +231,7 @@ func runStreamsOnce(
 	for name, done := range doneChannels {
 		go func(streamName string, ch chan struct{}) {
 			<-ch
+
 			select {
 			case merged <- streamName + " stream closed":
 			default:
@@ -240,6 +241,7 @@ func runStreamsOnce(
 
 	go func() {
 		<-authCtx.Done()
+
 		select {
 		case merged <- "Auth context canceled":
 		default:

@@ -22,7 +22,7 @@ type FlowCollectorProvider struct {
 	config FlowCollectorConfig
 
 	mu            sync.Mutex
-	sessionCtx    context.Context
+	determined    bool
 	collectorType pb.FlowCollector
 	innerFactory  stream.StreamClientFactory
 }
@@ -35,15 +35,15 @@ func NewFlowCollectorProvider(config FlowCollectorConfig) *FlowCollectorProvider
 	}
 }
 
-// NewStreamClient determines the flow collector (if not already determined for this session)
+// NewStreamClient determines the flow collector (if not already determined)
 // and delegates to the appropriate factory.
 func (p *FlowCollectorProvider) NewStreamClient(ctx context.Context, conn grpc.ClientConnInterface) (stream.StreamClient, error) {
 	p.mu.Lock()
-	// New context = new session = re-determine
-	if p.sessionCtx != ctx {
-		p.sessionCtx = ctx
+	if !p.determined {
 		p.collectorType, p.innerFactory = DetermineFlowCollector(ctx, p.config)
+		p.determined = true
 	}
+
 	factory := p.innerFactory
 	p.mu.Unlock()
 

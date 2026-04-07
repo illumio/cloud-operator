@@ -11,8 +11,9 @@ package stream
 import (
 	"context"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"google.golang.org/grpc"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 // StreamClient abstracts all stream operations.

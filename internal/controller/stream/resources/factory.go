@@ -32,6 +32,7 @@ type Factory struct {
 // NewStreamClient creates a new resources stream client.
 func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnInterface) (stream.StreamClient, error) {
 	grpcClient := pb.NewKubernetesInfoServiceClient(grpcConn)
+
 	grpcStream, err := grpcClient.SendKubernetesResources(ctx)
 	if err != nil {
 		f.Logger.Error("Failed to connect to resources stream", zap.Error(err))
