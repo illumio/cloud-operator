@@ -27,6 +27,20 @@ import (
 // MutationCheckpointInterval is the interval for logging mutation checkpoint messages.
 const MutationCheckpointInterval = 60 * time.Second
 
+// awsResourceToKind maps AWS VPC CNI plural resource names to their Kind.
+// This is needed because DynamicListResources receives the plural resource name
+// (e.g., "clusternetworkpolicies") but IsAWSNetworkPolicy expects the Kind
+// (e.g., "ClusterNetworkPolicy").
+var awsResourceToKind = map[string]string{
+	"clusternetworkpolicies": "ClusterNetworkPolicy",
+	"securitygrouppolicies":  "SecurityGroupPolicy",
+}
+
+// getAWSKindFromResource returns the Kind for an AWS resource name, or empty string if not found.
+func getAWSKindFromResource(resourceName string) string {
+	return awsResourceToKind[resourceName]
+}
+
 // WatcherConfig holds the configuration for creating a new Watcher.
 type WatcherConfig struct {
 	ResourceName  string
@@ -88,7 +102,19 @@ func (r *Watcher) WatchK8sResources(ctx context.Context, cancel context.CancelFu
 
 // DynamicListResources lists a specified resource dynamically and sends down the current gRPC stream.
 func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger, apiGroup string) (string, error) {
-	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
+	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: getVersionForGroup(apiGroup), Resource: r.resourceName}
+
+	// For Cilium policies, we need the full unstructured object to extract the spec
+	if controller.IsCiliumPolicy(removeListSuffix(r.resourceName)) {
+		return r.listCiliumResources(ctx, logger, objGVR)
+	}
+
+	// For AWS network policies, we need the full unstructured object to extract the spec.
+	// Use the resource-to-kind mapping since r.resourceName is the plural form (e.g., "clusternetworkpolicies")
+	// but IsAWSNetworkPolicy expects the Kind (e.g., "ClusterNetworkPolicy").
+	if awsKind := getAWSKindFromResource(r.resourceName); awsKind != "" && controller.IsAWSNetworkPolicy(awsKind) {
+		return r.listAWSNetworkPolicyResources(ctx, logger, objGVR)
+	}
 
 	objs, resourceListVersion, resourceK8sKind, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
@@ -115,6 +141,83 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger, 
 	}
 
 	return resourceListVersion, nil
+}
+
+// listCiliumResources handles listing Cilium network policies with full spec conversion.
+func (r *Watcher) listCiliumResources(ctx context.Context, logger *zap.Logger, objGVR schema.GroupVersionResource) (string, error) {
+	unstructuredResources, err := r.FetchResources(ctx, objGVR, metav1.NamespaceAll)
+	if err != nil {
+		return "", err
+	}
+
+	for i := range unstructuredResources.Items {
+		item := &unstructuredResources.Items[i]
+		metadataObj := controller.ConvertUnstructuredToCiliumPolicy(item)
+
+		r.logger.Info("Sending Cilium policy",
+			zap.String("name", item.GetName()),
+			zap.String("namespace", item.GetNamespace()),
+			zap.String("kind", item.GetKind()))
+
+		err = r.streamManager.SendObjectData(logger, metadataObj)
+		if err != nil {
+			r.logger.Error("Cannot send Cilium policy metadata", zap.Error(err))
+
+			return "", err
+		}
+	}
+
+	r.logger.Info("Successfully sent Cilium policies", zap.Int("count", len(unstructuredResources.Items)))
+
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	default:
+	}
+
+	return unstructuredResources.GetResourceVersion(), nil
+}
+
+// listAWSNetworkPolicyResources handles listing AWS network policies with full spec conversion.
+func (r *Watcher) listAWSNetworkPolicyResources(ctx context.Context, logger *zap.Logger, objGVR schema.GroupVersionResource) (string, error) {
+	unstructuredResources, err := r.FetchResources(ctx, objGVR, metav1.NamespaceAll)
+	if err != nil {
+		return "", err
+	}
+
+	for i := range unstructuredResources.Items {
+		item := &unstructuredResources.Items[i]
+		metadataObj, err := controller.ConvertUnstructuredToAWSNetworkPolicy(item)
+		if err != nil {
+			r.logger.Error("Cannot convert AWS network policy",
+				zap.String("name", item.GetName()),
+				zap.String("namespace", item.GetNamespace()),
+				zap.Error(err))
+
+			return "", fmt.Errorf("failed to convert AWS network policy %s/%s: %w", item.GetNamespace(), item.GetName(), err)
+		}
+
+		r.logger.Info("Sending AWS network policy",
+			zap.String("name", item.GetName()),
+			zap.String("namespace", item.GetNamespace()),
+			zap.String("kind", item.GetKind()))
+
+		if err = r.streamManager.SendObjectData(logger, metadataObj); err != nil {
+			r.logger.Error("Cannot send AWS network policy metadata", zap.Error(err))
+
+			return "", err
+		}
+	}
+
+	r.logger.Info("Successfully sent AWS network policies", zap.Int("count", len(unstructuredResources.Items)))
+
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	default:
+	}
+
+	return unstructuredResources.GetResourceVersion(), nil
 }
 
 //nolint:gocognit // function is complex by nature (watch loop)
@@ -269,7 +372,7 @@ func (r *Watcher) newWatcher(ctx context.Context, resourceVersion string, logger
 		AllowWatchBookmarks: true,
 	}
 
-	objGVR := schema.GroupVersionResource{Group: r.apiGroup, Version: "v1", Resource: r.resourceName}
+	objGVR := schema.GroupVersionResource{Group: r.apiGroup, Version: getVersionForGroup(r.apiGroup), Resource: r.resourceName}
 
 	w, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
@@ -351,13 +454,38 @@ func getResourceVersionFromBookmark(event watch.Event) (string, error) {
 }
 
 func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation) (string, error) {
-	convertedData, err := controller.GetObjectMetadataFromRuntimeObject(event.Object)
-	if err != nil {
-		return "", fmt.Errorf("failed to convert runtime.Object to metav1.ObjectMeta: %w", err)
-	}
-
 	resource := event.Object.GetObjectKind().GroupVersionKind().Kind
-	metadataObj := controller.ConvertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resource)
+
+	var metadataObj *pb.KubernetesObjectData
+
+	// Handle Cilium policies specially to extract full spec
+	if controller.IsCiliumPolicy(resource) {
+		unstructuredObj, ok := event.Object.(*unstructured.Unstructured)
+		if !ok {
+			return "", fmt.Errorf("failed to convert event object to unstructured for Cilium policy")
+		}
+
+		metadataObj = controller.ConvertUnstructuredToCiliumPolicy(unstructuredObj)
+	} else if controller.IsAWSNetworkPolicy(resource) {
+		// Handle AWS network policies specially to extract full spec
+		unstructuredObj, ok := event.Object.(*unstructured.Unstructured)
+		if !ok {
+			return "", fmt.Errorf("failed to convert event object to unstructured for AWS network policy")
+		}
+
+		var err error
+		metadataObj, err = controller.ConvertUnstructuredToAWSNetworkPolicy(unstructuredObj)
+		if err != nil {
+			return "", fmt.Errorf("failed to convert AWS network policy: %w", err)
+		}
+	} else {
+		convertedData, err := controller.GetObjectMetadataFromRuntimeObject(event.Object)
+		if err != nil {
+			return "", fmt.Errorf("failed to convert runtime.Object to metav1.ObjectMeta: %w", err)
+		}
+
+		metadataObj = controller.ConvertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resource)
+	}
 
 	mutation := r.streamManager.CreateMutationObject(metadataObj, event.Type)
 
@@ -367,5 +495,5 @@ func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutati
 	case mutationChan <- mutation:
 	}
 
-	return convertedData.GetResourceVersion(), nil
+	return metadataObj.GetResourceVersion(), nil
 }

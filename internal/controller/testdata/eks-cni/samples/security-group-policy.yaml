@@ -1,0 +1,30 @@
+# Copyright 2026 Illumio, Inc. All Rights Reserved.
+# Sample SecurityGroupPolicy for integration testing
+---
+apiVersion: vpcresources.k8s.aws/v1beta1
+kind: SecurityGroupPolicy
+metadata:
+  name: test-database-sg
+  namespace: test-namespace
+spec:
+  podSelector:
+    matchLabels:
+      app: database
+      tier: backend
+  securityGroups:
+    groupIds:
+      - sg-0123456789abcdef0
+      - sg-0fedcba9876543210
+---
+apiVersion: vpcresources.k8s.aws/v1beta1
+kind: SecurityGroupPolicy
+metadata:
+  name: test-service-account-sg
+  namespace: test-namespace
+spec:
+  serviceAccountSelector:
+    matchLabels:
+      role: external-access
+  securityGroups:
+    groupIds:
+      - sg-external12345678
