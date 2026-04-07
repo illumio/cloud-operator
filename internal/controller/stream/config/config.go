@@ -15,6 +15,29 @@ import (
 	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
 )
 
+// handlePolicyMutation processes network policy mutation messages.
+func handlePolicyMutation(ctx context.Context, sm *stream.Manager, logger *zap.Logger, mutation *pb.NetworkPolicyMutation) {
+	switch m := mutation.GetMutation().(type) {
+	case *pb.NetworkPolicyMutation_CreatePolicy:
+		if err := CreatePolicy(ctx, sm.K8sClient.GetDynamicClient(), logger, m.CreatePolicy); err != nil {
+			logger.Error("Failed to create policy", zap.Error(err))
+		}
+	case *pb.NetworkPolicyMutation_UpdatePolicy:
+		// Update = delete + create
+		if err := DeletePolicy(ctx, sm.K8sClient.GetDynamicClient(), logger, m.UpdatePolicy); err != nil {
+			logger.Error("Failed to delete policy for update", zap.Error(err))
+		}
+
+		if err := CreatePolicy(ctx, sm.K8sClient.GetDynamicClient(), logger, m.UpdatePolicy); err != nil {
+			logger.Error("Failed to create policy for update", zap.Error(err))
+		}
+	case *pb.NetworkPolicyMutation_DeletePolicy:
+		if err := DeletePolicy(ctx, sm.K8sClient.GetDynamicClient(), logger, m.DeletePolicy); err != nil {
+			logger.Error("Failed to delete policy", zap.Error(err))
+		}
+	}
+}
+
 // Stream handles the configuration update stream.
 func Stream(ctx context.Context, sm *stream.Manager, logger *zap.Logger, keepalivePeriod time.Duration) error {
 	// Initialize GVR cache for policy enforcement
@@ -68,26 +91,7 @@ func Stream(ctx context.Context, sm *stream.Manager, logger *zap.Logger, keepali
 				logger.Info("Received network policy snapshot complete")
 
 			case *pb.GetConfigurationUpdatesResponse_NetworkPolicyMutation:
-				mutation := update.NetworkPolicyMutation
-				switch m := mutation.GetMutation().(type) {
-				case *pb.NetworkPolicyMutation_CreatePolicy:
-					if err := CreatePolicy(ctx, sm.K8sClient.GetDynamicClient(), logger, m.CreatePolicy); err != nil {
-						logger.Error("Failed to create policy", zap.Error(err))
-					}
-				case *pb.NetworkPolicyMutation_UpdatePolicy:
-					// Update = delete + create
-					if err := DeletePolicy(ctx, sm.K8sClient.GetDynamicClient(), logger, m.UpdatePolicy); err != nil {
-						logger.Error("Failed to delete policy for update", zap.Error(err))
-					}
-
-					if err := CreatePolicy(ctx, sm.K8sClient.GetDynamicClient(), logger, m.UpdatePolicy); err != nil {
-						logger.Error("Failed to create policy for update", zap.Error(err))
-					}
-				case *pb.NetworkPolicyMutation_DeletePolicy:
-					if err := DeletePolicy(ctx, sm.K8sClient.GetDynamicClient(), logger, m.DeletePolicy); err != nil {
-						logger.Error("Failed to delete policy", zap.Error(err))
-					}
-				}
+				handlePolicyMutation(ctx, sm, logger, update.NetworkPolicyMutation)
 
 			default:
 				logger.Warn("Received unknown configuration update", zap.Any("response", resp))
