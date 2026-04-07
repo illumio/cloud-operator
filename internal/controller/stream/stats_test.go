@@ -54,6 +54,17 @@ func TestStats_IncrementResourceMutations(t *testing.T) {
 	assert.Equal(t, uint64(3), stats.resourceMutations.Load())
 }
 
+func TestStats_IncrementPolicyMutations(t *testing.T) {
+	stats := NewStats()
+
+	stats.IncrementPolicyMutations()
+	assert.Equal(t, uint64(1), stats.policyMutations.Load())
+
+	stats.IncrementPolicyMutations()
+	stats.IncrementPolicyMutations()
+	assert.Equal(t, uint64(3), stats.policyMutations.Load())
+}
+
 func TestStats_GetAndResetStats(t *testing.T) {
 	stats := NewStats()
 
@@ -69,25 +80,32 @@ func TestStats_GetAndResetStats(t *testing.T) {
 		stats.IncrementResourceMutations()
 	}
 
-	flowsReceived, flowsSent, mutations := stats.GetAndResetStats()
+	for range 4 {
+		stats.IncrementPolicyMutations()
+	}
+
+	flowsReceived, flowsSent, resourceMutations, policyMutations := stats.GetAndResetStats()
 
 	assert.Equal(t, uint64(5), flowsReceived)
 	assert.Equal(t, uint64(3), flowsSent)
-	assert.Equal(t, uint64(7), mutations)
+	assert.Equal(t, uint64(7), resourceMutations)
+	assert.Equal(t, uint64(4), policyMutations)
 
 	assert.Equal(t, uint64(0), stats.flowsReceived.Load())
 	assert.Equal(t, uint64(0), stats.flowsSentToClusterSync.Load())
 	assert.Equal(t, uint64(0), stats.resourceMutations.Load())
+	assert.Equal(t, uint64(0), stats.policyMutations.Load())
 }
 
 func TestStats_GetAndResetStats_EmptyStats(t *testing.T) {
 	stats := NewStats()
 
-	flowsReceived, flowsSent, mutations := stats.GetAndResetStats()
+	flowsReceived, flowsSent, resourceMutations, policyMutations := stats.GetAndResetStats()
 
 	assert.Equal(t, uint64(0), flowsReceived)
 	assert.Equal(t, uint64(0), flowsSent)
-	assert.Equal(t, uint64(0), mutations)
+	assert.Equal(t, uint64(0), resourceMutations)
+	assert.Equal(t, uint64(0), policyMutations)
 }
 
 func TestStats_ConcurrentAccess(t *testing.T) {
@@ -97,7 +115,7 @@ func TestStats_ConcurrentAccess(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	wg.Add(3)
+	wg.Add(4)
 
 	go func() {
 		defer wg.Done()
@@ -123,13 +141,22 @@ func TestStats_ConcurrentAccess(t *testing.T) {
 		}
 	}()
 
+	go func() {
+		defer wg.Done()
+
+		for range iterations {
+			stats.IncrementPolicyMutations()
+		}
+	}()
+
 	wg.Wait()
 
-	flowsReceived, flowsSent, mutations := stats.GetAndResetStats()
+	flowsReceived, flowsSent, resourceMutations, policyMutations := stats.GetAndResetStats()
 
 	assert.Equal(t, iterations, flowsReceived)
 	assert.Equal(t, iterations, flowsSent)
-	assert.Equal(t, iterations, mutations)
+	assert.Equal(t, iterations, resourceMutations)
+	assert.Equal(t, iterations, policyMutations)
 }
 
 func TestStartStatsLogger_DisabledWithZeroInterval(t *testing.T) {

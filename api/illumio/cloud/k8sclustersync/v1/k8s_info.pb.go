@@ -4942,6 +4942,10 @@ type GetConfigurationUpdatesResponse_ResourceMutation struct {
 	ResourceMutation *ConfiguredKubernetesObjectMutation `protobuf:"bytes,4,opt,name=resource_mutation,json=resourceMutation,proto3,oneof"`
 }
 
+<<<<<<< HEAD
+=======
+>>>>>>> 49acb48 (Refactor policy enforcement to maintain desired state)
+>>>>>>> 7ad72c0 (Refactor policy enforcement to maintain desired state)
 func (*GetConfigurationUpdatesResponse_UpdateConfiguration) isGetConfigurationUpdatesResponse_Response() {
 }
 
@@ -5149,6 +5153,29 @@ func (x *DeleteConfiguredKubernetesObject) GetId() string {
 	}
 	return ""
 }
+=======
+type isNetworkPolicyData_KindSpecific interface {
+	isNetworkPolicyData_KindSpecific()
+}
+
+type NetworkPolicyData_NetworkPolicy struct {
+	NetworkPolicy *KubernetesNetworkPolicyData `protobuf:"bytes,6,opt,name=network_policy,json=networkPolicy,proto3,oneof"`
+}
+
+type NetworkPolicyData_CiliumNetworkPolicy struct {
+	CiliumNetworkPolicy *KubernetesCiliumNetworkPolicyData `protobuf:"bytes,7,opt,name=cilium_network_policy,json=ciliumNetworkPolicy,proto3,oneof"`
+}
+
+type NetworkPolicyData_CiliumClusterwideNetworkPolicy struct {
+	CiliumClusterwideNetworkPolicy *KubernetesCiliumClusterwideNetworkPolicyData `protobuf:"bytes,8,opt,name=cilium_clusterwide_network_policy,json=ciliumClusterwideNetworkPolicy,proto3,oneof"`
+}
+
+func (*NetworkPolicyData_NetworkPolicy) isNetworkPolicyData_KindSpecific() {}
+
+func (*NetworkPolicyData_CiliumNetworkPolicy) isNetworkPolicyData_KindSpecific() {}
+
+func (*NetworkPolicyData_CiliumClusterwideNetworkPolicy) isNetworkPolicyData_KindSpecific() {}
+>>>>>>> 7ad72c0 (Refactor policy enforcement to maintain desired state)
 
 // Empty on purpose since this type is just expected when configured object snapshot is done.
 type ConfiguredKubernetesObjectSnapshotComplete struct {

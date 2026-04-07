@@ -15,37 +15,10 @@ import (
 	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
 )
 
-// handlePolicyMutation processes network policy mutation messages.
-func handlePolicyMutation(ctx context.Context, sm *stream.Manager, logger *zap.Logger, mutation *pb.NetworkPolicyMutation) {
-	switch m := mutation.GetMutation().(type) {
-	case *pb.NetworkPolicyMutation_CreatePolicy:
-		if err := CreatePolicy(ctx, sm.K8sClient.GetDynamicClient(), logger, m.CreatePolicy); err != nil {
-			logger.Error("Failed to create policy", zap.Error(err))
-		}
-	case *pb.NetworkPolicyMutation_UpdatePolicy:
-		// Update = delete + create
-		if err := DeletePolicy(ctx, sm.K8sClient.GetDynamicClient(), logger, m.UpdatePolicy); err != nil {
-			logger.Error("Failed to delete policy for update", zap.Error(err))
-		}
-
-		if err := CreatePolicy(ctx, sm.K8sClient.GetDynamicClient(), logger, m.UpdatePolicy); err != nil {
-			logger.Error("Failed to create policy for update", zap.Error(err))
-		}
-	case *pb.NetworkPolicyMutation_DeletePolicy:
-		if err := DeletePolicy(ctx, sm.K8sClient.GetDynamicClient(), logger, m.DeletePolicy); err != nil {
-			logger.Error("Failed to delete policy", zap.Error(err))
-		}
-	}
-}
-
 // Stream handles the configuration update stream.
 func Stream(ctx context.Context, sm *stream.Manager, logger *zap.Logger, keepalivePeriod time.Duration) error {
-	// Initialize GVR cache for policy enforcement
-	if sm.K8sClient != nil {
-		if err := InitPolicyGVRCache(sm.K8sClient.GetClientset(), logger); err != nil {
-			logger.Warn("Failed to initialize policy GVR cache", zap.Error(err))
-		}
-	}
+	// Reinitialize desired policy state. The server sends a full snapshot on each connection.
+	sm.PolicyState.ResetDesired()
 
 	errCh := make(chan error, 1)
 	defer close(errCh)
@@ -83,15 +56,37 @@ func Stream(ctx context.Context, sm *stream.Manager, logger *zap.Logger, keepali
 				}
 
 			case *pb.GetConfigurationUpdatesResponse_NetworkPolicyData:
-				logger.Info("Received network policy data",
-					zap.String("id", update.NetworkPolicyData.GetId()),
+				policy := update.NetworkPolicyData
+				sm.PolicyState.SetDesired(policy)
+				logger.Debug("Received network policy data",
+					zap.String("id", policy.GetId()),
 				)
 
 			case *pb.GetConfigurationUpdatesResponse_NetworkPolicySnapshotComplete:
-				logger.Info("Received network policy snapshot complete")
+				logger.Debug("Received network policy snapshot complete",
+					zap.Int("total_policies", sm.PolicyState.DesiredLen()),
+				)
 
 			case *pb.GetConfigurationUpdatesResponse_NetworkPolicyMutation:
-				handlePolicyMutation(ctx, sm, logger, update.NetworkPolicyMutation)
+				sm.Stats.IncrementPolicyMutations()
+				mutation := update.NetworkPolicyMutation
+				switch m := mutation.GetMutation().(type) {
+				case *pb.NetworkPolicyMutation_CreatePolicy:
+					sm.PolicyState.SetDesired(m.CreatePolicy)
+					logger.Debug("Policy mutation: create",
+						zap.String("id", m.CreatePolicy.GetId()),
+					)
+				case *pb.NetworkPolicyMutation_UpdatePolicy:
+					sm.PolicyState.SetDesired(m.UpdatePolicy)
+					logger.Debug("Policy mutation: update",
+						zap.String("id", m.UpdatePolicy.GetId()),
+					)
+				case *pb.NetworkPolicyMutation_DeletePolicy:
+					sm.PolicyState.DeleteDesired(m.DeletePolicy.GetId())
+					logger.Debug("Policy mutation: delete",
+						zap.String("id", m.DeletePolicy.GetId()),
+					)
+				}
 
 			default:
 				logger.Warn("Received unknown configuration update", zap.Any("response", resp))
