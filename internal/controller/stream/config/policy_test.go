@@ -167,7 +167,7 @@ func TestCreatePolicy_UnknownKind(t *testing.T) {
 
 	err := CreatePolicy(ctx, fakeDynamic, logger, policyData)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown kind")
+	assert.Contains(t, err.Error(), "unknown or unsupported kind")
 }
 
 func TestDeletePolicy(t *testing.T) {
