@@ -8,7 +8,6 @@ import (
 	"io"
 
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 
 	"github.com/illumio/cloud-operator/internal/controller/logging"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
@@ -20,9 +19,10 @@ var _ stream.StreamClient = (*logsClient)(nil)
 // logsClient implements stream.StreamClient for the logs stream.
 type logsClient struct {
 	stream             logging.LogStream
-	conn               *grpc.ClientConn
+	conn               logging.ClientConnInterface
 	logger             *zap.Logger
 	bufferedGrpcSyncer *logging.BufferedGrpcWriteSyncer
+	done               chan struct{}
 }
 
 // Run receives log responses from the server until the stream closes.
@@ -60,8 +60,9 @@ func (c *logsClient) SendKeepalive(_ context.Context) error {
 	return nil
 }
 
-// Close is a no-op for logs client.
-// Shutdown is handled via context cancellation.
+// Close signals the BufferedGrpcSyncer to stop and closes the stream.
 func (c *logsClient) Close() error {
+	close(c.done)
+
 	return nil
 }

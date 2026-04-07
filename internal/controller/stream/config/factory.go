@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
@@ -23,7 +24,8 @@ type Factory struct {
 }
 
 // NewStreamClient creates a new configuration stream client.
-func (f *Factory) NewStreamClient(ctx context.Context, grpcClient pb.KubernetesInfoServiceClient) (stream.StreamClient, error) {
+func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnInterface) (stream.StreamClient, error) {
+	grpcClient := pb.NewKubernetesInfoServiceClient(grpcConn)
 	grpcStream, err := grpcClient.GetConfigurationUpdates(ctx)
 	if err != nil {
 		f.Logger.Error("Failed to connect to configuration stream", zap.Error(err))

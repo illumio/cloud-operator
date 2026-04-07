@@ -41,12 +41,17 @@ func NewFlowSinkAdapter(flowCache *stream.FlowCache, stats *stream.Stats) *FlowS
 	}
 }
 
+// K8sClientGetter provides access to Kubernetes client.
+type K8sClientGetter interface {
+	GetClientset() kubernetes.Interface
+}
+
 // FlowCollectorConfig holds configuration for determining and creating flow collectors.
 type FlowCollectorConfig struct {
 	Logger             *zap.Logger
 	FlowCache          *stream.FlowCache
 	Stats              *stream.Stats
-	K8sClient          stream.K8sClientGetter
+	K8sClient          K8sClientGetter
 	CiliumNamespaces   []string
 	TlsAuthProps       *tls.AuthProperties
 	IPFIXCollectorPort string

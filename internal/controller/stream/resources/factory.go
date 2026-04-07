@@ -4,9 +4,9 @@ package resources
 
 import (
 	"context"
-	"fmt"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
@@ -16,16 +16,22 @@ import (
 // Verify Factory implements stream.StreamClientFactory.
 var _ stream.StreamClientFactory = (*Factory)(nil)
 
+// flowCollectorTypeGetter provides access to the determined flow collector type.
+type flowCollectorTypeGetter interface {
+	GetFlowCollectorType() pb.FlowCollector
+}
+
 // Factory creates resources stream clients.
 type Factory struct {
-	Logger        *zap.Logger
-	K8sClient     k8sclient.Client
-	Stats         *stream.Stats
-	FlowCollector pb.FlowCollector
+	Logger                *zap.Logger
+	K8sClient             k8sclient.Client
+	Stats                 *stream.Stats
+	FlowCollectorProvider flowCollectorTypeGetter
 }
 
 // NewStreamClient creates a new resources stream client.
-func (f *Factory) NewStreamClient(ctx context.Context, grpcClient pb.KubernetesInfoServiceClient) (stream.StreamClient, error) {
+func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnInterface) (stream.StreamClient, error) {
+	grpcClient := pb.NewKubernetesInfoServiceClient(grpcConn)
 	grpcStream, err := grpcClient.SendKubernetesResources(ctx)
 	if err != nil {
 		f.Logger.Error("Failed to connect to resources stream", zap.Error(err))
@@ -33,41 +39,22 @@ func (f *Factory) NewStreamClient(ctx context.Context, grpcClient pb.KubernetesI
 		return nil, err
 	}
 
+	// Get flow collector type from provider
+	flowCollector := pb.FlowCollector_FLOW_COLLECTOR_UNSPECIFIED
+	if f.FlowCollectorProvider != nil {
+		flowCollector = f.FlowCollectorProvider.GetFlowCollectorType()
+	}
+
 	return &resourcesClient{
 		grpcStream:    grpcStream,
 		logger:        f.Logger,
 		k8sClient:     f.K8sClient,
 		stats:         f.Stats,
-		flowCollector: f.FlowCollector,
+		flowCollector: flowCollector,
 	}, nil
 }
 
 // Name returns the stream name for logging.
 func (f *Factory) Name() string {
 	return "SendKubernetesResources"
-}
-
-// SetK8sClient sets the Kubernetes client on the factory.
-// This is called after the client is created in runStreamsOnce.
-func (f *Factory) SetK8sClient(client stream.K8sClientGetter) {
-	if client == nil {
-		f.Logger.Error("SetK8sClient called with nil client")
-
-		return
-	}
-
-	c, ok := client.(k8sclient.Client)
-	if !ok {
-		f.Logger.Error("SetK8sClient: unexpected client type", zap.String("type", fmt.Sprintf("%T", client)))
-
-		return
-	}
-
-	f.K8sClient = c
-}
-
-// SetFlowCollector sets the flow collector type on the factory.
-// This is called after determining which flow collector to use.
-func (f *Factory) SetFlowCollector(collector pb.FlowCollector) {
-	f.FlowCollector = collector
 }

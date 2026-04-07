@@ -6,8 +6,9 @@ import (
 	"context"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"k8s.io/client-go/kubernetes"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/collector"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
@@ -16,18 +17,23 @@ import (
 // Verify Factory implements stream.StreamClientFactory.
 var _ stream.StreamClientFactory = (*Factory)(nil)
 
+// k8sClientGetter provides access to Kubernetes client.
+type k8sClientGetter interface {
+	GetClientset() kubernetes.Interface
+}
+
 // Factory creates Cilium flow collector clients.
 type Factory struct {
 	Logger           *zap.Logger
 	FlowSink         collector.FlowSink
 	CiliumNamespaces []string
 	TlsAuthProps     *tls.AuthProperties
-	K8sClient        stream.K8sClientGetter
+	K8sClient        k8sClientGetter
 }
 
 // NewStreamClient creates a new Cilium flow collector client.
-// Note: grpcClient is not used since Cilium connects to Hubble Relay, not CloudSecure.
-func (f *Factory) NewStreamClient(_ context.Context, _ pb.KubernetesInfoServiceClient) (stream.StreamClient, error) {
+// Note: grpcConn is not used since Cilium connects to Hubble Relay, not CloudSecure.
+func (f *Factory) NewStreamClient(_ context.Context, _ grpc.ClientConnInterface) (stream.StreamClient, error) {
 	return &ciliumClient{
 		logger:           f.Logger,
 		flowSink:         f.FlowSink,

@@ -12,8 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"google.golang.org/grpc"
 )
 
 // ManagedStream represents a single managed stream with its factory and configuration.
@@ -52,8 +51,8 @@ type mockStreamClientFactory struct {
 	mock.Mock
 }
 
-func (m *mockStreamClientFactory) NewStreamClient(ctx context.Context, grpcClient pb.KubernetesInfoServiceClient) (StreamClient, error) {
-	args := m.Called(ctx, grpcClient)
+func (m *mockStreamClientFactory) NewStreamClient(ctx context.Context, conn grpc.ClientConnInterface) (StreamClient, error) {
+	args := m.Called(ctx, conn)
 	if client, ok := args.Get(0).(StreamClient); ok {
 		return client, args.Error(1)
 	}

@@ -30,6 +30,7 @@ import (
 	"k8s.io/klog/v2"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config"
@@ -221,46 +222,68 @@ func main() {
 	// Create TlsAuthProps once - persists DisableTLS/DisableALPN flags across reconnections
 	tlsAuthProps := &tls.AuthProperties{}
 
-	// Create factory config with all stream factories
-	factoryConfig := stream.FactoryConfig{
-		ConfigFactory: &config.Factory{
-			Logger:             logger,
-			VerboseDebugging:   envConfig.VerboseDebugging,
-			BufferedGrpcSyncer: bufferedGrpcSyncer,
-		},
-		LogsFactory: &logs.Factory{
-			Logger:             logger,
-			BufferedGrpcSyncer: bufferedGrpcSyncer,
-		},
-		ResourcesFactory: &resources.Factory{
-			Logger: logger,
-			Stats:  stats,
-		},
-		NetworkFlowsFactory: &flows.NetworkFlowsFactory{
-			Logger:    logger,
-			FlowCache: flowCache,
-			Stats:     stats,
-		},
-		BufferedGrpcSyncer: bufferedGrpcSyncer,
+	// Create Kubernetes client
+	k8sClient, err := k8sclient.NewClient()
+	if err != nil {
+		logger.Fatal("Failed to create Kubernetes client", zap.Error(err))
+	}
+
+	// Create flow collector provider - encapsulates flow collector determination
+	flowCollectorProvider := flows.NewFlowCollectorProvider(flows.FlowCollectorConfig{
+		Logger:             logger,
 		FlowCache:          flowCache,
 		Stats:              stats,
-		KeepalivePeriods:   envConfig.KeepalivePeriods,
-		SuccessPeriods:     envConfig.SuccessPeriods,
-		StatsLogPeriod:     envConfig.StatsLogPeriod,
-		// Flow collector determiner - called at runtime to pick Cilium/OVN-K/Falco
-		DetermineFlowCollector: func(ctx context.Context, k8sClient stream.K8sClientGetter) (pb.FlowCollector, stream.StreamClientFactory) {
-			return flows.DetermineFlowCollector(ctx, flows.FlowCollectorConfig{
-				Logger:             logger,
-				FlowCache:          flowCache,
-				Stats:              stats,
-				K8sClient:          k8sClient,
-				CiliumNamespaces:   envConfig.CiliumNamespaces,
-				IPFIXCollectorPort: envConfig.IPFIXCollectorPort,
-				OVNKNamespace:      envConfig.OVNKNamespace,
-				FalcoEventChan:     falcoEventChan,
-				TlsAuthProps:       tlsAuthProps,
-			})
+		K8sClient:          k8sClient,
+		CiliumNamespaces:   envConfig.CiliumNamespaces,
+		IPFIXCollectorPort: envConfig.IPFIXCollectorPort,
+		OVNKNamespace:      envConfig.OVNKNamespace,
+		FalcoEventChan:     falcoEventChan,
+		TlsAuthProps:       tlsAuthProps,
+	})
+
+	// Create factory config with all stream factories
+	factoryConfig := stream.FactoryConfig{
+		Factories: []stream.ManagedFactory{
+			{
+				Factory: &config.Factory{
+					Logger:             logger,
+					VerboseDebugging:   envConfig.VerboseDebugging,
+					BufferedGrpcSyncer: bufferedGrpcSyncer,
+				},
+				KeepalivePeriod: envConfig.KeepalivePeriods.Configuration,
+			},
+			{
+				Factory: &logs.Factory{
+					Logger:             logger,
+					BufferedGrpcSyncer: bufferedGrpcSyncer,
+				},
+				KeepalivePeriod: envConfig.KeepalivePeriods.Logs,
+			},
+			{
+				Factory: &resources.Factory{
+					Logger:                logger,
+					Stats:                 stats,
+					K8sClient:             k8sClient,
+					FlowCollectorProvider: flowCollectorProvider,
+				},
+				KeepalivePeriod: envConfig.KeepalivePeriods.KubernetesResources,
+			},
+			{
+				Factory: &flows.NetworkFlowsFactory{
+					Logger:    logger,
+					FlowCache: flowCache,
+					Stats:     stats,
+				},
+				KeepalivePeriod: envConfig.KeepalivePeriods.KubernetesNetworkFlows,
+			},
+			{
+				Factory:         flowCollectorProvider,
+				KeepalivePeriod: envConfig.KeepalivePeriods.KubernetesNetworkFlows,
+			},
 		},
+		Stats:          stats,
+		SuccessPeriods: envConfig.SuccessPeriods,
+		StatsLogPeriod: envConfig.StatsLogPeriod,
 	}
 
 	stream.ConnectStreams(ctx, logger, envConfig, factoryConfig, falcoEventChan)

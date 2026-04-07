@@ -4,7 +4,6 @@ package logs
 
 import (
 	"context"
-	"fmt"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -21,11 +20,11 @@ var _ stream.StreamClientFactory = (*Factory)(nil)
 type Factory struct {
 	Logger             *zap.Logger
 	BufferedGrpcSyncer *logging.BufferedGrpcWriteSyncer
-	Conn               *grpc.ClientConn
 }
 
 // NewStreamClient creates a new logs stream client.
-func (f *Factory) NewStreamClient(ctx context.Context, grpcClient pb.KubernetesInfoServiceClient) (stream.StreamClient, error) {
+func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnInterface) (stream.StreamClient, error) {
+	grpcClient := pb.NewKubernetesInfoServiceClient(grpcConn)
 	grpcStream, err := grpcClient.SendLogs(ctx)
 	if err != nil {
 		f.Logger.Error("Failed to connect to logs stream", zap.Error(err))
@@ -33,34 +32,30 @@ func (f *Factory) NewStreamClient(ctx context.Context, grpcClient pb.KubernetesI
 		return nil, err
 	}
 
+	// Type assert to logging.ClientConnInterface for BufferedGrpcWriteSyncer.
+	// This works because *grpc.ClientConn implements both grpc.ClientConnInterface
+	// and logging.ClientConnInterface.
+	conn, ok := grpcConn.(logging.ClientConnInterface)
+	if !ok {
+		f.Logger.Error("gRPC connection does not implement logging.ClientConnInterface")
+
+		return nil, err
+	}
+
+	// Create done channel for this session - signals BufferedGrpcSyncer when stream closes
+	done := make(chan struct{})
+	f.BufferedGrpcSyncer.SetDone(done)
+
 	return &logsClient{
 		stream:             grpcStream,
-		conn:               f.Conn,
+		conn:               conn,
 		logger:             f.Logger,
 		bufferedGrpcSyncer: f.BufferedGrpcSyncer,
+		done:               done,
 	}, nil
 }
 
 // Name returns the stream name for logging.
 func (f *Factory) Name() string {
 	return "SendLogs"
-}
-
-// SetConn sets the gRPC connection on the factory.
-// This is called after the connection is established in runStreamsOnce.
-func (f *Factory) SetConn(conn any) {
-	if conn == nil {
-		f.Logger.Error("SetConn called with nil connection")
-
-		return
-	}
-
-	c, ok := conn.(*grpc.ClientConn)
-	if !ok {
-		f.Logger.Error("SetConn: unexpected connection type", zap.String("type", fmt.Sprintf("%T", conn)))
-
-		return
-	}
-
-	f.Conn = c
 }

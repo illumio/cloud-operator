@@ -6,8 +6,8 @@ import (
 	"context"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/collector"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
@@ -23,8 +23,8 @@ type Factory struct {
 }
 
 // NewStreamClient creates a new OVN-K flow collector client.
-// Note: grpcClient is not used since OVN-K reads from IPFIX.
-func (f *Factory) NewStreamClient(_ context.Context, _ pb.KubernetesInfoServiceClient) (stream.StreamClient, error) {
+// Note: grpcConn is not used since OVN-K reads from IPFIX.
+func (f *Factory) NewStreamClient(_ context.Context, _ grpc.ClientConnInterface) (stream.StreamClient, error) {
 	return &ovnkClient{
 		logger:             f.Logger,
 		ipfixCollectorPort: f.IPFIXCollectorPort,

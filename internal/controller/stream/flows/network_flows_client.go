@@ -28,8 +28,16 @@ type networkFlowsClient struct {
 	closed bool
 }
 
-// Run reads flows from the flow cache and sends them to CloudSecure.
+// Run starts the flow cache and reads flows from it to send to CloudSecure.
 func (c *networkFlowsClient) Run(ctx context.Context) error {
+	// Start flow cache goroutine - handles eviction and moving flows to OutFlows channel
+	go func() {
+		if err := c.flowCache.Run(ctx, c.logger); err != nil {
+			c.logger.Debug("Flow cache stopped", zap.Error(err))
+		}
+	}()
+
+	// Read flows from cache and send to CloudSecure
 	for {
 		select {
 		case <-ctx.Done():

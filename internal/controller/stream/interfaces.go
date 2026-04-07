@@ -11,9 +11,8 @@ package stream
 import (
 	"context"
 
-	"k8s.io/client-go/kubernetes"
-
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"google.golang.org/grpc"
 )
 
 // StreamClient abstracts all stream operations.
@@ -35,8 +34,9 @@ type StreamClient interface {
 // Configuration is passed via factory fields, set by cmd/main.go.
 // This enables dependency injection and testability.
 type StreamClientFactory interface {
-	// NewStreamClient creates a new StreamClient connected to the given gRPC client.
-	NewStreamClient(ctx context.Context, grpcClient pb.KubernetesInfoServiceClient) (StreamClient, error)
+	// NewStreamClient creates a new StreamClient connected to the given gRPC connection.
+	// Each factory creates its own service client from the connection as needed.
+	NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnInterface) (StreamClient, error)
 
 	// Name returns the name of the stream for logging purposes.
 	Name() string
@@ -58,27 +58,4 @@ type KubernetesResourcesStream interface {
 type KubernetesNetworkFlowsStream interface {
 	Send(req *pb.SendKubernetesNetworkFlowsRequest) error
 	Recv() (*pb.SendKubernetesNetworkFlowsResponse, error)
-}
-
-// K8sClientGetter provides access to Kubernetes client.
-type K8sClientGetter interface {
-	GetClientset() kubernetes.Interface
-}
-
-// K8sClientSetter allows setting the Kubernetes client on a factory.
-// Used by factories that need K8s client but are created before the client exists.
-type K8sClientSetter interface {
-	SetK8sClient(client K8sClientGetter)
-}
-
-// FlowCollectorSetter allows setting the flow collector type on a factory.
-// Used by resources factory to report the correct flow collector in cluster metadata.
-type FlowCollectorSetter interface {
-	SetFlowCollector(collector pb.FlowCollector)
-}
-
-// ConnSetter allows setting the gRPC connection on a factory.
-// Used by logs factory to pass the connection to BufferedGrpcWriteSyncer.
-type ConnSetter interface {
-	SetConn(conn any)
 }
