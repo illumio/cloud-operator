@@ -39,6 +39,7 @@ func NewFlowCollectorProvider(config FlowCollectorConfig) *FlowCollectorProvider
 // and delegates to the appropriate factory.
 func (p *FlowCollectorProvider) NewStreamClient(ctx context.Context, conn grpc.ClientConnInterface) (stream.StreamClient, error) {
 	p.mu.Lock()
+
 	if !p.determined {
 		p.collectorType, p.innerFactory = DetermineFlowCollector(ctx, p.config)
 		p.determined = true
