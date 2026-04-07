@@ -146,7 +146,7 @@ The ConfigMap is mounted as a volume in the cloud operator pod. The operator rea
 
 ## License
 
-Copyright 2024 Illumio, Inc. All Rights Reserved.
+Copyright 2024-2026 Illumio, Inc. All Rights Reserved.
 
 The Illumio Cloud-Operator package is released and distributed as open source software under the Apache License, Version 2.0. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0.
 
