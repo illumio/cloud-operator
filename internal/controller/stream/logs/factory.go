@@ -4,6 +4,7 @@ package logs
 
 import (
 	"context"
+	"errors"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -40,7 +41,7 @@ func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnI
 	if !ok {
 		f.Logger.Error("gRPC connection does not implement logging.ClientConnInterface")
 
-		return nil, err
+		return nil, errors.New("gRPC connection does not implement logging.ClientConnInterface")
 	}
 
 	// Create done channel for this session - signals BufferedGrpcSyncer when stream closes
