@@ -61,4 +61,3 @@ func (c *falcoClient) Run(ctx context.Context) error {
 		}
 	}
 }
-
