@@ -28,7 +28,7 @@ func (f *NetworkFlowsFactory) NewStreamClient(ctx context.Context, grpcConn grpc
 
 	grpcStream, err := grpcClient.SendKubernetesNetworkFlows(ctx)
 	if err != nil {
-		f.Logger.Error("Failed to connect to network flows stream", zap.Error(err))
+		f.Logger.Error("Failed to open network flows stream", zap.Error(err))
 
 		return nil, err
 	}

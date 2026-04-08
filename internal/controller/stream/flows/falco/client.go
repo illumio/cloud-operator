@@ -9,19 +9,14 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/illumio/cloud-operator/internal/controller/collector"
-	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
 
 var reIllumioTraffic = regexp.MustCompile(`\((.*?)\)`)
 
-// Verify falcoClient implements stream.StreamClient.
-var _ stream.StreamClient = (*falcoClient)(nil)
-
-// falcoClient implements stream.StreamClient for Falco flow collection.
+// falcoClient implements FlowCollector for Falco flow collection.
 type falcoClient struct {
 	logger         *zap.Logger
-	flowCache      *stream.FlowCache
-	stats          *stream.Stats
+	flowSink       collector.FlowSink
 	falcoEventChan chan string
 }
 
@@ -55,25 +50,15 @@ func (c *falcoClient) Run(ctx context.Context) error {
 				return err
 			}
 
-			err = c.flowCache.CacheFlow(ctx, convertedFiveTupleFlow)
+			err = c.flowSink.CacheFlow(ctx, convertedFiveTupleFlow)
 			if err != nil {
 				c.logger.Error("Failed to cache flow", zap.Error(err))
 
 				return err
 			}
 
-			c.stats.IncrementFlowsReceived()
+			c.flowSink.IncrementFlowsReceived()
 		}
 	}
 }
 
-// SendKeepalive is a no-op for Falco flow collection (not a gRPC stream).
-func (c *falcoClient) SendKeepalive(_ context.Context) error {
-	return nil
-}
-
-// Close is a no-op for Falco client.
-// Shutdown is handled via context cancellation.
-func (c *falcoClient) Close() error {
-	return nil
-}

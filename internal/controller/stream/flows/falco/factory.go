@@ -6,34 +6,22 @@ import (
 	"context"
 
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 
-	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/collector"
 )
-
-// Verify Factory implements stream.StreamClientFactory.
-var _ stream.StreamClientFactory = (*Factory)(nil)
 
 // Factory creates Falco flow collector clients.
 type Factory struct {
 	Logger         *zap.Logger
-	FlowCache      *stream.FlowCache
-	Stats          *stream.Stats
+	FlowSink       collector.FlowSink
 	FalcoEventChan chan string
 }
 
-// NewStreamClient creates a new Falco flow collector client.
-// Note: grpcConn is not used since Falco reads from its event channel.
-func (f *Factory) NewStreamClient(_ context.Context, _ grpc.ClientConnInterface) (stream.StreamClient, error) {
+// NewFlowCollector creates a new Falco flow collector.
+func (f *Factory) NewFlowCollector(_ context.Context) (*falcoClient, error) {
 	return &falcoClient{
 		logger:         f.Logger,
-		flowCache:      f.FlowCache,
-		stats:          f.Stats,
+		flowSink:       f.FlowSink,
 		falcoEventChan: f.FalcoEventChan,
 	}, nil
-}
-
-// Name returns the stream name for logging.
-func (f *Factory) Name() string {
-	return "FalcoFlowCollector"
 }

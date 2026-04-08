@@ -66,6 +66,20 @@ func NewBufferedGrpcWriteSyncer() *BufferedGrpcWriteSyncer {
 	return bws
 }
 
+// NewBufferedGrpcWriteSyncerForTest creates a BufferedGrpcWriteSyncer for testing with a logger.
+func NewBufferedGrpcWriteSyncerForTest(logger *zap.Logger) *BufferedGrpcWriteSyncer {
+	return &BufferedGrpcWriteSyncer{
+		client:              nil,
+		conn:                nil,
+		buffer:              make([]string, 0, logMaxBufferSize),
+		done:                make(chan struct{}),
+		lostLogEntriesCount: 0,
+		keepAlivePeriod:     keepAlivePeriod,
+		logger:              logger,
+		logLevel:            zap.NewAtomicLevel(),
+	}
+}
+
 // Close flushes buffered log data into grpc stream if possible, and closes the connection.
 func (b *BufferedGrpcWriteSyncer) Close() error {
 	b.mutex.Lock()
@@ -274,20 +288,6 @@ func (b *BufferedGrpcWriteSyncer) SetDone(done chan struct{}) {
 // GetLogLevel returns the current log level (for testing).
 func (b *BufferedGrpcWriteSyncer) GetLogLevel() zapcore.Level {
 	return b.logLevel.Level()
-}
-
-// NewBufferedGrpcWriteSyncerForTest creates a BufferedGrpcWriteSyncer for testing with a logger.
-func NewBufferedGrpcWriteSyncerForTest(logger *zap.Logger) *BufferedGrpcWriteSyncer {
-	return &BufferedGrpcWriteSyncer{
-		client:              nil,
-		conn:                nil,
-		buffer:              make([]string, 0, logMaxBufferSize),
-		done:                make(chan struct{}),
-		lostLogEntriesCount: 0,
-		keepAlivePeriod:     keepAlivePeriod,
-		logger:              logger,
-		logLevel:            zap.NewAtomicLevel(),
-	}
 }
 
 // zapCoreWrapper wraps a zapcore.Core to duplicate log entries into a BufferedGrpcWriteSyncer.

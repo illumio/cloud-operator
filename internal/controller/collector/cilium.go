@@ -318,3 +318,15 @@ func ConvertCiliumFlow(flowResp *observer.GetFlowsResponse) *pb.CiliumFlow {
 
 	return ciliumFlow
 }
+
+// IsCiliumAvailable checks if Cilium Hubble Relay is available in the cluster.
+func IsCiliumAvailable(ctx context.Context, logger *zap.Logger, clientset kubernetes.Interface, ciliumNamespaces []string, tlsAuthProps tls.AuthProperties) bool {
+	ciliumCollector, err := NewCiliumFlowCollector(ctx, logger, clientset, ciliumNamespaces, tlsAuthProps)
+	if err != nil {
+		logger.Debug("Cilium not available", zap.Error(err))
+
+		return false
+	}
+
+	return ciliumCollector != nil
+}

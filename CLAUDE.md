@@ -41,12 +41,11 @@ Streams use the **StreamClient/StreamClientFactory** pattern for dependency inje
 - `StreamClient`: `Run(ctx)`, `SendKeepalive(ctx)`, `Close()`
 - `StreamClientFactory`: `NewStreamClient(ctx, grpcClient)`, `Name()`
 
-**Setter Interfaces** (for deferred dependency injection):
-- `K8sClientSetter`: Set K8s client after factory creation
-- `FlowCollectorSetter`: Set flow collector type after determination
-- `ConnSetter`: Set gRPC connection for logs stream
+**Flow Collector Interfaces** (`flows/interfaces.go`):
+- `FlowCollector`: `Run(ctx)` - simple interface for flow collectors
+- `FlowCollectorFactory`: `func(ctx) (FlowCollector, error)`
 
-**Flow**: Factories created in `main.go` → passed to `ConnectStreams()` → `runStreamsOnce()` injects runtime deps → `ManageStream()` creates clients
+**Flow**: Detection at startup in `main.go` via `DetectFlowCollector()` → factories created → passed to `ConnectStreams()` → `ManageStream()` creates clients
 
 ## Code Style
 
@@ -63,7 +62,7 @@ Streams use the **StreamClient/StreamClientFactory** pattern for dependency inje
 | Stream interfaces | `stream/interfaces.go` |
 | Auth flow | `auth/authenticator.go:SetUpOAuthConnection()` |
 | Flow caching | `stream/cache.go:FlowCache` |
-| Flow collector selection | `stream/flows/flows.go:DetermineFlowCollector()` |
+| Flow collector detection | `stream/flows/detect.go:DetectFlowCollector()` |
 | Resource watching | `stream/resources/watcher.go` |
 | gRPC internal logging | `logging/grpc_internal_logger.go` |
 

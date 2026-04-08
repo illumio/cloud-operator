@@ -17,9 +17,15 @@ import (
 // Verify networkFlowsClient implements stream.StreamClient.
 var _ stream.StreamClient = (*networkFlowsClient)(nil)
 
+// KubernetesNetworkFlowsStream abstracts the SendKubernetesNetworkFlows gRPC stream.
+type KubernetesNetworkFlowsStream interface {
+	Send(req *pb.SendKubernetesNetworkFlowsRequest) error
+	Recv() (*pb.SendKubernetesNetworkFlowsResponse, error)
+}
+
 // networkFlowsClient implements stream.StreamClient for sending network flows to CloudSecure.
 type networkFlowsClient struct {
-	grpcStream stream.KubernetesNetworkFlowsStream
+	grpcStream KubernetesNetworkFlowsStream
 	logger     *zap.Logger
 	flowCache  *stream.FlowCache
 	stats      *stream.Stats

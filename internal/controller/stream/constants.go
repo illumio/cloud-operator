@@ -4,16 +4,6 @@ package stream
 
 import "time"
 
-// HTTP Server Configuration.
-const (
-	// HTTPReadHeaderTimeout is the timeout for reading request headers.
-	HTTPReadHeaderTimeout = 5 * time.Second
-	// HTTPReadTimeout is the timeout for reading the entire request.
-	HTTPReadTimeout = 5 * time.Second
-	// ServerRestartDelay is the delay before restarting the Falco server after failure.
-	ServerRestartDelay = 5 * time.Second
-)
-
 // Connection Retry Configuration.
 const (
 	// ConnectionRetryInterval is the initial interval between connection attempts.
@@ -63,10 +53,4 @@ const (
 	// ResourceProcessingTimeout is the maximum time allowed for resource processing
 	// before the server is considered unhealthy.
 	ResourceProcessingTimeout = 5 * time.Minute
-)
-
-// Falco Configuration.
-const (
-	// FalcoPort is the port for the Falco HTTP server.
-	FalcoPort = ":5000"
 )

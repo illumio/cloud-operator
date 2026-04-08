@@ -14,10 +14,7 @@ import (
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
-// Verify ciliumClient implements stream.StreamClient.
-var _ stream.StreamClient = (*ciliumClient)(nil)
-
-// ciliumClient implements stream.StreamClient for Cilium/Hubble flow collection.
+// ciliumClient implements FlowCollector for Cilium/Hubble flow collection.
 type ciliumClient struct {
 	logger           *zap.Logger
 	flowSink         collector.FlowSink
@@ -83,17 +80,6 @@ func (c *ciliumClient) disableSubsystemCausingError(err error) {
 	default:
 		c.logger.Warn("Network flow collection from Hubble Relay interrupted due to error; will retry connecting", zap.Error(err))
 	}
-}
-
-// SendKeepalive is a no-op for Cilium flow collection (not a gRPC stream).
-func (c *ciliumClient) SendKeepalive(_ context.Context) error {
-	return nil
-}
-
-// Close is a no-op for Cilium client.
-// Shutdown is handled via context cancellation.
-func (c *ciliumClient) Close() error {
-	return nil
 }
 
 // ShouldStopRetries returns true if retries should stop due to unrecoverable errors.

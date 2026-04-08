@@ -8,37 +8,24 @@ import (
 	"time"
 )
 
-// KeepalivePeriods specifies the period between keepalives for each stream type.
-type KeepalivePeriods struct {
-	Configuration          time.Duration
-	KubernetesNetworkFlows time.Duration
-	KubernetesResources    time.Duration
-	Logs                   time.Duration
-}
-
 // SuccessPeriods defines how long a stream must be active to be considered successful.
 type SuccessPeriods struct {
 	Auth    time.Duration
 	Connect time.Duration
 }
 
-// EnvironmentConfig holds all configuration from environment variables.
+// EnvironmentConfig holds configuration for stream manager authentication.
 type EnvironmentConfig struct {
-	CiliumNamespaces       []string
 	ClusterCreds           string
 	HttpsProxy             string
-	IPFIXCollectorPort     string
-	KeepalivePeriods       KeepalivePeriods
 	OnboardingClientID     string
 	OnboardingClientSecret string
 	OnboardingEndpoint     string
-	OVNKNamespace          string
 	PodNamespace           string
 	StatsLogPeriod         time.Duration
 	SuccessPeriods         SuccessPeriods
 	TlsSkipVerify          bool
 	TokenEndpoint          string
-	VerboseDebugging       bool
 }
 
 type deadlockDetector struct {

@@ -24,9 +24,15 @@ import (
 // Verify resourcesClient implements stream.StreamClient.
 var _ stream.StreamClient = (*resourcesClient)(nil)
 
+// KubernetesResourcesStream abstracts the SendKubernetesResources gRPC stream.
+type KubernetesResourcesStream interface {
+	Send(req *pb.SendKubernetesResourcesRequest) error
+	Recv() (*pb.SendKubernetesResourcesResponse, error)
+}
+
 // resourcesClient implements stream.StreamClient for the resources stream.
 type resourcesClient struct {
-	grpcStream    stream.KubernetesResourcesStream
+	grpcStream    KubernetesResourcesStream
 	logger        *zap.Logger
 	k8sClient     k8sclient.Client
 	stats         *stream.Stats

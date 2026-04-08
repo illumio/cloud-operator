@@ -18,9 +18,15 @@ import (
 // Verify configClient implements stream.StreamClient.
 var _ stream.StreamClient = (*configClient)(nil)
 
+// ConfigurationStream abstracts the GetConfigurationUpdates gRPC stream.
+type ConfigurationStream interface {
+	Send(req *pb.GetConfigurationUpdatesRequest) error
+	Recv() (*pb.GetConfigurationUpdatesResponse, error)
+}
+
 // configClient implements stream.StreamClient for the configuration stream.
 type configClient struct {
-	stream             stream.ConfigurationStream
+	stream             ConfigurationStream
 	logger             *zap.Logger
 	verboseDebugging   bool
 	bufferedGrpcSyncer *logging.BufferedGrpcWriteSyncer

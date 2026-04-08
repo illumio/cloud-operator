@@ -6,16 +6,14 @@ import (
 	"context"
 	"errors"
 	"math"
-	"net"
-	"net/http"
 	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
 	"github.com/illumio/cloud-operator/internal/controller/auth"
-	"github.com/illumio/cloud-operator/internal/controller/collector"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/falco"
 	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
 )
 
@@ -149,9 +147,7 @@ func ConnectStreams(
 	falcoEventChan chan string,
 ) {
 	// Start Falco HTTP server (needed even if not using Falco collector)
-	http.HandleFunc("/", collector.NewFalcoEventHandler(falcoEventChan))
-
-	go startFalcoServer(ctx, logger)
+	go falco.StartServer(ctx, logger, falcoEventChan)
 
 	resetTimer := time.NewTimer(timeutil.JitterTime(ConnectionRetryInterval, ConnectionRetryJitter))
 	attempt := 0
@@ -249,46 +245,6 @@ func runStreamsOnce(
 	}()
 
 	return <-merged
-}
-
-// startFalcoServer starts the Falco HTTP server for receiving Falco events.
-func startFalcoServer(ctx context.Context, logger *zap.Logger) {
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info("Falco server shutting down")
-
-			return
-		default:
-		}
-
-		var listenerConfig net.ListenConfig
-
-		listener, err := listenerConfig.Listen(ctx, "tcp", FalcoPort)
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				logger.Info("Falco server shutting down")
-
-				return
-			}
-
-			logger.Fatal("Failed to listen on Falco port", zap.String("address", FalcoPort), zap.Error(err))
-		}
-
-		falcoServer := &http.Server{
-			Addr:              FalcoPort,
-			ReadHeaderTimeout: HTTPReadHeaderTimeout,
-			ReadTimeout:       HTTPReadTimeout,
-		}
-
-		logger.Info("Falco server listening", zap.String("address", FalcoPort))
-
-		err = falcoServer.Serve(listener)
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("Falco server failed, restarting", zap.Error(err), zap.Duration("delay", ServerRestartDelay))
-			time.Sleep(ServerRestartDelay)
-		}
-	}
 }
 
 // NewAuthenticatedConnection gets a valid token and creates a connection to CloudSecure.

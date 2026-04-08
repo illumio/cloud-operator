@@ -29,7 +29,7 @@ func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnI
 
 	grpcStream, err := grpcClient.GetConfigurationUpdates(ctx)
 	if err != nil {
-		f.Logger.Error("Failed to connect to configuration stream", zap.Error(err))
+		f.Logger.Error("Failed to open configuration stream", zap.Error(err))
 
 		return nil, err
 	}
