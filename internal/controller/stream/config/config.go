@@ -69,7 +69,9 @@ func Stream(ctx context.Context, sm *stream.Manager, logger *zap.Logger, keepali
 
 			case *pb.GetConfigurationUpdatesResponse_NetworkPolicyMutation:
 				sm.Stats.IncrementPolicyMutations()
+
 				mutation := update.NetworkPolicyMutation
+
 				switch m := mutation.GetMutation().(type) {
 				case *pb.NetworkPolicyMutation_CreatePolicy:
 					sm.PolicyState.SetDesired(m.CreatePolicy)
