@@ -33,25 +33,15 @@ var resourceList = []string{
 	"statefulsets",
 }
 
-// apiGroupVersions defines API versions for resource groups that don't use v1.
-// All other groups default to v1.
-var apiGroupVersions = map[string]string{
-	"cilium.io":          "v2",
-	"networking.k8s.aws": "v1alpha1", // future: EKS
+// ResourceInfo holds the API group and preferred version for a resource.
+type ResourceInfo struct {
+	Group   string
+	Version string
 }
 
-// getVersionForGroup returns the API version for a given API group.
-// Returns "v1" for standard Kubernetes resources.
-func getVersionForGroup(group string) string {
-	if version, ok := apiGroupVersions[group]; ok {
-		return version
-	}
-	return "v1"
-}
-
-// buildResourceApiGroupMap creates a mapping between Kubernetes resources and their API groups.
-func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface, logger *zap.Logger) (map[string]string, error) {
-	resourceAPIGroupMap := make(map[string]string)
+// buildResourceApiGroupMap creates a mapping between Kubernetes resources and their API groups with preferred versions.
+func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface, logger *zap.Logger) (map[string]ResourceInfo, error) {
+	resourceAPIGroupMap := make(map[string]ResourceInfo)
 
 	resourceSet := make(map[string]struct{})
 	for _, resource := range resources {
@@ -68,6 +58,8 @@ func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface
 	}
 
 	for _, group := range apiGroups.Groups {
+		preferredVersion := group.PreferredVersion.Version
+
 		for _, version := range group.Versions {
 			resourceList, err := discoveryClient.ServerResourcesForGroupVersion(version.GroupVersion)
 			if err != nil {
@@ -89,7 +81,10 @@ func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface
 						continue
 					}
 
-					resourceAPIGroupMap[resource.Name] = group.Name
+					resourceAPIGroupMap[resource.Name] = ResourceInfo{
+						Group:   group.Name,
+						Version: preferredVersion,
+					}
 				}
 			}
 		}
@@ -101,5 +96,6 @@ func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface
 type watcherInfo struct {
 	resource        string
 	apiGroup        string
+	apiVersion      string
 	resourceVersion string
 }

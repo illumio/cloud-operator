@@ -73,7 +73,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 	resourceManagers := make(map[string]*Watcher)
 
 	for _, resource := range slices.Sorted(maps.Keys(resourceAPIGroupMap)) {
-		apiGroup := resourceAPIGroupMap[resource]
+		resourceInfo := resourceAPIGroupMap[resource]
 
 		select {
 		case <-ctx.Done():
@@ -83,7 +83,8 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 		resourceManager := NewWatcher(WatcherConfig{
 			ResourceName:    resource,
-			ApiGroup:        apiGroup,
+			ApiGroup:        resourceInfo.Group,
+			ApiVersion:      resourceInfo.Version,
 			Clientset:       clientset,
 			BaseLogger:      c.logger,
 			DynamicClient:   dynamicClient,
@@ -92,10 +93,16 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		})
 		resourceManagers[resource] = resourceManager
 
-		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger, apiGroup)
+		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger)
 		if err != nil {
-			if apierrors.IsForbidden(err) {
-				c.logger.Warn("Access forbidden for resource", zap.String("kind", resource), zap.String("api_group", apiGroup), zap.Error(err))
+			// Skip resources that are unavailable due to RBAC or missing CRDs.
+			// NotFound can occur when a CRD is deleted after discovery but before listing.
+			if apierrors.IsForbidden(err) || apierrors.IsNotFound(err) {
+				c.logger.Warn("Skipping unavailable resource",
+					zap.String("kind", resource),
+					zap.String("api_group", resourceInfo.Group),
+					zap.String("reason", string(apierrors.ReasonForError(err))),
+					zap.Error(err))
 
 				continue
 			}
@@ -105,7 +112,8 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 		allWatchInfos = append(allWatchInfos, watcherInfo{
 			resource:        resource,
-			apiGroup:        apiGroup,
+			apiGroup:        resourceInfo.Group,
+			apiVersion:      resourceInfo.Version,
 			resourceVersion: resourceVersion,
 		})
 	}

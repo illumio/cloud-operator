@@ -37,6 +37,7 @@ const MutationCheckpointInterval = 60 * time.Second
 type WatcherConfig struct {
 	ResourceName    string
 	ApiGroup        string
+	ApiVersion      string
 	Clientset       kubernetes.Interface
 	BaseLogger      *zap.Logger
 	DynamicClient   dynamic.Interface
@@ -48,6 +49,7 @@ type WatcherConfig struct {
 type Watcher struct {
 	resourceName    string
 	apiGroup        string
+	apiVersion      string
 	clientset       kubernetes.Interface
 	logger          *zap.Logger
 	dynamicClient   dynamic.Interface
@@ -60,16 +62,27 @@ func NewWatcher(config WatcherConfig) *Watcher {
 	logger := config.BaseLogger.With(
 		zap.String("resource", config.ResourceName),
 		zap.String("api_group", config.ApiGroup),
+		zap.String("api_version", config.ApiVersion),
 	)
 
 	return &Watcher{
 		resourceName:    config.ResourceName,
 		apiGroup:        config.ApiGroup,
+		apiVersion:      config.ApiVersion,
 		clientset:       config.Clientset,
 		logger:          logger,
 		dynamicClient:   config.DynamicClient,
 		resourcesClient: config.ResourcesClient,
 		limiter:         config.Limiter,
+	}
+}
+
+// gvr returns the GroupVersionResource for this watcher.
+func (r *Watcher) gvr() schema.GroupVersionResource {
+	return schema.GroupVersionResource{
+		Group:    r.apiGroup,
+		Version:  r.apiVersion,
+		Resource: r.resourceName,
 	}
 }
 
@@ -93,11 +106,12 @@ func (r *Watcher) WatchK8sResources(ctx context.Context, cancel context.CancelFu
 }
 
 // DynamicListResources lists a specified resource dynamically and sends down the current gRPC stream.
-func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger, apiGroup string) (string, error) {
-	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: getVersionForGroup(apiGroup), Resource: r.resourceName}
+func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) (string, error) {
+	objGVR := r.gvr()
 
-	// For Cilium policies, we need the full unstructured object to extract the spec
-	if controller.IsCiliumPolicy(removeListSuffix(r.resourceName)) {
+	// For Cilium policies, we need the full unstructured object to extract the spec.
+	// Note: r.resourceName is lowercase plural (e.g., "ciliumnetworkpolicies").
+	if controller.IsCiliumPolicy(r.resourceName) {
 		return r.listCiliumResources(ctx, logger, objGVR)
 	}
 
@@ -137,7 +151,15 @@ func (r *Watcher) listCiliumResources(ctx context.Context, logger *zap.Logger, o
 
 	for i := range unstructuredResources.Items {
 		item := &unstructuredResources.Items[i]
-		metadataObj := controller.ConvertUnstructuredToCiliumPolicy(item)
+		metadataObj, err := controller.ConvertUnstructuredToCiliumPolicy(item)
+		if err != nil {
+			r.logger.Error("Cannot convert Cilium policy",
+				zap.String("name", item.GetName()),
+				zap.String("namespace", item.GetNamespace()),
+				zap.Error(err))
+
+			return "", fmt.Errorf("failed to convert Cilium policy %s/%s: %w", item.GetNamespace(), item.GetName(), err)
+		}
 
 		r.logger.Info("Sending Cilium policy",
 			zap.String("name", item.GetName()),
@@ -256,10 +278,17 @@ func (r *Watcher) handleWatchError(err error, lastResourceVersion string, logger
 func (r *Watcher) FetchResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) (*unstructured.UnstructuredList, error) {
 	unstructuredResources, err := r.dynamicClient.Resource(resource).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		if apierrors.IsForbidden(err) {
-			r.logger.Warn("Access forbidden for resource", zap.Stringer("kind", resource), zap.Error(err))
+		// Handle expected errors gracefully - these indicate the resource is unavailable
+		// but shouldn't cause the entire stream to fail.
+		// NotFound: CRD was deleted after initial discovery (e.g., Cilium/Gateway API uninstalled)
+		// Forbidden: RBAC doesn't permit access to this resource
+		if apierrors.IsForbidden(err) || apierrors.IsNotFound(err) {
+			r.logger.Warn("Resource unavailable",
+				zap.Stringer("kind", resource),
+				zap.String("reason", string(apierrors.ReasonForError(err))),
+				zap.Error(err))
 
-			return nil, fmt.Errorf("access forbidden for resource %s: %w", resource.Resource, err)
+			return nil, fmt.Errorf("resource %s unavailable: %w", resource.Resource, err)
 		}
 
 		r.logger.Error("Cannot list resource", zap.Stringer("kind", resource), zap.Error(err))
@@ -315,7 +344,7 @@ func (r *Watcher) newWatcher(ctx context.Context, resourceVersion string, logger
 		AllowWatchBookmarks: true,
 	}
 
-	objGVR := schema.GroupVersionResource{Group: r.apiGroup, Version: getVersionForGroup(r.apiGroup), Resource: r.resourceName}
+	objGVR := r.gvr()
 
 	w, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
@@ -397,18 +426,23 @@ func getResourceVersionFromBookmark(event watch.Event) (string, error) {
 }
 
 func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation) (string, error) {
+	// Note: resource is the Kind (PascalCase, e.g., "CiliumNetworkPolicy").
 	resource := event.Object.GetObjectKind().GroupVersionKind().Kind
 
 	var metadataObj *pb.KubernetesObjectData
 
-	// Handle Cilium policies specially to extract full spec
+	// Handle Cilium policies specially to extract full spec.
 	if controller.IsCiliumPolicy(resource) {
 		unstructuredObj, ok := event.Object.(*unstructured.Unstructured)
 		if !ok {
 			return "", fmt.Errorf("failed to convert event object to unstructured for Cilium policy")
 		}
 
-		metadataObj = controller.ConvertUnstructuredToCiliumPolicy(unstructuredObj)
+		var err error
+		metadataObj, err = controller.ConvertUnstructuredToCiliumPolicy(unstructuredObj)
+		if err != nil {
+			return "", fmt.Errorf("failed to convert Cilium policy: %w", err)
+		}
 	} else {
 		convertedData, err := controller.GetObjectMetadataFromRuntimeObject(event.Object)
 		if err != nil {
