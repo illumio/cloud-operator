@@ -46,9 +46,9 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 		require.NoError(t, err)
 
 		// pods should be in core group (empty string)
-		apiGroup, ok := result["pods"]
+		resourceInfo, ok := result["pods"]
 		assert.True(t, ok, "expected 'pods' to be in result")
-		assert.Empty(t, apiGroup, "expected pods apiGroup to be empty")
+		assert.Empty(t, resourceInfo.Group, "expected pods apiGroup to be empty")
 	})
 
 	t.Run("handles empty resources", func(t *testing.T) {
@@ -108,8 +108,8 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 		result, err := buildResourceApiGroupMap(resources, clientset, logger)
 		require.NoError(t, err)
 
-		assert.Equal(t, "apps", result["deployments"])
-		assert.Equal(t, "apps", result["statefulsets"])
+		assert.Equal(t, "apps", result["deployments"].Group)
+		assert.Equal(t, "apps", result["statefulsets"].Group)
 	})
 }
 
@@ -127,52 +127,4 @@ func TestSetProcessingResources_Integration(t *testing.T) {
 		stream.SetProcessingResources(false)
 		assert.True(t, stream.ServerIsHealthy())
 	})
-}
-
-func TestGetVersionForGroup(t *testing.T) {
-	tests := []struct {
-		name     string
-		group    string
-		expected string
-	}{
-		{
-			name:     "core API group returns v1",
-			group:    "",
-			expected: "v1",
-		},
-		{
-			name:     "apps group returns v1",
-			group:    "apps",
-			expected: "v1",
-		},
-		{
-			name:     "networking.k8s.io group returns v1",
-			group:    "networking.k8s.io",
-			expected: "v1",
-		},
-		{
-			name:     "cilium.io group returns v2",
-			group:    "cilium.io",
-			expected: "v2",
-		},
-		{
-			name:     "networking.k8s.aws group returns v1alpha1",
-			group:    "networking.k8s.aws",
-			expected: "v1alpha1",
-		},
-		{
-			name:     "unknown group returns v1",
-			group:    "unknown.io",
-			expected: "v1",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := getVersionForGroup(tt.group)
-			if got != tt.expected {
-				t.Errorf("getVersionForGroup(%q) = %q, want %q", tt.group, got, tt.expected)
-			}
-		})
-	}
 }

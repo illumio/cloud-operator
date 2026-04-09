@@ -143,6 +143,9 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 }
 
 // listCiliumResources handles listing Cilium network policies with full spec conversion.
+// Note: This function intentionally parallels DynamicListResources. The duplication exists because
+// Cilium policies require ConvertUnstructuredToCiliumPolicy to extract the full policy spec,
+// while regular resources use ConvertMetaObjectToMetadata for just metadata extraction.
 func (r *Watcher) listCiliumResources(ctx context.Context, logger *zap.Logger, objGVR schema.GroupVersionResource) (string, error) {
 	unstructuredResources, err := r.FetchResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
@@ -151,6 +154,7 @@ func (r *Watcher) listCiliumResources(ctx context.Context, logger *zap.Logger, o
 
 	for i := range unstructuredResources.Items {
 		item := &unstructuredResources.Items[i]
+
 		metadataObj, err := controller.ConvertUnstructuredToCiliumPolicy(item)
 		if err != nil {
 			r.logger.Error("Cannot convert Cilium policy",
@@ -426,6 +430,10 @@ func getResourceVersionFromBookmark(event watch.Event) (string, error) {
 }
 
 func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation) (string, error) {
+	if event.Object == nil {
+		return "", errors.New("event object is nil")
+	}
+
 	// Note: resource is the Kind (PascalCase, e.g., "CiliumNetworkPolicy").
 	resource := event.Object.GetObjectKind().GroupVersionKind().Kind
 
@@ -435,10 +443,11 @@ func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutati
 	if controller.IsCiliumPolicy(resource) {
 		unstructuredObj, ok := event.Object.(*unstructured.Unstructured)
 		if !ok {
-			return "", fmt.Errorf("failed to convert event object to unstructured for Cilium policy")
+			return "", errors.New("failed to convert event object to unstructured for Cilium policy")
 		}
 
 		var err error
+
 		metadataObj, err = controller.ConvertUnstructuredToCiliumPolicy(unstructuredObj)
 		if err != nil {
 			return "", fmt.Errorf("failed to convert Cilium policy: %w", err)

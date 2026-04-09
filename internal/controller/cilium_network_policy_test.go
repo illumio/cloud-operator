@@ -9,8 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 func TestIsCiliumPolicy(t *testing.T) {
@@ -48,7 +46,7 @@ func TestIsCiliumPolicy(t *testing.T) {
 func TestConvertUnstructuredToCiliumPolicy_NilInput(t *testing.T) {
 	result, err := ConvertUnstructuredToCiliumPolicy(nil)
 	assert.Nil(t, result)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot convert nil object")
 }
 
@@ -60,7 +58,7 @@ func TestConvertUnstructuredToCiliumPolicy_UnsupportedKind(t *testing.T) {
 
 	result, err := ConvertUnstructuredToCiliumPolicy(obj)
 	assert.Nil(t, result)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported Cilium policy kind")
 }
 
@@ -98,31 +96,32 @@ func TestConvertUnstructuredToCiliumPolicy_CiliumNetworkPolicy(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	assert.Equal(t, "CiliumNetworkPolicy", result.Kind)
-	assert.Equal(t, "test-policy", result.Name)
-	assert.Equal(t, "default", result.Namespace)
+	assert.Equal(t, "CiliumNetworkPolicy", result.GetKind())
+	assert.Equal(t, "test-policy", result.GetName())
+	assert.Equal(t, "default", result.GetNamespace())
 
 	// Verify kind_specific is set correctly
 	cnp := result.GetCiliumNetworkPolicy()
 	require.NotNil(t, cnp)
-	require.Len(t, cnp.Specs, 1)
+	require.Len(t, cnp.GetSpecs(), 1)
 
 	// Verify endpoint selector
-	spec := cnp.Specs[0]
-	require.NotNil(t, spec.EndpointSelector)
-	assert.Equal(t, "web", spec.EndpointSelector.MatchLabels["app"])
+	spec := cnp.GetSpecs()[0]
+	require.NotNil(t, spec.GetEndpointSelector())
+	assert.Equal(t, "web", spec.GetEndpointSelector().GetMatchLabels()["app"])
 
 	// Verify ingress rules
-	require.Len(t, spec.IngressRules, 1)
-	ingressRule := spec.IngressRules[0]
-	require.Len(t, ingressRule.FromEndpoints, 1)
-	assert.Equal(t, "backend", ingressRule.FromEndpoints[0].MatchLabels["app"])
+	require.Len(t, spec.GetIngressRules(), 1)
+	ingressRule := spec.GetIngressRules()[0]
+	require.NotNil(t, ingressRule.GetFromEndpoints())
+	require.Len(t, ingressRule.GetFromEndpoints().GetItems(), 1)
+	assert.Equal(t, "backend", ingressRule.GetFromEndpoints().GetItems()[0].GetMatchLabels()["app"])
 
 	// Verify ports
-	require.Len(t, ingressRule.ToPorts, 1)
-	require.Len(t, ingressRule.ToPorts[0].Ports, 1)
-	assert.Equal(t, "80", ingressRule.ToPorts[0].Ports[0].Port)
-	assert.Equal(t, pb.CiliumProtocol_CILIUM_PROTOCOL_TCP, ingressRule.ToPorts[0].Ports[0].Protocol)
+	require.Len(t, ingressRule.GetToPorts(), 1)
+	require.Len(t, ingressRule.GetToPorts()[0].GetPorts(), 1)
+	assert.Equal(t, "80", ingressRule.GetToPorts()[0].GetPorts()[0].GetPort())
+	assert.Equal(t, "TCP", ingressRule.GetToPorts()[0].GetPorts()[0].GetProtocol())
 }
 
 func TestConvertUnstructuredToCiliumPolicy_CiliumClusterwideNetworkPolicy(t *testing.T) {
@@ -143,19 +142,19 @@ func TestConvertUnstructuredToCiliumPolicy_CiliumClusterwideNetworkPolicy(t *tes
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	assert.Equal(t, "CiliumClusterwideNetworkPolicy", result.Kind)
-	assert.Equal(t, "test-ccnp", result.Name)
-	assert.Empty(t, result.Namespace) // Cluster-scoped
+	assert.Equal(t, "CiliumClusterwideNetworkPolicy", result.GetKind())
+	assert.Equal(t, "test-ccnp", result.GetName())
+	assert.Empty(t, result.GetNamespace()) // Cluster-scoped
 
 	// Verify kind_specific is set correctly
 	ccnp := result.GetCiliumClusterwideNetworkPolicy()
 	require.NotNil(t, ccnp)
-	require.Len(t, ccnp.Specs, 1)
+	require.Len(t, ccnp.GetSpecs(), 1)
 
 	// Verify node selector
-	spec := ccnp.Specs[0]
-	require.NotNil(t, spec.NodeSelector)
-	assert.Equal(t, "worker", spec.NodeSelector.MatchLabels["node-type"])
+	spec := ccnp.GetSpecs()[0]
+	require.NotNil(t, spec.GetNodeSelector())
+	assert.Equal(t, "worker", spec.GetNodeSelector().GetMatchLabels()["node-type"])
 }
 
 func TestCollectCiliumSpecs_SpecOnly(t *testing.T) {
@@ -170,9 +169,7 @@ func TestCollectCiliumSpecs_SpecOnly(t *testing.T) {
 	specs, err := collectCiliumSpecs(obj, "cilium.io/v2")
 	require.NoError(t, err)
 	require.Len(t, specs, 1)
-	assert.Equal(t, "test", specs[0].EndpointSelector.MatchLabels["app"])
-	require.NotNil(t, specs[0].ApiVersion)
-	assert.Equal(t, "cilium.io/v2", *specs[0].ApiVersion)
+	assert.Equal(t, "test", specs[0].GetEndpointSelector().GetMatchLabels()["app"])
 }
 
 func TestCollectCiliumSpecs_SpecsOnly(t *testing.T) {
@@ -194,8 +191,8 @@ func TestCollectCiliumSpecs_SpecsOnly(t *testing.T) {
 	specs, err := collectCiliumSpecs(obj, "cilium.io/v2")
 	require.NoError(t, err)
 	require.Len(t, specs, 2)
-	assert.Equal(t, "spec1", specs[0].EndpointSelector.MatchLabels["app"])
-	assert.Equal(t, "spec2", specs[1].EndpointSelector.MatchLabels["app"])
+	assert.Equal(t, "spec1", specs[0].GetEndpointSelector().GetMatchLabels()["app"])
+	assert.Equal(t, "spec2", specs[1].GetEndpointSelector().GetMatchLabels()["app"])
 }
 
 func TestCollectCiliumSpecs_BothSpecAndSpecs(t *testing.T) {
@@ -217,8 +214,8 @@ func TestCollectCiliumSpecs_BothSpecAndSpecs(t *testing.T) {
 	specs, err := collectCiliumSpecs(obj, "cilium.io/v2")
 	require.NoError(t, err)
 	require.Len(t, specs, 2)
-	assert.Equal(t, "from-spec", specs[0].EndpointSelector.MatchLabels["app"])
-	assert.Equal(t, "from-specs", specs[1].EndpointSelector.MatchLabels["app"])
+	assert.Equal(t, "from-spec", specs[0].GetEndpointSelector().GetMatchLabels()["app"])
+	assert.Equal(t, "from-specs", specs[1].GetEndpointSelector().GetMatchLabels()["app"])
 }
 
 func TestCollectCiliumSpecs_Empty(t *testing.T) {
@@ -264,8 +261,8 @@ func TestConvertCiliumPorts_NumericPort(t *testing.T) {
 
 	result := convertCiliumPorts(ports)
 	require.Len(t, result, 1)
-	assert.Equal(t, "80", result[0].Port)
-	assert.Equal(t, pb.CiliumProtocol_CILIUM_PROTOCOL_TCP, result[0].Protocol)
+	assert.Equal(t, "80", result[0].GetPort())
+	assert.Equal(t, "TCP", result[0].GetProtocol())
 }
 
 func TestConvertCiliumPorts_StringPort(t *testing.T) {
@@ -278,7 +275,7 @@ func TestConvertCiliumPorts_StringPort(t *testing.T) {
 
 	result := convertCiliumPorts(ports)
 	require.Len(t, result, 1)
-	assert.Equal(t, "http", result[0].Port)
+	assert.Equal(t, "http", result[0].GetPort())
 }
 
 func TestConvertCiliumPorts_PortRange(t *testing.T) {
@@ -292,42 +289,19 @@ func TestConvertCiliumPorts_PortRange(t *testing.T) {
 
 	result := convertCiliumPorts(ports)
 	require.Len(t, result, 1)
-	assert.Equal(t, "8080", result[0].Port)
+	assert.Equal(t, "8080", result[0].GetPort())
 	require.NotNil(t, result[0].EndPort)
-	assert.Equal(t, int32(8090), *result[0].EndPort)
-}
-
-func TestParseCiliumProtocol(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected pb.CiliumProtocol
-	}{
-		{"TCP", pb.CiliumProtocol_CILIUM_PROTOCOL_TCP},
-		{"UDP", pb.CiliumProtocol_CILIUM_PROTOCOL_UDP},
-		{"SCTP", pb.CiliumProtocol_CILIUM_PROTOCOL_SCTP},
-		{"ICMP", pb.CiliumProtocol_CILIUM_PROTOCOL_ICMP},
-		{"ICMPV6", pb.CiliumProtocol_CILIUM_PROTOCOL_ICMPV6},
-		{"ICMPv6", pb.CiliumProtocol_CILIUM_PROTOCOL_ICMPV6}, // alternate casing
-		{"ANY", pb.CiliumProtocol_CILIUM_PROTOCOL_ANY},
-		{"", pb.CiliumProtocol_CILIUM_PROTOCOL_UNSPECIFIED},
-		{"unknown", pb.CiliumProtocol_CILIUM_PROTOCOL_UNSPECIFIED},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			result := parseCiliumProtocol(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
+	assert.Equal(t, int32(8090), result[0].GetEndPort())
 }
 
 func TestConvertCiliumGroups_AWSSecurityGroups(t *testing.T) {
 	groups := []any{
 		map[string]any{
 			"aws": map[string]any{
-				"region":            "us-west-2",
-				"securityGroupsIds": []any{"sg-123", "sg-456"},
-				"vpcId":             "vpc-abc",
+				"region":              "us-west-2",
+				"securityGroupsIds":   []any{"sg-123", "sg-456"},
+				"securityGroupsNames": []any{"sg-name-1"},
+				"labels":              map[string]any{"env": "prod"},
 			},
 		},
 	}
@@ -340,14 +314,17 @@ func TestConvertCiliumGroups_AWSSecurityGroups(t *testing.T) {
 	require.NotNil(t, aws, "expected AWS cloud provider")
 
 	require.NotNil(t, aws.Region)
-	assert.Equal(t, "us-west-2", *aws.Region)
+	assert.Equal(t, "us-west-2", aws.GetRegion())
 
-	require.Len(t, aws.SecurityGroupIds, 2)
-	assert.Equal(t, "sg-123", aws.SecurityGroupIds[0])
-	assert.Equal(t, "sg-456", aws.SecurityGroupIds[1])
+	require.Len(t, aws.GetSecurityGroupIds(), 2)
+	assert.Equal(t, "sg-123", aws.GetSecurityGroupIds()[0])
+	assert.Equal(t, "sg-456", aws.GetSecurityGroupIds()[1])
 
-	require.NotNil(t, aws.VpcId)
-	assert.Equal(t, "vpc-abc", *aws.VpcId)
+	require.Len(t, aws.GetSecurityGroupNames(), 1)
+	assert.Equal(t, "sg-name-1", aws.GetSecurityGroupNames()[0])
+
+	require.Len(t, aws.GetLabels(), 1)
+	assert.Equal(t, "prod", aws.GetLabels()["env"])
 }
 
 func TestConvertCiliumIngressRules(t *testing.T) {
@@ -358,7 +335,7 @@ func TestConvertCiliumIngressRules(t *testing.T) {
 					"matchLabels": map[string]any{"app": "backend"},
 				},
 			},
-			"fromCIDR": []any{"10.0.0.0/8"},
+			"fromCIDR":     []any{"10.0.0.0/8"},
 			"fromEntities": []any{"world", "cluster"},
 			"toPorts": []any{
 				map[string]any{
@@ -377,22 +354,23 @@ func TestConvertCiliumIngressRules(t *testing.T) {
 	rule := result[0]
 
 	// FromEndpoints
-	require.Len(t, rule.FromEndpoints, 1)
-	assert.Equal(t, "backend", rule.FromEndpoints[0].MatchLabels["app"])
+	require.NotNil(t, rule.GetFromEndpoints())
+	require.Len(t, rule.GetFromEndpoints().GetItems(), 1)
+	assert.Equal(t, "backend", rule.GetFromEndpoints().GetItems()[0].GetMatchLabels()["app"])
 
 	// FromCIDR
-	require.Len(t, rule.FromCidr, 1)
-	assert.Equal(t, "10.0.0.0/8", rule.FromCidr[0])
+	require.Len(t, rule.GetFromCidr(), 1)
+	assert.Equal(t, "10.0.0.0/8", rule.GetFromCidr()[0])
 
 	// FromEntities
-	require.Len(t, rule.FromEntities, 2)
-	assert.Contains(t, rule.FromEntities, "world")
-	assert.Contains(t, rule.FromEntities, "cluster")
+	require.Len(t, rule.GetFromEntities(), 2)
+	assert.Contains(t, rule.GetFromEntities(), "world")
+	assert.Contains(t, rule.GetFromEntities(), "cluster")
 
 	// ToPorts
-	require.Len(t, rule.ToPorts, 1)
-	require.Len(t, rule.ToPorts[0].Ports, 1)
-	assert.Equal(t, "443", rule.ToPorts[0].Ports[0].Port)
+	require.Len(t, rule.GetToPorts(), 1)
+	require.Len(t, rule.GetToPorts()[0].GetPorts(), 1)
+	assert.Equal(t, "443", rule.GetToPorts()[0].GetPorts()[0].GetPort())
 }
 
 func TestConvertCiliumEgressRules(t *testing.T) {
@@ -419,21 +397,22 @@ func TestConvertCiliumEgressRules(t *testing.T) {
 	rule := result[0]
 
 	// ToEndpoints
-	require.Len(t, rule.ToEndpoints, 1)
-	assert.Equal(t, "database", rule.ToEndpoints[0].MatchLabels["app"])
+	require.NotNil(t, rule.GetToEndpoints())
+	require.Len(t, rule.GetToEndpoints().GetItems(), 1)
+	assert.Equal(t, "database", rule.GetToEndpoints().GetItems()[0].GetMatchLabels()["app"])
 
 	// ToCIDR
-	require.Len(t, rule.ToCidr, 1)
-	assert.Equal(t, "0.0.0.0/0", rule.ToCidr[0])
+	require.Len(t, rule.GetToCidr(), 1)
+	assert.Equal(t, "0.0.0.0/0", rule.GetToCidr()[0])
 
 	// ToFQDNs (oneof: either MatchName or MatchPattern)
-	require.Len(t, rule.ToFqdns, 2)
-	assert.Equal(t, "api.example.com", rule.ToFqdns[0].GetMatchName())
-	assert.Equal(t, "*.internal.com", rule.ToFqdns[1].GetMatchPattern())
+	require.Len(t, rule.GetToFqdns(), 2)
+	assert.Equal(t, "api.example.com", rule.GetToFqdns()[0].GetMatchName())
+	assert.Equal(t, "*.internal.com", rule.GetToFqdns()[1].GetMatchPattern())
 
 	// ToEntities
-	require.Len(t, rule.ToEntities, 1)
-	assert.Equal(t, "world", rule.ToEntities[0])
+	require.Len(t, rule.GetToEntities(), 1)
+	assert.Equal(t, "world", rule.GetToEntities()[0])
 }
 
 func TestConvertCiliumCIDRSets(t *testing.T) {
@@ -451,14 +430,14 @@ func TestConvertCiliumCIDRSets(t *testing.T) {
 	require.Len(t, result, 2)
 
 	// First CIDR set with exceptions
-	assert.Equal(t, "10.0.0.0/8", result[0].Cidr)
-	require.Len(t, result[0].Except, 2)
-	assert.Contains(t, result[0].Except, "10.1.0.0/16")
-	assert.Contains(t, result[0].Except, "10.2.0.0/16")
+	assert.Equal(t, "10.0.0.0/8", result[0].GetCidr())
+	require.Len(t, result[0].GetExcept(), 2)
+	assert.Contains(t, result[0].GetExcept(), "10.1.0.0/16")
+	assert.Contains(t, result[0].GetExcept(), "10.2.0.0/16")
 
 	// Second CIDR set with group reference
-	require.NotNil(t, result[1].CidrGroupRef)
-	assert.Equal(t, "my-cidr-group", *result[1].CidrGroupRef)
+	require.NotNil(t, result[1].GetCidrGroupRef())
+	assert.Equal(t, "my-cidr-group", result[1].GetCidrGroupRef())
 }
 
 func TestConvertCiliumICMPRules(t *testing.T) {
@@ -467,7 +446,6 @@ func TestConvertCiliumICMPRules(t *testing.T) {
 			"fields": []any{
 				map[string]any{
 					"type":   int64(8),
-					"code":   int64(0),
 					"family": "IPv4",
 				},
 			},
@@ -476,14 +454,12 @@ func TestConvertCiliumICMPRules(t *testing.T) {
 
 	result := convertCiliumICMPRules(icmps)
 	require.Len(t, result, 1)
-	require.Len(t, result[0].Fields, 1)
+	require.Len(t, result[0].GetFields(), 1)
 
-	field := result[0].Fields[0]
-	assert.Equal(t, uint32(8), field.Type)
-	require.NotNil(t, field.Code)
-	assert.Equal(t, uint32(0), *field.Code)
+	field := result[0].GetFields()[0]
+	assert.Equal(t, uint32(8), field.GetTypeInt())
 	require.NotNil(t, field.Family)
-	assert.Equal(t, "IPv4", *field.Family)
+	assert.Equal(t, "IPv4", field.GetFamily())
 }
 
 func TestConvertCiliumAuthentication(t *testing.T) {
@@ -493,7 +469,7 @@ func TestConvertCiliumAuthentication(t *testing.T) {
 
 	result := convertCiliumAuthentication(auth)
 	require.NotNil(t, result)
-	assert.Equal(t, "required", result.Mode)
+	assert.Equal(t, "required", result.GetMode())
 }
 
 func TestConvertCiliumAuthentication_Nil(t *testing.T) {
@@ -526,16 +502,14 @@ func TestConvertCiliumServices(t *testing.T) {
 	require.Len(t, result, 2)
 
 	// First service by name
-	require.NotNil(t, result[0].K8SService)
-	assert.Equal(t, "my-service", *result[0].K8SService)
-	require.NotNil(t, result[0].K8SNamespace)
-	assert.Equal(t, "default", *result[0].K8SNamespace)
+	require.NotNil(t, result[0].GetK8SService())
+	assert.Equal(t, "my-service", result[0].GetK8SService().GetServiceName())
+	assert.Equal(t, "default", result[0].GetK8SService().GetNamespace())
 
 	// Second service by selector
-	require.NotNil(t, result[1].K8SServiceSelector)
-	assert.Equal(t, "backend", result[1].K8SServiceSelector.MatchLabels["app"])
-	require.NotNil(t, result[1].K8SNamespace)
-	assert.Equal(t, "production", *result[1].K8SNamespace)
+	require.NotNil(t, result[1].GetK8SServiceSelector())
+	assert.Equal(t, "backend", result[1].GetK8SServiceSelector().GetSelector().GetMatchLabels()["app"])
+	assert.Equal(t, "production", result[1].GetK8SServiceSelector().GetNamespace())
 }
 
 func TestConvertCiliumLabelSelector_MatchExpressions(t *testing.T) {
@@ -560,21 +534,21 @@ func TestConvertCiliumLabelSelector_MatchExpressions(t *testing.T) {
 	require.NotNil(t, result)
 
 	// MatchLabels
-	assert.Equal(t, "web", result.MatchLabels["app"])
+	assert.Equal(t, "web", result.GetMatchLabels()["app"])
 
 	// MatchExpressions
-	require.Len(t, result.MatchExpressions, 2)
+	require.Len(t, result.GetMatchExpressions(), 2)
 
-	expr1 := result.MatchExpressions[0]
-	assert.Equal(t, "environment", expr1.Key)
-	assert.Equal(t, "In", expr1.Operator)
-	require.Len(t, expr1.Values, 2)
-	assert.Contains(t, expr1.Values, "prod")
-	assert.Contains(t, expr1.Values, "staging")
+	expr1 := result.GetMatchExpressions()[0]
+	assert.Equal(t, "environment", expr1.GetKey())
+	assert.Equal(t, "In", expr1.GetOperator())
+	require.Len(t, expr1.GetValues(), 2)
+	assert.Contains(t, expr1.GetValues(), "prod")
+	assert.Contains(t, expr1.GetValues(), "staging")
 
-	expr2 := result.MatchExpressions[1]
-	assert.Equal(t, "deprecated", expr2.Key)
-	assert.Equal(t, "DoesNotExist", expr2.Operator)
+	expr2 := result.GetMatchExpressions()[1]
+	assert.Equal(t, "deprecated", expr2.GetKey())
+	assert.Equal(t, "DoesNotExist", expr2.GetOperator())
 }
 
 func TestConvertCiliumDefaultDeny(t *testing.T) {
@@ -586,9 +560,9 @@ func TestConvertCiliumDefaultDeny(t *testing.T) {
 	result := convertCiliumDefaultDeny(defaultDeny)
 	require.NotNil(t, result)
 	require.NotNil(t, result.Ingress)
-	assert.True(t, *result.Ingress)
+	assert.True(t, result.GetIngress())
 	require.NotNil(t, result.Egress)
-	assert.False(t, *result.Egress)
+	assert.False(t, result.GetEgress())
 }
 
 func TestConvertCiliumPolicySpec_AllFields(t *testing.T) {
@@ -632,45 +606,41 @@ func TestConvertCiliumPolicySpec_AllFields(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	// ApiVersion
-	require.NotNil(t, result.ApiVersion)
-	assert.Equal(t, "cilium.io/v2", *result.ApiVersion)
-
 	// EndpointSelector
-	require.NotNil(t, result.EndpointSelector)
-	assert.Equal(t, "web", result.EndpointSelector.MatchLabels["app"])
+	require.NotNil(t, result.GetEndpointSelector())
+	assert.Equal(t, "web", result.GetEndpointSelector().GetMatchLabels()["app"])
 
 	// NodeSelector
-	require.NotNil(t, result.NodeSelector)
-	assert.Equal(t, "worker", result.NodeSelector.MatchLabels["node-type"])
+	require.NotNil(t, result.GetNodeSelector())
+	assert.Equal(t, "worker", result.GetNodeSelector().GetMatchLabels()["node-type"])
 
 	// Description
 	require.NotNil(t, result.Description)
-	assert.Equal(t, "Test policy", *result.Description)
+	assert.Equal(t, "Test policy", result.GetDescription())
 
 	// Labels
-	assert.Equal(t, "security", result.Labels["policy-type"])
+	assert.Equal(t, "security", result.GetLabels()["policy-type"])
 
 	// EnableDefaultDeny
-	require.NotNil(t, result.EnableDefaultDeny)
-	require.NotNil(t, result.EnableDefaultDeny.Ingress)
-	assert.True(t, *result.EnableDefaultDeny.Ingress)
+	require.NotNil(t, result.GetEnableDefaultDeny())
+	require.NotNil(t, result.GetEnableDefaultDeny().Ingress)
+	assert.True(t, result.GetEnableDefaultDeny().GetIngress())
 
 	// Ingress rules
-	require.Len(t, result.IngressRules, 1)
-	assert.Contains(t, result.IngressRules[0].FromEntities, "cluster")
+	require.Len(t, result.GetIngressRules(), 1)
+	assert.Contains(t, result.GetIngressRules()[0].GetFromEntities(), "cluster")
 
 	// Egress rules
-	require.Len(t, result.EgressRules, 1)
-	assert.Contains(t, result.EgressRules[0].ToEntities, "world")
+	require.Len(t, result.GetEgressRules(), 1)
+	assert.Contains(t, result.GetEgressRules()[0].GetToEntities(), "world")
 
 	// IngressDeny rules
-	require.Len(t, result.IngressDenyRules, 1)
-	assert.Contains(t, result.IngressDenyRules[0].FromEntities, "world")
+	require.Len(t, result.GetIngressDenyRules(), 1)
+	assert.Contains(t, result.GetIngressDenyRules()[0].GetFromEntities(), "world")
 
 	// EgressDeny rules
-	require.Len(t, result.EgressDenyRules, 1)
-	assert.Contains(t, result.EgressDenyRules[0].ToCidr, "10.0.0.0/8")
+	require.Len(t, result.GetEgressDenyRules(), 1)
+	assert.Contains(t, result.GetEgressDenyRules()[0].GetToCidr(), "10.0.0.0/8")
 }
 
 // Tests for nil/empty handling
@@ -683,8 +653,8 @@ func TestConvertCiliumLabelSelector_Nil(t *testing.T) {
 func TestConvertCiliumLabelSelector_Empty(t *testing.T) {
 	result := convertCiliumLabelSelector(map[string]any{})
 	require.NotNil(t, result)
-	assert.Empty(t, result.MatchLabels)
-	assert.Empty(t, result.MatchExpressions)
+	assert.Empty(t, result.GetMatchLabels())
+	assert.Empty(t, result.GetMatchExpressions())
 }
 
 func TestConvertCiliumEndpointSelectors(t *testing.T) {
@@ -699,8 +669,8 @@ func TestConvertCiliumEndpointSelectors(t *testing.T) {
 
 	result := convertCiliumEndpointSelectors(selectors)
 	require.Len(t, result, 2)
-	assert.Equal(t, "frontend", result[0].MatchLabels["app"])
-	assert.Equal(t, "backend", result[1].MatchLabels["app"])
+	assert.Equal(t, "frontend", result[0].GetMatchLabels()["app"])
+	assert.Equal(t, "backend", result[1].GetMatchLabels()["app"])
 }
 
 func TestConvertCiliumEndpointSelectors_Empty(t *testing.T) {
@@ -717,7 +687,7 @@ func TestConvertCiliumEndpointSelectors_InvalidType(t *testing.T) {
 
 	result := convertCiliumEndpointSelectors(selectors)
 	require.Len(t, result, 1)
-	assert.Equal(t, "valid", result[0].MatchLabels["app"])
+	assert.Equal(t, "valid", result[0].GetMatchLabels()["app"])
 }
 
 func TestConvertCiliumFQDNSelectors(t *testing.T) {
@@ -745,8 +715,9 @@ func TestConvertCiliumFQDNSelectors_NoMatchFields(t *testing.T) {
 
 	result := convertCiliumFQDNSelectors(fqdns)
 	require.Len(t, result, 1)
-	// Should have empty selector (neither oneof set)
-	assert.Nil(t, result[0].GetSelector())
+	// Should have neither matchName nor matchPattern set
+	assert.Empty(t, result[0].GetMatchName())
+	assert.Empty(t, result[0].GetMatchPattern())
 }
 
 func TestConvertCiliumPortRules(t *testing.T) {
@@ -761,9 +732,9 @@ func TestConvertCiliumPortRules(t *testing.T) {
 
 	result := convertCiliumPortRules(portRules)
 	require.Len(t, result, 1)
-	require.Len(t, result[0].Ports, 2)
-	assert.Equal(t, "80", result[0].Ports[0].Port)
-	assert.Equal(t, "443", result[0].Ports[1].Port)
+	require.Len(t, result[0].GetPorts(), 2)
+	assert.Equal(t, "80", result[0].GetPorts()[0].GetPort())
+	assert.Equal(t, "443", result[0].GetPorts()[1].GetPort())
 }
 
 func TestConvertCiliumPortRules_Empty(t *testing.T) {
@@ -826,38 +797,39 @@ func TestConvertCiliumIngressRules_AllFields(t *testing.T) {
 	rule := result[0]
 
 	// FromEndpoints
-	require.Len(t, rule.FromEndpoints, 1)
-	assert.Equal(t, "backend", rule.FromEndpoints[0].MatchLabels["app"])
+	require.NotNil(t, rule.GetFromEndpoints())
+	require.Len(t, rule.GetFromEndpoints().GetItems(), 1)
+	assert.Equal(t, "backend", rule.GetFromEndpoints().GetItems()[0].GetMatchLabels()["app"])
 
 	// FromCIDR
-	require.Len(t, rule.FromCidr, 1)
-	assert.Equal(t, "10.0.0.0/8", rule.FromCidr[0])
+	require.Len(t, rule.GetFromCidr(), 1)
+	assert.Equal(t, "10.0.0.0/8", rule.GetFromCidr()[0])
 
 	// FromCIDRSet
-	require.Len(t, rule.FromCidrSet, 1)
-	assert.Equal(t, "192.168.0.0/16", rule.FromCidrSet[0].Cidr)
+	require.Len(t, rule.GetFromCidrSet(), 1)
+	assert.Equal(t, "192.168.0.0/16", rule.GetFromCidrSet()[0].GetCidr())
 
 	// FromEntities
-	require.Len(t, rule.FromEntities, 1)
-	assert.Equal(t, "cluster", rule.FromEntities[0])
+	require.Len(t, rule.GetFromEntities(), 1)
+	assert.Equal(t, "cluster", rule.GetFromEntities()[0])
 
 	// FromGroups
-	require.Len(t, rule.FromGroups, 1)
-	require.NotNil(t, rule.FromGroups[0].GetAws())
+	require.Len(t, rule.GetFromGroups(), 1)
+	require.NotNil(t, rule.GetFromGroups()[0].GetAws())
 
 	// FromNodes
-	require.Len(t, rule.FromNodes, 1)
-	assert.Equal(t, "worker", rule.FromNodes[0].MatchLabels["node-role"])
+	require.Len(t, rule.GetFromNodes(), 1)
+	assert.Equal(t, "worker", rule.GetFromNodes()[0].GetMatchLabels()["node-role"])
 
 	// ToPorts
-	require.Len(t, rule.ToPorts, 1)
+	require.Len(t, rule.GetToPorts(), 1)
 
 	// ICMPs
-	require.Len(t, rule.Icmps, 1)
+	require.Len(t, rule.GetIcmps(), 1)
 
 	// Authentication
-	require.NotNil(t, rule.Authentication)
-	assert.Equal(t, "required", rule.Authentication.Mode)
+	require.NotNil(t, rule.GetAuthentication())
+	assert.Equal(t, "required", rule.GetAuthentication().GetMode())
 }
 
 func TestConvertCiliumIngressRules_Empty(t *testing.T) {
@@ -872,7 +844,7 @@ func TestConvertCiliumIngressRules_InvalidRuleType(t *testing.T) {
 	}
 
 	result, err := convertCiliumIngressRules(rules)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected map")
 	assert.Nil(t, result)
 }
@@ -921,47 +893,48 @@ func TestConvertCiliumEgressRules_AllFields(t *testing.T) {
 	rule := result[0]
 
 	// ToEndpoints
-	require.Len(t, rule.ToEndpoints, 1)
-	assert.Equal(t, "database", rule.ToEndpoints[0].MatchLabels["app"])
+	require.NotNil(t, rule.GetToEndpoints())
+	require.Len(t, rule.GetToEndpoints().GetItems(), 1)
+	assert.Equal(t, "database", rule.GetToEndpoints().GetItems()[0].GetMatchLabels()["app"])
 
 	// ToCIDR
-	require.Len(t, rule.ToCidr, 1)
-	assert.Equal(t, "0.0.0.0/0", rule.ToCidr[0])
+	require.Len(t, rule.GetToCidr(), 1)
+	assert.Equal(t, "0.0.0.0/0", rule.GetToCidr()[0])
 
 	// ToCIDRSet
-	require.Len(t, rule.ToCidrSet, 1)
-	assert.Equal(t, "10.0.0.0/8", rule.ToCidrSet[0].Cidr)
+	require.Len(t, rule.GetToCidrSet(), 1)
+	assert.Equal(t, "10.0.0.0/8", rule.GetToCidrSet()[0].GetCidr())
 
 	// ToEntities
-	require.Len(t, rule.ToEntities, 1)
-	assert.Equal(t, "world", rule.ToEntities[0])
+	require.Len(t, rule.GetToEntities(), 1)
+	assert.Equal(t, "world", rule.GetToEntities()[0])
 
 	// ToFQDNs
-	require.Len(t, rule.ToFqdns, 1)
-	assert.Equal(t, "api.example.com", rule.ToFqdns[0].GetMatchName())
+	require.Len(t, rule.GetToFqdns(), 1)
+	assert.Equal(t, "api.example.com", rule.GetToFqdns()[0].GetMatchName())
 
 	// ToServices
-	require.Len(t, rule.ToServices, 1)
-	require.NotNil(t, rule.ToServices[0].K8SService)
-	assert.Equal(t, "my-svc", *rule.ToServices[0].K8SService)
+	require.Len(t, rule.GetToServices(), 1)
+	require.NotNil(t, rule.GetToServices()[0].GetK8SService())
+	assert.Equal(t, "my-svc", rule.GetToServices()[0].GetK8SService().GetServiceName())
 
 	// ToGroups
-	require.Len(t, rule.ToGroups, 1)
-	require.NotNil(t, rule.ToGroups[0].GetAws())
+	require.Len(t, rule.GetToGroups(), 1)
+	require.NotNil(t, rule.GetToGroups()[0].GetAws())
 
 	// ToNodes
-	require.Len(t, rule.ToNodes, 1)
-	assert.Equal(t, "egress", rule.ToNodes[0].MatchLabels["node-type"])
+	require.Len(t, rule.GetToNodes(), 1)
+	assert.Equal(t, "egress", rule.GetToNodes()[0].GetMatchLabels()["node-type"])
 
 	// ToPorts
-	require.Len(t, rule.ToPorts, 1)
+	require.Len(t, rule.GetToPorts(), 1)
 
 	// ICMPs
-	require.Len(t, rule.Icmps, 1)
+	require.Len(t, rule.GetIcmps(), 1)
 
 	// Authentication
-	require.NotNil(t, rule.Authentication)
-	assert.Equal(t, "disabled", rule.Authentication.Mode)
+	require.NotNil(t, rule.GetAuthentication())
+	assert.Equal(t, "disabled", rule.GetAuthentication().GetMode())
 }
 
 func TestConvertCiliumEgressRules_Empty(t *testing.T) {
@@ -976,7 +949,7 @@ func TestConvertCiliumEgressRules_InvalidRuleType(t *testing.T) {
 	}
 
 	result, err := convertCiliumEgressRules(rules)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected map")
 	assert.Nil(t, result)
 }
@@ -1025,11 +998,11 @@ func TestConvertUnstructuredToCiliumPolicy_WithOwnerReferences(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	require.Len(t, result.OwnerReferences, 1)
-	assert.Equal(t, "apps/v1", result.OwnerReferences[0].ApiVersion)
-	assert.Equal(t, "Deployment", result.OwnerReferences[0].Kind)
-	assert.Equal(t, "my-deployment", result.OwnerReferences[0].Name)
-	assert.Equal(t, "owner-uid-123", result.OwnerReferences[0].Uid)
+	require.Len(t, result.GetOwnerReferences(), 1)
+	assert.Equal(t, "apps/v1", result.GetOwnerReferences()[0].GetApiVersion())
+	assert.Equal(t, "Deployment", result.GetOwnerReferences()[0].GetKind())
+	assert.Equal(t, "my-deployment", result.GetOwnerReferences()[0].GetName())
+	assert.Equal(t, "owner-uid-123", result.GetOwnerReferences()[0].GetUid())
 }
 
 func TestConvertUnstructuredToCiliumPolicy_WithLabelsAndAnnotations(t *testing.T) {
@@ -1049,9 +1022,9 @@ func TestConvertUnstructuredToCiliumPolicy_WithLabelsAndAnnotations(t *testing.T
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	assert.Equal(t, "myapp", result.Labels["app"])
-	assert.Equal(t, "v1", result.Labels["version"])
-	assert.Equal(t, "Test policy annotation", result.Annotations["description"])
+	assert.Equal(t, "myapp", result.GetLabels()["app"])
+	assert.Equal(t, "v1", result.GetLabels()["version"])
+	assert.Equal(t, "Test policy annotation", result.GetAnnotations()["description"])
 }
 
 func TestConvertCiliumMatchExpressions_Empty(t *testing.T) {
@@ -1067,7 +1040,7 @@ func TestConvertCiliumMatchExpressions_InvalidType(t *testing.T) {
 
 	result := convertCiliumMatchExpressions(expressions)
 	require.Len(t, result, 1)
-	assert.Equal(t, "valid", result[0].Key)
+	assert.Equal(t, "valid", result[0].GetKey())
 }
 
 // =============================================================================
@@ -1123,39 +1096,38 @@ func TestUseCase_P2UC3_APIServerIsolation(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	assert.Equal(t, "CiliumClusterwideNetworkPolicy", result.Kind)
-	assert.Equal(t, "deny-api-server-default", result.Name)
+	assert.Equal(t, "CiliumClusterwideNetworkPolicy", result.GetKind())
+	assert.Equal(t, "deny-api-server-default", result.GetName())
 
 	ccnp := result.GetCiliumClusterwideNetworkPolicy()
 	require.NotNil(t, ccnp)
-	require.Len(t, ccnp.Specs, 1)
+	require.Len(t, ccnp.GetSpecs(), 1)
 
-	spec := ccnp.Specs[0]
+	spec := ccnp.GetSpecs()[0]
 
 	// Verify description
 	require.NotNil(t, spec.Description)
-	assert.Contains(t, *spec.Description, "deny all pods")
+	assert.Contains(t, spec.GetDescription(), "deny all pods")
 
 	// Verify matchExpressions with NotIn operator
-	require.NotNil(t, spec.EndpointSelector)
-	require.Len(t, spec.EndpointSelector.MatchExpressions, 1)
-	expr := spec.EndpointSelector.MatchExpressions[0]
-	assert.Equal(t, "api-access", expr.Key)
-	assert.Equal(t, "NotIn", expr.Operator)
-	assert.Contains(t, expr.Values, "true")
+	require.NotNil(t, spec.GetEndpointSelector())
+	require.Len(t, spec.GetEndpointSelector().GetMatchExpressions(), 1)
+	expr := spec.GetEndpointSelector().GetMatchExpressions()[0]
+	assert.Equal(t, "api-access", expr.GetKey())
+	assert.Equal(t, "NotIn", expr.GetOperator())
+	assert.Contains(t, expr.GetValues(), "true")
 
 	// Verify egressDeny rules
-	require.Len(t, spec.EgressDenyRules, 2)
+	require.Len(t, spec.GetEgressDenyRules(), 2)
 
 	// First deny rule: toEntities kube-apiserver
-	assert.Contains(t, spec.EgressDenyRules[0].ToEntities, "kube-apiserver")
+	assert.Contains(t, spec.GetEgressDenyRules()[0].GetToEntities(), "kube-apiserver")
 
 	// Second deny rule: toServices kubernetes
-	require.Len(t, spec.EgressDenyRules[1].ToServices, 1)
-	require.NotNil(t, spec.EgressDenyRules[1].ToServices[0].K8SService)
-	assert.Equal(t, "kubernetes", *spec.EgressDenyRules[1].ToServices[0].K8SService)
-	require.NotNil(t, spec.EgressDenyRules[1].ToServices[0].K8SNamespace)
-	assert.Equal(t, "default", *spec.EgressDenyRules[1].ToServices[0].K8SNamespace)
+	require.Len(t, spec.GetEgressDenyRules()[1].GetToServices(), 1)
+	require.NotNil(t, spec.GetEgressDenyRules()[1].GetToServices()[0].GetK8SService())
+	assert.Equal(t, "kubernetes", spec.GetEgressDenyRules()[1].GetToServices()[0].GetK8SService().GetServiceName())
+	assert.Equal(t, "default", spec.GetEgressDenyRules()[1].GetToServices()[0].GetK8SService().GetNamespace())
 }
 
 // TestUseCase_P2UC3_AllowClusterInternal mirrors the allow-cluster-internal policy.
@@ -1204,28 +1176,29 @@ func TestUseCase_P2UC3_AllowClusterInternal(t *testing.T) {
 
 	ccnp := result.GetCiliumClusterwideNetworkPolicy()
 	require.NotNil(t, ccnp)
-	require.Len(t, ccnp.Specs, 1)
+	require.Len(t, ccnp.GetSpecs(), 1)
 
-	spec := ccnp.Specs[0]
+	spec := ccnp.GetSpecs()[0]
 
 	// Verify empty endpointSelector (selects all pods)
-	require.NotNil(t, spec.EndpointSelector)
-	assert.Empty(t, spec.EndpointSelector.MatchLabels)
-	assert.Empty(t, spec.EndpointSelector.MatchExpressions)
+	require.NotNil(t, spec.GetEndpointSelector())
+	assert.Empty(t, spec.GetEndpointSelector().GetMatchLabels())
+	assert.Empty(t, spec.GetEndpointSelector().GetMatchExpressions())
 
 	// Verify egress rules
-	require.Len(t, spec.EgressRules, 3)
+	require.Len(t, spec.GetEgressRules(), 3)
 
 	// Rule 1: toEndpoints with empty selector
-	require.Len(t, spec.EgressRules[0].ToEndpoints, 1)
-	assert.Empty(t, spec.EgressRules[0].ToEndpoints[0].MatchLabels)
+	require.NotNil(t, spec.GetEgressRules()[0].GetToEndpoints())
+	require.Len(t, spec.GetEgressRules()[0].GetToEndpoints().GetItems(), 1)
+	assert.Empty(t, spec.GetEgressRules()[0].GetToEndpoints().GetItems()[0].GetMatchLabels())
 
 	// Rule 2: toEntities host
-	assert.Contains(t, spec.EgressRules[1].ToEntities, "host")
-	require.Len(t, spec.EgressRules[1].ToPorts, 1)
+	assert.Contains(t, spec.GetEgressRules()[1].GetToEntities(), "host")
+	require.Len(t, spec.GetEgressRules()[1].GetToPorts(), 1)
 
 	// Rule 3: toEntities world
-	assert.Contains(t, spec.EgressRules[2].ToEntities, "world")
+	assert.Contains(t, spec.GetEgressRules()[2].GetToEntities(), "world")
 }
 
 // TestUseCase_P3UC31_CIDRWithExclusions mirrors UC3.1 scenario 5.
@@ -1273,32 +1246,32 @@ func TestUseCase_P3UC31_CIDRWithExclusions(t *testing.T) {
 
 	ccnp := result.GetCiliumClusterwideNetworkPolicy()
 	require.NotNil(t, ccnp)
-	require.Len(t, ccnp.Specs, 1)
+	require.Len(t, ccnp.GetSpecs(), 1)
 
-	spec := ccnp.Specs[0]
+	spec := ccnp.GetSpecs()[0]
 
 	// Verify egress rule with toCIDRSet
-	require.Len(t, spec.EgressRules, 1)
-	rule := spec.EgressRules[0]
+	require.Len(t, spec.GetEgressRules(), 1)
+	rule := spec.GetEgressRules()[0]
 
 	// Verify toCIDRSet with multiple CIDRs and exclusions
-	require.Len(t, rule.ToCidrSet, 2)
+	require.Len(t, rule.GetToCidrSet(), 2)
 
 	// First CIDR with exclusions
-	assert.Equal(t, "52.0.0.0/8", rule.ToCidrSet[0].Cidr)
-	require.Len(t, rule.ToCidrSet[0].Except, 3)
-	assert.Contains(t, rule.ToCidrSet[0].Except, "52.94.0.0/22")
-	assert.Contains(t, rule.ToCidrSet[0].Except, "52.119.224.0/20")
-	assert.Contains(t, rule.ToCidrSet[0].Except, "52.95.0.0/20")
+	assert.Equal(t, "52.0.0.0/8", rule.GetToCidrSet()[0].GetCidr())
+	require.Len(t, rule.GetToCidrSet()[0].GetExcept(), 3)
+	assert.Contains(t, rule.GetToCidrSet()[0].GetExcept(), "52.94.0.0/22")
+	assert.Contains(t, rule.GetToCidrSet()[0].GetExcept(), "52.119.224.0/20")
+	assert.Contains(t, rule.GetToCidrSet()[0].GetExcept(), "52.95.0.0/20")
 
 	// Second CIDR without exclusions
-	assert.Equal(t, "54.231.0.0/16", rule.ToCidrSet[1].Cidr)
-	assert.Empty(t, rule.ToCidrSet[1].Except)
+	assert.Equal(t, "54.231.0.0/16", rule.GetToCidrSet()[1].GetCidr())
+	assert.Empty(t, rule.GetToCidrSet()[1].GetExcept())
 
 	// Verify toPorts
-	require.Len(t, rule.ToPorts, 1)
-	require.Len(t, rule.ToPorts[0].Ports, 1)
-	assert.Equal(t, "443", rule.ToPorts[0].Ports[0].Port)
+	require.Len(t, rule.GetToPorts(), 1)
+	require.Len(t, rule.GetToPorts()[0].GetPorts(), 1)
+	assert.Equal(t, "443", rule.GetToPorts()[0].GetPorts()[0].GetPort())
 }
 
 // TestUseCase_P3UC3_FQDNEgress mirrors UC3 FQDN-based egress.
@@ -1352,25 +1325,25 @@ func TestUseCase_P3UC3_FQDNEgress(t *testing.T) {
 
 	ccnp := result.GetCiliumClusterwideNetworkPolicy()
 	require.NotNil(t, ccnp)
-	require.Len(t, ccnp.Specs, 1)
+	require.Len(t, ccnp.GetSpecs(), 1)
 
-	spec := ccnp.Specs[0]
+	spec := ccnp.GetSpecs()[0]
 
 	// Verify egress rules with toFQDNs
-	require.Len(t, spec.EgressRules, 2)
+	require.Len(t, spec.GetEgressRules(), 2)
 
 	// First rule: S3 with multiple wildcard patterns
-	s3Rule := spec.EgressRules[0]
-	require.Len(t, s3Rule.ToFqdns, 4)
-	assert.Equal(t, "*.s3.amazonaws.com", s3Rule.ToFqdns[0].GetMatchPattern())
-	assert.Equal(t, "s3.amazonaws.com", s3Rule.ToFqdns[1].GetMatchPattern())
-	assert.Equal(t, "*.s3.*.amazonaws.com", s3Rule.ToFqdns[2].GetMatchPattern())
-	assert.Equal(t, "s3.*.amazonaws.com", s3Rule.ToFqdns[3].GetMatchPattern())
+	s3Rule := spec.GetEgressRules()[0]
+	require.Len(t, s3Rule.GetToFqdns(), 4)
+	assert.Equal(t, "*.s3.amazonaws.com", s3Rule.GetToFqdns()[0].GetMatchPattern())
+	assert.Equal(t, "s3.amazonaws.com", s3Rule.GetToFqdns()[1].GetMatchPattern())
+	assert.Equal(t, "*.s3.*.amazonaws.com", s3Rule.GetToFqdns()[2].GetMatchPattern())
+	assert.Equal(t, "s3.*.amazonaws.com", s3Rule.GetToFqdns()[3].GetMatchPattern())
 
 	// Second rule: DynamoDB
-	dynamoRule := spec.EgressRules[1]
-	require.Len(t, dynamoRule.ToFqdns, 1)
-	assert.Equal(t, "dynamodb.*.amazonaws.com", dynamoRule.ToFqdns[0].GetMatchPattern())
+	dynamoRule := spec.GetEgressRules()[1]
+	require.Len(t, dynamoRule.GetToFqdns(), 1)
+	assert.Equal(t, "dynamodb.*.amazonaws.com", dynamoRule.GetToFqdns()[0].GetMatchPattern())
 }
 
 // TestUseCase_P3UC3_IngressFromLabels mirrors intra-namespace access control.
@@ -1431,24 +1404,26 @@ func TestUseCase_P3UC3_IngressFromLabels(t *testing.T) {
 
 	ccnp := result.GetCiliumClusterwideNetworkPolicy()
 	require.NotNil(t, ccnp)
-	require.Len(t, ccnp.Specs, 1)
+	require.Len(t, ccnp.GetSpecs(), 1)
 
-	spec := ccnp.Specs[0]
+	spec := ccnp.GetSpecs()[0]
 
 	// Verify endpoint selector targets data-cache
-	require.NotNil(t, spec.EndpointSelector)
-	assert.Equal(t, "data-cache", spec.EndpointSelector.MatchLabels["k8s:app"])
+	require.NotNil(t, spec.GetEndpointSelector())
+	assert.Equal(t, "data-cache", spec.GetEndpointSelector().GetMatchLabels()["k8s:app"])
 
 	// Verify ingress rules
-	require.Len(t, spec.IngressRules, 2)
+	require.Len(t, spec.GetIngressRules(), 2)
 
 	// First rule: from data-processor
-	require.Len(t, spec.IngressRules[0].FromEndpoints, 1)
-	assert.Equal(t, "data-processor", spec.IngressRules[0].FromEndpoints[0].MatchLabels["k8s:role"])
+	require.NotNil(t, spec.GetIngressRules()[0].GetFromEndpoints())
+	require.Len(t, spec.GetIngressRules()[0].GetFromEndpoints().GetItems(), 1)
+	assert.Equal(t, "data-processor", spec.GetIngressRules()[0].GetFromEndpoints().GetItems()[0].GetMatchLabels()["k8s:role"])
 
 	// Second rule: from report-gen
-	require.Len(t, spec.IngressRules[1].FromEndpoints, 1)
-	assert.Equal(t, "report-gen", spec.IngressRules[1].FromEndpoints[0].MatchLabels["k8s:role"])
+	require.NotNil(t, spec.GetIngressRules()[1].GetFromEndpoints())
+	require.Len(t, spec.GetIngressRules()[1].GetFromEndpoints().GetItems(), 1)
+	assert.Equal(t, "report-gen", spec.GetIngressRules()[1].GetFromEndpoints().GetItems()[0].GetMatchLabels()["k8s:role"])
 }
 
 // Helper functions to create test objects
