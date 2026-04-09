@@ -20,7 +20,7 @@ const (
 
 	// HTTP server timeouts.
 	httpReadHeaderTimeout = 5 * time.Second
-	httpReadTimeout       = 30 * time.Second
+	httpReadTimeout       = 5 * time.Second
 	serverRestartDelay    = 5 * time.Second
 )
 
