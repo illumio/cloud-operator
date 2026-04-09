@@ -45,6 +45,7 @@ type CollectorConfig struct {
 	FlowCache          *cache.FlowCache
 	Stats              *stream.Stats
 	K8sClient          collector.K8sClientGetter
+	CalicoNamespace    string
 	CiliumNamespaces   []string
 	TlsAuthProps       *tls.AuthProperties
 	IPFIXCollectorPort string

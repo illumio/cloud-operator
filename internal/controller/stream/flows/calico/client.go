@@ -1,6 +1,6 @@
-// Copyright 2024 Illumio, Inc. All Rights Reserved.
+// Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package controller
+package calico
 
 import (
 	"context"
@@ -13,63 +13,62 @@ import (
 
 	goldmanepb "github.com/illumio/cloud-operator/api/illumio/cloud/goldmane/v1"
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller/collector"
 	"github.com/illumio/cloud-operator/internal/controller/goldmane"
 )
 
-// CalicoFlowCollector collects flows from Calico Goldmane running in this cluster.
-type CalicoFlowCollector struct {
-	logger *zap.Logger
-	client goldmanepb.FlowsClient
-	conn   *grpc.ClientConn
+// TODO: Calico Goldmane flows currently use workload identifiers (name/namespace/type) instead of
+// IP addresses like Cilium, Falco, and OVN-K five-tuple flows. Once upstream issue
+// projectcalico/calico#10601 is resolved, update to include source/dest IP addresses
+// for consistency with other flow collectors.
+
+// calicoClient collects flows from Calico Goldmane.
+type calicoClient struct {
+	logger          *zap.Logger
+	flowSink        collector.FlowSink
+	calicoNamespace string
+	k8sClient       collector.K8sClientGetter
 }
 
-// newCalicoFlowCollector connects to Calico Goldmane, sets up a Flows client,
-// and returns a new Collector using it.
-func newCalicoFlowCollector(ctx context.Context, logger *zap.Logger, calicoNamespace string) (*CalicoFlowCollector, error) {
-	clientset, err := NewClientSet()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create new client set: %w", err)
-	}
+// connect discovers the Goldmane service, loads its mTLS credentials, and dials it.
+func (c *calicoClient) connect(ctx context.Context) (*grpc.ClientConn, error) {
+	clientset := c.k8sClient.GetClientset()
 
-	// Step 1: Discover Goldmane service
-	service, err := goldmane.DiscoverGoldmane(ctx, calicoNamespace, clientset, logger)
+	service, err := goldmane.DiscoverGoldmane(ctx, c.calicoNamespace, clientset, c.logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover Goldmane: %w", err)
 	}
 
-	goldmaneAddress := goldmane.GetAddressFromService(service)
-
-	// Step 2: Get TLS config from secret
-	tlsConfig, err := goldmane.GetTLSConfig(ctx, clientset, logger, calicoNamespace)
+	tlsConfig, err := goldmane.GetTLSConfig(ctx, clientset, c.logger, c.calicoNamespace)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Goldmane TLS config: %w", err)
 	}
 
-	// Step 3: Connect to Goldmane
-	conn, err := goldmane.ConnectToGoldmane(logger, goldmaneAddress, tlsConfig)
+	conn, err := goldmane.ConnectToGoldmane(c.logger, goldmane.GetAddressFromService(service), tlsConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Goldmane: %w", err)
 	}
 
-	flowsClient := goldmanepb.NewFlowsClient(conn)
-
-	return &CalicoFlowCollector{logger: logger, client: flowsClient, conn: conn}, nil
+	return conn, nil
 }
 
-// Close closes the gRPC connection to Goldmane.
-func (c *CalicoFlowCollector) Close() error {
-	if c.conn != nil {
-		return c.conn.Close()
+// Run connects to Goldmane, streams flows from it, and sends them to the flow sink.
+// The connection is closed when Run returns, so each retry dials a fresh connection.
+func (c *calicoClient) Run(ctx context.Context) error {
+	conn, err := c.connect(ctx)
+	if err != nil {
+		c.logger.Warn("Failed to set up Goldmane connection; will retry", zap.Error(err))
+
+		return err
 	}
 
-	return nil
-}
+	defer func() {
+		if err := conn.Close(); err != nil {
+			c.logger.Debug("Failed to close Goldmane connection", zap.Error(err))
+		}
+	}()
 
-// exportCalicoFlows streams flows from Goldmane and sends them to the flow cache.
-func (c *CalicoFlowCollector) exportCalicoFlows(ctx context.Context, sm *streamManager) error {
-	req := &goldmanepb.StreamRequest{}
-
-	stream, err := c.client.Stream(ctx, req)
+	stream, err := goldmanepb.NewFlowsClient(conn).Stream(ctx, &goldmanepb.StreamRequest{})
 	if err != nil {
 		c.logger.Error("Error starting Goldmane flow stream", zap.Error(err))
 
@@ -77,27 +76,25 @@ func (c *CalicoFlowCollector) exportCalicoFlows(ctx context.Context, sm *streamM
 	}
 
 	for {
-		select {
-		case <-ctx.Done():
-			c.logger.Warn("Context cancelled, stopping Calico flow export")
-
-			return ctx.Err()
-		default:
-		}
-
 		resp, err := stream.Recv()
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
 			c.logger.Warn("Failed to receive flow from Goldmane stream", zap.Error(err))
 
 			return err
 		}
 
-		calicoFlow := convertGoldmaneFlow(resp)
-		if calicoFlow == nil {
+		flow := convertGoldmaneFlow(resp)
+		if flow == nil {
 			continue
 		}
 
-		err = sm.FlowCache.CacheFlow(ctx, calicoFlow)
+		c.flowSink.IncrementFlowsReceived()
+
+		err = c.flowSink.CacheFlow(ctx, flow)
 		if err != nil {
 			c.logger.Error("Failed to cache Calico flow", zap.Error(err))
 

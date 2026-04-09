@@ -280,6 +280,7 @@ func main() {
 		AutoModeLogPath:                viper.GetString("eks_auto_mode_log_path"),
 		AutoModeMaxConcurrentNodePolls: viper.GetInt("eks_auto_mode_max_concurrent_node_polls"),
 		AutoModePollInterval:           viper.GetDuration("eks_auto_mode_poll_interval"),
+		CalicoNamespace:                viper.GetString("calico_namespace"),
 		CiliumNamespaces:               viper.GetStringSlice("cilium_namespaces"),
 		FlowCache:                      flowCache,
 		IPFIXCollectorPort:             viper.GetString("ipfix_collector_port"),
