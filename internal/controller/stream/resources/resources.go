@@ -65,7 +65,7 @@ func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface
 		}
 
 		// Query only the preferred version rather than iterating all group.Versions.
-		// All resources in our resource list always present in the preferred version,
+		// All resources in our resource list are always present in the preferred version.
 		resourceList, err := discoveryClient.ServerResourcesForGroupVersion(group.PreferredVersion.GroupVersion)
 		if err != nil {
 			if apierrors.IsForbidden(err) {

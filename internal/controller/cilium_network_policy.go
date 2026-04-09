@@ -10,17 +10,23 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-// IsCiliumPolicy returns true if the resource kind is a Cilium network policy.
-func IsCiliumPolicy(kind string) bool {
-	return kind == "CiliumNetworkPolicy" || kind == "CiliumClusterwideNetworkPolicy" ||
-		kind == "ciliumnetworkpolicies" || kind == "ciliumclusterwidenetworkpolicies"
+// IsCiliumPolicy returns true if the input identifies a Cilium network policy.
+// Accepts both Kind (PascalCase) and resource name (lowercase plural).
+func IsCiliumPolicy(kindOrResource string) bool {
+	switch kindOrResource {
+	case "CiliumNetworkPolicy", "CiliumClusterwideNetworkPolicy",
+		"ciliumnetworkpolicies", "ciliumclusterwidenetworkpolicies":
+		return true
+	default:
+		return false
+	}
 }
 
 // ConvertUnstructuredToCiliumPolicy converts an unstructured Cilium policy to a KubernetesObjectData proto.
 // This handles both CiliumNetworkPolicy and CiliumClusterwideNetworkPolicy.
-func ConvertUnstructuredToCiliumPolicy(obj *unstructured.Unstructured) *pb.KubernetesObjectData {
+func ConvertUnstructuredToCiliumPolicy(obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 	if obj == nil {
-		return nil
+		return nil, nil
 	}
 
 	kind := obj.GetKind()
@@ -56,7 +62,7 @@ func ConvertUnstructuredToCiliumPolicy(obj *unstructured.Unstructured) *pb.Kuber
 		}
 	}
 
-	return objMetadata
+	return objMetadata, nil
 }
 
 // extractCiliumSpecs extracts CiliumPolicyRule specs from both 'spec' and 'specs' fields.
@@ -143,12 +149,10 @@ func convertCiliumLabelSelector(selector map[string]any) *pb.LabelSelector {
 
 	result := &pb.LabelSelector{}
 
-	// Extract matchLabels
 	if matchLabels, found, _ := unstructured.NestedStringMap(selector, "matchLabels"); found {
 		result.MatchLabels = matchLabels
 	}
 
-	// Extract matchExpressions
 	if matchExpressions, found, _ := unstructured.NestedSlice(selector, "matchExpressions"); found {
 		result.MatchExpressions = convertCiliumMatchExpressions(matchExpressions)
 	}
@@ -201,29 +205,22 @@ func convertCiliumIngressRules(rules []any) []*pb.CiliumPolicyIngressRule {
 
 		protoRule := &pb.CiliumPolicyIngressRule{}
 
-		// FromEndpoints
 		if fromEndpoints, found, _ := unstructured.NestedSlice(ruleMap, "fromEndpoints"); found {
-			protoRule.FromEndpoints = &pb.LabelSelectorList{
-				Items: convertCiliumEndpointSelectors(fromEndpoints),
-			}
+			protoRule.FromEndpoints = &pb.LabelSelectorList{Items: convertCiliumEndpointSelectors(fromEndpoints)}
 		}
 
-		// FromCIDR
 		if fromCIDR, found, _ := unstructured.NestedStringSlice(ruleMap, "fromCIDR"); found {
 			protoRule.FromCidr = fromCIDR
 		}
 
-		// FromCIDRSet
 		if fromCIDRSet, found, _ := unstructured.NestedSlice(ruleMap, "fromCIDRSet"); found {
 			protoRule.FromCidrSet = convertCiliumCIDRSets(fromCIDRSet)
 		}
 
-		// FromEntities
 		if fromEntities, found, _ := unstructured.NestedStringSlice(ruleMap, "fromEntities"); found {
 			protoRule.FromEntities = fromEntities
 		}
 
-		// ToPorts
 		if toPorts, found, _ := unstructured.NestedSlice(ruleMap, "toPorts"); found {
 			protoRule.ToPorts = convertCiliumPortRules(toPorts)
 		}
@@ -249,29 +246,22 @@ func convertCiliumEgressRules(rules []any) []*pb.CiliumPolicyEgressRule {
 
 		protoRule := &pb.CiliumPolicyEgressRule{}
 
-		// ToEndpoints
 		if toEndpoints, found, _ := unstructured.NestedSlice(ruleMap, "toEndpoints"); found {
-			protoRule.ToEndpoints = &pb.LabelSelectorList{
-				Items: convertCiliumEndpointSelectors(toEndpoints),
-			}
+			protoRule.ToEndpoints = &pb.LabelSelectorList{Items: convertCiliumEndpointSelectors(toEndpoints)}
 		}
 
-		// ToCIDR
 		if toCIDR, found, _ := unstructured.NestedStringSlice(ruleMap, "toCIDR"); found {
 			protoRule.ToCidr = toCIDR
 		}
 
-		// ToCIDRSet
 		if toCIDRSet, found, _ := unstructured.NestedSlice(ruleMap, "toCIDRSet"); found {
 			protoRule.ToCidrSet = convertCiliumCIDRSets(toCIDRSet)
 		}
 
-		// ToEntities
 		if toEntities, found, _ := unstructured.NestedStringSlice(ruleMap, "toEntities"); found {
 			protoRule.ToEntities = toEntities
 		}
 
-		// ToPorts
 		if toPorts, found, _ := unstructured.NestedSlice(ruleMap, "toPorts"); found {
 			protoRule.ToPorts = convertCiliumPortRules(toPorts)
 		}
