@@ -95,8 +95,14 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger)
 		if err != nil {
-			if apierrors.IsForbidden(err) {
-				c.logger.Warn("Access forbidden for resource", zap.String("kind", resource), zap.String("api_group", resourceInfo.Group), zap.String("api_version", resourceInfo.Version), zap.Error(err))
+			// Skip resources that are unavailable due to RBAC or missing CRDs.
+			// NotFound can occur when a CRD is deleted after discovery but before listing.
+			if apierrors.IsForbidden(err) || apierrors.IsNotFound(err) {
+				c.logger.Warn("Skipping unavailable resource",
+					zap.String("kind", resource),
+					zap.String("api_group", resourceInfo.Group),
+					zap.String("reason", string(apierrors.ReasonForError(err))),
+					zap.Error(err))
 
 				continue
 			}
