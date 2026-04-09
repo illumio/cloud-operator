@@ -54,7 +54,7 @@ func GetMetadataFromResource(logger *zap.Logger, resource unstructured.Unstructu
 	// Convert unstructured object to a map.
 	itemMap := resource.Object
 	// Extract metadata from map.
-	if metadata, found := itemMap["metadata"].(map[string]interface{}); found {
+	if metadata, found := itemMap["metadata"].(map[string]any); found {
 		// Convert the metadata map to JSON and then unmarshal into metav1.ObjectMeta.
 		metadataJSON, err := json.Marshal(metadata)
 		if err != nil {

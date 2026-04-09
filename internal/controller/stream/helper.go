@@ -42,7 +42,7 @@ func (sm *Manager) SendObjectData(logger *zap.Logger, metadata *pb.KubernetesObj
 }
 
 // SendNetworkFlowRequest sends a network flow to the networkFlowsStream.
-func (sm *Manager) SendNetworkFlowRequest(logger *zap.Logger, flow interface{}) error {
+func (sm *Manager) SendNetworkFlowRequest(logger *zap.Logger, flow any) error {
 	var request *pb.SendKubernetesNetworkFlowsRequest
 
 	switch f := flow.(type) {

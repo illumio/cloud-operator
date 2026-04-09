@@ -67,13 +67,13 @@ func (m *MockConfigUpdateClient) Trailer() metadata.MD {
 	return nil
 }
 
-func (m *MockConfigUpdateClient) RecvMsg(msg interface{}) error {
+func (m *MockConfigUpdateClient) RecvMsg(msg any) error {
 	args := m.Called(msg)
 
 	return args.Error(0)
 }
 
-func (m *MockConfigUpdateClient) SendMsg(msg interface{}) error {
+func (m *MockConfigUpdateClient) SendMsg(msg any) error {
 	args := m.Called(msg)
 
 	return args.Error(0)

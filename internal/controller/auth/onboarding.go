@@ -127,7 +127,7 @@ func OnboardCluster(ctx context.Context, tlsSkipVerify bool, onboardingEndpoint,
 }
 
 // GetFirstAudience extracts the first audience from the claims map.
-func GetFirstAudience(logger *zap.Logger, claims map[string]interface{}) (string, error) {
+func GetFirstAudience(logger *zap.Logger, claims map[string]any) (string, error) {
 	aud, ok := claims["aud"]
 	if !ok {
 		err := errors.New("audience claim not found")
@@ -138,7 +138,7 @@ func GetFirstAudience(logger *zap.Logger, claims map[string]interface{}) (string
 		return "", err
 	}
 
-	audSlice, ok := aud.([]interface{})
+	audSlice, ok := aud.([]any)
 	if !ok {
 		err := errors.New("audience claim is not a slice")
 		logger.Error("Error extracting audience claim",
