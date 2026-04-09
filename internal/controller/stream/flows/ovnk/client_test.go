@@ -3,34 +3,19 @@
 package ovnk
 
 import (
-	"context"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 )
 
-func TestOVNKClient_SendKeepalive_NoOp(t *testing.T) {
-	client := &ovnkClient{}
+func TestOVNKClient_Fields(t *testing.T) {
+	logger := zap.NewNop()
+	client := &ovnkClient{
+		logger:             logger,
+		ipfixCollectorPort: "4739",
+	}
 
-	err := client.SendKeepalive(context.TODO())
-
-	require.NoError(t, err)
-}
-
-func TestOVNKClient_Close(t *testing.T) {
-	client := &ovnkClient{}
-
-	err := client.Close()
-
-	require.NoError(t, err)
-}
-
-func TestOVNKClient_Close_Idempotent(t *testing.T) {
-	client := &ovnkClient{}
-
-	err := client.Close()
-	require.NoError(t, err)
-
-	err = client.Close()
-	require.NoError(t, err)
+	assert.Equal(t, logger, client.logger)
+	assert.Equal(t, "4739", client.ipfixCollectorPort)
 }

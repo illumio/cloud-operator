@@ -3,12 +3,10 @@
 package cilium
 
 import (
-	"context"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/illumio/cloud-operator/internal/controller/hubble"
@@ -59,32 +57,6 @@ func TestShouldStopRetries_NilError(t *testing.T) {
 	result := ShouldStopRetries(nil)
 
 	assert.False(t, result)
-}
-
-func TestCiliumClient_SendKeepalive_NoOp(t *testing.T) {
-	client := &ciliumClient{}
-
-	err := client.SendKeepalive(context.TODO())
-
-	require.NoError(t, err)
-}
-
-func TestCiliumClient_Close(t *testing.T) {
-	client := &ciliumClient{}
-
-	err := client.Close()
-
-	require.NoError(t, err)
-}
-
-func TestCiliumClient_Close_Idempotent(t *testing.T) {
-	client := &ciliumClient{}
-
-	err := client.Close()
-	require.NoError(t, err)
-
-	err = client.Close()
-	require.NoError(t, err)
 }
 
 func TestCiliumClient_DisableSubsystemCausingError_TLSALPNFailed(t *testing.T) {

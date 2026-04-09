@@ -67,12 +67,8 @@ func (s *NetworkFlowsClientTestSuite) SetupTest() {
 }
 
 func (s *NetworkFlowsClientTestSuite) TearDownTest() {
-	// Clean up flow cache (recover from panic if channel already closed)
-	defer func() {
-		_ = recover()
-	}()
-
-	_ = s.flowCache.Close()
+	// No explicit Close() needed - channels are garbage collected when test ends.
+	// Calling Close() here would race with flowCache.Run() goroutine.
 }
 
 func (s *NetworkFlowsClientTestSuite) TestRun_ContextCanceled() {

@@ -7,23 +7,36 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
+
+// mockFlowSink mocks the collector.FlowSink interface.
+type mockFlowSink struct {
+	mock.Mock
+}
+
+func (m *mockFlowSink) CacheFlow(ctx context.Context, flow pb.Flow) error {
+	args := m.Called(ctx, flow)
+
+	return args.Error(0)
+}
+
+func (m *mockFlowSink) IncrementFlowsReceived() {
+	m.Called()
+}
 
 // FalcoClientTestSuite tests the falcoClient.
 type FalcoClientTestSuite struct {
 	suite.Suite
 
-	flowCache      *stream.FlowCache
-	stats          *stream.Stats
 	falcoEventChan chan string
 	logger         *zap.Logger
 	client         *falcoClient
-	outFlows       chan pb.Flow
+	mockSink       *mockFlowSink
 }
 
 func TestFalcoClientTestSuite(t *testing.T) {
@@ -32,20 +45,13 @@ func TestFalcoClientTestSuite(t *testing.T) {
 
 func (s *FalcoClientTestSuite) SetupTest() {
 	s.logger = zap.NewNop()
-	s.stats = stream.NewStats()
-	s.outFlows = make(chan pb.Flow, 10)
-	s.flowCache = stream.NewFlowCache(10*time.Second, 100, s.outFlows)
 	s.falcoEventChan = make(chan string, 10)
+	s.mockSink = &mockFlowSink{}
 	s.client = &falcoClient{
 		logger:         s.logger,
-		flowCache:      s.flowCache,
-		stats:          s.stats,
+		flowSink:       s.mockSink,
 		falcoEventChan: s.falcoEventChan,
 	}
-}
-
-func (s *FalcoClientTestSuite) TearDownTest() {
-	_ = s.flowCache.Close()
 }
 
 func (s *FalcoClientTestSuite) TestRun_ContextCanceled() {
@@ -99,48 +105,6 @@ func (s *FalcoClientTestSuite) TestRun_InvalidFlowFormat() {
 	s.Require().ErrorIs(err, context.Canceled)
 }
 
-func (s *FalcoClientTestSuite) TestSendKeepalive_NoOp() {
-	// SendKeepalive for Falco is a no-op (not a gRPC stream)
-	err := s.client.SendKeepalive(context.Background())
-
-	s.Require().NoError(err)
-}
-
-func (s *FalcoClientTestSuite) TestClose() {
-	err := s.client.Close()
-
-	s.Require().NoError(err)
-}
-
-func (s *FalcoClientTestSuite) TestClose_Idempotent() {
-	err := s.client.Close()
-	s.Require().NoError(err)
-
-	err = s.client.Close()
-	s.Require().NoError(err)
-}
-
-func (s *FalcoClientTestSuite) TestRun_ValidFlow() {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// Valid Falco event with all required fields
-	validEvent := "illumio_network_traffic (srcip=10.0.0.1 dstip=10.0.0.2 srcport=12345 dstport=80 proto=tcp ipversion=ipv4 time=2024-01-01T00:00:00.000000000+0000)"
-
-	go func() {
-		s.falcoEventChan <- validEvent
-
-		time.Sleep(100 * time.Millisecond)
-		cancel()
-	}()
-
-	err := s.client.Run(ctx)
-
-	s.Require().ErrorIs(err, context.Canceled)
-	// Verify stats were incremented
-	flowsReceived, _, _ := s.stats.GetAndResetStats()
-	s.Equal(uint64(1), flowsReceived)
-}
-
 func (s *FalcoClientTestSuite) TestRun_EmptyParentheses() {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -173,4 +137,26 @@ func (s *FalcoClientTestSuite) TestRun_PartialFlow() {
 
 	// Should return error from ParsePodNetworkInfo (invalid port)
 	s.Require().Error(err)
+}
+
+func (s *FalcoClientTestSuite) TestRun_ValidFlow() {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Valid Falco event with all required fields
+	validEvent := "illumio_network_traffic (srcip=10.0.0.1 dstip=10.0.0.2 srcport=12345 dstport=80 proto=tcp ipversion=ipv4 time=2024-01-01T00:00:00.000000000+0000)"
+
+	s.mockSink.On("CacheFlow", mock.Anything, mock.Anything).Return(nil)
+	s.mockSink.On("IncrementFlowsReceived").Return()
+
+	go func() {
+		s.falcoEventChan <- validEvent
+
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	err := s.client.Run(ctx)
+
+	s.Require().ErrorIs(err, context.Canceled)
+	s.mockSink.AssertExpectations(s.T())
 }

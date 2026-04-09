@@ -8,34 +8,34 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"go.uber.org/zap"
 )
 
-func TestFactory_Name(t *testing.T) {
-	factory := &Factory{}
+func TestFactory_NewFlowCollector(t *testing.T) {
+	logger := zap.NewNop()
+	factory := &Factory{
+		Logger:             logger,
+		IPFIXCollectorPort: "4739",
+	}
 
-	name := factory.Name()
-
-	assert.Equal(t, "OVNKFlowCollector", name)
-}
-
-func TestFactory_NewStreamClient(t *testing.T) {
-	factory := &Factory{}
-
-	// NewStreamClient for OVN-K doesn't use the grpcClient
-	client, err := factory.NewStreamClient(context.Background(), nil)
+	client, err := factory.NewFlowCollector(context.Background())
 
 	require.NoError(t, err)
 	assert.NotNil(t, client)
-
-	// Verify it's an ovnkClient
-	_, ok := client.(*ovnkClient)
-	assert.True(t, ok)
+	assert.Equal(t, logger, client.logger)
+	assert.Equal(t, "4739", client.ipfixCollectorPort)
 }
 
-func TestFactory_ImplementsInterface(t *testing.T) {
-	factory := &Factory{}
+func TestFactory_NewFlowCollector_WithFlowSink(t *testing.T) {
+	logger := zap.NewNop()
+	factory := &Factory{
+		Logger:             logger,
+		IPFIXCollectorPort: "9999",
+	}
 
-	var _ stream.StreamClientFactory = factory
+	client, err := factory.NewFlowCollector(context.Background())
+
+	require.NoError(t, err)
+	assert.NotNil(t, client)
+	assert.Equal(t, "9999", client.ipfixCollectorPort)
 }

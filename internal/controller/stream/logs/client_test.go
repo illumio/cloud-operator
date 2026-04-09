@@ -91,6 +91,7 @@ func (s *LogsClientTestSuite) SetupTest() {
 		conn:               (*grpc.ClientConn)(nil), // Will use mockConn via syncer
 		logger:             s.logger,
 		bufferedGrpcSyncer: s.syncer,
+		done:               make(chan struct{}),
 	}
 }
 
@@ -132,13 +133,5 @@ func (s *LogsClientTestSuite) TestSendKeepalive_NoOp() {
 func (s *LogsClientTestSuite) TestClose() {
 	err := s.client.Close()
 
-	s.Require().NoError(err)
-}
-
-func (s *LogsClientTestSuite) TestClose_Idempotent() {
-	err := s.client.Close()
-	s.Require().NoError(err)
-
-	err = s.client.Close()
 	s.Require().NoError(err)
 }

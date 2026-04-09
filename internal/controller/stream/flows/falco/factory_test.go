@@ -8,34 +8,35 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"go.uber.org/zap"
 )
 
-func TestFactory_Name(t *testing.T) {
-	factory := &Factory{}
+func TestFactory_NewFlowCollector(t *testing.T) {
+	logger := zap.NewNop()
+	falcoEventChan := make(chan string, 10)
+	factory := &Factory{
+		Logger:         logger,
+		FalcoEventChan: falcoEventChan,
+	}
 
-	name := factory.Name()
-
-	assert.Equal(t, "FalcoFlowCollector", name)
-}
-
-func TestFactory_NewStreamClient(t *testing.T) {
-	factory := &Factory{}
-
-	// NewStreamClient for Falco doesn't use the grpcClient
-	client, err := factory.NewStreamClient(context.Background(), nil)
+	client, err := factory.NewFlowCollector(context.Background())
 
 	require.NoError(t, err)
 	assert.NotNil(t, client)
-
-	// Verify it's a falcoClient
-	_, ok := client.(*falcoClient)
-	assert.True(t, ok)
+	assert.Equal(t, logger, client.logger)
+	assert.Equal(t, falcoEventChan, client.falcoEventChan)
 }
 
-func TestFactory_ImplementsInterface(t *testing.T) {
-	factory := &Factory{}
+func TestFactory_NewFlowCollector_WithFlowSink(t *testing.T) {
+	logger := zap.NewNop()
+	falcoEventChan := make(chan string, 10)
+	factory := &Factory{
+		Logger:         logger,
+		FalcoEventChan: falcoEventChan,
+	}
 
-	var _ stream.StreamClientFactory = factory
+	client, err := factory.NewFlowCollector(context.Background())
+
+	require.NoError(t, err)
+	assert.NotNil(t, client)
 }

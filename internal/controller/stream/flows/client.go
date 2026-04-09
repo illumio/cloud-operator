@@ -65,7 +65,7 @@ func (c *networkFlowsClient) Run(ctx context.Context) error {
 }
 
 // sendNetworkFlowRequest sends a network flow to the networkFlowsStream.
-func (c *networkFlowsClient) sendNetworkFlowRequest(flow interface{}) error {
+func (c *networkFlowsClient) sendNetworkFlowRequest(flow any) error {
 	var request *pb.SendKubernetesNetworkFlowsRequest
 
 	switch f := flow.(type) {
