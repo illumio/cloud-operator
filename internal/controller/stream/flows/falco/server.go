@@ -21,22 +21,23 @@ const (
 	// HTTP server timeouts.
 	httpReadHeaderTimeout = 5 * time.Second
 	httpReadTimeout       = 5 * time.Second
-	serverRestartDelay    = 5 * time.Second
 )
 
 // StartServer starts the Falco HTTP server for receiving Falco events.
-func StartServer(ctx context.Context, logger *zap.Logger, falcoEventChan chan string) {
-	http.HandleFunc("/", collector.NewFalcoEventHandler(falcoEventChan))
+// Returns the server so it can be shutdown when the caller is done.
+func StartServer(ctx context.Context, logger *zap.Logger, falcoEventChan chan string) *http.Server {
+	// Use dedicated ServeMux to avoid sharing routes with health server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", collector.NewFalcoEventHandler(falcoEventChan))
 
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info("Falco server shutting down")
+	server := &http.Server{
+		Addr:              FalcoPort,
+		Handler:           mux,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		ReadTimeout:       httpReadTimeout,
+	}
 
-			return
-		default:
-		}
-
+	go func() {
 		var listenerConfig net.ListenConfig
 
 		listener, err := listenerConfig.Listen(ctx, "tcp", FalcoPort)
@@ -50,18 +51,13 @@ func StartServer(ctx context.Context, logger *zap.Logger, falcoEventChan chan st
 			logger.Fatal("Failed to listen on Falco port", zap.String("address", FalcoPort), zap.Error(err))
 		}
 
-		falcoServer := &http.Server{
-			Addr:              FalcoPort,
-			ReadHeaderTimeout: httpReadHeaderTimeout,
-			ReadTimeout:       httpReadTimeout,
-		}
-
 		logger.Info("Falco server listening", zap.String("address", FalcoPort))
 
-		err = falcoServer.Serve(listener)
+		err = server.Serve(listener)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("Falco server failed, restarting", zap.Error(err), zap.Duration("delay", serverRestartDelay))
-			time.Sleep(serverRestartDelay)
+			logger.Error("Falco server stopped", zap.Error(err))
 		}
-	}
+	}()
+
+	return server
 }

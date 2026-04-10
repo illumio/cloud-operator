@@ -9,6 +9,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/illumio/cloud-operator/internal/controller/collector"
+	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
@@ -27,7 +28,7 @@ type Factory struct {
 }
 
 // NewFlowCollector creates a new Cilium flow collector.
-func (f *Factory) NewFlowCollector(_ context.Context) (*ciliumClient, error) {
+func (f *Factory) NewFlowCollector(_ context.Context) (stream.FlowCollector, error) {
 	return &ciliumClient{
 		logger:           f.Logger,
 		flowSink:         f.FlowSink,

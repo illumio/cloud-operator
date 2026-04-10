@@ -27,7 +27,7 @@ type FlowCollectorStreamFactory struct {
 
 // NewStreamClient creates a flow collector and wraps it as a StreamClient.
 func (f *FlowCollectorStreamFactory) NewStreamClient(ctx context.Context, _ grpc.ClientConnInterface) (stream.StreamClient, error) {
-	collector, err := f.Factory(ctx)
+	collector, err := f.Factory.NewFlowCollector(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -81,9 +81,7 @@ func DetectFlowCollector(ctx context.Context, config FlowCollectorConfig) (pb.Fl
 			K8sClient:        config.K8sClient,
 		}
 
-		return pb.FlowCollector_FLOW_COLLECTOR_CILIUM, func(ctx context.Context) (FlowCollector, error) {
-			return factory.NewFlowCollector(ctx)
-		}
+		return pb.FlowCollector_FLOW_COLLECTOR_CILIUM, factory
 	}
 
 	// Check for OVN-Kubernetes
@@ -96,21 +94,16 @@ func DetectFlowCollector(ctx context.Context, config FlowCollectorConfig) (pb.Fl
 			FlowSink:           flowSink,
 		}
 
-		return pb.FlowCollector_FLOW_COLLECTOR_OVNK, func(ctx context.Context) (FlowCollector, error) {
-			return factory.NewFlowCollector(ctx)
-		}
+		return pb.FlowCollector_FLOW_COLLECTOR_OVNK, factory
 	}
 
 	// Default to Falco
 	config.Logger.Info("Using Falco flow collector")
 
 	factory := &falco.Factory{
-		Logger:         config.Logger,
-		FlowSink:       flowSink,
-		FalcoEventChan: config.FalcoEventChan,
+		Logger:   config.Logger,
+		FlowSink: flowSink,
 	}
 
-	return pb.FlowCollector_FLOW_COLLECTOR_FALCO, func(ctx context.Context) (FlowCollector, error) {
-		return factory.NewFlowCollector(ctx)
-	}
+	return pb.FlowCollector_FLOW_COLLECTOR_FALCO, factory
 }

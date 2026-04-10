@@ -29,6 +29,12 @@ type StreamClient interface {
 	Close() error
 }
 
+// FlowCollector collects network flows.
+// Defined here (not in flows package) to avoid import cycles between flows and subpackages.
+type FlowCollector interface {
+	Run(ctx context.Context) error
+}
+
 // StreamClientFactory creates StreamClients.
 // Configuration is passed via factory fields, set by cmd/main.go.
 // This enables dependency injection and testability.

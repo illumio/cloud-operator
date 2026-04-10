@@ -21,7 +21,7 @@ type ovnkClient struct {
 func (c *ovnkClient) Run(ctx context.Context) error {
 	ovnkCollector := collector.NewOVNKCollector(c.logger, c.ipfixCollectorPort, c.flowSink)
 
-	err := ovnkCollector.StartIPFIXCollector(ctx)
+	err := ovnkCollector.RunIPFIXCollector(ctx)
 	if err != nil {
 		c.logger.Error("Failed to listen for OVN-K IPFIX flows", zap.Error(err))
 

@@ -52,5 +52,4 @@ type FlowCollectorConfig struct {
 	TlsAuthProps       *tls.AuthProperties
 	IPFIXCollectorPort string
 	OVNKNamespace      string
-	FalcoEventChan     chan string
 }

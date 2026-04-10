@@ -13,7 +13,6 @@ import (
 
 	"github.com/illumio/cloud-operator/internal/controller/auth"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
-	"github.com/illumio/cloud-operator/internal/controller/stream/flows/falco"
 	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
 )
 
@@ -144,11 +143,7 @@ func ConnectStreams(
 	logger *zap.Logger,
 	envMap EnvironmentConfig,
 	factoryConfig FactoryConfig,
-	falcoEventChan chan string,
 ) {
-	// Start Falco HTTP server (needed even if not using Falco collector)
-	go falco.StartServer(ctx, logger, falcoEventChan)
-
 	resetTimer := time.NewTimer(timeutil.JitterTime(ConnectionRetryInterval, ConnectionRetryJitter))
 	attempt := 0
 

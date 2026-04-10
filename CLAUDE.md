@@ -43,7 +43,7 @@ Streams use the **StreamClient/StreamClientFactory** pattern for dependency inje
 
 **Flow Collector Interfaces** (`flows/interfaces.go`):
 - `FlowCollector`: `Run(ctx)` - simple interface for flow collectors
-- `FlowCollectorFactory`: `func(ctx) (FlowCollector, error)`
+- `FlowCollectorFactory`: `NewFlowCollector(ctx) (FlowCollector, error)` - interface for creating collectors
 
 **Flow**: Detection at startup in `main.go` via `DetectFlowCollector()` → factories created → passed to `ConnectStreams()` → `ManageStream()` creates clients
 
