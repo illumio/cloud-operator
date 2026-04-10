@@ -72,9 +72,9 @@ func IsOVNKDeployed(ctx context.Context, logger *zap.Logger, ovnkNamespace strin
 	return true
 }
 
-// StartIPFIXCollector starts a UDP listener for OVN-K IPFIX flows.
-// It processes packets directly and handles context cancellation gracefully.
-func (c *OVNKCollector) StartIPFIXCollector(ctx context.Context) error {
+// RunIPFIXCollector runs the UDP listener for OVN-K IPFIX flows.
+// It blocks until the context is canceled.
+func (c *OVNKCollector) RunIPFIXCollector(ctx context.Context) error {
 	logger := c.logger.With(
 		zap.String("address", c.ipfixCollectorPort),
 	)

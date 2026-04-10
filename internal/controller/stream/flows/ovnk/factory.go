@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/illumio/cloud-operator/internal/controller/collector"
+	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
 
 // Factory creates OVN-K flow collector clients.
@@ -18,7 +19,7 @@ type Factory struct {
 }
 
 // NewFlowCollector creates a new OVN-K flow collector.
-func (f *Factory) NewFlowCollector(_ context.Context) (*ovnkClient, error) {
+func (f *Factory) NewFlowCollector(_ context.Context) (stream.FlowCollector, error) {
 	return &ovnkClient{
 		logger:             f.Logger,
 		ipfixCollectorPort: f.IPFIXCollectorPort,

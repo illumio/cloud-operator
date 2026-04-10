@@ -206,9 +206,6 @@ func main() {
 		make(chan pb.Flow, stream.FlowChannelBufferSize),
 	)
 
-	// Create Falco event channel (needed even if not using Falco collector)
-	falcoEventChan := make(chan string)
-
 	// Create TlsAuthProps once - persists DisableTLS/DisableALPN flags across reconnections
 	tlsAuthProps := &tls.AuthProperties{}
 
@@ -227,7 +224,6 @@ func main() {
 		CiliumNamespaces:   viper.GetStringSlice("cilium_namespaces"),
 		IPFIXCollectorPort: viper.GetString("ipfix_collector_port"),
 		OVNKNamespace:      viper.GetString("ovnk_namespace"),
-		FalcoEventChan:     falcoEventChan,
 		TlsAuthProps:       tlsAuthProps,
 	})
 
@@ -278,5 +274,5 @@ func main() {
 		StatsLogPeriod: envConfig.StatsLogPeriod,
 	}
 
-	stream.ConnectStreams(ctx, logger, envConfig, factoryConfig, falcoEventChan)
+	stream.ConnectStreams(ctx, logger, envConfig, factoryConfig)
 }

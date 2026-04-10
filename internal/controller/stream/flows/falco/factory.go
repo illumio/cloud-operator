@@ -8,20 +8,19 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/illumio/cloud-operator/internal/controller/collector"
+	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
 
 // Factory creates Falco flow collector clients.
 type Factory struct {
-	Logger         *zap.Logger
-	FlowSink       collector.FlowSink
-	FalcoEventChan chan string
+	Logger   *zap.Logger
+	FlowSink collector.FlowSink
 }
 
 // NewFlowCollector creates a new Falco flow collector.
-func (f *Factory) NewFlowCollector(_ context.Context) (*falcoClient, error) {
+func (f *Factory) NewFlowCollector(_ context.Context) (stream.FlowCollector, error) {
 	return &falcoClient{
-		logger:         f.Logger,
-		flowSink:       f.FlowSink,
-		falcoEventChan: f.FalcoEventChan,
+		logger:   f.Logger,
+		flowSink: f.FlowSink,
 	}, nil
 }
