@@ -180,14 +180,16 @@ func (h *FakeServerTestHarness) WaitForConnection() error {
 // LogCurrentState logs the current server state for debugging.
 func (h *FakeServerTestHarness) LogCurrentState() {
 	state := h.Server.state
-	h.T.Logf("Current state: ConnectionSuccessful=%v, BadInitialCommit=%v",
-		state.ConnectionSuccessful, state.BadIntialCommit)
+	h.T.Logf("Current state: ConnectionSuccessful=%v, BadInitialCommit=%v, ResourcesReceived=%d, ResourceSnapshotComplete=%v",
+		state.ConnectionSuccessful, state.BadIntialCommit, state.ResourcesReceived, state.ResourceSnapshotComplete)
 }
 
 // ResetState resets the server state for a new test phase.
 func (h *FakeServerTestHarness) ResetState() {
 	h.Server.state.ConnectionSuccessful = false
 	h.Server.state.BadIntialCommit = false
+	h.Server.state.ResourcesReceived = 0
+	h.Server.state.ResourceSnapshotComplete = false
 	h.T.Log("Server state reset")
 }
 

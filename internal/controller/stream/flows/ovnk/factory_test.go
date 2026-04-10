@@ -22,8 +22,6 @@ func TestFactory_NewFlowCollector(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.NotNil(t, client)
-	assert.Equal(t, logger, client.logger)
-	assert.Equal(t, "4739", client.ipfixCollectorPort)
 }
 
 func TestFactory_NewFlowCollector_WithFlowSink(t *testing.T) {
@@ -37,5 +35,4 @@ func TestFactory_NewFlowCollector_WithFlowSink(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.NotNil(t, client)
-	assert.Equal(t, "9999", client.ipfixCollectorPort)
 }

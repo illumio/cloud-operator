@@ -28,6 +28,16 @@ func (m *mockFlowCollector) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
+// mockFlowCollectorFactory implements FlowCollectorFactory for testing.
+type mockFlowCollectorFactory struct {
+	collector FlowCollector
+	err       error
+}
+
+func (m *mockFlowCollectorFactory) NewFlowCollector(_ context.Context) (FlowCollector, error) {
+	return m.collector, m.err
+}
+
 func TestFlowCollectorStreamFactory_Name(t *testing.T) {
 	factory := &FlowCollectorStreamFactory{}
 
@@ -39,9 +49,7 @@ func TestFlowCollectorStreamFactory_Name(t *testing.T) {
 func TestFlowCollectorStreamFactory_NewStreamClient_Success(t *testing.T) {
 	mockCollector := &mockFlowCollector{}
 	factory := &FlowCollectorStreamFactory{
-		Factory: func(ctx context.Context) (FlowCollector, error) {
-			return mockCollector, nil
-		},
+		Factory: &mockFlowCollectorFactory{collector: mockCollector},
 	}
 
 	client, err := factory.NewStreamClient(context.Background(), nil)
@@ -53,9 +61,7 @@ func TestFlowCollectorStreamFactory_NewStreamClient_Success(t *testing.T) {
 func TestFlowCollectorStreamFactory_NewStreamClient_Error(t *testing.T) {
 	expectedErr := errors.New("factory error")
 	factory := &FlowCollectorStreamFactory{
-		Factory: func(ctx context.Context) (FlowCollector, error) {
-			return nil, expectedErr
-		},
+		Factory: &mockFlowCollectorFactory{err: expectedErr},
 	}
 
 	client, err := factory.NewStreamClient(context.Background(), nil)

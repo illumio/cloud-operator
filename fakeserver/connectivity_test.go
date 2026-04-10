@@ -94,3 +94,31 @@ func TestOperatorHandlesInitialCommitFailure(t *testing.T) {
 
 	t.Log("Test passed: Operator handles initial commit failure")
 }
+
+// TestOperatorSendsResources tests that the operator sends Kubernetes resources
+// to the fakeserver and completes the resource snapshot.
+func TestOperatorSendsResources(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	config := DefaultTestConfig()
+	harness := NewTestHarness(t, config)
+
+	// Start the server
+	err := harness.Start()
+	require.NoError(t, err, "Failed to start FakeServer")
+
+	defer harness.Stop()
+
+	// Wait for operator to connect
+	err = harness.WaitForConnection()
+	require.NoError(t, err, "Operator failed to connect")
+
+	// Verify resources were actually received
+	state := harness.Server.state
+	require.True(t, state.ResourceSnapshotComplete, "Resource snapshot should be complete")
+	require.Greater(t, state.ResourcesReceived, 0, "Should have received at least one resource")
+
+	t.Logf("Test passed: Received %d resources, snapshot complete", state.ResourcesReceived)
+}

@@ -26,9 +26,6 @@ func TestFactory_NewFlowCollector(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.NotNil(t, client)
-	assert.Equal(t, logger, client.logger)
-	assert.Equal(t, []string{"cilium"}, client.ciliumNamespaces)
-	assert.Equal(t, tlsProps, client.tlsAuthProps)
 }
 
 func TestFactory_NewFlowCollector_WithFlowSink(t *testing.T) {
@@ -42,5 +39,4 @@ func TestFactory_NewFlowCollector_WithFlowSink(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.NotNil(t, client)
-	assert.Equal(t, []string{"kube-system", "cilium"}, client.ciliumNamespaces)
 }

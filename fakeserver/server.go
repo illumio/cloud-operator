@@ -66,11 +66,13 @@ type FakeServer struct {
 }
 
 type ServerState struct {
-	ConnectionSuccessful   bool
-	IncorrectCredentials   bool
-	BadIntialCommit        bool
-	CiliumFlowsReceived    int
-	FiveTupleFlowsReceived int
+	ConnectionSuccessful     bool
+	IncorrectCredentials     bool
+	BadIntialCommit          bool
+	CiliumFlowsReceived      int
+	FiveTupleFlowsReceived   int
+	ResourcesReceived        int
+	ResourceSnapshotComplete bool
 }
 
 // RecordCiliumFlow increments the Cilium flow counter.
@@ -139,8 +141,10 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 			logger.Info("Received Keepalive for resources stream")
 		case *pb.SendKubernetesResourcesRequest_ClusterMetadata:
 			logger.Info("Cluster metadata received")
+			serverState.ResourcesReceived++
 		case *pb.SendKubernetesResourcesRequest_ResourceData:
 			logger.Info("Initial inventory data")
+			serverState.ResourcesReceived++
 		case *pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete:
 			logger.Info("Initial inventory complete")
 
@@ -151,8 +155,10 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 			}
 
 			serverState.ConnectionSuccessful = true
+			serverState.ResourceSnapshotComplete = true
 		case *pb.SendKubernetesResourcesRequest_KubernetesResourceMutation:
 			logger.Info("Mutation Detected")
+			serverState.ResourcesReceived++
 		}
 
 		if err := stream.Send(&pb.SendKubernetesResourcesResponse{}); err != nil {
