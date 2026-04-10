@@ -99,7 +99,7 @@ func DetectFlowCollector(ctx context.Context, config FlowCollectorConfig) (pb.Fl
 	}
 
 	// Check for AWS VPC CNI (EKS standard clusters)
-	if config.EnableVPCCNI && vpccni.IsVPCCNIAvailable(ctx, config.Logger, clientset) {
+	if config.EnableVPCCNI && collector.IsVPCCNIAvailable(ctx, config.Logger, clientset) {
 		config.Logger.Info("Using AWS VPC CNI flow collector")
 
 		factory := &vpccni.Factory{

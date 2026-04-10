@@ -3,14 +3,28 @@
 package collector
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+)
+
+const (
+	// AWSNodeLabel is the label selector for aws-node pods.
+	AWSNodeLabel = "k8s-app=aws-node"
+	// AWSNodeNamespace is the namespace where aws-node pods run.
+	AWSNodeNamespace = "kube-system"
+	// AWSEksNodeagentContainer is the container name that has flow logs.
+	AWSEksNodeagentContainer = "aws-eks-nodeagent"
 )
 
 // VPC CNI flow log errors.
@@ -81,6 +95,7 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 
 	// Parse timestamp or use current time
 	ts := timestamppb.Now()
+
 	if log.Timestamp != "" {
 		// AWS uses ISO 8601 format: "2024-09-23T12:36:53.562Z"
 		if parsedTime, err := time.Parse(time.RFC3339Nano, log.Timestamp); err == nil {
@@ -105,6 +120,48 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 func isIPv6(addr string) bool {
 	for _, c := range addr {
 		if c == ':' {
+			return true
+		}
+	}
+
+	return false
+}
+
+// IsVPCCNIAvailable checks if AWS VPC CNI with flow logging is available in the cluster.
+// It looks for aws-node pods with the aws-eks-nodeagent container.
+func IsVPCCNIAvailable(ctx context.Context, logger *zap.Logger, k8sClient kubernetes.Interface) bool {
+	pods, err := k8sClient.CoreV1().Pods(AWSNodeNamespace).List(ctx, metav1.ListOptions{
+		LabelSelector: AWSNodeLabel,
+		Limit:         1,
+	})
+	if err != nil {
+		logger.Debug("Failed to list aws-node pods", zap.Error(err))
+
+		return false
+	}
+
+	if len(pods.Items) == 0 {
+		logger.Debug("No aws-node pods found")
+
+		return false
+	}
+
+	// Check if the aws-eks-nodeagent container exists
+	if hasNodeagentContainer(pods.Items[0]) {
+		logger.Debug("VPC CNI with aws-eks-nodeagent detected")
+
+		return true
+	}
+
+	logger.Debug("aws-node pods found but aws-eks-nodeagent container not present")
+
+	return false
+}
+
+// hasNodeagentContainer checks if the pod has the aws-eks-nodeagent container.
+func hasNodeagentContainer(pod corev1.Pod) bool {
+	for _, container := range pod.Spec.Containers {
+		if container.Name == AWSEksNodeagentContainer {
 			return true
 		}
 	}

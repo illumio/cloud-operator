@@ -59,8 +59,8 @@ func (c *vpccniClient) Run(ctx context.Context) error {
 // pollAllPods lists all aws-node pods and gets logs from each.
 func (c *vpccniClient) pollAllPods(ctx context.Context) error {
 	// List aws-node pods
-	pods, err := c.k8sClient.CoreV1().Pods(awsNodeNamespace).List(ctx, metav1.ListOptions{
-		LabelSelector: awsNodeLabel,
+	pods, err := c.k8sClient.CoreV1().Pods(collector.AWSNodeNamespace).List(ctx, metav1.ListOptions{
+		LabelSelector: collector.AWSNodeLabel,
 	})
 	if err != nil {
 		return err
@@ -118,8 +118,8 @@ func (c *vpccniClient) pollPod(ctx context.Context, pod *corev1.Pod) error {
 // getLogsFromPod retrieves logs from a pod's aws-eks-nodeagent container.
 func (c *vpccniClient) getLogsFromPod(ctx context.Context, podName string, since time.Time) (string, error) {
 	sinceTime := metav1.NewTime(since)
-	req := c.k8sClient.CoreV1().Pods(awsNodeNamespace).GetLogs(podName, &corev1.PodLogOptions{
-		Container: awsEksNodeagentContainer,
+	req := c.k8sClient.CoreV1().Pods(collector.AWSNodeNamespace).GetLogs(podName, &corev1.PodLogOptions{
+		Container: collector.AWSEksNodeagentContainer,
 		SinceTime: &sinceTime,
 	})
 
@@ -167,6 +167,7 @@ func (c *vpccniClient) parseLogs(ctx context.Context, logs string, podName strin
 		}
 
 		c.flowSink.IncrementFlowsReceived()
+
 		flowCount++
 	}
 
