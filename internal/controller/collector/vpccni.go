@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,15 +37,22 @@ var (
 )
 
 // VPCCNIFlowLog represents the flow log format from aws-eks-nodeagent.
-// Actual format from AWS VPC CNI Network Policy Agent:
+//
+// Old format (v1.0.x - v1.2.1):
 // {"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client",
 //
 //	"msg":"Flow Info: ","Src IP":"10.0.141.167","Src Port":39197,
 //	"Dest IP":"172.20.0.10","Dest Port":53,"Proto":"TCP","Verdict":"ACCEPT"}
+//
+// New format (v1.2.2+):
+// {"level":"debug","ts":"2026-04-13T21:18:46.888Z","caller":"runtime/asm_amd64.s:1700",
+//
+//	"msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress"}
 type VPCCNIFlowLog struct {
 	Level     string `json:"level"`
 	Timestamp string `json:"ts"`
-	Logger    string `json:"logger"`
+	Logger    string `json:"logger"` // v1.0.x - v1.2.1
+	Caller    string `json:"caller"` // v1.2.2+
 	Message   string `json:"msg"`
 	SrcIP     string `json:"Src IP"`
 	SrcPort   uint32 `json:"Src Port"`
@@ -53,7 +62,35 @@ type VPCCNIFlowLog struct {
 	Verdict   string `json:"Verdict"` // ACCEPT, DENY, EXPIRED/DELETED
 }
 
+// flowMsgPattern extracts flow data from the embedded msg string in v1.2.2+ format.
+// Example: "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress"
+var flowMsgPattern = regexp.MustCompile(
+	`Src IP:\s*(\S+)\s+Src Port:\s*(\d+)\s+Dest IP:\s*(\S+)\s+Dest Port:\s*(\d+)\s+Proto\s+(\S+)\s+Verdict\s+(\S+)`,
+)
+
+// parseFlowFromMsg extracts flow data from the embedded msg string (v1.2.2+ format).
+func parseFlowFromMsg(msg string) (srcIP string, srcPort uint32, destIP string, destPort uint32, proto string, verdict string, ok bool) {
+	matches := flowMsgPattern.FindStringSubmatch(msg)
+	if len(matches) < 7 {
+		return "", 0, "", 0, "", "", false
+	}
+
+	srcPortInt, err := strconv.ParseUint(matches[2], 10, 32)
+	if err != nil {
+		return "", 0, "", 0, "", "", false
+	}
+
+	destPortInt, err := strconv.ParseUint(matches[4], 10, 32)
+	if err != nil {
+		return "", 0, "", 0, "", "", false
+	}
+
+	return matches[1], uint32(srcPortInt), matches[3], uint32(destPortInt), matches[5], matches[6], true
+}
+
 // ParseVPCCNIFlowLog parses a VPC CNI flow log line into a FiveTupleFlow.
+// Supports both old format (v1.0.x - v1.2.1) with separate JSON fields
+// and new format (v1.2.2+) with embedded msg string.
 func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 	var log VPCCNIFlowLog
 
@@ -61,34 +98,62 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 		return nil, ErrVPCCNINotFlowLog
 	}
 
-	// Check if this is a flow log (must have "Flow Info" message and ebpf-client logger)
-	if !strings.Contains(log.Message, "Flow Info") || log.Logger != "ebpf-client" {
+	// Check if this is a flow log (must have "Flow Info" in message)
+	if !strings.Contains(log.Message, "Flow Info") {
 		return nil, ErrVPCCNINotFlowLog
 	}
 
+	// For old format (v1.0.x - v1.2.1), also require ebpf-client logger
+	// For new format (v1.2.2+), the logger field is empty and caller is set
+	isOldFormat := log.Logger == "ebpf-client"
+	isNewFormat := log.Caller != "" && log.Logger == ""
+
+	if !isOldFormat && !isNewFormat {
+		return nil, ErrVPCCNINotFlowLog
+	}
+
+	var srcIP, destIP, proto string
+	var srcPort, destPort uint32
+
+	if isOldFormat && log.SrcIP != "" && log.DestIP != "" {
+		// Old format: fields are in separate JSON keys
+		srcIP = log.SrcIP
+		srcPort = log.SrcPort
+		destIP = log.DestIP
+		destPort = log.DestPort
+		proto = log.Proto
+	} else {
+		// New format (v1.2.2+): parse from embedded msg string
+		var ok bool
+		srcIP, srcPort, destIP, destPort, proto, _, ok = parseFlowFromMsg(log.Message)
+		if !ok {
+			return nil, ErrVPCCNIInvalidLog
+		}
+	}
+
 	// Validate required fields
-	if log.SrcIP == "" || log.DestIP == "" {
+	if srcIP == "" || destIP == "" {
 		return nil, ErrVPCCNIInvalidLog
 	}
 
 	// Determine IP version
 	ipVersion := "ipv4"
-	if isIPv6(log.SrcIP) || isIPv6(log.DestIP) {
+	if isIPv6(srcIP) || isIPv6(destIP) {
 		ipVersion = "ipv6"
 	}
 
-	layer3Message, err := CreateLayer3Message(log.SrcIP, log.DestIP, ipVersion)
+	layer3Message, err := CreateLayer3Message(srcIP, destIP, ipVersion)
 	if err != nil {
 		return nil, ErrVPCCNIInvalidIP
 	}
 
 	// Convert protocol string to lowercase for CreateLayer4Message
-	protoStr := strings.ToLower(log.Proto)
+	protoStr := strings.ToLower(proto)
 	if protoStr == "unknown" {
 		protoStr = "tcp" // default to TCP for unknown
 	}
 
-	layer4Message, err := CreateLayer4Message(protoStr, log.SrcPort, log.DestPort, ipVersion)
+	layer4Message, err := CreateLayer4Message(protoStr, srcPort, destPort, ipVersion)
 	if err != nil {
 		return nil, err
 	}
