@@ -6,16 +6,15 @@ import (
 	"context"
 
 	"go.uber.org/zap"
-	"k8s.io/client-go/kubernetes"
 
 	"github.com/illumio/cloud-operator/internal/controller/collector"
-	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
-// k8sClientGetter provides access to Kubernetes client.
-type k8sClientGetter interface {
-	GetClientset() kubernetes.Interface
+// flowCollector is the interface for flow collectors returned by this factory.
+// Matches flows.Collector interface via structural typing.
+type flowCollector interface {
+	Run(ctx context.Context) error
 }
 
 // Factory creates Cilium flow collector clients.
@@ -24,11 +23,11 @@ type Factory struct {
 	FlowSink         collector.FlowSink
 	CiliumNamespaces []string
 	TlsAuthProps     *tls.AuthProperties
-	K8sClient        k8sClientGetter
+	K8sClient        collector.K8sClientGetter
 }
 
-// NewFlowCollector creates a new Cilium flow collector.
-func (f *Factory) NewFlowCollector(_ context.Context) (stream.FlowCollector, error) {
+// NewCollector creates a new Cilium flow collector.
+func (f *Factory) NewCollector(_ context.Context) (flowCollector, error) {
 	return &ciliumClient{
 		logger:           f.Logger,
 		flowSink:         f.FlowSink,

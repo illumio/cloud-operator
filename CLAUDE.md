@@ -23,6 +23,7 @@ internal/controller/
 │   ├── interfaces.go # StreamClient, StreamClientFactory interfaces
 │   ├── config/     # Configuration stream (factory + client)
 │   ├── flows/      # Network flows stream
+│   │   ├── cache/  # Flow cache for aggregation/eviction
 │   │   ├── cilium/ # Cilium/Hubble flow collector
 │   │   ├── falco/  # Falco flow collector
 │   │   └── ovnk/   # OVN-Kubernetes flow collector
@@ -61,13 +62,13 @@ Streams use the **StreamClient/StreamClientFactory** pattern for dependency inje
 | Main orchestrator | `stream/manager.go:ConnectStreams()` |
 | Stream interfaces | `stream/interfaces.go` |
 | Auth flow | `auth/authenticator.go:SetUpOAuthConnection()` |
-| Flow caching | `stream/cache.go:FlowCache` |
+| Flow caching | `stream/flows/cache/cache.go:FlowCache` |
 | Flow collector detection | `stream/flows/detect.go:DetectFlowCollector()` |
 | Resource watching | `stream/resources/watcher.go` |
 | gRPC internal logging | `logging/grpc_internal_logger.go` |
 
 ## Configuration
 
-- Environment variables → `stream/types.go:EnvironmentConfig`
+- Environment variables → `stream/config.go:Config`
 - Timeouts/intervals → `stream/constants.go`
 - Cluster credentials → K8s Secret `clustercreds`

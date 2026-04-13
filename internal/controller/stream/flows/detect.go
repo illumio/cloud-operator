@@ -19,15 +19,16 @@ import (
 // Verify FlowCollectorStreamFactory implements stream.StreamClientFactory.
 var _ stream.StreamClientFactory = (*FlowCollectorStreamFactory)(nil)
 
-// FlowCollectorStreamFactory wraps a FlowCollectorFactory to implement StreamClientFactory.
+// FlowCollectorStreamFactory wraps a CollectorFactory to implement StreamClientFactory.
 // This allows flow collectors to be managed by the stream manager like other streams.
 type FlowCollectorStreamFactory struct {
-	Factory FlowCollectorFactory
+	Factory       CollectorFactory
+	CollectorName string // e.g., "Cilium", "OVN-K", "Falco"
 }
 
 // NewStreamClient creates a flow collector and wraps it as a StreamClient.
 func (f *FlowCollectorStreamFactory) NewStreamClient(ctx context.Context, _ grpc.ClientConnInterface) (stream.StreamClient, error) {
-	collector, err := f.Factory.NewFlowCollector(ctx)
+	collector, err := f.Factory.NewCollector(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -37,12 +38,25 @@ func (f *FlowCollectorStreamFactory) NewStreamClient(ctx context.Context, _ grpc
 
 // Name returns the stream name for logging.
 func (f *FlowCollectorStreamFactory) Name() string {
+	if f.CollectorName != "" {
+		return "FlowCollector-" + f.CollectorName
+	}
+
 	return "FlowCollector"
 }
 
-// flowCollectorAdapter wraps a FlowCollector to implement stream.StreamClient.
+// flowCollectorAdapter wraps a Collector to implement stream.StreamClient.
 type flowCollectorAdapter struct {
-	collector FlowCollector
+	collector Collector
+}
+
+// collectorFactoryFunc wraps a function to implement CollectorFactory.
+// This allows subpackage factories (cilium, falco, ovnk) to be used as CollectorFactory
+// without importing the flows package (which would create an import cycle).
+type collectorFactoryFunc func(ctx context.Context) (Collector, error)
+
+func (f collectorFactoryFunc) NewCollector(ctx context.Context) (Collector, error) {
+	return f(ctx)
 }
 
 func (a *flowCollectorAdapter) Run(ctx context.Context) error {
@@ -57,9 +71,9 @@ func (a *flowCollectorAdapter) Close() error {
 	return nil
 }
 
-// DetectFlowCollector determines which flow collector is available and returns its type and factory.
+// DetectFlowCollector determines which flow collector is available and returns its type, name, and factory.
 // Detection happens once at startup in main.go.
-func DetectFlowCollector(ctx context.Context, config FlowCollectorConfig) (pb.FlowCollector, FlowCollectorFactory) {
+func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCollector, string, CollectorFactory) {
 	clientset := config.K8sClient.GetClientset()
 	flowSink := NewFlowSinkAdapter(config.FlowCache, config.Stats)
 
@@ -81,7 +95,11 @@ func DetectFlowCollector(ctx context.Context, config FlowCollectorConfig) (pb.Fl
 			K8sClient:        config.K8sClient,
 		}
 
-		return pb.FlowCollector_FLOW_COLLECTOR_CILIUM, factory
+		// Wrap using collectorFactoryFunc to avoid import cycle
+		// (cilium can't import flows, but its client structurally satisfies Collector)
+		return pb.FlowCollector_FLOW_COLLECTOR_CILIUM, "Cilium", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
+			return factory.NewCollector(ctx)
+		})
 	}
 
 	// Check for OVN-Kubernetes
@@ -94,7 +112,9 @@ func DetectFlowCollector(ctx context.Context, config FlowCollectorConfig) (pb.Fl
 			FlowSink:           flowSink,
 		}
 
-		return pb.FlowCollector_FLOW_COLLECTOR_OVNK, factory
+		return pb.FlowCollector_FLOW_COLLECTOR_OVNK, "OVN-K", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
+			return factory.NewCollector(ctx)
+		})
 	}
 
 	// Default to Falco
@@ -105,5 +125,7 @@ func DetectFlowCollector(ctx context.Context, config FlowCollectorConfig) (pb.Fl
 		FlowSink: flowSink,
 	}
 
-	return pb.FlowCollector_FLOW_COLLECTOR_FALCO, factory
+	return pb.FlowCollector_FLOW_COLLECTOR_FALCO, "Falco", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
+		return factory.NewCollector(ctx)
+	})
 }

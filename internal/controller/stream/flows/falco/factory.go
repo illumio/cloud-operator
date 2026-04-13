@@ -8,8 +8,13 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/illumio/cloud-operator/internal/controller/collector"
-	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
+
+// flowCollector is the interface for flow collectors returned by this factory.
+// Matches flows.Collector interface via structural typing.
+type flowCollector interface {
+	Run(ctx context.Context) error
+}
 
 // Factory creates Falco flow collector clients.
 type Factory struct {
@@ -17,8 +22,8 @@ type Factory struct {
 	FlowSink collector.FlowSink
 }
 
-// NewFlowCollector creates a new Falco flow collector.
-func (f *Factory) NewFlowCollector(_ context.Context) (stream.FlowCollector, error) {
+// NewCollector creates a new Falco flow collector.
+func (f *Factory) NewCollector(_ context.Context) (flowCollector, error) {
 	return &falcoClient{
 		logger:   f.Logger,
 		flowSink: f.FlowSink,

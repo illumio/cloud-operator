@@ -20,7 +20,7 @@ type ciliumClient struct {
 	flowSink         collector.FlowSink
 	ciliumNamespaces []string
 	tlsAuthProps     *tls.AuthProperties
-	k8sClient        k8sClientGetter
+	k8sClient        collector.K8sClientGetter
 }
 
 // Run collects flows from Cilium Hubble Relay.

@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 // Protocol constants.
@@ -33,6 +34,11 @@ var (
 type FlowSink interface {
 	CacheFlow(ctx context.Context, flow pb.Flow) error
 	IncrementFlowsReceived()
+}
+
+// K8sClientGetter provides access to Kubernetes client.
+type K8sClientGetter interface {
+	GetClientset() kubernetes.Interface
 }
 
 // CreateLayer3Message creates a Layer3 IP message from source/destination addresses.
