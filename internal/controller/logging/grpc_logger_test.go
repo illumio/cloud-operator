@@ -66,13 +66,13 @@ func (m *MockSendLogsClient) Trailer() metadata.MD {
 	return nil
 }
 
-func (m *MockSendLogsClient) SendMsg(msg interface{}) error {
+func (m *MockSendLogsClient) SendMsg(msg any) error {
 	args := m.Called(msg)
 
 	return args.Error(0)
 }
 
-func (m *MockSendLogsClient) RecvMsg(msg interface{}) error {
+func (m *MockSendLogsClient) RecvMsg(msg any) error {
 	args := m.Called(msg)
 
 	return args.Error(0)
