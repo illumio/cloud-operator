@@ -95,7 +95,7 @@ func (suite *ControllerTestSuite) SetupTest() {
 
 // LogWriter is a writer that writes to a custom function.
 type LogWriter struct {
-	logFunc func(string, ...interface{})
+	logFunc func(string, ...any)
 }
 
 func (w *LogWriter) Write(p []byte) (n int, err error) {

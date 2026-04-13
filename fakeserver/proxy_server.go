@@ -43,11 +43,8 @@ func NewProxyServer(httpAddress string, logger *zap.Logger) *ProxyServer {
 // Start launches the ProxyServer's HTTP listener.
 func (p *ProxyServer) Start() {
 	p.logger.Info("Starting Simplified ProxyServer (with Hijack fix)...")
-	p.wg.Add(1)
 
-	go func() {
-		defer p.wg.Done()
-
+	p.wg.Go(func() {
 		p.logger.Info("Proxy HTTP server starting", zap.String("address", p.httpServer.Addr))
 
 		if err := p.httpServer.ListenAndServe(); err != http.ErrServerClosed {
@@ -55,7 +52,7 @@ func (p *ProxyServer) Start() {
 		}
 
 		p.logger.Info("Proxy HTTP server stopped")
-	}()
+	})
 
 	p.logger.Info("Simplified ProxyServer ready: HTTP Proxy for CONNECT on", zap.String("address", p.httpServer.Addr))
 }

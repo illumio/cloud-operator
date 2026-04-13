@@ -98,10 +98,10 @@ func TestGetMetadataFromResource(t *testing.T) {
 
 	// Create an `unstructured.Unstructured` object with metadata.
 	resource := unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Pod",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-pod",
 				"namespace": "test-namespace",
 				"labels": map[string]string{

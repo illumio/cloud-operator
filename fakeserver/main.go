@@ -11,6 +11,7 @@ import (
 func main() {
 	// Parse flags
 	proxyFlag := flag.Bool("proxy", false, "Start the proxy server")
+
 	flag.Parse()
 
 	logger, _ := zap.NewDevelopment()

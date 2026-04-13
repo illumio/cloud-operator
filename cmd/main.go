@@ -189,6 +189,7 @@ func main() {
 	}
 
 	http.HandleFunc("/healthz", newHealthHandler(stream.ServerIsHealthy))
+
 	healthChecker := &http.Server{
 		Addr:              ":8080",
 		ReadHeaderTimeout: 10 * time.Second,
