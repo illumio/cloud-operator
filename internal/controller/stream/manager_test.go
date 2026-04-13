@@ -169,8 +169,7 @@ func TestManageStream_ClosesChannelOnExit(t *testing.T) {
 	mockFactory := &mockStreamClientFactory{}
 	mockClient := &mockStreamClient{}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	done := make(chan struct{})
 

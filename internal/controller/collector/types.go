@@ -6,8 +6,9 @@ import (
 	"context"
 	"errors"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"k8s.io/client-go/kubernetes"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 // Protocol constants.
