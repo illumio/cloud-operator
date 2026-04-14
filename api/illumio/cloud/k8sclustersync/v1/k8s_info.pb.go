@@ -9,13 +9,14 @@
 package k8sclustersyncv1
 
 import (
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
+
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
-	reflect "reflect"
-	sync "sync"
-	unsafe "unsafe"
 )
 
 const (
@@ -24,6 +25,68 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+// CiliumProtocol defines the transport protocol for Cilium port rules.
+type CiliumProtocol int32
+
+const (
+	CiliumProtocol_CILIUM_PROTOCOL_UNSPECIFIED CiliumProtocol = 0
+	CiliumProtocol_CILIUM_PROTOCOL_TCP         CiliumProtocol = 1
+	CiliumProtocol_CILIUM_PROTOCOL_UDP         CiliumProtocol = 2
+	CiliumProtocol_CILIUM_PROTOCOL_SCTP        CiliumProtocol = 3
+	CiliumProtocol_CILIUM_PROTOCOL_ICMP        CiliumProtocol = 4
+	CiliumProtocol_CILIUM_PROTOCOL_ICMPV6      CiliumProtocol = 5
+	CiliumProtocol_CILIUM_PROTOCOL_ANY         CiliumProtocol = 6
+)
+
+// Enum value maps for CiliumProtocol.
+var (
+	CiliumProtocol_name = map[int32]string{
+		0: "CILIUM_PROTOCOL_UNSPECIFIED",
+		1: "CILIUM_PROTOCOL_TCP",
+		2: "CILIUM_PROTOCOL_UDP",
+		3: "CILIUM_PROTOCOL_SCTP",
+		4: "CILIUM_PROTOCOL_ICMP",
+		5: "CILIUM_PROTOCOL_ICMPV6",
+		6: "CILIUM_PROTOCOL_ANY",
+	}
+	CiliumProtocol_value = map[string]int32{
+		"CILIUM_PROTOCOL_UNSPECIFIED": 0,
+		"CILIUM_PROTOCOL_TCP":         1,
+		"CILIUM_PROTOCOL_UDP":         2,
+		"CILIUM_PROTOCOL_SCTP":        3,
+		"CILIUM_PROTOCOL_ICMP":        4,
+		"CILIUM_PROTOCOL_ICMPV6":      5,
+		"CILIUM_PROTOCOL_ANY":         6,
+	}
+)
+
+func (x CiliumProtocol) Enum() *CiliumProtocol {
+	p := new(CiliumProtocol)
+	*p = x
+	return p
+}
+
+func (x CiliumProtocol) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CiliumProtocol) Descriptor() protoreflect.EnumDescriptor {
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[0].Descriptor()
+}
+
+func (CiliumProtocol) Type() protoreflect.EnumType {
+	return &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[0]
+}
+
+func (x CiliumProtocol) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CiliumProtocol.Descriptor instead.
+func (CiliumProtocol) EnumDescriptor() ([]byte, []int) {
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{0}
+}
 
 // Network flow collection mechanism configured in the operator.
 type FlowCollector int32
@@ -70,11 +133,11 @@ func (x FlowCollector) String() string {
 }
 
 func (FlowCollector) Descriptor() protoreflect.EnumDescriptor {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[0].Descriptor()
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[1].Descriptor()
 }
 
 func (FlowCollector) Type() protoreflect.EnumType {
-	return &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[0]
+	return &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[1]
 }
 
 func (x FlowCollector) Number() protoreflect.EnumNumber {
@@ -83,7 +146,7 @@ func (x FlowCollector) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use FlowCollector.Descriptor instead.
 func (FlowCollector) EnumDescriptor() ([]byte, []int) {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{0}
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{1}
 }
 
 // TrafficDirection contains TrafficDirectopm header flags of a flow.
@@ -121,11 +184,11 @@ func (x TrafficDirection) String() string {
 }
 
 func (TrafficDirection) Descriptor() protoreflect.EnumDescriptor {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[1].Descriptor()
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[2].Descriptor()
 }
 
 func (TrafficDirection) Type() protoreflect.EnumType {
-	return &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[1]
+	return &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[2]
 }
 
 func (x TrafficDirection) Number() protoreflect.EnumNumber {
@@ -134,7 +197,7 @@ func (x TrafficDirection) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TrafficDirection.Descriptor instead.
 func (TrafficDirection) EnumDescriptor() ([]byte, []int) {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{1}
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{2}
 }
 
 // Verdict contains Verdict header flags of a flow.
@@ -187,11 +250,11 @@ func (x Verdict) String() string {
 }
 
 func (Verdict) Descriptor() protoreflect.EnumDescriptor {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[2].Descriptor()
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[3].Descriptor()
 }
 
 func (Verdict) Type() protoreflect.EnumType {
-	return &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[2]
+	return &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[3]
 }
 
 func (x Verdict) Number() protoreflect.EnumNumber {
@@ -200,7 +263,7 @@ func (x Verdict) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Verdict.Descriptor instead.
 func (Verdict) EnumDescriptor() ([]byte, []int) {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{2}
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{3}
 }
 
 // IPVersion contains the IPVersion header flags of a flow.
@@ -238,11 +301,11 @@ func (x IPVersion) String() string {
 }
 
 func (IPVersion) Descriptor() protoreflect.EnumDescriptor {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[3].Descriptor()
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[4].Descriptor()
 }
 
 func (IPVersion) Type() protoreflect.EnumType {
-	return &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[3]
+	return &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[4]
 }
 
 func (x IPVersion) Number() protoreflect.EnumNumber {
@@ -251,7 +314,7 @@ func (x IPVersion) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use IPVersion.Descriptor instead.
 func (IPVersion) EnumDescriptor() ([]byte, []int) {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{3}
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{4}
 }
 
 // Enumeration to define the different levels of logging.
@@ -299,11 +362,11 @@ func (x LogLevel) String() string {
 }
 
 func (LogLevel) Descriptor() protoreflect.EnumDescriptor {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[4].Descriptor()
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[5].Descriptor()
 }
 
 func (LogLevel) Type() protoreflect.EnumType {
-	return &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[4]
+	return &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[5]
 }
 
 func (x LogLevel) Number() protoreflect.EnumNumber {
@@ -312,7 +375,7 @@ func (x LogLevel) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use LogLevel.Descriptor instead.
 func (LogLevel) EnumDescriptor() ([]byte, []int) {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{4}
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{5}
 }
 
 type Port_Protocol int32
@@ -348,11 +411,11 @@ func (x Port_Protocol) String() string {
 }
 
 func (Port_Protocol) Descriptor() protoreflect.EnumDescriptor {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[5].Descriptor()
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[6].Descriptor()
 }
 
 func (Port_Protocol) Type() protoreflect.EnumType {
-	return &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[5]
+	return &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes[6]
 }
 
 func (x Port_Protocol) Number() protoreflect.EnumNumber {
