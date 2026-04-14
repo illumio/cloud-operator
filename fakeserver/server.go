@@ -263,7 +263,7 @@ func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_Send
 }
 
 func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerInterceptor {
-	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		md, ok := metadata.FromIncomingContext(ss.Context())
 		if !ok {
 			return status.Errorf(codes.Unauthenticated, "Metadata not provided")

@@ -4,6 +4,7 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"go.uber.org/zap"
@@ -133,41 +134,49 @@ func TestParseVPCCNIFlowLog(t *testing.T) {
 			if tt.wantErr != nil {
 				if err == nil {
 					t.Errorf("expected error %v, got nil", tt.wantErr)
+
 					return
 				}
-				if err != tt.wantErr {
+
+				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("expected error %v, got %v", tt.wantErr, err)
 				}
+
 				return
 			}
 
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
+
 				return
 			}
 
 			if flow == nil {
 				t.Error("expected flow, got nil")
+
 				return
 			}
 
 			// Verify layer3 IPs
-			if flow.Layer3 == nil {
+			if flow.GetLayer3() == nil {
 				t.Error("expected layer3, got nil")
+
 				return
 			}
 
 			// Check IPs using the IP struct fields
-			if flow.Layer3.Source != tt.wantSrcIP {
-				t.Errorf("expected src IP %s, got %s", tt.wantSrcIP, flow.Layer3.Source)
+			if flow.GetLayer3().GetSource() != tt.wantSrcIP {
+				t.Errorf("expected src IP %s, got %s", tt.wantSrcIP, flow.GetLayer3().GetSource())
 			}
-			if flow.Layer3.Destination != tt.wantDstIP {
-				t.Errorf("expected dst IP %s, got %s", tt.wantDstIP, flow.Layer3.Destination)
+
+			if flow.GetLayer3().GetDestination() != tt.wantDstIP {
+				t.Errorf("expected dst IP %s, got %s", tt.wantDstIP, flow.GetLayer3().GetDestination())
 			}
 
 			// Check protocol in layer4
-			if flow.Layer4 == nil {
+			if flow.GetLayer4() == nil {
 				t.Error("expected layer4, got nil")
+
 				return
 			}
 		})
@@ -231,6 +240,7 @@ func TestParseFlowFromMsg(t *testing.T) {
 
 			if ok != tt.wantOk {
 				t.Errorf("parseFlowFromMsg() ok = %v, want %v", ok, tt.wantOk)
+
 				return
 			}
 
@@ -241,18 +251,23 @@ func TestParseFlowFromMsg(t *testing.T) {
 			if srcIP != tt.wantSrcIP {
 				t.Errorf("srcIP = %v, want %v", srcIP, tt.wantSrcIP)
 			}
+
 			if srcPort != tt.wantSrcPort {
 				t.Errorf("srcPort = %v, want %v", srcPort, tt.wantSrcPort)
 			}
+
 			if destIP != tt.wantDestIP {
 				t.Errorf("destIP = %v, want %v", destIP, tt.wantDestIP)
 			}
+
 			if destPort != tt.wantDestPort {
 				t.Errorf("destPort = %v, want %v", destPort, tt.wantDestPort)
 			}
+
 			if proto != tt.wantProto {
 				t.Errorf("proto = %v, want %v", proto, tt.wantProto)
 			}
+
 			if verdict != tt.wantVerdict {
 				t.Errorf("verdict = %v, want %v", verdict, tt.wantVerdict)
 			}

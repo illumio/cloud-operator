@@ -16,6 +16,12 @@ import (
 	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
 )
 
+// SuccessPeriods defines how long a stream must be active to be considered successful.
+type SuccessPeriods struct {
+	Auth    time.Duration
+	Connect time.Duration
+}
+
 // ManagedFactory pairs a factory with its keepalive period.
 type ManagedFactory struct {
 	Factory         StreamClientFactory
@@ -141,7 +147,7 @@ func runStreamWithKeepalive(
 func ConnectStreams(
 	ctx context.Context,
 	logger *zap.Logger,
-	envMap EnvironmentConfig,
+	envMap Config,
 	factoryConfig FactoryConfig,
 ) {
 	resetTimer := time.NewTimer(timeutil.JitterTime(ConnectionRetryInterval, ConnectionRetryJitter))
@@ -176,7 +182,7 @@ func ConnectStreams(
 func runStreamsOnce(
 	ctx context.Context,
 	logger *zap.Logger,
-	envMap EnvironmentConfig,
+	envMap Config,
 	factoryConfig FactoryConfig,
 ) string {
 	authCtx, authCancel := context.WithCancel(ctx)
@@ -243,7 +249,7 @@ func runStreamsOnce(
 }
 
 // NewAuthenticatedConnection gets a valid token and creates a connection to CloudSecure.
-func NewAuthenticatedConnection(ctx context.Context, logger *zap.Logger, envMap EnvironmentConfig) (*grpc.ClientConn, error) {
+func NewAuthenticatedConnection(ctx context.Context, logger *zap.Logger, envMap Config) (*grpc.ClientConn, error) {
 	k8sClient, err := k8sclient.NewClient()
 	if err != nil {
 		return nil, err

@@ -127,7 +127,7 @@ func (c *vpccniClient) getLogsFromPod(ctx context.Context, podName string, since
 	if err != nil {
 		return "", err
 	}
-	defer stream.Close()
+	defer stream.Close() //nolint:errcheck
 
 	buf := new(bytes.Buffer)
 	if _, err := io.Copy(buf, stream); err != nil {

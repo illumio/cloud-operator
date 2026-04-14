@@ -63,7 +63,7 @@ type VPCCNIFlowLog struct {
 }
 
 // flowMsgPattern extracts flow data from the embedded msg string in v1.2.2+ format.
-// Example: "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress"
+// Example: "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress".
 var flowMsgPattern = regexp.MustCompile(
 	`Src IP:\s*(\S+)\s+Src Port:\s*(\d+)\s+Dest IP:\s*(\S+)\s+Dest Port:\s*(\d+)\s+Proto\s+(\S+)\s+Verdict\s+(\S+)`,
 )
@@ -112,8 +112,10 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 		return nil, ErrVPCCNINotFlowLog
 	}
 
-	var srcIP, destIP, proto string
-	var srcPort, destPort uint32
+	var (
+		srcIP, destIP, proto string
+		srcPort, destPort    uint32
+	)
 
 	if isOldFormat && log.SrcIP != "" && log.DestIP != "" {
 		// Old format: fields are in separate JSON keys
@@ -125,6 +127,7 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 	} else {
 		// New format (v1.2.2+): parse from embedded msg string
 		var ok bool
+
 		srcIP, srcPort, destIP, destPort, proto, _, ok = parseFlowFromMsg(log.Message)
 		if !ok {
 			return nil, ErrVPCCNIInvalidLog

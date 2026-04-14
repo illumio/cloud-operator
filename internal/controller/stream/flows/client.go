@@ -12,6 +12,7 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cache"
 )
 
 // Verify networkFlowsClient implements stream.StreamClient.
@@ -27,7 +28,7 @@ type KubernetesNetworkFlowsStream interface {
 type networkFlowsClient struct {
 	grpcStream KubernetesNetworkFlowsStream
 	logger     *zap.Logger
-	flowCache  *stream.FlowCache
+	flowCache  *cache.FlowCache
 	stats      *stream.Stats
 
 	mutex  sync.RWMutex
@@ -65,7 +66,7 @@ func (c *networkFlowsClient) Run(ctx context.Context) error {
 }
 
 // sendNetworkFlowRequest sends a network flow to the networkFlowsStream.
-func (c *networkFlowsClient) sendNetworkFlowRequest(flow interface{}) error {
+func (c *networkFlowsClient) sendNetworkFlowRequest(flow any) error {
 	var request *pb.SendKubernetesNetworkFlowsRequest
 
 	switch f := flow.(type) {
