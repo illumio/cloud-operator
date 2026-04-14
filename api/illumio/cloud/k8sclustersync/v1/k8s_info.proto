@@ -45,6 +45,8 @@ message KubernetesObjectData {
     KubernetesNodeData node = 101;
     KubernetesServiceData service = 102;
     KubernetesNetworkPolicyData network_policy = 103;
+    KubernetesCiliumNetworkPolicyData cilium_network_policy = 104;
+    KubernetesCiliumClusterwideNetworkPolicyData cilium_clusterwide_network_policy = 105;
   }
 }
 
@@ -95,6 +97,232 @@ message KubernetesNetworkPolicyData {
   LabelSelector pod_selector = 3; // Pod selector for the policy
   repeated NetworkPolicyRule ingress_rules = 4; // Ingress rules for the policy
   repeated NetworkPolicyRule egress_rules = 5; // Egress rules for the policy
+}
+
+// Note: KubernetesCiliumNetworkPolicyData and KubernetesCiliumClusterwideNetworkPolicyData have
+// identical structure but are kept as separate messages intentionally:
+// 1. Mirrors Cilium's two distinct CRDs (CiliumNetworkPolicy vs CiliumClusterwideNetworkPolicy)
+// 2. Future-proof if Cilium adds fields to one type but not the other
+// 3. The kind_specific oneof field name already distinguishes which type it is
+// The duplication is minimal (one repeated field each) and preserves semantic clarity.
+
+// KubernetesCiliumNetworkPolicyData contains information specific to a CiliumNetworkPolicy object.
+// CiliumNetworkPolicy is a namespaced policy that applies to pods selected by the endpoint selector.
+// https://docs.cilium.io/en/stable/security/policy/language/#ciliumnetworkpolicy
+message KubernetesCiliumNetworkPolicyData {
+  // Policy specs from both `spec` (single) and `specs` (array) fields, unified as an array.
+  // Each spec has its own endpoint selector and rules, mirroring Cilium's CRD structure.
+  repeated CiliumPolicySpec specs = 1;
+}
+
+// KubernetesCiliumClusterwideNetworkPolicyData contains information specific to a CiliumClusterwideNetworkPolicy object.
+// CiliumClusterwideNetworkPolicy is a cluster-scoped policy that applies across all namespaces.
+// https://docs.cilium.io/en/stable/security/policy/language/#ciliumclusterwidenetworkpolicy
+message KubernetesCiliumClusterwideNetworkPolicyData {
+  // Policy specs from both `spec` (single) and `specs` (array) fields, unified as an array.
+  // Each spec has its own endpoint/node selector and rules, mirroring Cilium's CRD structure.
+  repeated CiliumPolicySpec specs = 1;
+}
+
+// CiliumPolicySpec represents a single spec within a Cilium policy.
+// Maps to Cilium's Rule type which contains selectors, metadata, and rules.
+// https://docs.cilium.io/en/stable/security/policy/language/#rule
+message CiliumPolicySpec {
+  // Endpoint selector selects the pods to which this spec's rules apply.
+  LabelSelector endpoint_selector = 1;
+  // Node selector selects the nodes to which this spec applies (for host policies).
+  optional LabelSelector node_selector = 2;
+  // Human-readable description of this spec's purpose.
+  optional string description = 3;
+  // Labels attached to this spec (separate from K8s metadata labels).
+  map<string, string> labels = 4;
+  // Controls whether this spec enables default deny for ingress/egress.
+  optional CiliumDefaultDeny enable_default_deny = 5;
+  // Ingress rules define allowed incoming traffic.
+  repeated CiliumIngressRule ingress_rules = 6;
+  // Egress rules define allowed outgoing traffic.
+  repeated CiliumEgressRule egress_rules = 7;
+  // IngressDeny rules explicitly deny incoming traffic.
+  repeated CiliumIngressRule ingress_deny_rules = 8;
+  // EgressDeny rules explicitly deny outgoing traffic.
+  repeated CiliumEgressRule egress_deny_rules = 9;
+  // API version of the source Cilium CRD (e.g., "cilium.io/v2").
+  // Useful for debugging and supporting multiple Cilium API versions.
+  optional string api_version = 10;
+}
+
+// CiliumDefaultDeny controls default deny behavior for a spec.
+message CiliumDefaultDeny {
+  // If true, enables default deny for ingress traffic.
+  optional bool ingress = 1;
+  // If true, enables default deny for egress traffic.
+  optional bool egress = 2;
+}
+
+// CiliumIngressRule defines a Cilium ingress rule.
+// Used for both allow and deny rules; allow vs deny is determined by which array
+// the rule belongs to (ingress_rules vs ingress_deny_rules) in CiliumPolicySpec.
+// Separate from CiliumEgressRule to mirror Cilium's CRD structure and ensure
+// ingress rules only have from_* fields.
+// https://docs.cilium.io/en/stable/security/policy/language/#ingress
+message CiliumIngressRule {
+  // FromEndpoints selects source endpoints by labels.
+  repeated LabelSelector from_endpoints = 1;
+  // FromCIDR allows/denies traffic from specific CIDR ranges.
+  repeated string from_cidr = 2;
+  // FromCIDRSet allows/denies traffic from CIDR ranges with exceptions.
+  repeated CiliumCIDRSet from_cidr_set = 3;
+  // FromEntities allows/denies traffic from Cilium-defined entities (e.g., "world", "cluster", "host").
+  repeated string from_entities = 4;
+  // FromGroups allows/denies traffic from cloud provider security groups.
+  repeated CiliumGroup from_groups = 5;
+  // FromNodes selects source nodes by labels (for host policies).
+  repeated LabelSelector from_nodes = 6;
+  // ToPorts specifies the destination ports and protocols.
+  repeated CiliumPortRule to_ports = 7;
+  // ICMPs specifies ICMP type/code matching rules.
+  repeated CiliumICMPRule icmps = 8;
+  // Authentication specifies required authentication for allowed traffic.
+  // Note: Not applicable for deny rules (field is ignored).
+  optional CiliumAuthentication authentication = 9;
+}
+
+// CiliumEgressRule defines a Cilium egress rule.
+// Used for both allow and deny rules; allow vs deny is determined by which array
+// the rule belongs to (egress_rules vs egress_deny_rules) in CiliumPolicySpec.
+// https://docs.cilium.io/en/stable/security/policy/language/#egress
+message CiliumEgressRule {
+  // ToEndpoints selects destination endpoints by labels.
+  repeated LabelSelector to_endpoints = 1;
+  // ToCIDR allows/denies traffic to specific CIDR ranges.
+  repeated string to_cidr = 2;
+  // ToCIDRSet allows/denies traffic to CIDR ranges with exceptions.
+  repeated CiliumCIDRSet to_cidr_set = 3;
+  // ToEntities allows/denies traffic to Cilium-defined entities (e.g., "world", "cluster", "host").
+  repeated string to_entities = 4;
+  // ToFQDNs allows traffic to DNS names (e.g., "*.example.com").
+  // Note: Not applicable for deny rules (field is ignored).
+  repeated CiliumFQDNSelector to_fqdns = 5;
+  // ToServices allows/denies traffic to Kubernetes services.
+  repeated CiliumService to_services = 6;
+  // ToGroups allows/denies traffic to cloud provider security groups.
+  repeated CiliumGroup to_groups = 7;
+  // ToNodes selects destination nodes by labels (for host policies).
+  repeated LabelSelector to_nodes = 8;
+  // ToPorts specifies the destination ports and protocols.
+  repeated CiliumPortRule to_ports = 9;
+  // ICMPs specifies ICMP type/code matching rules.
+  repeated CiliumICMPRule icmps = 10;
+  // Authentication specifies required authentication for allowed traffic.
+  // Note: Not applicable for deny rules (field is ignored).
+  optional CiliumAuthentication authentication = 11;
+}
+
+// CiliumCIDRSet defines a CIDR range with optional exceptions.
+message CiliumCIDRSet {
+  // CIDR range (e.g., "10.0.0.0/8")
+  string cidr = 1;
+  // Exception CIDRs to exclude from the range
+  repeated string except = 2;
+  // Reference to a CiliumCIDRGroup custom resource by name
+  optional string cidr_group_ref = 3;
+}
+
+// CiliumGroup defines a cloud provider security group selector.
+// In Cilium's CRD, each group has a cloud provider key (aws, azure, etc.) containing
+// provider-specific fields. We model this as a oneof to match Cilium's structure.
+// https://docs.cilium.io/en/stable/security/policy/language/#primitives-with-cloud-provider-integration
+message CiliumGroup {
+  oneof cloud_provider {
+    CiliumAWSGroup aws = 1;
+    // Future: Add azure, gcp when needed
+  }
+}
+
+// CiliumAWSGroup defines AWS-specific security group selector fields.
+message CiliumAWSGroup {
+  // AWS security groups tags.
+  map<string, string> labels = 1;
+  // Security group IDs (Cilium supports multiple per group selector)
+  repeated string security_group_ids = 2;
+  repeated string security_group_names = 3;
+  optional string region = 4;
+  optional string vpc_id = 5;
+}
+
+// CiliumICMPRule defines ICMP type/code matching for Cilium policies.
+// https://docs.cilium.io/en/stable/security/policy/language/#icmp
+message CiliumICMPRule {
+  // ICMP fields for IPv4 or IPv6
+  repeated CiliumICMPField fields = 1;
+}
+
+// CiliumICMPField defines a single ICMP type/code pair.
+message CiliumICMPField {
+  // ICMP type (e.g., 8 for echo request)
+  uint32 type = 1;
+  // ICMP code (optional, family-specific)
+  optional uint32 code = 2;
+  // IP family: "IPv4" or "IPv6"
+  optional string family = 3;
+}
+
+// CiliumAuthentication defines authentication requirements for allowed traffic.
+// https://docs.cilium.io/en/stable/security/policy/language/#authentication
+message CiliumAuthentication {
+  // Authentication mode: "disabled", "required", or "test-always-fail"
+  string mode = 1;
+}
+
+// CiliumFQDNSelector defines DNS-based egress rules.
+// https://docs.cilium.io/en/stable/security/policy/language/#dns-based
+// Note: match_name and match_pattern are mutually exclusive in Cilium.
+message CiliumFQDNSelector {
+  oneof selector {
+    // matchName matches exact DNS names (e.g., "my-service.example.com")
+    string match_name = 1;
+    // matchPattern matches DNS names using wildcards (e.g., "*.example.com")
+    string match_pattern = 2;
+  }
+}
+
+// CiliumService defines a Kubernetes service selector for egress rules.
+// Services can be selected by name or by label selector.
+// https://docs.cilium.io/en/stable/security/policy/language/#primitives-with-kubernetes-service-resolution
+message CiliumService {
+  // Kubernetes service name (used with k8s_namespace for direct reference)
+  optional string k8s_service = 1;
+  // Kubernetes namespace (optional, defaults to policy namespace)
+  optional string k8s_namespace = 2;
+  // Label selector to match services by labels instead of by name
+  optional LabelSelector k8s_service_selector = 3;
+}
+
+// CiliumPortRule defines allowed ports and protocols for Cilium policies.
+message CiliumPortRule {
+  repeated CiliumPort ports = 1;
+}
+
+// CiliumProtocol defines the transport protocol for Cilium port rules.
+enum CiliumProtocol {
+  CILIUM_PROTOCOL_UNSPECIFIED = 0;
+  CILIUM_PROTOCOL_TCP = 1;
+  CILIUM_PROTOCOL_UDP = 2;
+  CILIUM_PROTOCOL_SCTP = 3;
+  CILIUM_PROTOCOL_ICMP = 4;
+  CILIUM_PROTOCOL_ICMPV6 = 5;
+  CILIUM_PROTOCOL_ANY = 6;
+}
+
+// CiliumPort defines a single port with protocol, with optional port range support.
+message CiliumPort {
+  // Port number or named port (e.g., "80", "http")
+  string port = 1;
+  // Protocol for this port rule
+  CiliumProtocol protocol = 2;
+  // End of port range (0-65535). If specified, port must be numeric.
+  // Traffic to ports [port, end_port] will be matched.
+  optional int32 end_port = 3;
 }
 
 // LabelSelector selects a k8s resource (e.g., a pod or namespace) by its labels.
@@ -485,20 +713,68 @@ message GetConfigurationUpdatesRequest {
   }
 }
 
-// Message to encapsulate the response for configuration update requests.
+// Message sent by the server in a GetConfigurationUpdates response stream.
+// The stream carries two independent message sequences that may be interleaved:
+//
+// Log level configuration:
+//   (0+) update_configuration, sent whenever the log level changes.
+//
+// Network policies:
+//   1. (0+) network_policy_data, one message for each policy in the initial snapshot.
+//   2. (1) network_policy_snapshot_complete, indicates the initial snapshot is complete.
+//   3. (0+) network_policy_mutation, one message for each policy create/update/delete.
+//
+// On stream reconnection, the server sends a new full snapshot of network policies.
 message GetConfigurationUpdatesResponse {
   message Configuration {
     // The operator's log level.
     LogLevel log_level = 1;
-
-    // Additional configuration fields will be added here.
   }
 
   oneof response {
-    // Updates the operator's configuration.
     Configuration update_configuration = 1;
+    // A network policy in the initial snapshot.
+    NetworkPolicyData network_policy_data = 2;
+    // Indicates that all network policies have been sent in the initial snapshot.
+    NetworkPolicySnapshotComplete network_policy_snapshot_complete = 3;
+    // A mutation to a network policy in the cluster.
+    NetworkPolicyMutation network_policy_mutation = 4;
+  }
+}
 
-    // Additional configuration messages will be added here.
+// Single network policy sent during snapshot or mutation phase.
+message NetworkPolicyData {
+  // Unique identifier generated by Illumio for tracking this policy.
+  string id = 1;
+  // Kubernetes resource name for the policy.
+  string name = 2;
+  // Kubernetes namespace. Empty for cluster-scoped policies.
+  string namespace = 3;
+  // Kubernetes labels to apply to the policy resource.
+  map<string, string> labels = 4;
+  // Kubernetes annotations to apply to the policy resource.
+  map<string, string> annotations = 5;
+  // Policy specification based on the CNI type.
+  // For delete operations, the spec fields can be empty - only the type is used.
+  oneof kind_specific {
+    KubernetesNetworkPolicyData network_policy = 6;
+    KubernetesCiliumNetworkPolicyData cilium_network_policy = 7;
+    KubernetesCiliumClusterwideNetworkPolicyData cilium_clusterwide_network_policy = 8;
+  }
+}
+
+// Empty on purpose since this type is just expected when network policy snapshot is done.
+message NetworkPolicySnapshotComplete {}
+
+// A network policy mutation to apply in the cluster.
+message NetworkPolicyMutation {
+  oneof mutation {
+    // Metadata of a new network policy to create in the cluster.
+    NetworkPolicyData create_policy = 1;
+    // Metadata of an existing network policy to update in the cluster.
+    NetworkPolicyData update_policy = 2;
+    // Metadata of an existing network policy to delete from the cluster.
+    NetworkPolicyData delete_policy = 3;
   }
 }
 
