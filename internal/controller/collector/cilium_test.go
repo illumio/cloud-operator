@@ -547,11 +547,11 @@ func (m *mockGetFlowsClient) Context() context.Context {
 	return context.Background()
 }
 
-func (m *mockGetFlowsClient) SendMsg(msg interface{}) error {
+func (m *mockGetFlowsClient) SendMsg(msg any) error {
 	return nil
 }
 
-func (m *mockGetFlowsClient) RecvMsg(msg interface{}) error {
+func (m *mockGetFlowsClient) RecvMsg(msg any) error {
 	return nil
 }
 

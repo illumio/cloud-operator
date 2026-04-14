@@ -189,8 +189,7 @@ func TestClient_WatchResources_Namespaced(t *testing.T) {
 	fakeClientset := k8sfake.NewSimpleClientset()
 	client := NewClientFromClients(fakeClientset, fakeDynamic)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	watcher, err := client.WatchResources(ctx, gvr, "default", "")
 
@@ -212,8 +211,7 @@ func TestClient_WatchResources_ClusterScoped(t *testing.T) {
 	fakeClientset := k8sfake.NewSimpleClientset()
 	client := NewClientFromClients(fakeClientset, fakeDynamic)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	watcher, err := client.WatchResources(ctx, gvr, "", "")
 
@@ -235,8 +233,7 @@ func TestClient_WatchResources_WithResourceVersion(t *testing.T) {
 	fakeClientset := k8sfake.NewSimpleClientset()
 	client := NewClientFromClients(fakeClientset, fakeDynamic)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	watcher, err := client.WatchResources(ctx, gvr, "default", "12345")
 

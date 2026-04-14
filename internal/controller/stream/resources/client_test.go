@@ -160,6 +160,7 @@ func (s *ResourcesClientTestSuite) TestSendObjectData_Success() {
 		Kind: "Pod",
 		Name: "test-pod",
 	}
+
 	s.mockStream.On("Send", mock.MatchedBy(func(req *pb.SendKubernetesResourcesRequest) bool {
 		return req.GetResourceData() != nil && req.GetResourceData().GetKind() == "Pod"
 	})).Return(nil).Once()

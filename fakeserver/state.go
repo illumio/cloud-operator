@@ -157,11 +157,11 @@ func (s *EnhancedServerState) AllStreamsOpened() bool {
 }
 
 // GetSummary returns a summary of the current state.
-func (s *EnhancedServerState) GetSummary() map[string]interface{} {
+func (s *EnhancedServerState) GetSummary() map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"connection_successful":      s.ConnectionSuccessful,
 		"config_stream_opened":       s.ConfigStream.Opened,
 		"logs_stream_opened":         s.LogsStream.Opened,

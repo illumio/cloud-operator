@@ -118,7 +118,7 @@ func TestOperatorSendsResources(t *testing.T) {
 	// Verify resources were actually received
 	state := harness.Server.state
 	require.True(t, state.ResourceSnapshotComplete, "Resource snapshot should be complete")
-	require.Greater(t, state.ResourcesReceived, 0, "Should have received at least one resource")
+	require.Positive(t, state.ResourcesReceived, "Should have received at least one resource")
 
 	t.Logf("Test passed: Received %d resources, snapshot complete", state.ResourcesReceived)
 }

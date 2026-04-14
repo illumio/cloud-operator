@@ -141,9 +141,11 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 			logger.Info("Received Keepalive for resources stream")
 		case *pb.SendKubernetesResourcesRequest_ClusterMetadata:
 			logger.Info("Cluster metadata received")
+
 			serverState.ResourcesReceived++
 		case *pb.SendKubernetesResourcesRequest_ResourceData:
 			logger.Info("Initial inventory data")
+
 			serverState.ResourcesReceived++
 		case *pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete:
 			logger.Info("Initial inventory complete")
@@ -158,6 +160,7 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 			serverState.ResourceSnapshotComplete = true
 		case *pb.SendKubernetesResourcesRequest_KubernetesResourceMutation:
 			logger.Info("Mutation Detected")
+
 			serverState.ResourcesReceived++
 		}
 

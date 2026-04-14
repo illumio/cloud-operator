@@ -304,8 +304,7 @@ func TestProcessMutation_BookmarkSendsNilMutation(t *testing.T) {
 		resourcesClient: &mockResourceStreamSender{},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ch := make(chan *pb.KubernetesResourceMutation, 1)
 
@@ -335,8 +334,7 @@ func TestProcessMutation_ErrorEventSendsNilMutation(t *testing.T) {
 		resourcesClient: &mockResourceStreamSender{},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ch := make(chan *pb.KubernetesResourceMutation, 1)
 
@@ -363,8 +361,7 @@ func TestProcessMutation_NilObject(t *testing.T) {
 		resourcesClient: &mockResourceStreamSender{},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ch := make(chan *pb.KubernetesResourceMutation, 1)
 
@@ -380,6 +377,7 @@ func TestNewWatcher_CreatesWatcher(t *testing.T) {
 	dyn := dynamicfake.NewSimpleDynamicClient(scheme)
 
 	fakeWatcher := watch.NewFake()
+
 	dyn.PrependWatchReactor("*", func(action clientgotesting.Action) (handled bool, ret watch.Interface, err error) {
 		return true, fakeWatcher, nil
 	})
@@ -392,8 +390,7 @@ func TestNewWatcher_CreatesWatcher(t *testing.T) {
 		resourcesClient: &mockResourceStreamSender{},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	w, err := rm.newWatcher(ctx, "1", logger)
 	if err != nil {
