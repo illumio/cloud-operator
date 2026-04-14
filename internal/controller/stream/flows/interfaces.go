@@ -4,14 +4,14 @@ package flows
 
 import (
 	"context"
-
-	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
 
-// FlowCollector is an alias for stream.FlowCollector.
-type FlowCollector = stream.FlowCollector
+// Collector collects network flows.
+type Collector interface {
+	Run(ctx context.Context) error
+}
 
-// FlowCollectorFactory creates flow collectors.
-type FlowCollectorFactory interface {
-	NewFlowCollector(ctx context.Context) (stream.FlowCollector, error)
+// CollectorFactory creates flow collectors.
+type CollectorFactory interface {
+	NewCollector(ctx context.Context) (Collector, error)
 }

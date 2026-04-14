@@ -10,6 +10,7 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cache"
 )
 
 // Verify NetworkFlowsFactory implements stream.StreamClientFactory.
@@ -18,7 +19,7 @@ var _ stream.StreamClientFactory = (*NetworkFlowsFactory)(nil)
 // NetworkFlowsFactory creates network flows stream clients for sending flows to CloudSecure.
 type NetworkFlowsFactory struct {
 	Logger    *zap.Logger
-	FlowCache *stream.FlowCache
+	FlowCache *cache.FlowCache
 	Stats     *stream.Stats
 }
 

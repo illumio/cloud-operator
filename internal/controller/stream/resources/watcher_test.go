@@ -98,6 +98,7 @@ func TestNewWatcher_StopsExistingAndReturnsNew(t *testing.T) {
 	dyn := dynamicfake.NewSimpleDynamicClient(scheme)
 
 	newWatcher := watch.NewFake()
+
 	dyn.PrependWatchReactor("*", func(action clientgotesting.Action) (handled bool, ret watch.Interface, err error) {
 		return true, newWatcher, nil
 	})
@@ -109,8 +110,7 @@ func TestNewWatcher_StopsExistingAndReturnsNew(t *testing.T) {
 		resourcesClient: &mockResourceStreamSender{},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	w, err := rm.newWatcher(ctx, "25", logger)
 	if err != nil {
@@ -140,8 +140,7 @@ func TestNewWatcher_PropagatesErrors(t *testing.T) {
 		resourcesClient: &mockResourceStreamSender{},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	_, err := rm.newWatcher(ctx, "1", logger)
 	if err == nil {
@@ -157,8 +156,7 @@ func TestProcessMutation_SendsCorrectMutationTypes(t *testing.T) {
 		resourcesClient: &mockResourceStreamSender{},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ch := make(chan *pb.KubernetesResourceMutation, 3)
 
@@ -221,8 +219,7 @@ func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 		resourcesClient: &mockResourceStreamSender{},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ch := make(chan *pb.KubernetesResourceMutation, 3)
 

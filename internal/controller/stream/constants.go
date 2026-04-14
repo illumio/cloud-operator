@@ -8,8 +8,6 @@ import "time"
 const (
 	// ConnectionRetryInterval is the initial interval between connection attempts.
 	ConnectionRetryInterval = 5 * time.Second
-	// ConnectionRetryAfterFailure is the interval after a failed connection attempt.
-	ConnectionRetryAfterFailure = 10 * time.Second
 	// ConnectionRetryJitter is the jitter percentage for connection retry timers.
 	ConnectionRetryJitter = 0.20
 )
@@ -38,14 +36,11 @@ const (
 	ResetMaxJitterPct = 0.10
 )
 
-// Flow Cache Configuration.
+// Health Check Configuration.
 const (
-	// FlowCacheActiveTimeout is the timeout for active flows in the cache.
-	FlowCacheActiveTimeout = 20 * time.Second
-	// FlowCacheMaxSize is the maximum number of flows to cache.
-	FlowCacheMaxSize = 1000
-	// FlowChannelBufferSize is the buffer size for flow channels.
-	FlowChannelBufferSize = 100
+	// ResourceProcessingTimeout is the maximum time allowed for resource processing
+	// before the server is considered unhealthy.
+	ResourceProcessingTimeout = 5 * time.Minute
 )
 
 // Health Check Configuration.

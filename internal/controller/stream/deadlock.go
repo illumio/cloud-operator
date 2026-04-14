@@ -3,30 +3,9 @@
 package stream
 
 import (
-	"errors"
 	"sync"
 	"time"
 )
-
-// SuccessPeriods defines how long a stream must be active to be considered successful.
-type SuccessPeriods struct {
-	Auth    time.Duration
-	Connect time.Duration
-}
-
-// EnvironmentConfig holds configuration for stream manager authentication.
-type EnvironmentConfig struct {
-	ClusterCreds           string
-	HttpsProxy             string
-	OnboardingClientID     string
-	OnboardingClientSecret string
-	OnboardingEndpoint     string
-	PodNamespace           string
-	StatsLogPeriod         time.Duration
-	SuccessPeriods         SuccessPeriods
-	TlsSkipVerify          bool
-	TokenEndpoint          string
-}
 
 type deadlockDetector struct {
 	mutex               sync.RWMutex
@@ -35,9 +14,6 @@ type deadlockDetector struct {
 }
 
 var dd = &deadlockDetector{}
-
-// ErrStopRetries signals that retries should stop.
-var ErrStopRetries = errors.New("stop retries")
 
 // SetProcessingResources updates the deadlock detector state.
 func SetProcessingResources(processing bool) {

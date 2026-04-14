@@ -38,6 +38,8 @@ func StartServer(ctx context.Context, logger *zap.Logger, falcoEventChan chan st
 	}
 
 	go func() {
+		defer close(falcoEventChan)
+
 		var listenerConfig net.ListenConfig
 
 		listener, err := listenerConfig.Listen(ctx, "tcp", FalcoPort)

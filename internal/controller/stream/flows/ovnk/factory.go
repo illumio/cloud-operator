@@ -8,8 +8,13 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/illumio/cloud-operator/internal/controller/collector"
-	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
+
+// flowCollector is the interface for flow collectors returned by this factory.
+// Matches flows.Collector interface via structural typing.
+type flowCollector interface {
+	Run(ctx context.Context) error
+}
 
 // Factory creates OVN-K flow collector clients.
 type Factory struct {
@@ -18,8 +23,8 @@ type Factory struct {
 	FlowSink           collector.FlowSink
 }
 
-// NewFlowCollector creates a new OVN-K flow collector.
-func (f *Factory) NewFlowCollector(_ context.Context) (stream.FlowCollector, error) {
+// NewCollector creates a new OVN-K flow collector.
+func (f *Factory) NewCollector(_ context.Context) (flowCollector, error) {
 	return &ovnkClient{
 		logger:             f.Logger,
 		ipfixCollectorPort: f.IPFIXCollectorPort,

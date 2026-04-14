@@ -35,6 +35,7 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cache"
 	"github.com/illumio/cloud-operator/internal/controller/stream/logs"
 	"github.com/illumio/cloud-operator/internal/controller/stream/resources"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
@@ -138,7 +139,7 @@ func main() {
 		logging.SetupGRPCInternalLogging(logger)
 	}
 
-	envConfig := stream.EnvironmentConfig{
+	envConfig := stream.Config{
 		ClusterCreds:           viper.GetString("cluster_creds"),
 		HttpsProxy:             viper.GetString("https_proxy"),
 		OnboardingClientID:     viper.GetString("onboarding_client_id"),
@@ -181,6 +182,7 @@ func main() {
 	}
 
 	http.HandleFunc("/healthz", newHealthHandler(stream.ServerIsHealthy))
+
 	healthChecker := &http.Server{
 		Addr:              ":8080",
 		ReadHeaderTimeout: 10 * time.Second,
@@ -200,10 +202,10 @@ func main() {
 
 	// Create shared components
 	stats := stream.NewStats()
-	flowCache := stream.NewFlowCache(
-		stream.FlowCacheActiveTimeout,
-		stream.FlowCacheMaxSize,
-		make(chan pb.Flow, stream.FlowChannelBufferSize),
+	flowCache := cache.NewFlowCache(
+		cache.ActiveTimeout,
+		cache.MaxSize,
+		make(chan pb.Flow, cache.ChannelBufferSize),
 	)
 
 	// Create TlsAuthProps once - persists DisableTLS/DisableALPN flags across reconnections
@@ -216,7 +218,7 @@ func main() {
 	}
 
 	// Detect flow collector type at startup
-	flowCollectorType, flowCollectorFactory := flows.DetectFlowCollector(ctx, flows.FlowCollectorConfig{
+	flowCollectorType, flowCollectorName, flowCollectorFactory := flows.DetectFlowCollector(ctx, flows.CollectorConfig{
 		Logger:             logger,
 		FlowCache:          flowCache,
 		Stats:              stats,
@@ -264,7 +266,8 @@ func main() {
 			},
 			{
 				Factory: &flows.FlowCollectorStreamFactory{
-					Factory: flowCollectorFactory,
+					Factory:       flowCollectorFactory,
+					CollectorName: flowCollectorName,
 				},
 				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_network_flows"),
 			},

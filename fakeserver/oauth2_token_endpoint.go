@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"reflect"
 	"time"
 
 	"go.uber.org/zap"
@@ -106,7 +105,7 @@ func (a *AuthService) authenticateHandler(w http.ResponseWriter, r *http.Request
 
 	var req TokenRequest
 
-	err := r.ParseForm()
+	err := r.ParseForm() //nolint:gosec // G120: This is a fake test server, no need for size limits
 	if err != nil {
 		a.logger.Error("Invalid request, unable to parse form", zap.Error(err))
 		http.Error(w, "Invalid request", http.StatusBadRequest)
@@ -114,9 +113,9 @@ func (a *AuthService) authenticateHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	req.GrantType = r.FormValue("grant_type")
-	req.ClientID = r.FormValue("client_id")
-	req.ClientSecret = r.FormValue("client_secret")
+	req.GrantType = r.FormValue("grant_type")       //nolint:gosec // G120: fake test server
+	req.ClientID = r.FormValue("client_id")         //nolint:gosec // G120: fake test server
+	req.ClientSecret = r.FormValue("client_secret") //nolint:gosec // G120: fake test server
 
 	a.logger.Info("Received credentials", zap.String("client_id", req.ClientID), zap.String("client_secret", req.ClientSecret))
 
@@ -175,13 +174,6 @@ func (a *AuthService) onboardCluster(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.logger.Info("Received onboarding data", zap.String("onboarding_client_id", requestData.OnboardingClientId), zap.String("onboarding_client_secret", requestData.OnboardingClientSecret))
-
-	if reflect.TypeOf(requestData.OnboardingClientId).Kind() != reflect.String || reflect.TypeOf(requestData.OnboardingClientSecret).Kind() != reflect.String {
-		a.logger.Error("Bad format request", zap.Any("request_data", requestData))
-		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "Bad format request"})
-
-		return
-	}
 	// Just pass back what client sent for testing purposes.
 	resp := OnboardResponse{ClusterClientId: requestData.OnboardingClientId, ClusterClientSecret: requestData.OnboardingClientSecret}
 	a.logger.Info("Onboarding successful", zap.Any("response", resp))
