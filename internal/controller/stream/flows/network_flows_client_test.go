@@ -14,6 +14,7 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cache"
 )
 
 // mockNetworkFlowsStream mocks the stream.KubernetesNetworkFlowsStream interface.
@@ -41,7 +42,7 @@ type NetworkFlowsClientTestSuite struct {
 	suite.Suite
 
 	mockStream *mockNetworkFlowsStream
-	flowCache  *stream.FlowCache
+	flowCache  *cache.FlowCache
 	stats      *stream.Stats
 	logger     *zap.Logger
 	client     *networkFlowsClient
@@ -57,7 +58,7 @@ func (s *NetworkFlowsClientTestSuite) SetupTest() {
 	s.logger = zap.NewNop()
 	s.stats = stream.NewStats()
 	s.outFlows = make(chan pb.Flow, 10)
-	s.flowCache = stream.NewFlowCache(10*time.Second, 100, s.outFlows)
+	s.flowCache = cache.NewFlowCache(10*time.Second, 100, s.outFlows)
 	s.client = &networkFlowsClient{
 		grpcStream: s.mockStream,
 		logger:     s.logger,

@@ -13,7 +13,7 @@ import (
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
-func TestFactory_NewFlowCollector(t *testing.T) {
+func TestFactory_NewCollector(t *testing.T) {
 	logger := zap.NewNop()
 	tlsProps := &tls.AuthProperties{}
 	factory := &Factory{
@@ -22,20 +22,20 @@ func TestFactory_NewFlowCollector(t *testing.T) {
 		TlsAuthProps:     tlsProps,
 	}
 
-	client, err := factory.NewFlowCollector(context.Background())
+	client, err := factory.NewCollector(context.Background())
 
 	require.NoError(t, err)
 	assert.NotNil(t, client)
 }
 
-func TestFactory_NewFlowCollector_WithFlowSink(t *testing.T) {
+func TestFactory_NewCollector_WithNamespaces(t *testing.T) {
 	logger := zap.NewNop()
 	factory := &Factory{
 		Logger:           logger,
 		CiliumNamespaces: []string{"kube-system", "cilium"},
 	}
 
-	client, err := factory.NewFlowCollector(context.Background())
+	client, err := factory.NewCollector(context.Background())
 
 	require.NoError(t, err)
 	assert.NotNil(t, client)

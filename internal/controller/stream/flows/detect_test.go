@@ -13,12 +13,12 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
 
-// mockFlowCollector implements FlowCollector for testing.
-type mockFlowCollector struct {
+// mockCollector implements Collector for testing.
+type mockCollector struct {
 	runErr error
 }
 
-func (m *mockFlowCollector) Run(ctx context.Context) error {
+func (m *mockCollector) Run(ctx context.Context) error {
 	if m.runErr != nil {
 		return m.runErr
 	}
@@ -28,13 +28,13 @@ func (m *mockFlowCollector) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
-// mockFlowCollectorFactory implements FlowCollectorFactory for testing.
-type mockFlowCollectorFactory struct {
-	collector FlowCollector
+// mockCollectorFactory implements CollectorFactory for testing.
+type mockCollectorFactory struct {
+	collector Collector
 	err       error
 }
 
-func (m *mockFlowCollectorFactory) NewFlowCollector(_ context.Context) (FlowCollector, error) {
+func (m *mockCollectorFactory) NewCollector(_ context.Context) (Collector, error) {
 	return m.collector, m.err
 }
 
@@ -46,10 +46,18 @@ func TestFlowCollectorStreamFactory_Name(t *testing.T) {
 	assert.Equal(t, "FlowCollector", name)
 }
 
+func TestFlowCollectorStreamFactory_Name_WithCollectorName(t *testing.T) {
+	factory := &FlowCollectorStreamFactory{CollectorName: "Cilium"}
+
+	name := factory.Name()
+
+	assert.Equal(t, "FlowCollector-Cilium", name)
+}
+
 func TestFlowCollectorStreamFactory_NewStreamClient_Success(t *testing.T) {
-	mockCollector := &mockFlowCollector{}
+	mockColl := &mockCollector{}
 	factory := &FlowCollectorStreamFactory{
-		Factory: &mockFlowCollectorFactory{collector: mockCollector},
+		Factory: &mockCollectorFactory{collector: mockColl},
 	}
 
 	client, err := factory.NewStreamClient(context.Background(), nil)
@@ -61,7 +69,7 @@ func TestFlowCollectorStreamFactory_NewStreamClient_Success(t *testing.T) {
 func TestFlowCollectorStreamFactory_NewStreamClient_Error(t *testing.T) {
 	expectedErr := errors.New("factory error")
 	factory := &FlowCollectorStreamFactory{
-		Factory: &mockFlowCollectorFactory{err: expectedErr},
+		Factory: &mockCollectorFactory{err: expectedErr},
 	}
 
 	client, err := factory.NewStreamClient(context.Background(), nil)
@@ -80,8 +88,8 @@ func TestFlowCollectorAdapter_Run(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	mockCollector := &mockFlowCollector{}
-	adapter := &flowCollectorAdapter{collector: mockCollector}
+	mockColl := &mockCollector{}
+	adapter := &flowCollectorAdapter{collector: mockColl}
 
 	err := adapter.Run(ctx)
 
@@ -90,8 +98,8 @@ func TestFlowCollectorAdapter_Run(t *testing.T) {
 
 func TestFlowCollectorAdapter_Run_Error(t *testing.T) {
 	expectedErr := errors.New("run error")
-	mockCollector := &mockFlowCollector{runErr: expectedErr}
-	adapter := &flowCollectorAdapter{collector: mockCollector}
+	mockColl := &mockCollector{runErr: expectedErr}
+	adapter := &flowCollectorAdapter{collector: mockColl}
 
 	err := adapter.Run(context.Background())
 

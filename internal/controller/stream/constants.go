@@ -42,10 +42,3 @@ const (
 	// before the server is considered unhealthy.
 	ResourceProcessingTimeout = 5 * time.Minute
 )
-
-// Health Check Configuration.
-const (
-	// ResourceProcessingTimeout is the maximum time allowed for resource processing
-	// before the server is considered unhealthy.
-	ResourceProcessingTimeout = 5 * time.Minute
-)
