@@ -3,20 +3,9 @@
 package resources
 
 import (
-	"context"
-	"maps"
-	"slices"
-	"sync"
-	"time"
-
 	"go.uber.org/zap"
-	"golang.org/x/time/rate"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
-
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/controller/stream"
-	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
 )
 
 var resourceList = []string{
@@ -40,155 +29,6 @@ var resourceList = []string{
 	"serviceaccounts",
 	"services",
 	"statefulsets",
-}
-
-var resourceAPIGroupMap = make(map[string]string)
-
-// Stream handles the resource stream.
-func Stream(ctx context.Context, sm *stream.Manager, logger *zap.Logger, cancel context.CancelFunc, keepalivePeriod time.Duration) error {
-	defer cancel()
-	defer func() {
-		setProcessingResources(false)
-	}()
-
-	dynamicClient := sm.K8sClient.GetDynamicClient()
-	clientset := sm.K8sClient.GetClientset()
-
-	var err error
-
-	resourceAPIGroupMap, err = buildResourceApiGroupMap(resourceList, clientset, logger)
-	if err != nil {
-		logger.Error("Failed to build resource api group map", zap.Error(err))
-
-		return err
-	}
-
-	setProcessingResources(true)
-
-	err = sm.SendClusterMetadata(ctx, logger)
-	if err != nil {
-		logger.Error("Failed to send cluster metadata", zap.Error(err))
-
-		return err
-	}
-
-	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
-
-	sharedLimiter := rate.NewLimiter(1, 5)
-	resourceManagers := make(map[string]*Watcher)
-
-	for _, resource := range slices.Sorted(maps.Keys(resourceAPIGroupMap)) {
-		apiGroup := resourceAPIGroupMap[resource]
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		resourceManager := NewWatcher(WatcherConfig{
-			ResourceName:  resource,
-			ApiGroup:      apiGroup,
-			Clientset:     clientset,
-			BaseLogger:    logger,
-			DynamicClient: dynamicClient,
-			StreamManager: sm,
-			Limiter:       sharedLimiter,
-		})
-		resourceManagers[resource] = resourceManager
-
-		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger, apiGroup)
-		if err != nil {
-			if apierrors.IsForbidden(err) {
-				logger.Warn("Access forbidden for resource", zap.String("kind", resource), zap.String("api_group", apiGroup), zap.Error(err))
-
-				continue
-			}
-
-			return err
-		}
-
-		allWatchInfos = append(allWatchInfos, watcherInfo{
-			resource:        resource,
-			apiGroup:        apiGroup,
-			resourceVersion: resourceVersion,
-		})
-	}
-
-	err = sm.SendResourceSnapshotComplete(logger)
-	if err != nil {
-		logger.Error("Failed to send snapshot complete", zap.Error(err))
-
-		return err
-	}
-
-	logger.Info("Successfully sent resource snapshot")
-
-	mutationChan := make(chan *pb.KubernetesResourceMutation)
-	watcherWaitGroup := sync.WaitGroup{}
-
-	for _, info := range allWatchInfos {
-		resourceManager := resourceManagers[info.resource]
-
-		watcherWaitGroup.Add(1)
-
-		go func(info watcherInfo, manager *Watcher) {
-			defer watcherWaitGroup.Done()
-
-			manager.WatchK8sResources(ctx, cancel, info.resourceVersion, mutationChan)
-		}(info, resourceManager)
-	}
-
-	setProcessingResources(false)
-
-	ticker := time.NewTicker(timeutil.JitterTime(keepalivePeriod, 0.10))
-	defer ticker.Stop()
-
-	go func() {
-		watcherWaitGroup.Wait()
-		close(mutationChan)
-	}()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			err := sm.SendKeepalive(logger, stream.TypeResources)
-			if err != nil {
-				return err
-			}
-		case mutation := <-mutationChan:
-			request := &pb.SendKubernetesResourcesRequest{
-				Request: &pb.SendKubernetesResourcesRequest_KubernetesResourceMutation{
-					KubernetesResourceMutation: mutation,
-				},
-			}
-
-			err := sm.SendToResourceStream(logger, request)
-			if err != nil {
-				return err
-			}
-
-			sm.Stats.IncrementResourceMutations()
-		}
-	}
-}
-
-// ConnectAndStream creates resourceStream client and begins the resource stream.
-func ConnectAndStream(sm *stream.Manager, logger *zap.Logger, keepalivePeriod time.Duration) error {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	sendKubernetesResourcesStream, err := sm.Client.GrpcClient.SendKubernetesResources(ctx)
-	if err != nil {
-		cancel()
-
-		return err
-	}
-
-	sm.Client.KubernetesResourcesStream = sendKubernetesResourcesStream
-
-	return Stream(ctx, sm, logger, cancel, keepalivePeriod)
 }
 
 // buildResourceApiGroupMap creates a mapping between Kubernetes resources and their API groups.
@@ -244,8 +84,4 @@ type watcherInfo struct {
 	resource        string
 	apiGroup        string
 	resourceVersion string
-}
-
-func setProcessingResources(processing bool) {
-	stream.SetProcessingResources(processing)
 }

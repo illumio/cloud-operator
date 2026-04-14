@@ -29,13 +29,16 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/klog/v2"
 
-	"github.com/illumio/cloud-operator/internal/controller"
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cache"
 	"github.com/illumio/cloud-operator/internal/controller/stream/logs"
 	"github.com/illumio/cloud-operator/internal/controller/stream/resources"
+	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
 const (
@@ -133,54 +136,44 @@ func main() {
 	viper.SetDefault("grpc_internal_logging", false)
 
 	if viper.GetBool("grpc_internal_logging") {
-		controller.SetupGRPCInternalLogging(logger)
+		logging.SetupGRPCInternalLogging(logger)
 	}
 
-	envConfig := stream.EnvironmentConfig{
-		CiliumNamespaces:   viper.GetStringSlice("cilium_namespaces"),
-		ClusterCreds:       viper.GetString("cluster_creds"),
-		HttpsProxy:         viper.GetString("https_proxy"),
-		IPFIXCollectorPort: viper.GetString("ipfix_collector_port"),
-		KeepalivePeriods: stream.KeepalivePeriods{
-			Configuration:          viper.GetDuration("stream_keepalive_period_configuration"),
-			KubernetesNetworkFlows: viper.GetDuration("stream_keepalive_period_kubernetes_network_flows"),
-			KubernetesResources:    viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
-			Logs:                   viper.GetDuration("stream_keepalive_period_logs"),
-		},
+	envConfig := stream.Config{
+		ClusterCreds:           viper.GetString("cluster_creds"),
+		HttpsProxy:             viper.GetString("https_proxy"),
 		OnboardingClientID:     viper.GetString("onboarding_client_id"),
 		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
 		OnboardingEndpoint:     viper.GetString("onboarding_endpoint"),
-		OVNKNamespace:          viper.GetString("ovnk_namespace"),
 		PodNamespace:           viper.GetString("pod_namespace"),
 		StatsLogPeriod:         viper.GetDuration("stats_log_period"),
 		SuccessPeriods: stream.SuccessPeriods{
 			Auth:    viper.GetDuration("stream_success_period_auth"),
 			Connect: viper.GetDuration("stream_success_period_connect"),
 		},
-		TlsSkipVerify:    viper.GetBool("tls_skip_verify"),
-		TokenEndpoint:    viper.GetString("token_endpoint"),
-		VerboseDebugging: viper.GetBool("verbose_debugging"),
+		TlsSkipVerify: viper.GetBool("tls_skip_verify"),
+		TokenEndpoint: viper.GetString("token_endpoint"),
 	}
 
 	logger.Info("Starting application",
-		zap.Strings("cilium_namespaces", envConfig.CiliumNamespaces),
+		zap.Strings("cilium_namespaces", viper.GetStringSlice("cilium_namespaces")),
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
 		zap.String("https_proxy", envConfig.HttpsProxy),
-		zap.String("ipfix_collector_port", envConfig.IPFIXCollectorPort),
+		zap.String("ipfix_collector_port", viper.GetString("ipfix_collector_port")),
 		zap.String("onboarding_client_id", envConfig.OnboardingClientID),
 		zap.String("onboarding_endpoint", envConfig.OnboardingEndpoint),
-		zap.String("ovnk_namespace", envConfig.OVNKNamespace),
+		zap.String("ovnk_namespace", viper.GetString("ovnk_namespace")),
 		zap.String("pod_namespace", envConfig.PodNamespace),
 		zap.Duration("stats_log_period", envConfig.StatsLogPeriod),
-		zap.Duration("stream_keepalive_period_configuration", envConfig.KeepalivePeriods.Configuration),
-		zap.Duration("stream_keepalive_period_kubernetes_network_flows", envConfig.KeepalivePeriods.KubernetesNetworkFlows),
-		zap.Duration("stream_keepalive_period_kubernetes_resources", envConfig.KeepalivePeriods.KubernetesResources),
-		zap.Duration("stream_keepalive_period_logs", envConfig.KeepalivePeriods.Logs),
+		zap.Duration("stream_keepalive_period_configuration", viper.GetDuration("stream_keepalive_period_configuration")),
+		zap.Duration("stream_keepalive_period_kubernetes_network_flows", viper.GetDuration("stream_keepalive_period_kubernetes_network_flows")),
+		zap.Duration("stream_keepalive_period_kubernetes_resources", viper.GetDuration("stream_keepalive_period_kubernetes_resources")),
+		zap.Duration("stream_keepalive_period_logs", viper.GetDuration("stream_keepalive_period_logs")),
 		zap.Duration("stream_success_period_auth", envConfig.SuccessPeriods.Auth),
 		zap.Duration("stream_success_period_connect", envConfig.SuccessPeriods.Connect),
 		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
 		zap.String("token_endpoint", envConfig.TokenEndpoint),
-		zap.Bool("verbose_debugging", envConfig.VerboseDebugging),
+		zap.Bool("verbose_debugging", viper.GetBool("verbose_debugging")),
 	)
 
 	// Start the gops agent
@@ -207,14 +200,82 @@ func main() {
 
 	ctx := context.Background()
 
-	streamFuncs := stream.StreamFuncs{
-		Resources:                 resources.ConnectAndStream,
-		Logs:                      logs.ConnectAndStream,
-		Config:                    config.ConnectAndStream,
-		DetermineFlowCollector:    flows.DetermineFlowCollector,
-		ConnectNetworkFlowsStream: flows.ConnectNetworkFlowsStream,
-		StartCacheOutReader:       flows.StartCacheOutReader,
+	// Create shared components
+	stats := stream.NewStats()
+	flowCache := cache.NewFlowCache(
+		cache.ActiveTimeout,
+		cache.MaxSize,
+		make(chan pb.Flow, cache.ChannelBufferSize),
+	)
+
+	// Create TlsAuthProps once - persists DisableTLS/DisableALPN flags across reconnections
+	tlsAuthProps := &tls.AuthProperties{}
+
+	// Create Kubernetes client
+	k8sClient, err := k8sclient.NewClient()
+	if err != nil {
+		logger.Fatal("Failed to create Kubernetes client", zap.Error(err))
 	}
 
-	stream.ConnectStreams(ctx, logger, envConfig, bufferedGrpcSyncer, streamFuncs)
+	// Detect flow collector type at startup
+	flowCollectorType, flowCollectorName, flowCollectorFactory := flows.DetectFlowCollector(ctx, flows.CollectorConfig{
+		Logger:             logger,
+		FlowCache:          flowCache,
+		Stats:              stats,
+		K8sClient:          k8sClient,
+		CiliumNamespaces:   viper.GetStringSlice("cilium_namespaces"),
+		IPFIXCollectorPort: viper.GetString("ipfix_collector_port"),
+		OVNKNamespace:      viper.GetString("ovnk_namespace"),
+		TlsAuthProps:       tlsAuthProps,
+	})
+
+	// Create factory config with all stream factories
+	factoryConfig := stream.FactoryConfig{
+		Factories: []stream.ManagedFactory{
+			{
+				Factory: &config.Factory{
+					Logger:             logger,
+					VerboseDebugging:   viper.GetBool("verbose_debugging"),
+					BufferedGrpcSyncer: bufferedGrpcSyncer,
+				},
+				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_configuration"),
+			},
+			{
+				Factory: &logs.Factory{
+					Logger:             logger,
+					BufferedGrpcSyncer: bufferedGrpcSyncer,
+				},
+				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_logs"),
+			},
+			{
+				Factory: &resources.Factory{
+					Logger:            logger,
+					Stats:             stats,
+					K8sClient:         k8sClient,
+					FlowCollectorType: flowCollectorType,
+				},
+				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
+			},
+			{
+				Factory: &flows.NetworkFlowsFactory{
+					Logger:    logger,
+					FlowCache: flowCache,
+					Stats:     stats,
+				},
+				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_network_flows"),
+			},
+			{
+				Factory: &flows.FlowCollectorStreamFactory{
+					Factory:       flowCollectorFactory,
+					CollectorName: flowCollectorName,
+				},
+				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_network_flows"),
+			},
+		},
+		Stats:          stats,
+		SuccessPeriods: envConfig.SuccessPeriods,
+		StatsLogPeriod: envConfig.StatsLogPeriod,
+	}
+
+	stream.ConnectStreams(ctx, logger, envConfig, factoryConfig)
 }

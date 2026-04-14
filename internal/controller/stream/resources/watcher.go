@@ -21,32 +21,38 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller"
-	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
+
+// ResourceStreamSender abstracts the operations for sending resources to CloudSecure.
+// Implemented by resourcesClient.
+type ResourceStreamSender interface {
+	SendObjectData(logger *zap.Logger, metadata *pb.KubernetesObjectData) error
+	CreateMutationObject(metadata *pb.KubernetesObjectData, eventType watch.EventType) *pb.KubernetesResourceMutation
+}
 
 // MutationCheckpointInterval is the interval for logging mutation checkpoint messages.
 const MutationCheckpointInterval = 60 * time.Second
 
 // WatcherConfig holds the configuration for creating a new Watcher.
 type WatcherConfig struct {
-	ResourceName  string
-	ApiGroup      string
-	Clientset     kubernetes.Interface
-	BaseLogger    *zap.Logger
-	DynamicClient dynamic.Interface
-	StreamManager *stream.Manager
-	Limiter       *rate.Limiter
+	ResourceName    string
+	ApiGroup        string
+	Clientset       kubernetes.Interface
+	BaseLogger      *zap.Logger
+	DynamicClient   dynamic.Interface
+	ResourcesClient ResourceStreamSender
+	Limiter         *rate.Limiter
 }
 
 // Watcher encapsulates components for listing and managing Kubernetes resources.
 type Watcher struct {
-	resourceName  string
-	apiGroup      string
-	clientset     kubernetes.Interface
-	logger        *zap.Logger
-	dynamicClient dynamic.Interface
-	streamManager *stream.Manager
-	limiter       *rate.Limiter
+	resourceName    string
+	apiGroup        string
+	clientset       kubernetes.Interface
+	logger          *zap.Logger
+	dynamicClient   dynamic.Interface
+	resourcesClient ResourceStreamSender
+	limiter         *rate.Limiter
 }
 
 // NewWatcher creates a new Watcher for a specific resource type.
@@ -57,13 +63,13 @@ func NewWatcher(config WatcherConfig) *Watcher {
 	)
 
 	return &Watcher{
-		resourceName:  config.ResourceName,
-		apiGroup:      config.ApiGroup,
-		clientset:     config.Clientset,
-		logger:        logger,
-		dynamicClient: config.DynamicClient,
-		streamManager: config.StreamManager,
-		limiter:       config.Limiter,
+		resourceName:    config.ResourceName,
+		apiGroup:        config.ApiGroup,
+		clientset:       config.Clientset,
+		logger:          logger,
+		dynamicClient:   config.DynamicClient,
+		resourcesClient: config.ResourcesClient,
+		limiter:         config.Limiter,
 	}
 }
 
@@ -98,7 +104,7 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger, 
 	for _, obj := range objs {
 		metadataObj := controller.ConvertMetaObjectToMetadata(ctx, obj, r.clientset, resourceK8sKind)
 
-		err = r.streamManager.SendObjectData(logger, metadataObj)
+		err = r.resourcesClient.SendObjectData(logger, metadataObj)
 		if err != nil {
 			r.logger.Error("Cannot send object metadata", zap.Error(err))
 
@@ -110,7 +116,7 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger, 
 
 	select {
 	case <-ctx.Done():
-		return "", err
+		return "", ctx.Err()
 	default:
 	}
 
@@ -359,7 +365,7 @@ func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutati
 	resource := event.Object.GetObjectKind().GroupVersionKind().Kind
 	metadataObj := controller.ConvertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resource)
 
-	mutation := r.streamManager.CreateMutationObject(metadataObj, event.Type)
+	mutation := r.resourcesClient.CreateMutationObject(metadataObj, event.Type)
 
 	select {
 	case <-ctx.Done():

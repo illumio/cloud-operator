@@ -24,6 +24,18 @@ test:
 	@echo "Running tests..."
 	go test ./...
 
+# Run linter
+.PHONY: lint
+lint:
+	@echo "Running linter..."
+	golangci-lint run ./...
+
+# Run linter with auto-fix
+.PHONY: lint-fix
+lint-fix:
+	@echo "Running linter with auto-fix..."
+	golangci-lint run ./... --fix
+
 # Clean the build
 .PHONY: clean
 clean:
@@ -89,6 +101,8 @@ help:
 	@echo "Available targets:"
 	@echo "  build              Build the Go project"
 	@echo "  test               Run tests"
+	@echo "  lint               Run golangci-lint"
+	@echo "  lint-fix           Run golangci-lint with auto-fix"
 	@echo "  clean              Clean the build"
 	@echo "  docker-build       Build Docker image"
 	@echo "  docker-push        Push Docker image to Docker Hub"

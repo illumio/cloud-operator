@@ -12,6 +12,7 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cache"
 	"github.com/illumio/cloud-operator/internal/pkg/timeutil"
 )
 
@@ -31,15 +32,10 @@ func (m *MockFlow) Key() any {
 
 func TestNewFlowSinkAdapter(t *testing.T) {
 	outFlows := make(chan pb.Flow, 10)
-	flowCache := stream.NewFlowCache(10*time.Second, 100, outFlows)
+	flowCache := cache.NewFlowCache(10*time.Second, 100, outFlows)
 	stats := stream.NewStats()
 
-	sm := &stream.Manager{
-		FlowCache: flowCache,
-		Stats:     stats,
-	}
-
-	adapter := NewFlowSinkAdapter(sm)
+	adapter := NewFlowSinkAdapter(flowCache, stats)
 
 	assert.NotNil(t, adapter)
 	assert.Equal(t, flowCache, adapter.FlowCache)
@@ -48,7 +44,7 @@ func TestNewFlowSinkAdapter(t *testing.T) {
 
 func TestFlowSinkAdapter_CacheFlow(t *testing.T) {
 	outFlows := make(chan pb.Flow, 10)
-	flowCache := stream.NewFlowCache(10*time.Second, 100, outFlows)
+	flowCache := cache.NewFlowCache(10*time.Second, 100, outFlows)
 	stats := stream.NewStats()
 
 	adapter := &FlowSinkAdapter{

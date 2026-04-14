@@ -82,6 +82,13 @@ func exponentialBackoff(opts backoffOpts, action Action) error {
 			continue
 		}
 
+		// Check for stop retries signal (e.g., Hubble not found)
+		if errors.Is(err, ErrStopRetries) {
+			opts.Logger.Info("Stopping retries due to unrecoverable error", zap.Error(err))
+
+			return err
+		}
+
 		if opts.ActionTimeToConsiderSuccess != 0 {
 			if time.Since(startTime) > opts.ActionTimeToConsiderSuccess {
 				s.LongSuccessResetBackoff()

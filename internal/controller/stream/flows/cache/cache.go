@@ -1,6 +1,6 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package stream
+package cache
 
 import (
 	"container/list"
@@ -11,6 +11,16 @@ import (
 	"go.uber.org/zap"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+)
+
+// Flow Cache Configuration.
+const (
+	// ActiveTimeout is the timeout for active flows in the cache.
+	ActiveTimeout = 20 * time.Second
+	// MaxSize is the maximum number of flows to cache.
+	MaxSize = 1000
+	// ChannelBufferSize is the buffer size for flow channels.
+	ChannelBufferSize = 100
 )
 
 // FlowCache caches flows to be exported.
