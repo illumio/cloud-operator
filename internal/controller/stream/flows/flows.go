@@ -50,6 +50,5 @@ type CollectorConfig struct {
 	IPFIXCollectorPort string
 	OVNKNamespace      string
 	// VPC CNI configuration
-	EnableVPCCNI       bool
 	VPCCNIPollInterval time.Duration
 }
