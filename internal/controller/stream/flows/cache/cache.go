@@ -124,6 +124,7 @@ func (c *FlowCache) evictExpiredFlows(ctx context.Context, logger *zap.Logger) {
 
 		c.queue.Remove(frontElem)
 		delete(c.cache, flow.Key())
+
 		evictedCount++
 
 		select {
