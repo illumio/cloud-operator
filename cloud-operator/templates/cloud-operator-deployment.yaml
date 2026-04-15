@@ -60,6 +60,10 @@ spec:
               value: "{{ join " " .Values.cilium.namespaces }}"
             - name: CLUSTER_CREDS_SECRET
               value: "clustercreds"
+            {{- if .Values.cluster.name }}
+            - name: CLUSTER_NAME
+              value: "{{ .Values.cluster.name }}"
+            {{- end }}
             - name: FLOW_CACHE_ACTIVE_TIMEOUT
               value: "{{ .Values.env.flowCache.activeTimeout }}"
             - name: FLOW_CACHE_CHANNEL_BUFFER_SIZE
@@ -110,10 +114,6 @@ spec:
               value: "{{ .Values.env.tokenEndpoint }}"
             - name: VERBOSE_DEBUGGING
               value: "{{ .Values.env.verboseDebugging }}"
-            {{- if .Values.cluster.name }}
-            - name: CLUSTER_NAME
-              value: "{{ .Values.cluster.name }}"
-            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
