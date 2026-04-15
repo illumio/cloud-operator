@@ -13,16 +13,6 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-// Flow Cache Configuration.
-const (
-	// ActiveTimeout is the timeout for active flows in the cache.
-	ActiveTimeout = 20 * time.Second
-	// MaxSize is the maximum number of flows to cache.
-	MaxSize = 1000
-	// ChannelBufferSize is the buffer size for flow channels.
-	ChannelBufferSize = 100
-)
-
 // FlowCache caches flows to be exported.
 // Evicts flows from the cache for:
 // - lack of resources: cache has reached maxFlows capacity
@@ -76,6 +66,11 @@ func (c *FlowCache) Run(ctx context.Context, logger *zap.Logger) error {
 	timer := time.NewTimer(c.activeTimeout)
 	defer timer.Stop()
 
+	logger.Debug("Flow cache started",
+		zap.Duration("active_timeout", c.activeTimeout),
+		zap.Int("max_size", c.maxFlows),
+	)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -113,6 +108,7 @@ func (c *FlowCache) Run(ctx context.Context, logger *zap.Logger) error {
 func (c *FlowCache) evictExpiredFlows(ctx context.Context, logger *zap.Logger) {
 	now := time.Now().UTC()
 	cutoff := now.Add(-c.activeTimeout)
+	evictedCount := 0
 
 	for c.queue.Len() > 0 {
 		frontElem := c.queue.Front()
@@ -129,11 +125,20 @@ func (c *FlowCache) evictExpiredFlows(ctx context.Context, logger *zap.Logger) {
 		c.queue.Remove(frontElem)
 		delete(c.cache, flow.Key())
 
+		evictedCount++
+
 		select {
 		case <-ctx.Done():
 			return
 		case c.OutFlows <- flow:
 		}
+	}
+
+	if evictedCount > 0 {
+		logger.Debug("Evicted expired flows",
+			zap.Int("evicted_count", evictedCount),
+			zap.Int("cache_size", len(c.cache)),
+		)
 	}
 }
 
@@ -161,6 +166,11 @@ func (c *FlowCache) evictOldestFlow(ctx context.Context, logger *zap.Logger) err
 	}
 
 	delete(c.cache, flow.Key())
+
+	logger.Debug("Evicted oldest flow due to capacity",
+		zap.Int("cache_size", len(c.cache)),
+		zap.Int("max_size", c.maxFlows),
+	)
 
 	select {
 	case <-ctx.Done():

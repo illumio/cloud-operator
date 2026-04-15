@@ -60,6 +60,12 @@ spec:
               value: "{{ join " " .Values.cilium.namespaces }}"
             - name: CLUSTER_CREDS_SECRET
               value: "clustercreds"
+            - name: FLOW_CACHE_ACTIVE_TIMEOUT
+              value: "{{ .Values.env.flowCache.activeTimeout }}"
+            - name: FLOW_CACHE_CHANNEL_BUFFER_SIZE
+              value: "{{ .Values.env.flowCache.channelBufferSize }}"
+            - name: FLOW_CACHE_MAX_SIZE
+              value: "{{ .Values.env.flowCache.maxSize }}"
             - name: GRPC_INTERNAL_LOGGING
               value: "{{ .Values.env.grpcInternalLogging }}"
             - name: HTTPS_PROXY
