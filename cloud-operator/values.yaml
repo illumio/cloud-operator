@@ -41,6 +41,15 @@ onboardingSecret:
 service:
   clusterIP: ""
 
+# Optional cluster metadata for self-managed clusters.
+# For managed clusters (EKS, AKS, GKE, OCI), these are auto-detected from node labels.
+# For self-managed clusters, set these values to identify the cluster in CloudSecure.
+cluster:
+  # The name of the cluster as it should appear in CloudSecure.
+  name: ""
+  # The region/location of the cluster (e.g., "us-east-datacenter", "eu-west-1").
+  region: ""
+
 cilium:
   # The namespaces in which Cilium may be deployed.
   # cloud-operator will search for the Hubble Relay service in each namespace,

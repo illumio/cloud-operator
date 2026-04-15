@@ -96,6 +96,8 @@ func main() {
 	// Bind specific environment variables to keys
 	bindEnv(logger, "cilium_namespaces", "CILIUM_NAMESPACES")
 	bindEnv(logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
+	bindEnv(logger, "cluster_name", "CLUSTER_NAME")
+	bindEnv(logger, "cluster_region", "CLUSTER_REGION")
 	bindEnv(logger, "https_proxy", "HTTPS_PROXY")
 	bindEnv(logger, "ipfix_collector_port", "IPFIX_COLLECTOR_PORT")
 	bindEnv(logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
@@ -141,6 +143,8 @@ func main() {
 
 	envConfig := stream.Config{
 		ClusterCreds:           viper.GetString("cluster_creds"),
+		ClusterName:            viper.GetString("cluster_name"),
+		ClusterRegion:          viper.GetString("cluster_region"),
 		HttpsProxy:             viper.GetString("https_proxy"),
 		OnboardingClientID:     viper.GetString("onboarding_client_id"),
 		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
@@ -158,6 +162,8 @@ func main() {
 	logger.Info("Starting application",
 		zap.Strings("cilium_namespaces", viper.GetStringSlice("cilium_namespaces")),
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
+		zap.String("cluster_name", envConfig.ClusterName),
+		zap.String("cluster_region", envConfig.ClusterRegion),
 		zap.String("https_proxy", envConfig.HttpsProxy),
 		zap.String("ipfix_collector_port", viper.GetString("ipfix_collector_port")),
 		zap.String("onboarding_client_id", envConfig.OnboardingClientID),
@@ -253,6 +259,8 @@ func main() {
 					Stats:             stats,
 					K8sClient:         k8sClient,
 					FlowCollectorType: flowCollectorType,
+					ClusterName:       envConfig.ClusterName,
+					ClusterRegion:     envConfig.ClusterRegion,
 				},
 				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
 			},
