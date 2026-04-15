@@ -100,6 +100,10 @@ func main() {
 	// Bind specific environment variables to keys
 	bindEnv(logger, "cilium_namespaces", "CILIUM_NAMESPACES")
 	bindEnv(logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
+	bindEnv(logger, "flow_cache_active_timeout", "FLOW_CACHE_ACTIVE_TIMEOUT")
+	bindEnv(logger, "flow_cache_channel_buffer_size", "FLOW_CACHE_CHANNEL_BUFFER_SIZE")
+	bindEnv(logger, "flow_cache_max_size", "FLOW_CACHE_MAX_SIZE")
+	bindEnv(logger, "grpc_internal_logging", "GRPC_INTERNAL_LOGGING")
 	bindEnv(logger, "https_proxy", "HTTPS_PROXY")
 	bindEnv(logger, "ipfix_collector_port", "IPFIX_COLLECTOR_PORT")
 	bindEnv(logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
@@ -117,14 +121,14 @@ func main() {
 	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "verbose_debugging", "VERBOSE_DEBUGGING")
-	bindEnv(logger, "grpc_internal_logging", "GRPC_INTERNAL_LOGGING")
-	bindEnv(logger, "flow_cache_active_timeout", "FLOW_CACHE_ACTIVE_TIMEOUT")
-	bindEnv(logger, "flow_cache_max_size", "FLOW_CACHE_MAX_SIZE")
-	bindEnv(logger, "flow_cache_channel_buffer_size", "FLOW_CACHE_CHANNEL_BUFFER_SIZE")
 
 	// Set default values
 	viper.SetDefault("cilium_namespaces", []string{"kube-system", "gke-managed-dpv2-observability"})
 	viper.SetDefault("cluster_creds", "clustercreds")
+	viper.SetDefault("flow_cache_active_timeout", defaultFlowCacheActiveTimeout)
+	viper.SetDefault("flow_cache_channel_buffer_size", defaultFlowCacheChannelBuffSize)
+	viper.SetDefault("flow_cache_max_size", defaultFlowCacheMaxSize)
+	viper.SetDefault("grpc_internal_logging", false)
 	viper.SetDefault("https_proxy", "")
 	viper.SetDefault("ipfix_collector_port", "4739")
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
@@ -140,10 +144,6 @@ func main() {
 	viper.SetDefault("tls_skip_verify", false)
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("verbose_debugging", false)
-	viper.SetDefault("grpc_internal_logging", false)
-	viper.SetDefault("flow_cache_active_timeout", defaultFlowCacheActiveTimeout)
-	viper.SetDefault("flow_cache_max_size", defaultFlowCacheMaxSize)
-	viper.SetDefault("flow_cache_channel_buffer_size", defaultFlowCacheChannelBuffSize)
 
 	if viper.GetBool("grpc_internal_logging") {
 		logging.SetupGRPCInternalLogging(logger)
