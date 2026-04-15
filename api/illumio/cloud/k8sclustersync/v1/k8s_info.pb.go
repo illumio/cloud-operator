@@ -4968,7 +4968,7 @@ type ConfiguredKubernetesObjectData struct {
 	Namespace *string `protobuf:"bytes,5,opt,name=namespace,proto3,oneof" json:"namespace,omitempty"`
 	// Type-specific data for the Kubernetes resource kind.
 	//
-	// Types that are valid to be assigned to KindSpecific:
+	// Types that are valid to be assigned to Scope:
 	//
 	//	*ConfiguredKubernetesObjectData_CiliumNetworkPolicy
 	//	*ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy
@@ -5045,7 +5045,7 @@ func (x *ConfiguredKubernetesObjectData) GetNamespace() string {
 
 func (x *ConfiguredKubernetesObjectData) GetKindSpecific() isConfiguredKubernetesObjectData_KindSpecific {
 	if x != nil {
-		return x.KindSpecific
+		return x.Scope
 	}
 	return nil
 }
