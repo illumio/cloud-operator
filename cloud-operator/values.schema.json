@@ -16,6 +16,14 @@
                 }
             }
         },
+        "cluster": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "clusterCredsSecret": {
             "type": "object",
             "properties": {
