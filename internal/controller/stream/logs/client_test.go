@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -88,7 +87,7 @@ func (s *LogsClientTestSuite) SetupTest() {
 
 	s.client = &logsClient{
 		stream:             s.mockStream,
-		conn:               (*grpc.ClientConn)(nil), // Will use mockConn via syncer
+		conn:               s.mockConn,
 		logger:             s.logger,
 		bufferedGrpcSyncer: s.syncer,
 		done:               make(chan struct{}),
