@@ -101,7 +101,6 @@ func main() {
 	bindEnv(logger, "cilium_namespaces", "CILIUM_NAMESPACES")
 	bindEnv(logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
 	bindEnv(logger, "cluster_name", "CLUSTER_NAME")
-	bindEnv(logger, "cluster_region", "CLUSTER_REGION")
 	bindEnv(logger, "flow_cache_active_timeout", "FLOW_CACHE_ACTIVE_TIMEOUT")
 	bindEnv(logger, "flow_cache_channel_buffer_size", "FLOW_CACHE_CHANNEL_BUFFER_SIZE")
 	bindEnv(logger, "flow_cache_max_size", "FLOW_CACHE_MAX_SIZE")
@@ -154,7 +153,6 @@ func main() {
 	envConfig := stream.Config{
 		ClusterCreds:           viper.GetString("cluster_creds"),
 		ClusterName:            viper.GetString("cluster_name"),
-		ClusterRegion:          viper.GetString("cluster_region"),
 		HttpsProxy:             viper.GetString("https_proxy"),
 		OnboardingClientID:     viper.GetString("onboarding_client_id"),
 		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
@@ -173,7 +171,6 @@ func main() {
 		zap.Strings("cilium_namespaces", viper.GetStringSlice("cilium_namespaces")),
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
 		zap.String("cluster_name", envConfig.ClusterName),
-		zap.String("cluster_region", envConfig.ClusterRegion),
 		zap.String("https_proxy", envConfig.HttpsProxy),
 		zap.String("ipfix_collector_port", viper.GetString("ipfix_collector_port")),
 		zap.String("onboarding_client_id", envConfig.OnboardingClientID),
@@ -270,7 +267,6 @@ func main() {
 					K8sClient:         k8sClient,
 					FlowCollectorType: flowCollectorType,
 					ClusterName:       envConfig.ClusterName,
-					ClusterRegion:     envConfig.ClusterRegion,
 				},
 				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
 			},

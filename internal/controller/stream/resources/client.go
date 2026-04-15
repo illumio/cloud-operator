@@ -38,7 +38,6 @@ type resourcesClient struct {
 	stats         *stream.Stats
 	flowCollector pb.FlowCollector
 	clusterName   string // Optional: cluster name for self-managed clusters
-	clusterRegion string // Optional: cluster region for self-managed clusters
 
 	mutex  sync.RWMutex
 	closed bool
@@ -288,7 +287,6 @@ func (c *resourcesClient) sendClusterMetadata(ctx context.Context) error {
 				OperatorVersion:   version.Version(),
 				FlowCollector:     c.flowCollector,
 				ClusterName:       c.clusterName,
-				ClusterRegion:     c.clusterRegion,
 			},
 		},
 	}

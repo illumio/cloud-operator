@@ -1392,11 +1392,7 @@ type KubernetesClusterMetadata struct {
 	// Optional: Cluster name for self-managed clusters.
 	// For managed clusters (EKS, AKS, GKE, OCI), this is auto-detected from node labels on the server side.
 	// For self-managed clusters, this can be set via Helm configuration.
-	ClusterName string `protobuf:"bytes,5,opt,name=cluster_name,json=clusterName,proto3" json:"cluster_name,omitempty"`
-	// Optional: Cluster region for self-managed clusters.
-	// For managed clusters, this is auto-detected from node labels on the server side.
-	// For self-managed clusters, this can be set via Helm configuration.
-	ClusterRegion string `protobuf:"bytes,6,opt,name=cluster_region,json=clusterRegion,proto3" json:"cluster_region,omitempty"`
+	ClusterName   string `protobuf:"bytes,5,opt,name=cluster_name,json=clusterName,proto3" json:"cluster_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1462,13 +1458,6 @@ func (x *KubernetesClusterMetadata) GetFlowCollector() FlowCollector {
 func (x *KubernetesClusterMetadata) GetClusterName() string {
 	if x != nil {
 		return x.ClusterName
-	}
-	return ""
-}
-
-func (x *KubernetesClusterMetadata) GetClusterRegion() string {
-	if x != nil {
-		return x.ClusterRegion
 	}
 	return ""
 }
@@ -3579,14 +3568,13 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"controller\x12\x12\n" +
 	"\x04kind\x18\x04 \x01(\tR\x04kind\x12\x12\n" +
 	"\x04name\x18\x05 \x01(\tR\x04name\x12\x10\n" +
-	"\x03uid\x18\x06 \x01(\tR\x03uid\"\xa8\x02\n" +
+	"\x03uid\x18\x06 \x01(\tR\x03uid\"\x81\x02\n" +
 	"\x19KubernetesClusterMetadata\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\tR\x03uid\x12-\n" +
 	"\x12kubernetes_version\x18\x02 \x01(\tR\x11kubernetesVersion\x12)\n" +
 	"\x10operator_version\x18\x03 \x01(\tR\x0foperatorVersion\x12U\n" +
 	"\x0eflow_collector\x18\x04 \x01(\x0e2..illumio.cloud.k8sclustersync.v1.FlowCollectorR\rflowCollector\x12!\n" +
-	"\fcluster_name\x18\x05 \x01(\tR\vclusterName\x12%\n" +
-	"\x0ecluster_region\x18\x06 \x01(\tR\rclusterRegion\"\xc5\x04\n" +
+	"\fcluster_name\x18\x05 \x01(\tR\vclusterName\"\xc5\x04\n" +
 	"\x1eSendKubernetesResourcesRequest\x12J\n" +
 	"\tkeepalive\x18\x05 \x01(\v2*.illumio.cloud.k8sclustersync.v1.KeepaliveH\x00R\tkeepalive\x12g\n" +
 	"\x10cluster_metadata\x18\x01 \x01(\v2:.illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadataH\x00R\x0fclusterMetadata\x12\\\n" +

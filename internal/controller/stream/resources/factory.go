@@ -23,7 +23,6 @@ type Factory struct {
 	Stats             *stream.Stats
 	FlowCollectorType pb.FlowCollector
 	ClusterName       string // Optional: cluster name for self-managed clusters
-	ClusterRegion     string // Optional: cluster region for self-managed clusters
 }
 
 // NewStreamClient creates a new resources stream client.
@@ -44,7 +43,6 @@ func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnI
 		stats:         f.Stats,
 		flowCollector: f.FlowCollectorType,
 		clusterName:   f.ClusterName,
-		clusterRegion: f.ClusterRegion,
 	}, nil
 }
 

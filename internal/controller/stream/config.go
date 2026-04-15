@@ -11,7 +11,6 @@ import (
 type Config struct {
 	ClusterCreds           string
 	ClusterName            string // Optional: cluster name for self-managed clusters
-	ClusterRegion          string // Optional: cluster region for self-managed clusters
 	HttpsProxy             string
 	OnboardingClientID     string
 	OnboardingClientSecret string

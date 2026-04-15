@@ -183,10 +183,6 @@ message KubernetesClusterMetadata {
   // For managed clusters (EKS, AKS, GKE, OCI), this is auto-detected from node labels on the server side.
   // For self-managed clusters, this can be set via Helm configuration.
   string cluster_name = 5;
-  // Optional: Cluster region for self-managed clusters.
-  // For managed clusters, this is auto-detected from node labels on the server side.
-  // For self-managed clusters, this can be set via Helm configuration.
-  string cluster_region = 6;
 }
 
 // Network flow collection mechanism configured in the operator.

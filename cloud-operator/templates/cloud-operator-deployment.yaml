@@ -114,10 +114,6 @@ spec:
             - name: CLUSTER_NAME
               value: "{{ .Values.cluster.name }}"
             {{- end }}
-            {{- if .Values.cluster.region }}
-            - name: CLUSTER_REGION
-              value: "{{ .Values.cluster.region }}"
-            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

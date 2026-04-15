@@ -47,8 +47,6 @@ service:
 cluster:
   # The name of the cluster as it should appear in CloudSecure.
   name: ""
-  # The region/location of the cluster (e.g., "us-east-datacenter", "eu-west-1").
-  region: ""
 
 cilium:
   # The namespaces in which Cilium may be deployed.
