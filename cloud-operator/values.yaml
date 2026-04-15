@@ -108,6 +108,15 @@ falco:
         priority: WARNING
 
 env:
+  # Flow cache settings for network flow aggregation before sending to CloudSecure.
+  flowCache:
+    # Duration a flow stays in cache before being evicted and sent.
+    activeTimeout: "20s"
+    # Buffer size for the outbound flow channel.
+    channelBufferSize: 100
+    # Maximum number of flows to hold in cache.
+    maxSize: 1000
+
   # If true, enables GRPC internal logging (connection states, TLS handshakes, transport events).
   # These logs appear at DEBUG level, so they only show when log level is DEBUG.
   grpcInternalLogging: false
