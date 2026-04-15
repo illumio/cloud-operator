@@ -104,6 +104,12 @@ spec:
               value: "{{ .Values.env.tokenEndpoint }}"
             - name: VERBOSE_DEBUGGING
               value: "{{ .Values.env.verboseDebugging }}"
+            - name: FLOW_CACHE_ACTIVE_TIMEOUT
+              value: "{{ .Values.env.flowCache.activeTimeout }}"
+            - name: FLOW_CACHE_MAX_SIZE
+              value: "{{ .Values.env.flowCache.maxSize }}"
+            - name: FLOW_CACHE_CHANNEL_BUFFER_SIZE
+              value: "{{ .Values.env.flowCache.channelBufferSize }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
