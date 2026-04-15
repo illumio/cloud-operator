@@ -1,7 +1,3 @@
 *local.yaml
 cloud-operator-*.tgz
 .DS_Store
-.idea/
-coverage.out
-docs/fakeserver/fakeserver
-fakeserver/fakeserver.test
