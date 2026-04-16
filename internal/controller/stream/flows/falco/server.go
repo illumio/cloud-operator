@@ -7,9 +7,11 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"syscall"
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/illumio/cloud-operator/internal/controller/collector"
 )
@@ -40,7 +42,17 @@ func StartServer(ctx context.Context, logger *zap.Logger, falcoEventChan chan st
 	go func() {
 		defer close(falcoEventChan)
 
-		var listenerConfig net.ListenConfig
+		listenerConfig := net.ListenConfig{
+			Control: func(network, address string, c syscall.RawConn) error {
+				return c.Control(func(fd uintptr) {
+					// SO_REUSEADDR allows immediate reusing the port after it has been closed.
+					err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1) //nolint:gosec
+					if err != nil {
+						logger.Fatal("Failed to set SO_REUSEADDR socket option on Falco server socket", zap.Error(err))
+					}
+				})
+			},
+		}
 
 		listener, err := listenerConfig.Listen(ctx, "tcp", FalcoPort)
 		if err != nil {
