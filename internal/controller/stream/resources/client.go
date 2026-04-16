@@ -279,15 +279,20 @@ func (c *resourcesClient) sendClusterMetadata(ctx context.Context) error {
 		return err
 	}
 
+	metadata := &pb.KubernetesClusterMetadata{
+		Uid:               clusterUid,
+		KubernetesVersion: kubernetesVersion.String(),
+		OperatorVersion:   version.Version(),
+		FlowCollector:     c.flowCollector,
+	}
+
+	if c.clusterName != "" {
+		metadata.ClusterName = &c.clusterName
+	}
+
 	request := &pb.SendKubernetesResourcesRequest{
 		Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{
-			ClusterMetadata: &pb.KubernetesClusterMetadata{
-				Uid:               clusterUid,
-				KubernetesVersion: kubernetesVersion.String(),
-				OperatorVersion:   version.Version(),
-				FlowCollector:     c.flowCollector,
-				ClusterName:       c.clusterName,
-			},
+			ClusterMetadata: metadata,
 		},
 	}
 

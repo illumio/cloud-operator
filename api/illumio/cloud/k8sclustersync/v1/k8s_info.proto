@@ -179,10 +179,10 @@ message KubernetesClusterMetadata {
   string operator_version = 3;
   // The network flow collection mechanism configured in the operator's cluster
   FlowCollector flow_collector = 4;
-  // Optional: Cluster name for self-managed clusters.
-  // For managed clusters (EKS, AKS, GKE, OCI), this is auto-detected from node labels on the server side.
+  // Optional: Cluster name specified by users in Helm configuration.
   // For self-managed clusters, this can be set via Helm configuration.
-  string cluster_name = 5;
+  // The Helm configuration takes precedence over the node labels.
+  optional string cluster_name = 5;
 }
 
 // Network flow collection mechanism configured in the operator.

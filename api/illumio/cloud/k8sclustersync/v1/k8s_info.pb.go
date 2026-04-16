@@ -1389,10 +1389,10 @@ type KubernetesClusterMetadata struct {
 	OperatorVersion string `protobuf:"bytes,3,opt,name=operator_version,json=operatorVersion,proto3" json:"operator_version,omitempty"`
 	// The network flow collection mechanism configured in the operator's cluster
 	FlowCollector FlowCollector `protobuf:"varint,4,opt,name=flow_collector,json=flowCollector,proto3,enum=illumio.cloud.k8sclustersync.v1.FlowCollector" json:"flow_collector,omitempty"`
-	// Optional: Cluster name for self-managed clusters.
-	// For managed clusters (EKS, AKS, GKE, OCI), this is auto-detected from node labels on the server side.
+	// Optional: Cluster name specified by users in Helm configuration.
 	// For self-managed clusters, this can be set via Helm configuration.
-	ClusterName   string `protobuf:"bytes,5,opt,name=cluster_name,json=clusterName,proto3" json:"cluster_name,omitempty"`
+	// The Helm configuration takes precedence over the node labels.
+	ClusterName   *string `protobuf:"bytes,5,opt,name=cluster_name,json=clusterName,proto3,oneof" json:"cluster_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1456,8 +1456,8 @@ func (x *KubernetesClusterMetadata) GetFlowCollector() FlowCollector {
 }
 
 func (x *KubernetesClusterMetadata) GetClusterName() string {
-	if x != nil {
-		return x.ClusterName
+	if x != nil && x.ClusterName != nil {
+		return *x.ClusterName
 	}
 	return ""
 }
@@ -3568,13 +3568,14 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"controller\x12\x12\n" +
 	"\x04kind\x18\x04 \x01(\tR\x04kind\x12\x12\n" +
 	"\x04name\x18\x05 \x01(\tR\x04name\x12\x10\n" +
-	"\x03uid\x18\x06 \x01(\tR\x03uid\"\x81\x02\n" +
+	"\x03uid\x18\x06 \x01(\tR\x03uid\"\x97\x02\n" +
 	"\x19KubernetesClusterMetadata\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\tR\x03uid\x12-\n" +
 	"\x12kubernetes_version\x18\x02 \x01(\tR\x11kubernetesVersion\x12)\n" +
 	"\x10operator_version\x18\x03 \x01(\tR\x0foperatorVersion\x12U\n" +
-	"\x0eflow_collector\x18\x04 \x01(\x0e2..illumio.cloud.k8sclustersync.v1.FlowCollectorR\rflowCollector\x12!\n" +
-	"\fcluster_name\x18\x05 \x01(\tR\vclusterName\"\xc5\x04\n" +
+	"\x0eflow_collector\x18\x04 \x01(\x0e2..illumio.cloud.k8sclustersync.v1.FlowCollectorR\rflowCollector\x12&\n" +
+	"\fcluster_name\x18\x05 \x01(\tH\x00R\vclusterName\x88\x01\x01B\x0f\n" +
+	"\r_cluster_name\"\xc5\x04\n" +
 	"\x1eSendKubernetesResourcesRequest\x12J\n" +
 	"\tkeepalive\x18\x05 \x01(\v2*.illumio.cloud.k8sclustersync.v1.KeepaliveH\x00R\tkeepalive\x12g\n" +
 	"\x10cluster_metadata\x18\x01 \x01(\v2:.illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadataH\x00R\x0fclusterMetadata\x12\\\n" +
@@ -3900,6 +3901,7 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() {
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[10].OneofWrappers = []any{}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[11].OneofWrappers = []any{}
+	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[14].OneofWrappers = []any{}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[15].OneofWrappers = []any{
 		(*SendKubernetesResourcesRequest_Keepalive)(nil),
 		(*SendKubernetesResourcesRequest_ClusterMetadata)(nil),
