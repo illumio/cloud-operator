@@ -104,6 +104,7 @@ func (s *ConfigClientTestSuite) TestRun_ConfigUpdate() {
 
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
+	s.Equal(zap.DebugLevel, s.syncer.GetLogLevel(), "log level should be set to DEBUG")
 }
 
 func (s *ConfigClientTestSuite) TestRun_VerboseDebuggingOverride() {

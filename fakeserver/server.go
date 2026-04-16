@@ -65,23 +65,19 @@ type FakeServer struct {
 	authService  *AuthService // OAuth2 AuthService to handle the /authenticate and /onboard endpoints
 }
 
-type ServerState struct {
-	ConnectionSuccessful     bool
-	IncorrectCredentials     bool
-	BadIntialCommit          bool
-	CiliumFlowsReceived      int
-	FiveTupleFlowsReceived   int
-	ResourcesReceived        int
-	ResourceSnapshotComplete bool
-}
-
 // RecordCiliumFlow increments the Cilium flow counter.
 func (s *ServerState) RecordCiliumFlow() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.CiliumFlowsReceived++
 }
 
 // RecordFiveTupleFlow increments the FiveTuple flow counter.
 func (s *ServerState) RecordFiveTupleFlow() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.FiveTupleFlowsReceived++
 }
 

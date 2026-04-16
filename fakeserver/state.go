@@ -15,8 +15,8 @@ type StreamState struct {
 	KeepalivesRecv   int
 }
 
-// EnhancedServerState provides detailed tracking of all server activity.
-type EnhancedServerState struct {
+// ServerState provides detailed tracking of all server activity.
+type ServerState struct {
 	mu sync.RWMutex
 
 	// Legacy fields for backward compatibility
@@ -46,13 +46,13 @@ type EnhancedServerState struct {
 	FiveTupleFlowsReceived int
 }
 
-// NewEnhancedServerState creates a new state tracker.
-func NewEnhancedServerState() *EnhancedServerState {
-	return &EnhancedServerState{}
+// NewServerState creates a new state tracker.
+func NewServerState() *ServerState {
+	return &ServerState{}
 }
 
 // MarkConfigStreamOpened marks the config stream as opened.
-func (s *EnhancedServerState) MarkConfigStreamOpened() {
+func (s *ServerState) MarkConfigStreamOpened() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -61,7 +61,7 @@ func (s *EnhancedServerState) MarkConfigStreamOpened() {
 }
 
 // MarkLogsStreamOpened marks the logs stream as opened.
-func (s *EnhancedServerState) MarkLogsStreamOpened() {
+func (s *ServerState) MarkLogsStreamOpened() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -70,7 +70,7 @@ func (s *EnhancedServerState) MarkLogsStreamOpened() {
 }
 
 // MarkResourcesStreamOpened marks the resources stream as opened.
-func (s *EnhancedServerState) MarkResourcesStreamOpened() {
+func (s *ServerState) MarkResourcesStreamOpened() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -79,7 +79,7 @@ func (s *EnhancedServerState) MarkResourcesStreamOpened() {
 }
 
 // MarkFlowsStreamOpened marks the flows stream as opened.
-func (s *EnhancedServerState) MarkFlowsStreamOpened() {
+func (s *ServerState) MarkFlowsStreamOpened() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -88,7 +88,7 @@ func (s *EnhancedServerState) MarkFlowsStreamOpened() {
 }
 
 // RecordKeepalive records a keepalive for the specified stream.
-func (s *EnhancedServerState) RecordKeepalive(stream string) {
+func (s *ServerState) RecordKeepalive(stream string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -111,7 +111,7 @@ func (s *EnhancedServerState) RecordKeepalive(stream string) {
 }
 
 // RecordResourceSnapshot marks resource snapshot as complete.
-func (s *EnhancedServerState) RecordResourceSnapshot() {
+func (s *ServerState) RecordResourceSnapshot() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -120,7 +120,7 @@ func (s *EnhancedServerState) RecordResourceSnapshot() {
 }
 
 // RecordAuthRequest records an authentication request.
-func (s *EnhancedServerState) RecordAuthRequest() {
+func (s *ServerState) RecordAuthRequest() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -129,7 +129,7 @@ func (s *EnhancedServerState) RecordAuthRequest() {
 }
 
 // RecordOnboardRequest records an onboard request.
-func (s *EnhancedServerState) RecordOnboardRequest() {
+func (s *ServerState) RecordOnboardRequest() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -138,7 +138,7 @@ func (s *EnhancedServerState) RecordOnboardRequest() {
 }
 
 // IsConnectionSuccessful returns whether the connection was successful.
-func (s *EnhancedServerState) IsConnectionSuccessful() bool {
+func (s *ServerState) IsConnectionSuccessful() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -146,7 +146,7 @@ func (s *EnhancedServerState) IsConnectionSuccessful() bool {
 }
 
 // AllStreamsOpened returns true if all streams have been opened.
-func (s *EnhancedServerState) AllStreamsOpened() bool {
+func (s *ServerState) AllStreamsOpened() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -157,7 +157,7 @@ func (s *EnhancedServerState) AllStreamsOpened() bool {
 }
 
 // GetSummary returns a summary of the current state.
-func (s *EnhancedServerState) GetSummary() map[string]any {
+func (s *ServerState) GetSummary() map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

@@ -78,7 +78,7 @@ func CreateTestLogger(t *testing.T, enabled bool) *zap.Logger {
 // FakeServerTestHarness wraps FakeServer with test utilities.
 type FakeServerTestHarness struct {
 	Server        *FakeServer
-	EnhancedState *EnhancedServerState
+	EnhancedState *ServerState
 	Config        TestConfig
 	T             *testing.T
 }
@@ -89,7 +89,7 @@ func NewTestHarness(t *testing.T, config TestConfig) *FakeServerTestHarness {
 
 	logger := CreateTestLogger(t, config.EnableLogging)
 	token := CreateTestToken("192.168.49.1:50051")
-	enhancedState := NewEnhancedServerState()
+	enhancedState := NewServerState()
 
 	server := &FakeServer{
 		address:     config.GRPCAddress,

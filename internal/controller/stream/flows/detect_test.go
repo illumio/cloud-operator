@@ -121,3 +121,37 @@ func TestFlowCollectorAdapter_Close(t *testing.T) {
 
 	assert.NoError(t, err)
 }
+
+func TestCollectorFactoryFunc(t *testing.T) {
+	t.Run("wraps function and returns collector", func(t *testing.T) {
+		expectedColl := &mockCollector{}
+		fn := collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
+			return expectedColl, nil
+		})
+
+		coll, err := fn.NewCollector(context.Background())
+
+		require.NoError(t, err)
+		assert.Equal(t, expectedColl, coll)
+	})
+
+	t.Run("wraps function and returns error", func(t *testing.T) {
+		expectedErr := errors.New("creation error")
+		fn := collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
+			return nil, expectedErr
+		})
+
+		coll, err := fn.NewCollector(context.Background())
+
+		require.ErrorIs(t, err, expectedErr)
+		assert.Nil(t, coll)
+	})
+}
+
+// Note: DetectFlowCollector tests are more complex as they require:
+// - Fake K8s clientset with specific namespaces/resources
+// - Mocking IsCiliumAvailable (requires Hubble relay connection)
+// - Mocking IsOVNKDeployed (simpler, just checks namespace)
+// Full detection logic tests should inject the detection functions
+// or use integration tests. See collector/cilium_test.go and
+// collector/ovnk_test.go for unit tests of the detection helpers.
