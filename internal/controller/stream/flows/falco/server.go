@@ -7,9 +7,11 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"syscall"
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/illumio/cloud-operator/internal/controller/collector"
 )
