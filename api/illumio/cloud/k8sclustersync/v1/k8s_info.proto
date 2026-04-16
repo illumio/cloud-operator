@@ -734,7 +734,7 @@ message GetConfigurationUpdatesResponse {
   oneof response {
     Configuration update_configuration = 1;
     // A network policy in the initial snapshot.
-    NetworkPolicyData network_policy_data = 2;
+    ConfiguredNetworkPolicyData network_policy_data = 2;
     // Indicates that all network policies have been sent in the initial snapshot.
     NetworkPolicySnapshotComplete network_policy_snapshot_complete = 3;
     // A mutation to a network policy in the cluster.
@@ -742,8 +742,8 @@ message GetConfigurationUpdatesResponse {
   }
 }
 
-// Network policy data for snapshot or create/update operations.
-message NetworkPolicyData {
+// Configured network policy data for snapshot or create/update operations.
+message ConfiguredNetworkPolicyData {
   // Unique identifier for tracking this policy.
   string id = 1;
   // Kubernetes resource name for the policy.
@@ -779,7 +779,7 @@ message ClusterPolicyData {
 }
 
 // Network policy reference for delete operations.
-// Only the ID is needed because the full NetworkPolicyData is stored in memory,
+// Only the ID is needed because the full ConfiguredNetworkPolicyData is stored in memory,
 // which contains all fields required to delete from the cluster.
 message DeleteNetworkPolicy {
   // Unique identifier for tracking this policy.
@@ -793,9 +793,9 @@ message NetworkPolicySnapshotComplete {}
 message NetworkPolicyMutation {
   oneof mutation {
     // A new network policy to create in the cluster.
-    NetworkPolicyData create_policy = 1;
+    ConfiguredNetworkPolicyData create_policy = 1;
     // An existing network policy to update in the cluster.
-    NetworkPolicyData update_policy = 2;
+    ConfiguredNetworkPolicyData update_policy = 2;
     // An existing network policy to delete from the cluster.
     DeleteNetworkPolicy delete_policy = 3;
   }
