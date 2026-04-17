@@ -37,6 +37,7 @@ type resourcesClient struct {
 	k8sClient     k8sclient.Client
 	stats         *stream.Stats
 	flowCollector pb.FlowCollector
+	clusterName   string // Optional: cluster name for self-managed clusters
 
 	mutex  sync.RWMutex
 	closed bool
@@ -278,14 +279,20 @@ func (c *resourcesClient) sendClusterMetadata(ctx context.Context) error {
 		return err
 	}
 
+	metadata := &pb.KubernetesClusterMetadata{
+		Uid:               clusterUid,
+		KubernetesVersion: kubernetesVersion.String(),
+		OperatorVersion:   version.Version(),
+		FlowCollector:     c.flowCollector,
+	}
+
+	if c.clusterName != "" {
+		metadata.ClusterName = &c.clusterName
+	}
+
 	request := &pb.SendKubernetesResourcesRequest{
 		Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{
-			ClusterMetadata: &pb.KubernetesClusterMetadata{
-				Uid:               clusterUid,
-				KubernetesVersion: kubernetesVersion.String(),
-				OperatorVersion:   version.Version(),
-				FlowCollector:     c.flowCollector,
-			},
+			ClusterMetadata: metadata,
 		},
 	}
 
