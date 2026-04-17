@@ -62,6 +62,33 @@ func (s *ResourcesClientTestSuite) SetupTest() {
 	}
 }
 
+func (s *ResourcesClientTestSuite) TestClusterName_Empty() {
+	// When clusterName is empty, it should remain empty
+	client := &resourcesClient{
+		grpcStream:    s.mockStream,
+		logger:        s.logger,
+		stats:         s.stats,
+		flowCollector: pb.FlowCollector_FLOW_COLLECTOR_CILIUM,
+		clusterName:   "",
+	}
+
+	s.Empty(client.clusterName)
+}
+
+func (s *ResourcesClientTestSuite) TestClusterName_Set() {
+	// When clusterName is set, it should be stored in the client
+	expectedName := "my-self-managed-cluster"
+	client := &resourcesClient{
+		grpcStream:    s.mockStream,
+		logger:        s.logger,
+		stats:         s.stats,
+		flowCollector: pb.FlowCollector_FLOW_COLLECTOR_CILIUM,
+		clusterName:   expectedName,
+	}
+
+	s.Equal(expectedName, client.clusterName)
+}
+
 func (s *ResourcesClientTestSuite) TestSendKeepalive_Success() {
 	s.mockStream.On("Send", mock.MatchedBy(func(req *pb.SendKubernetesResourcesRequest) bool {
 		return req.GetKeepalive() != nil

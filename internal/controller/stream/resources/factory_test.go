@@ -46,3 +46,24 @@ func TestFactory_ImplementsInterface(t *testing.T) {
 
 	var _ stream.StreamClientFactory = factory
 }
+
+func TestFactory_ClusterName(t *testing.T) {
+	tests := []struct {
+		name        string
+		clusterName string
+	}{
+		{"empty cluster name", ""},
+		{"self-managed cluster", "my-cluster"},
+		{"cluster with special chars", "my-cluster-123"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			factory := &Factory{
+				ClusterName: tc.clusterName,
+			}
+
+			assert.Equal(t, tc.clusterName, factory.ClusterName)
+		})
+	}
+}
