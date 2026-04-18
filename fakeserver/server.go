@@ -120,7 +120,6 @@ type server struct {
 }
 
 func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKubernetesResourcesServer) error {
-
 	for {
 		req, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -168,7 +167,6 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 }
 
 func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error {
-
 	for {
 		req, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
