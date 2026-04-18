@@ -120,7 +120,6 @@ type server struct {
 }
 
 func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKubernetesResourcesServer) error {
-	logger.Info("SendKubernetesResources stream started")
 
 	for {
 		req, err := stream.Recv()
@@ -169,7 +168,6 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 }
 
 func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error {
-	logger.Info("SendLogs stream started")
 
 	for {
 		req, err := stream.Recv()
@@ -232,19 +230,6 @@ func logReceivedLogEntry(log *pb.LogEntry, logger *zap.Logger) error {
 
 func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConfigurationUpdatesServer) error {
 	logger.Info("GetConfigurationUpdates stream started")
-
-	// Send initial configuration update
-	err := stream.Send(&pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
-			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
-				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
-			},
-		},
-	})
-	if err != nil {
-		logger.Error("Failed to send initial configuration", zap.Error(err))
-		return err
-	}
 
 	for {
 		req, err := stream.Recv()
@@ -320,14 +305,7 @@ func (fs *FakeServer) start() error {
 	// Start gRPC server
 	var err error
 
-	listenerConfig := net.ListenConfig{
-		Control: func(network, address string, c syscall.RawConn) error {
-			return c.Control(func(fd uintptr) {
-				// Enable SO_REUSEADDR to allow binding to a port in TIME_WAIT state
-				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
-			})
-		},
-	}
+	var listenerConfig net.ListenConfig
 
 	fs.listener, err = listenerConfig.Listen(context.Background(), "tcp", fs.address)
 	if err != nil {
