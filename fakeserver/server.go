@@ -229,6 +229,34 @@ func logReceivedLogEntry(log *pb.LogEntry, logger *zap.Logger) error {
 func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConfigurationUpdatesServer) error {
 	logger.Info("GetConfigurationUpdates stream started")
 
+	// Send initial configuration with log level
+	configResp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	}
+
+	if err := stream.Send(configResp); err != nil {
+		logger.Error("Failed to send initial configuration", zap.Error(err))
+
+		return err
+	}
+
+	// Send policy snapshot complete
+	snapshotResp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_NetworkPolicySnapshotComplete{
+			NetworkPolicySnapshotComplete: &pb.NetworkPolicySnapshotComplete{},
+		},
+	}
+
+	if err := stream.Send(snapshotResp); err != nil {
+		logger.Error("Failed to send policy snapshot complete", zap.Error(err))
+
+		return err
+	}
+
 	for {
 		req, err := stream.Recv()
 		if errors.Is(err, io.EOF) {

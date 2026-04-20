@@ -14,6 +14,7 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
+	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
 
 // mockConfigurationStream mocks the stream.ConfigurationStream interface.
@@ -43,6 +44,7 @@ type ConfigClientTestSuite struct {
 	mockStream *mockConfigurationStream
 	syncer     *logging.BufferedGrpcWriteSyncer
 	logger     *zap.Logger
+	stats      *stream.Stats
 	client     *configClient
 }
 
@@ -54,10 +56,12 @@ func (s *ConfigClientTestSuite) SetupTest() {
 	s.mockStream = &mockConfigurationStream{}
 	s.logger = zap.NewNop()
 	s.syncer = logging.NewBufferedGrpcWriteSyncerForTest(s.logger)
+	s.stats = stream.NewStats()
 	s.client = &configClient{
 		stream:             s.mockStream,
 		logger:             s.logger,
 		bufferedGrpcSyncer: s.syncer,
+		stats:              s.stats,
 	}
 }
 
@@ -188,4 +192,75 @@ func (s *ConfigClientTestSuite) TestClose_Idempotent() {
 	s.Require().NoError(err)
 
 	s.True(s.client.closed)
+}
+
+func (s *ConfigClientTestSuite) TestRun_NetworkPolicyMutation_Create() {
+	resp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_NetworkPolicyMutation{
+			NetworkPolicyMutation: &pb.NetworkPolicyMutation{
+				Mutation: &pb.NetworkPolicyMutation_CreatePolicy{
+					CreatePolicy: &pb.ConfiguredNetworkPolicyData{
+						Id:   "policy-123",
+						Name: "test-policy",
+					},
+				},
+			},
+		},
+	}
+	s.mockStream.On("Recv").Return(resp, nil).Once()
+	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
+
+	err := s.client.Run(context.Background())
+
+	s.Require().NoError(err)
+	s.mockStream.AssertExpectations(s.T())
+	_, _, _, policyMutations := s.stats.GetAndResetStats()
+	s.Equal(uint64(1), policyMutations, "policy mutations should be incremented")
+}
+
+func (s *ConfigClientTestSuite) TestRun_NetworkPolicyMutation_Update() {
+	resp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_NetworkPolicyMutation{
+			NetworkPolicyMutation: &pb.NetworkPolicyMutation{
+				Mutation: &pb.NetworkPolicyMutation_UpdatePolicy{
+					UpdatePolicy: &pb.ConfiguredNetworkPolicyData{
+						Id:   "policy-123",
+						Name: "test-policy",
+					},
+				},
+			},
+		},
+	}
+	s.mockStream.On("Recv").Return(resp, nil).Once()
+	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
+
+	err := s.client.Run(context.Background())
+
+	s.Require().NoError(err)
+	s.mockStream.AssertExpectations(s.T())
+	_, _, _, policyMutations := s.stats.GetAndResetStats()
+	s.Equal(uint64(1), policyMutations, "policy mutations should be incremented")
+}
+
+func (s *ConfigClientTestSuite) TestRun_NetworkPolicyMutation_Delete() {
+	resp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_NetworkPolicyMutation{
+			NetworkPolicyMutation: &pb.NetworkPolicyMutation{
+				Mutation: &pb.NetworkPolicyMutation_DeletePolicy{
+					DeletePolicy: &pb.DeleteNetworkPolicy{
+						Id: "policy-123",
+					},
+				},
+			},
+		},
+	}
+	s.mockStream.On("Recv").Return(resp, nil).Once()
+	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
+
+	err := s.client.Run(context.Background())
+
+	s.Require().NoError(err)
+	s.mockStream.AssertExpectations(s.T())
+	_, _, _, policyMutations := s.stats.GetAndResetStats()
+	s.Equal(uint64(1), policyMutations, "policy mutations should be incremented")
 }
