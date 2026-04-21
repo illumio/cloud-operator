@@ -36,7 +36,8 @@ message KubernetesObjectData {
   string kind = 3;
   map<string, string> labels = 4;
   string name = 5;
-  string namespace = 6;
+  // Empty for clusterwide resources which have no namespace.
+  optional string namespace = 6;
   repeated KubernetesOwnerReference owner_references = 7;
   string resource_version = 8;
   string uid = 9;
@@ -768,7 +769,7 @@ message ConfiguredKubernetesObjectData {
   map<string, string> labels = 3;
   // Kubernetes resource name for the object.
   string name = 4;
-  // Kubernetes namespace for the object.
+  // Kubernetes namespace for the object. Empty for clusterwide resources.
   optional string namespace = 5;
   // Type-specific data for the Kubernetes resource kind.
   oneof kind_specific {

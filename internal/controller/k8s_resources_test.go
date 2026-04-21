@@ -131,33 +131,64 @@ func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 
 	clientset := k8sClient.GetClientset()
 	sampleData := make(map[string]string)
-	resource := "test-resource"
 	creationTimestamp := metav1.Time{Time: time.Now()}
-	objMeta := metav1.ObjectMeta{
-		Annotations:       sampleData,
-		CreationTimestamp: creationTimestamp,
-		Labels:            sampleData,
-		Name:              "test-name",
-		Namespace:         "test-namespace",
-		ResourceVersion:   "test-version",
-		UID:               "test-uid",
+
+	tests := map[string]struct {
+		objMeta  metav1.ObjectMeta
+		resource string
+		expected *pb.KubernetesObjectData
+	}{
+		"with namespace": {
+			objMeta: metav1.ObjectMeta{
+				Annotations:       sampleData,
+				CreationTimestamp: creationTimestamp,
+				Labels:            sampleData,
+				Name:              "test-name",
+				Namespace:         "test-namespace",
+				ResourceVersion:   "test-version",
+				UID:               "test-uid",
+			},
+			resource: "test-resource",
+			expected: &pb.KubernetesObjectData{
+				Annotations:       sampleData,
+				CreationTimestamp: convertToProtoTimestamp(creationTimestamp),
+				Kind:              "test-resource",
+				Labels:            sampleData,
+				Name:              "test-name",
+				Namespace:         ptrString("test-namespace"),
+				ResourceVersion:   "test-version",
+				Uid:               "test-uid",
+			},
+		},
+		"without namespace (cluster-scoped)": {
+			objMeta: metav1.ObjectMeta{
+				Annotations:       sampleData,
+				CreationTimestamp: creationTimestamp,
+				Labels:            sampleData,
+				Name:              "test-node",
+				Namespace:         "",
+				ResourceVersion:   "test-version",
+				UID:               "test-uid",
+			},
+			resource: "Node",
+			expected: &pb.KubernetesObjectData{
+				Annotations:       sampleData,
+				CreationTimestamp: convertToProtoTimestamp(creationTimestamp),
+				Kind:              "Node",
+				Labels:            sampleData,
+				Name:              "test-node",
+				ResourceVersion:   "test-version",
+				Uid:               "test-uid",
+			},
+		},
 	}
 
-	expected := &pb.KubernetesObjectData{
-		Annotations:       sampleData,
-		CreationTimestamp: convertToProtoTimestamp(creationTimestamp),
-		Kind:              resource,
-		Labels:            sampleData,
-		Name:              "test-name",
-		Namespace:         "test-namespace",
-		ResourceVersion:   "test-version",
-		Uid:               "test-uid",
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			result := ConvertMetaObjectToMetadata(context.Background(), tt.objMeta, clientset, tt.resource)
+			suite.Equal(tt.expected, result)
+		})
 	}
-
-	// Ensure proper error handling
-	result := ConvertMetaObjectToMetadata(context.Background(), objMeta, clientset, resource)
-
-	suite.Equal(expected, result)
 }
 
 func (suite *ControllerTestSuite) TestConvertOwnerReferences() {
