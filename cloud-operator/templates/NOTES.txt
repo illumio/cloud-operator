@@ -1,4 +1,4 @@
-Copyright 2024 Illumio, Inc. All Rights Reserved.
+Copyright 2026 Illumio, Inc. All Rights Reserved.
 
 {{- if .Release.IsInstall -}}
   Congratulations! You have successfully installed the cloud-operator Helm chart.
@@ -30,3 +30,43 @@ Namespace: {{ .Release.Namespace }}
 
 - To run unittests, run:
     helm unittest .
+
+{{- if .Values.vpcCni.enabled }}
+
+### VPC CNI Flow Collection
+
+{{- if not (.Capabilities.APIVersions.Has "networking.k8s.aws/v1alpha1") }}
+
+WARNING: VPC CNI flow collection is enabled but ClusterNetworkPolicy CRD was not found.
+
+The CRD (networking.k8s.aws/v1alpha1) is required for comprehensive flow logging.
+Without it, flow logs will only be emitted for pods with explicit NetworkPolicy.
+
+To fix this:
+1. Ensure you're running on EKS (not Auto Mode or Fargate)
+2. Enable Network Policy in VPC CNI addon:
+
+   aws eks update-addon --cluster-name <CLUSTER> --addon-name vpc-cni \
+     --configuration-values '{"enableNetworkPolicy":"true","nodeAgent":{"enablePolicyEventLogs":"true"}}' \
+     --resolve-conflicts OVERWRITE
+
+3. Run helm upgrade to create the ClusterNetworkPolicy:
+
+   helm upgrade {{ .Release.Name }} <chart> --namespace {{ .Release.Namespace }}
+
+{{- else if not .Values.vpcCni.createFlowLoggingPolicy }}
+
+WARNING: VPC CNI flow collection is enabled but createFlowLoggingPolicy is false.
+
+Flow logs will only be emitted for pods with explicit NetworkPolicy.
+To enable comprehensive flow logging, either:
+- Set vpcCni.createFlowLoggingPolicy=true, or
+- Manually create a ClusterNetworkPolicy with action:Pass
+
+{{- else }}
+
+ClusterNetworkPolicy "{{ include "cloud-operator.fullname" . }}-flow-logging" created.
+All pods will emit flow logs via VPC CNI.
+
+{{- end }}
+{{- end }}

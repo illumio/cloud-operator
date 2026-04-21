@@ -1,0 +1,36 @@
+# Copyright 2024 Illumio, Inc. All Rights Reserved.
+#
+# ClusterNetworkPolicy to enable VPC CNI flow logging for ALL pods.
+# AWS VPC CNI only attaches eBPF probes to pods targeted by NetworkPolicy.
+# This policy uses action:Pass to attach probes without blocking traffic.
+#
+# Only created if:
+# 1. vpcCni.enabled is true
+# 2. vpcCni.createFlowLoggingPolicy is true
+# 3. ClusterNetworkPolicy CRD exists (networking.k8s.aws/v1alpha1)
+#
+{{- if and .Values.vpcCni.enabled .Values.vpcCni.createFlowLoggingPolicy (.Capabilities.APIVersions.Has "networking.k8s.aws/v1alpha1") }}
+apiVersion: networking.k8s.aws/v1alpha1
+kind: ClusterNetworkPolicy
+metadata:
+  name: {{ include "cloud-operator.fullname" . }}-flow-logging
+  labels:
+    {{- include "cloud-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: flow-logging
+spec:
+  tier: Baseline
+  priority: 1000
+  subject:
+    namespaces:
+      matchLabels: {}  # Empty selector matches ALL namespaces
+  ingress:
+    - action: Pass    # Log traffic but don't block
+      from:
+        - namespaces:
+            matchLabels: {}
+  egress:
+    - action: Pass    # Log traffic but don't block
+      to:
+        - namespaces:
+            matchLabels: {}
+{{- end }}
