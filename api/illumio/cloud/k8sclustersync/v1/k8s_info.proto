@@ -36,7 +36,7 @@ message KubernetesObjectData {
   string kind = 3;
   map<string, string> labels = 4;
   string name = 5;
-  string namespace = 6;
+  optional string namespace = 6;
   repeated KubernetesOwnerReference owner_references = 7;
   string resource_version = 8;
   string uid = 9;
@@ -47,6 +47,7 @@ message KubernetesObjectData {
     KubernetesNetworkPolicyData network_policy = 103;
     KubernetesCiliumNetworkPolicyData cilium_network_policy = 104;
     KubernetesCiliumClusterwideNetworkPolicyData cilium_clusterwide_network_policy = 105;
+    // TODO: KubernetesCiliumCIDRGroupData cilium_cidr_group = 106;
   }
 }
 
@@ -108,29 +109,31 @@ message KubernetesNetworkPolicyData {
 
 // KubernetesCiliumNetworkPolicyData contains information specific to a CiliumNetworkPolicy object.
 // CiliumNetworkPolicy is a namespaced policy that applies to pods selected by the endpoint selector.
-// https://docs.cilium.io/en/stable/security/policy/language/#ciliumnetworkpolicy
+// https://github.com/cilium/cilium/blob/ad40b0b2aaf33ad6dc66b74466bc52418b1ebad4/pkg/k8s/apis/cilium.io/v2/cnp_types.go#L31-L55
 message KubernetesCiliumNetworkPolicyData {
-  // Policy specs from both `spec` (single) and `specs` (array) fields, unified as an array.
-  // Each spec has its own endpoint selector and rules, mirroring Cilium's CRD structure.
-  repeated CiliumPolicySpec specs = 1;
+  // Rules from both `spec` (single) and `specs` (array) fields, unified as an array.
+  repeated CiliumPolicyRule specs = 1;
 }
 
 // KubernetesCiliumClusterwideNetworkPolicyData contains information specific to a CiliumClusterwideNetworkPolicy object.
 // CiliumClusterwideNetworkPolicy is a cluster-scoped policy that applies across all namespaces.
-// https://docs.cilium.io/en/stable/security/policy/language/#ciliumclusterwidenetworkpolicy
+// https://github.com/cilium/cilium/blob/ad40b0b2aaf33ad6dc66b74466bc52418b1ebad4/pkg/k8s/apis/cilium.io/v2/ccnp_types.go#L26-L54
 message KubernetesCiliumClusterwideNetworkPolicyData {
-  // Policy specs from both `spec` (single) and `specs` (array) fields, unified as an array.
-  // Each spec has its own endpoint/node selector and rules, mirroring Cilium's CRD structure.
-  repeated CiliumPolicySpec specs = 1;
+  // Rules from both `spec` (single) and `specs` (array) fields, unified as an array.
+  repeated CiliumPolicyRule specs = 1;
 }
 
 // CiliumPolicySpec represents a single spec within a Cilium policy.
 // Maps to Cilium's Rule type which contains selectors, metadata, and rules.
 // https://docs.cilium.io/en/stable/security/policy/language/#rule
-message CiliumPolicySpec {
+// CiliumPolicyRule represents a single rule within a Cilium policy.
+// Maps to Cilium's Rule type which contains selectors, metadata, and rules.
+// https://github.com/cilium/cilium/blob/ad40b0b2aaf33ad6dc66b74466bc52418b1ebad4/pkg/policy/api/rule.go#L57-L151
+message CiliumPolicyRule {
   // Endpoint selector selects the pods to which this spec's rules apply.
   LabelSelector endpoint_selector = 1;
   // Node selector selects the nodes to which this spec applies (for host policies).
+  // May only be set in CiliumClusterwideNetworkPolicy resources.
   optional LabelSelector node_selector = 2;
   // Human-readable description of this spec's purpose.
   optional string description = 3;
@@ -146,9 +149,6 @@ message CiliumPolicySpec {
   repeated CiliumIngressRule ingress_deny_rules = 8;
   // EgressDeny rules explicitly deny outgoing traffic.
   repeated CiliumEgressRule egress_deny_rules = 9;
-  // API version of the source Cilium CRD (e.g., "cilium.io/v2").
-  // Useful for debugging and supporting multiple Cilium API versions.
-  optional string api_version = 10;
 }
 
 // CiliumDefaultDeny controls default deny behavior for a spec.
@@ -161,7 +161,7 @@ message CiliumDefaultDeny {
 
 // CiliumIngressRule defines a Cilium ingress rule.
 // Used for both allow and deny rules; allow vs deny is determined by which array
-// the rule belongs to (ingress_rules vs ingress_deny_rules) in CiliumPolicySpec.
+// the rule belongs to (ingress_rules vs ingress_deny_rules) in CiliumPolicyRule.
 // Separate from CiliumEgressRule to mirror Cilium's CRD structure and ensure
 // ingress rules only have from_* fields.
 // https://docs.cilium.io/en/stable/security/policy/language/#ingress
@@ -189,7 +189,7 @@ message CiliumIngressRule {
 
 // CiliumEgressRule defines a Cilium egress rule.
 // Used for both allow and deny rules; allow vs deny is determined by which array
-// the rule belongs to (egress_rules vs egress_deny_rules) in CiliumPolicySpec.
+// the rule belongs to (egress_rules vs egress_deny_rules) in CiliumPolicyRule.
 // https://docs.cilium.io/en/stable/security/policy/language/#egress
 message CiliumEgressRule {
   // ToEndpoints selects destination endpoints by labels.
@@ -226,6 +226,8 @@ message CiliumCIDRSet {
   repeated string except = 2;
   // Reference to a CiliumCIDRGroup custom resource by name
   optional string cidr_group_ref = 3;
+  // Selects CiliumCIDRGroups by their labels, rather than by name
+  optional LabelSelector cidr_group_selector = 4;
 }
 
 // CiliumGroup defines a cloud provider security group selector.
@@ -247,7 +249,6 @@ message CiliumAWSGroup {
   repeated string security_group_ids = 2;
   repeated string security_group_names = 3;
   optional string region = 4;
-  optional string vpc_id = 5;
 }
 
 // CiliumICMPRule defines ICMP type/code matching for Cilium policies.
@@ -261,8 +262,6 @@ message CiliumICMPRule {
 message CiliumICMPField {
   // ICMP type (e.g., 8 for echo request)
   uint32 type = 1;
-  // ICMP code (optional, family-specific)
-  optional uint32 code = 2;
   // IP family: "IPv4" or "IPv6"
   optional string family = 3;
 }
@@ -299,6 +298,7 @@ message CiliumService {
 }
 
 // CiliumPortRule defines allowed ports and protocols for Cilium policies.
+// Note that none of the L7 fields from Cilium's PortRule are included: https://github.com/cilium/cilium/blob/ad40b0b2aaf33ad6dc66b74466bc52418b1ebad4/pkg/policy/api/l4.go#L208-L258
 message CiliumPortRule {
   repeated CiliumPort ports = 1;
 }
@@ -733,29 +733,29 @@ message GetConfigurationUpdatesResponse {
 
   oneof response {
     Configuration update_configuration = 1;
-    // A network policy in the initial snapshot.
-    ConfiguredNetworkPolicyData network_policy_data = 2;
-    // Indicates that all network policies have been sent in the initial snapshot.
-    NetworkPolicySnapshotComplete network_policy_snapshot_complete = 3;
-    // A mutation to a network policy in the cluster.
-    NetworkPolicyMutation network_policy_mutation = 4;
+    // Data about a Kubernetes resource to configure in the cluster.
+    ConfiguredKubernetesObjectData resource_data = 2;
+    // Indicates that all resource_data have been sent to report all the resources in the cluster in the initial snapshot.
+    ConfiguredKubernetesResourceSnapshotComplete resource_snapshot_complete = 3;
+    // A mutation to a Kubernetes resource in the cluster.
+    KubernetesResourceMutation resource_mutation = 4;
   }
 }
 
-// Configured network policy data for snapshot or create/update operations.
-message ConfiguredNetworkPolicyData {
+// Configured resource data for snapshot or create/update operations.
+message ConfiguredKubernetesObjectData {
   // Unique identifier for tracking this policy.
   string id = 1;
   // Kubernetes resource name for the policy.
   string name = 2;
-  // Kubernetes labels to apply to the policy resource.
+  // Kubernetes labels to apply to the resource.
   map<string, string> labels = 3;
-  // Kubernetes annotations to apply to the policy resource.
+  // Kubernetes annotations to apply to the resource.
   map<string, string> annotations = 4;
   // Policy scope - namespaced or cluster-wide.
   oneof scope {
-    NamespacedPolicyData namespaced_policy = 5;
-    ClusterPolicyData cluster_policy = 6;
+    NamespacedPolicyData namespaced_policy = 100;
+    ClusterPolicyData cluster_policy = 101;
   }
 }
 
@@ -765,7 +765,6 @@ message NamespacedPolicyData {
   string namespace = 1;
   // Policy specification based on the CNI type.
   oneof policy {
-    KubernetesNetworkPolicyData k8s_network_policy = 2;
     KubernetesCiliumNetworkPolicyData cilium_network_policy = 3;
   }
 }
