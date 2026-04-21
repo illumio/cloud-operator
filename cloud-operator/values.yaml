@@ -41,6 +41,14 @@ onboardingSecret:
 service:
   clusterIP: ""
 
+# Optional cluster metadata for self-managed clusters.
+# For managed clusters (EKS, AKS, GKE, OCI), these are auto-detected from node labels and/or the cloud APIs.
+# For self-managed clusters, set these values to identify the cluster in CloudSecure.
+cluster:
+  # The name of the cluster as it should appear in CloudSecure.
+  # If empty, defaults to the name of the cluster returned by the cloud provider's API, if configured.
+  name: ""
+
 cilium:
   # The namespaces in which Cilium may be deployed.
   # cloud-operator will search for the Hubble Relay service in each namespace,
@@ -115,6 +123,15 @@ falco:
         priority: WARNING
 
 env:
+  # Flow cache settings for network flow aggregation before sending to CloudSecure.
+  flowCache:
+    # Duration a flow stays in cache before being evicted and sent.
+    activeTimeout: "20s"
+    # Buffer size for the outbound flow channel.
+    channelBufferSize: 100
+    # Maximum number of flows to hold in cache.
+    maxSize: 1000
+
   # If true, enables GRPC internal logging (connection states, TLS handshakes, transport events).
   # These logs appear at DEBUG level, so they only show when log level is DEBUG.
   grpcInternalLogging: false

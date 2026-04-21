@@ -1,3 +1,16 @@
 *local.yaml
 cloud-operator-*.tgz
 .DS_Store
+
+# IDE
+.idea/
+
+# Test outputs
+coverage.out
+
+# Local docs
+docs/
+
+# Binaries
+fakeserver/fakeserver
+fakeserver/fakeserver.test

@@ -53,6 +53,10 @@ const (
 
 	defaultStreamSuccessPeriodAuth    = "2h"
 	defaultStreamSuccessPeriodConnect = "1h"
+
+	defaultFlowCacheActiveTimeout   = "20s"
+	defaultFlowCacheMaxSize         = 1000
+	defaultFlowCacheChannelBuffSize = 100
 )
 
 // newHealthHandler returns an HTTP HandlerFunc that checks the health of the
@@ -96,6 +100,11 @@ func main() {
 	// Bind specific environment variables to keys
 	bindEnv(logger, "cilium_namespaces", "CILIUM_NAMESPACES")
 	bindEnv(logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
+	bindEnv(logger, "cluster_name", "CLUSTER_NAME")
+	bindEnv(logger, "flow_cache_active_timeout", "FLOW_CACHE_ACTIVE_TIMEOUT")
+	bindEnv(logger, "flow_cache_channel_buffer_size", "FLOW_CACHE_CHANNEL_BUFFER_SIZE")
+	bindEnv(logger, "flow_cache_max_size", "FLOW_CACHE_MAX_SIZE")
+	bindEnv(logger, "grpc_internal_logging", "GRPC_INTERNAL_LOGGING")
 	bindEnv(logger, "https_proxy", "HTTPS_PROXY")
 	bindEnv(logger, "ipfix_collector_port", "IPFIX_COLLECTOR_PORT")
 	bindEnv(logger, "onboarding_client_id", "ONBOARDING_CLIENT_ID")
@@ -119,6 +128,10 @@ func main() {
 	// Set default values
 	viper.SetDefault("cilium_namespaces", []string{"kube-system", "gke-managed-dpv2-observability"})
 	viper.SetDefault("cluster_creds", "clustercreds")
+	viper.SetDefault("flow_cache_active_timeout", defaultFlowCacheActiveTimeout)
+	viper.SetDefault("flow_cache_channel_buffer_size", defaultFlowCacheChannelBuffSize)
+	viper.SetDefault("flow_cache_max_size", defaultFlowCacheMaxSize)
+	viper.SetDefault("grpc_internal_logging", false)
 	viper.SetDefault("https_proxy", "")
 	viper.SetDefault("ipfix_collector_port", "4739")
 	viper.SetDefault("onboarding_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/onboard")
@@ -134,7 +147,6 @@ func main() {
 	viper.SetDefault("tls_skip_verify", false)
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("verbose_debugging", false)
-	viper.SetDefault("grpc_internal_logging", false)
 	viper.SetDefault("vpc_cni_poll_interval", "5s")
 
 	if viper.GetBool("grpc_internal_logging") {
@@ -143,6 +155,7 @@ func main() {
 
 	envConfig := stream.Config{
 		ClusterCreds:           viper.GetString("cluster_creds"),
+		ClusterName:            viper.GetString("cluster_name"),
 		HttpsProxy:             viper.GetString("https_proxy"),
 		OnboardingClientID:     viper.GetString("onboarding_client_id"),
 		OnboardingClientSecret: viper.GetString("onboarding_client_secret"),
@@ -160,6 +173,7 @@ func main() {
 	logger.Info("Starting application",
 		zap.Strings("cilium_namespaces", viper.GetStringSlice("cilium_namespaces")),
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
+		zap.String("cluster_name", envConfig.ClusterName),
 		zap.String("https_proxy", envConfig.HttpsProxy),
 		zap.String("ipfix_collector_port", viper.GetString("ipfix_collector_port")),
 		zap.String("onboarding_client_id", envConfig.OnboardingClientID),
@@ -206,9 +220,9 @@ func main() {
 	// Create shared components
 	stats := stream.NewStats()
 	flowCache := cache.NewFlowCache(
-		cache.ActiveTimeout,
-		cache.MaxSize,
-		make(chan pb.Flow, cache.ChannelBufferSize),
+		viper.GetDuration("flow_cache_active_timeout"),
+		viper.GetInt("flow_cache_max_size"),
+		make(chan pb.Flow, viper.GetInt("flow_cache_channel_buffer_size")),
 	)
 
 	// Create TlsAuthProps once - persists DisableTLS/DisableALPN flags across reconnections
@@ -257,6 +271,7 @@ func main() {
 					Stats:             stats,
 					K8sClient:         k8sClient,
 					FlowCollectorType: flowCollectorType,
+					ClusterName:       envConfig.ClusterName,
 				},
 				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
 			},

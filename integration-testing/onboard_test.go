@@ -156,20 +156,18 @@ func offboardCluster(config Config, clusterIds []string) error {
 	return nil
 }
 
-// Function to extract UUIDs from the list of clusters.
-func getClusterIDs(clusters []Cluster) []string {
-	clusterIDs := make([]string, 0, len(clusters))
-	for _, cluster := range clusters {
-		clusterIDs = append(clusterIDs, cluster.ID)
-	}
-
-	return clusterIDs
-}
-
-// TestClusterIsOnboarded tests if a cluster can be offboarded after fetching it.
+// TestClusterIsOnboarded verifies a specific cluster is onboarded and can be offboarded.
+// SAFETY: This test requires CLUSTER_ID environment variable to be set explicitly.
+// It will ONLY offboard the specific cluster ID provided, not all clusters.
 func TestClusterIsOnboarded(t *testing.T) {
 	// Load configuration from environment variables using Viper
 	viper.AutomaticEnv()
+
+	// SAFETY: Require explicit cluster ID to prevent accidentally offboarding all clusters
+	clusterID := viper.GetString("CLUSTER_ID")
+	if clusterID == "" {
+		t.Skip("CLUSTER_ID environment variable not set - skipping to prevent accidental offboarding")
+	}
 
 	config := Config{
 		TenantId:     viper.GetString("TENANT_ID"),
@@ -178,22 +176,40 @@ func TestClusterIsOnboarded(t *testing.T) {
 		UserId:       viper.GetString("USER_ID"),
 	}
 
-	// Fetch clusters
+	// Verify required config
+	if config.TenantId == "" || config.CloudIdKey == "" || config.CloudIdValue == "" {
+		t.Skip("Missing required environment variables (TENANT_ID, CLOUD_API_KEY, CLOUD_API_SECRET)")
+	}
+
+	// Fetch clusters to verify the target cluster exists
 	clusters, err := fetchClusters(config)
 	if err != nil {
 		t.Fatalf("Failed to fetch clusters: %v", err)
 	}
 
-	// Validate the response
-	if len(clusters) == 0 {
-		t.Error("Expected non-empty response, got empty response")
+	// Verify the target cluster exists in the list
+	var targetCluster *Cluster
+
+	for i := range clusters {
+		if clusters[i].ID == clusterID {
+			targetCluster = &clusters[i]
+
+			break
+		}
 	}
 
-	// Check the first cluster and attempt to offboard it
-	uuids := getClusterIDs(clusters)
-	t.Logf("Attempting to offboard clusters with ID: %s", uuids)
-
-	if err := offboardCluster(config, uuids); err != nil {
-		t.Fatalf("Failed to offboard cluster: %v", err)
+	if targetCluster == nil {
+		t.Skipf("Cluster %s not found in aws-us-west-2 region - may already be offboarded", clusterID)
 	}
+
+	t.Logf("Found cluster %s (onboarded=%v, enabled=%v)", clusterID, targetCluster.Onboarded, targetCluster.Enabled)
+
+	// Offboard ONLY the specific cluster
+	t.Logf("Offboarding cluster: %s", clusterID)
+
+	if err := offboardCluster(config, []string{clusterID}); err != nil {
+		t.Fatalf("Failed to offboard cluster %s: %v", clusterID, err)
+	}
+
+	t.Logf("Successfully offboarded cluster: %s", clusterID)
 }

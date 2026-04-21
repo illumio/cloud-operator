@@ -16,6 +16,14 @@
                 }
             }
         },
+        "cluster": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "clusterCredsSecret": {
             "type": "object",
             "properties": {
@@ -39,6 +47,20 @@
         "env": {
             "type": "object",
             "properties": {
+                "flowCache": {
+                    "type": "object",
+                    "properties": {
+                        "activeTimeout": {
+                            "type": "string"
+                        },
+                        "channelBufferSize": {
+                            "type": "integer"
+                        },
+                        "maxSize": {
+                            "type": "integer"
+                        }
+                    }
+                },
                 "grpcInternalLogging": {
                     "type": "boolean"
                 },
