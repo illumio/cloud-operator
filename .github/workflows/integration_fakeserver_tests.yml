@@ -139,6 +139,12 @@ jobs:
       - name: Fetch Kubernetes Pod logs
         if: always()
         run: |
+          echo "=== Node resources ==="
+          kubectl describe node
+          echo "=== Pending pods describe ==="
+          kubectl describe pods -n kube-system -l app.kubernetes.io/part-of=cilium
+          echo "=== Events ==="
+          kubectl get events -n kube-system --sort-by='.lastTimestamp'
           echo "=== Operator logs ==="
           kubectl logs -l app=cloud-operator -n illumio-cloud || true
           echo "=== Cilium status ==="
