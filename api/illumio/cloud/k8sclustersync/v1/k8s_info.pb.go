@@ -4789,13 +4789,17 @@ func (*GetConfigurationUpdatesResponse_ResourceMutation) isGetConfigurationUpdat
 type ConfiguredKubernetesObjectData struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Unique identifier for tracking this object.
-	Id          string            `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Kubernetes annotations to apply to this object.
 	Annotations map[string]string `protobuf:"bytes,2,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Kind        string            `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
-	Labels      map[string]string `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Name        string            `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"`
+	// Kubernetes labels to apply to this object.
+	Labels map[string]string `protobuf:"bytes,3,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Kubernetes resource name for the object.
+	Name string `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
 	// Kubernetes namespace for the object.
-	Namespace *string `protobuf:"bytes,6,opt,name=namespace,proto3,oneof" json:"namespace,omitempty"`
+	Namespace *string `protobuf:"bytes,5,opt,name=namespace,proto3,oneof" json:"namespace,omitempty"`
+	// Type-specific data for the Kubernetes resource kind.
+	//
 	// Types that are valid to be assigned to KindSpecific:
 	//
 	//	*ConfiguredKubernetesObjectData_CiliumNetworkPolicy
@@ -4847,13 +4851,6 @@ func (x *ConfiguredKubernetesObjectData) GetAnnotations() map[string]string {
 		return x.Annotations
 	}
 	return nil
-}
-
-func (x *ConfiguredKubernetesObjectData) GetKind() string {
-	if x != nil {
-		return x.Kind
-	}
-	return ""
 }
 
 func (x *ConfiguredKubernetesObjectData) GetLabels() map[string]string {
@@ -5588,14 +5585,13 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\rConfiguration\x12F\n" +
 	"\tlog_level\x18\x01 \x01(\x0e2).illumio.cloud.k8sclustersync.v1.LogLevelR\blogLevelB\n" +
 	"\n" +
-	"\bresponse\"\x85\x06\n" +
+	"\bresponse\"\xf1\x05\n" +
 	"\x1eConfiguredKubernetesObjectData\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12r\n" +
-	"\vannotations\x18\x02 \x03(\v2P.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.AnnotationsEntryR\vannotations\x12\x12\n" +
-	"\x04kind\x18\x03 \x01(\tR\x04kind\x12c\n" +
-	"\x06labels\x18\x04 \x03(\v2K.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.LabelsEntryR\x06labels\x12\x12\n" +
-	"\x04name\x18\x05 \x01(\tR\x04name\x12!\n" +
-	"\tnamespace\x18\x06 \x01(\tH\x01R\tnamespace\x88\x01\x01\x12x\n" +
+	"\vannotations\x18\x02 \x03(\v2P.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.AnnotationsEntryR\vannotations\x12c\n" +
+	"\x06labels\x18\x03 \x03(\v2K.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.LabelsEntryR\x06labels\x12\x12\n" +
+	"\x04name\x18\x04 \x01(\tR\x04name\x12!\n" +
+	"\tnamespace\x18\x05 \x01(\tH\x01R\tnamespace\x88\x01\x01\x12x\n" +
 	"\x15cilium_network_policy\x18d \x01(\v2B.illumio.cloud.k8sclustersync.v1.KubernetesCiliumNetworkPolicyDataH\x00R\x13ciliumNetworkPolicy\x12\x9a\x01\n" +
 	"!cilium_clusterwide_network_policy\x18e \x01(\v2M.illumio.cloud.k8sclustersync.v1.KubernetesCiliumClusterwideNetworkPolicyDataH\x00R\x1eciliumClusterwideNetworkPolicy\x1a>\n" +
 	"\x10AnnotationsEntry\x12\x10\n" +

@@ -762,12 +762,15 @@ message GetConfigurationUpdatesResponse {
 message ConfiguredKubernetesObjectData {
   // Unique identifier for tracking this object.
   string id = 1;
+  // Kubernetes annotations to apply to this object.
   map<string, string> annotations = 2;
-  string kind = 3;
-  map<string, string> labels = 4;
-  string name = 5;
+  // Kubernetes labels to apply to this object.
+  map<string, string> labels = 3;
+  // Kubernetes resource name for the object.
+  string name = 4;
   // Kubernetes namespace for the object.
-  optional string namespace = 6;
+  optional string namespace = 5;
+  // Type-specific data for the Kubernetes resource kind.
   oneof kind_specific {
     KubernetesCiliumNetworkPolicyData cilium_network_policy = 100;
     KubernetesCiliumClusterwideNetworkPolicyData cilium_clusterwide_network_policy = 101;
