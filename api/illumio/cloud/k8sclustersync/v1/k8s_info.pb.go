@@ -426,7 +426,7 @@ type KubernetesObjectData struct {
 	Kind              string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
 	Labels            map[string]string      `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Name              string                 `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"`
-	// optional for clusterwide resources which have no namespace.
+	// Empty for clusterwide resources which have no namespace.
 	Namespace       *string                     `protobuf:"bytes,6,opt,name=namespace,proto3,oneof" json:"namespace,omitempty"`
 	OwnerReferences []*KubernetesOwnerReference `protobuf:"bytes,7,rep,name=owner_references,json=ownerReferences,proto3" json:"owner_references,omitempty"`
 	ResourceVersion string                      `protobuf:"bytes,8,opt,name=resource_version,json=resourceVersion,proto3" json:"resource_version,omitempty"`
