@@ -426,7 +426,7 @@ type KubernetesObjectData struct {
 	Kind              string                      `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
 	Labels            map[string]string           `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Name              string                      `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"`
-	Namespace         *string                     `protobuf:"bytes,6,opt,name=namespace,proto3,oneof" json:"namespace,omitempty"`
+	Namespace         string                      `protobuf:"bytes,6,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	OwnerReferences   []*KubernetesOwnerReference `protobuf:"bytes,7,rep,name=owner_references,json=ownerReferences,proto3" json:"owner_references,omitempty"`
 	ResourceVersion   string                      `protobuf:"bytes,8,opt,name=resource_version,json=resourceVersion,proto3" json:"resource_version,omitempty"`
 	Uid               string                      `protobuf:"bytes,9,opt,name=uid,proto3" json:"uid,omitempty"`
@@ -510,8 +510,8 @@ func (x *KubernetesObjectData) GetName() string {
 }
 
 func (x *KubernetesObjectData) GetNamespace() string {
-	if x != nil && x.Namespace != nil {
-		return *x.Namespace
+	if x != nil {
+		return x.Namespace
 	}
 	return ""
 }
@@ -5229,15 +5229,15 @@ var File_illumio_cloud_k8sclustersync_v1_k8s_info_proto protoreflect.FileDescrip
 const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\n" +
 	".illumio/cloud/k8sclustersync/v1/k8s_info.proto\x12\x1fillumio.cloud.k8sclustersync.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1egoogle/protobuf/wrappers.proto\"\v\n" +
-	"\tKeepalive\"\xbf\n" +
+	"\tKeepalive\"\xac\n" +
 	"\n" +
 	"\x14KubernetesObjectData\x12h\n" +
 	"\vannotations\x18\x01 \x03(\v2F.illumio.cloud.k8sclustersync.v1.KubernetesObjectData.AnnotationsEntryR\vannotations\x12I\n" +
 	"\x12creation_timestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x11creationTimestamp\x12\x12\n" +
 	"\x04kind\x18\x03 \x01(\tR\x04kind\x12Y\n" +
 	"\x06labels\x18\x04 \x03(\v2A.illumio.cloud.k8sclustersync.v1.KubernetesObjectData.LabelsEntryR\x06labels\x12\x12\n" +
-	"\x04name\x18\x05 \x01(\tR\x04name\x12!\n" +
-	"\tnamespace\x18\x06 \x01(\tH\x01R\tnamespace\x88\x01\x01\x12d\n" +
+	"\x04name\x18\x05 \x01(\tR\x04name\x12\x1c\n" +
+	"\tnamespace\x18\x06 \x01(\tR\tnamespace\x12d\n" +
 	"\x10owner_references\x18\a \x03(\v29.illumio.cloud.k8sclustersync.v1.KubernetesOwnerReferenceR\x0fownerReferences\x12)\n" +
 	"\x10resource_version\x18\b \x01(\tR\x0fresourceVersion\x12\x10\n" +
 	"\x03uid\x18\t \x01(\tR\x03uid\x12*\n" +
@@ -5255,9 +5255,7 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0f\n" +
-	"\rkind_specificB\f\n" +
-	"\n" +
-	"_namespace\"\xd1\x03\n" +
+	"\rkind_specific\"\xd1\x03\n" +
 	"\x15KubernetesServiceData\x12!\n" +
 	"\fip_addresses\x18\x01 \x03(\tR\vipAddresses\x12X\n" +
 	"\x05ports\x18\x02 \x03(\v2B.illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ServicePortR\x05ports\x12\x12\n" +

@@ -36,7 +36,7 @@ message KubernetesObjectData {
   string kind = 3;
   map<string, string> labels = 4;
   string name = 5;
-  optional string namespace = 6;
+  string namespace = 6;
   repeated KubernetesOwnerReference owner_references = 7;
   string resource_version = 8;
   string uid = 9;
