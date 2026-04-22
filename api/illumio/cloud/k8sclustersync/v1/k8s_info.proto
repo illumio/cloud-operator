@@ -49,7 +49,7 @@ message KubernetesObjectData {
     KubernetesNetworkPolicyData network_policy = 103;
     KubernetesCiliumNetworkPolicyData cilium_network_policy = 104;
     KubernetesCiliumClusterwideNetworkPolicyData cilium_clusterwide_network_policy = 105;
-    // TODO: KubernetesCiliumCIDRGroupData cilium_cidr_group = 106;
+    KubernetesCiliumCIDRGroupData cilium_cidr_group = 106;
   }
 }
 
@@ -123,6 +123,22 @@ message KubernetesCiliumNetworkPolicyData {
 message KubernetesCiliumClusterwideNetworkPolicyData {
   // Rules from both `spec` (single) and `specs` (array) fields, unified as an array.
   repeated CiliumPolicyRule specs = 1;
+}
+
+// KubernetesCiliumCIDRGroupData contains information specific to a CiliumCIDRGroup object.
+// CiliumCIDRGroup is a list of external CIDRs (i.e., CIDRs selecting peers outside the clusters)
+// that can be referenced as a single entity from CiliumNetworkPolicies.
+// https://github.com/cilium/cilium/blob/40fafc202f3c16dfa287af9eb4dc3f3e72a120f3/pkg/k8s/apis/cilium.io/v2/cidrgroups_types.go#L23-L32
+message KubernetesCiliumCIDRGroupData {
+  // Spec contains the CIDRGroup specification.
+  CiliumCIDRGroupSpec spec = 1;
+}
+
+// CiliumCIDRGroupSpec defines the specification for a CiliumCIDRGroup.
+// https://github.com/cilium/cilium/blob/40fafc202f3c16dfa287af9eb4dc3f3e72a120f3/pkg/k8s/apis/cilium.io/v2/cidrgroups_types.go#L34-L40
+message CiliumCIDRGroupSpec {
+  // ExternalCIDRs is a list of CIDRs selecting peers outside the clusters.
+  repeated string external_cidrs = 1;
 }
 
 // CiliumPolicyRule represents a single rule within a Cilium policy.
@@ -775,7 +791,7 @@ message ConfiguredKubernetesObjectData {
   oneof kind_specific {
     KubernetesCiliumNetworkPolicyData cilium_network_policy = 100;
     KubernetesCiliumClusterwideNetworkPolicyData cilium_clusterwide_network_policy = 101;
-    // TODO: KubernetesCiliumCIDRGroupData cilium_cidr_group = 102;
+    KubernetesCiliumCIDRGroupData cilium_cidr_group = 102;
   }
 }
 
