@@ -1,7 +1,6 @@
 # Copyright 2024 Illumio, Inc. All Rights Reserved.
 
 defaultNamespace: "illumio-cloud"
-replicaCount: 1
 priorityClassName: ""
 image:
   repository: "ghcr.io/illumio/cloud-operator"
