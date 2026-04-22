@@ -431,7 +431,6 @@ type KubernetesObjectData struct {
 	OwnerReferences []*KubernetesOwnerReference `protobuf:"bytes,7,rep,name=owner_references,json=ownerReferences,proto3" json:"owner_references,omitempty"`
 	ResourceVersion string                      `protobuf:"bytes,8,opt,name=resource_version,json=resourceVersion,proto3" json:"resource_version,omitempty"`
 	Uid             string                      `protobuf:"bytes,9,opt,name=uid,proto3" json:"uid,omitempty"`
-	ApiGroupVersion string                      `protobuf:"bytes,10,opt,name=api_group_version,json=apiGroupVersion,proto3" json:"api_group_version,omitempty"`
 	// Types that are valid to be assigned to KindSpecific:
 	//
 	//	*KubernetesObjectData_Pod
@@ -535,13 +534,6 @@ func (x *KubernetesObjectData) GetResourceVersion() string {
 func (x *KubernetesObjectData) GetUid() string {
 	if x != nil {
 		return x.Uid
-	}
-	return ""
-}
-
-func (x *KubernetesObjectData) GetApiGroupVersion() string {
-	if x != nil {
-		return x.ApiGroupVersion
 	}
 	return ""
 }
@@ -1026,7 +1018,7 @@ func (x *KubernetesCiliumClusterwideNetworkPolicyData) GetSpecs() []*CiliumPolic
 type KubernetesCiliumCIDRGroupData struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Spec contains the CIDRGroup specification.
-	Spec          *CiliumCIDRGroupSpec `protobuf:"bytes,1,opt,name=spec,proto3" json:"spec,omitempty"`
+	Spec          *CiliumCIDRGroup `protobuf:"bytes,1,opt,name=spec,proto3" json:"spec,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1061,16 +1053,16 @@ func (*KubernetesCiliumCIDRGroupData) Descriptor() ([]byte, []int) {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *KubernetesCiliumCIDRGroupData) GetSpec() *CiliumCIDRGroupSpec {
+func (x *KubernetesCiliumCIDRGroupData) GetSpec() *CiliumCIDRGroup {
 	if x != nil {
 		return x.Spec
 	}
 	return nil
 }
 
-// CiliumCIDRGroupSpec defines the specification for a CiliumCIDRGroup.
+// CiliumCIDRGroup defines the specification for a CiliumCIDRGroup.
 // https://github.com/cilium/cilium/blob/40fafc202f3c16dfa287af9eb4dc3f3e72a120f3/pkg/k8s/apis/cilium.io/v2/cidrgroups_types.go#L34-L40
-type CiliumCIDRGroupSpec struct {
+type CiliumCIDRGroup struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ExternalCIDRs is a list of CIDRs selecting peers outside the clusters.
 	ExternalCidrs []string `protobuf:"bytes,1,rep,name=external_cidrs,json=externalCidrs,proto3" json:"external_cidrs,omitempty"`
@@ -1078,20 +1070,20 @@ type CiliumCIDRGroupSpec struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CiliumCIDRGroupSpec) Reset() {
-	*x = CiliumCIDRGroupSpec{}
+func (x *CiliumCIDRGroup) Reset() {
+	*x = CiliumCIDRGroup{}
 	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CiliumCIDRGroupSpec) String() string {
+func (x *CiliumCIDRGroup) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CiliumCIDRGroupSpec) ProtoMessage() {}
+func (*CiliumCIDRGroup) ProtoMessage() {}
 
-func (x *CiliumCIDRGroupSpec) ProtoReflect() protoreflect.Message {
+func (x *CiliumCIDRGroup) ProtoReflect() protoreflect.Message {
 	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1103,12 +1095,12 @@ func (x *CiliumCIDRGroupSpec) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CiliumCIDRGroupSpec.ProtoReflect.Descriptor instead.
-func (*CiliumCIDRGroupSpec) Descriptor() ([]byte, []int) {
+// Deprecated: Use CiliumCIDRGroup.ProtoReflect.Descriptor instead.
+func (*CiliumCIDRGroup) Descriptor() ([]byte, []int) {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *CiliumCIDRGroupSpec) GetExternalCidrs() []string {
+func (x *CiliumCIDRGroup) GetExternalCidrs() []string {
 	if x != nil {
 		return x.ExternalCidrs
 	}
@@ -5359,7 +5351,7 @@ var File_illumio_cloud_k8sclustersync_v1_k8s_info_proto protoreflect.FileDescrip
 const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\n" +
 	".illumio/cloud/k8sclustersync/v1/k8s_info.proto\x12\x1fillumio.cloud.k8sclustersync.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1egoogle/protobuf/wrappers.proto\"\v\n" +
-	"\tKeepalive\"\xad\v\n" +
+	"\tKeepalive\"\x81\v\n" +
 	"\x14KubernetesObjectData\x12h\n" +
 	"\vannotations\x18\x01 \x03(\v2F.illumio.cloud.k8sclustersync.v1.KubernetesObjectData.AnnotationsEntryR\vannotations\x12I\n" +
 	"\x12creation_timestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x11creationTimestamp\x12\x12\n" +
@@ -5369,9 +5361,7 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\tnamespace\x18\x06 \x01(\tH\x01R\tnamespace\x88\x01\x01\x12d\n" +
 	"\x10owner_references\x18\a \x03(\v29.illumio.cloud.k8sclustersync.v1.KubernetesOwnerReferenceR\x0fownerReferences\x12)\n" +
 	"\x10resource_version\x18\b \x01(\tR\x0fresourceVersion\x12\x10\n" +
-	"\x03uid\x18\t \x01(\tR\x03uid\x12*\n" +
-	"\x11api_group_version\x18\n" +
-	" \x01(\tR\x0fapiGroupVersion\x12F\n" +
+	"\x03uid\x18\t \x01(\tR\x03uid\x12F\n" +
 	"\x03pod\x18d \x01(\v22.illumio.cloud.k8sclustersync.v1.KubernetesPodDataH\x00R\x03pod\x12I\n" +
 	"\x04node\x18e \x01(\v23.illumio.cloud.k8sclustersync.v1.KubernetesNodeDataH\x00R\x04node\x12R\n" +
 	"\aservice\x18f \x01(\v26.illumio.cloud.k8sclustersync.v1.KubernetesServiceDataH\x00R\aservice\x12e\n" +
@@ -5418,10 +5408,10 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"!KubernetesCiliumNetworkPolicyData\x12G\n" +
 	"\x05specs\x18\x01 \x03(\v21.illumio.cloud.k8sclustersync.v1.CiliumPolicyRuleR\x05specs\"w\n" +
 	",KubernetesCiliumClusterwideNetworkPolicyData\x12G\n" +
-	"\x05specs\x18\x01 \x03(\v21.illumio.cloud.k8sclustersync.v1.CiliumPolicyRuleR\x05specs\"i\n" +
-	"\x1dKubernetesCiliumCIDRGroupData\x12H\n" +
-	"\x04spec\x18\x01 \x01(\v24.illumio.cloud.k8sclustersync.v1.CiliumCIDRGroupSpecR\x04spec\"<\n" +
-	"\x13CiliumCIDRGroupSpec\x12%\n" +
+	"\x05specs\x18\x01 \x03(\v21.illumio.cloud.k8sclustersync.v1.CiliumPolicyRuleR\x05specs\"e\n" +
+	"\x1dKubernetesCiliumCIDRGroupData\x12D\n" +
+	"\x04spec\x18\x01 \x01(\v20.illumio.cloud.k8sclustersync.v1.CiliumCIDRGroupR\x04spec\"8\n" +
+	"\x0fCiliumCIDRGroup\x12%\n" +
 	"\x0eexternal_cidrs\x18\x01 \x03(\tR\rexternalCidrs\"\xce\a\n" +
 	"\x10CiliumPolicyRule\x12`\n" +
 	"\x11endpoint_selector\x18\x01 \x01(\v2..illumio.cloud.k8sclustersync.v1.LabelSelectorH\x00R\x10endpointSelector\x88\x01\x01\x12X\n" +
@@ -5813,7 +5803,7 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_goTypes = []any{
 	(*KubernetesCiliumNetworkPolicyData)(nil),            // 12: illumio.cloud.k8sclustersync.v1.KubernetesCiliumNetworkPolicyData
 	(*KubernetesCiliumClusterwideNetworkPolicyData)(nil), // 13: illumio.cloud.k8sclustersync.v1.KubernetesCiliumClusterwideNetworkPolicyData
 	(*KubernetesCiliumCIDRGroupData)(nil),                // 14: illumio.cloud.k8sclustersync.v1.KubernetesCiliumCIDRGroupData
-	(*CiliumCIDRGroupSpec)(nil),                          // 15: illumio.cloud.k8sclustersync.v1.CiliumCIDRGroupSpec
+	(*CiliumCIDRGroup)(nil),                              // 15: illumio.cloud.k8sclustersync.v1.CiliumCIDRGroup
 	(*CiliumPolicyRule)(nil),                             // 16: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule
 	(*CiliumPolicyDefaultDeny)(nil),                      // 17: illumio.cloud.k8sclustersync.v1.CiliumPolicyDefaultDeny
 	(*CiliumPolicyIngressRule)(nil),                      // 18: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule
@@ -5899,7 +5889,7 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	39,  // 14: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.egress_rules:type_name -> illumio.cloud.k8sclustersync.v1.NetworkPolicyRule
 	16,  // 15: illumio.cloud.k8sclustersync.v1.KubernetesCiliumNetworkPolicyData.specs:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyRule
 	16,  // 16: illumio.cloud.k8sclustersync.v1.KubernetesCiliumClusterwideNetworkPolicyData.specs:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyRule
-	15,  // 17: illumio.cloud.k8sclustersync.v1.KubernetesCiliumCIDRGroupData.spec:type_name -> illumio.cloud.k8sclustersync.v1.CiliumCIDRGroupSpec
+	15,  // 17: illumio.cloud.k8sclustersync.v1.KubernetesCiliumCIDRGroupData.spec:type_name -> illumio.cloud.k8sclustersync.v1.CiliumCIDRGroup
 	32,  // 18: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.endpoint_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
 	32,  // 19: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.node_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
 	74,  // 20: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.labels:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.LabelsEntry

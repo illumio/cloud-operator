@@ -41,7 +41,6 @@ message KubernetesObjectData {
   repeated KubernetesOwnerReference owner_references = 7;
   string resource_version = 8;
   string uid = 9;
-  string api_group_version = 10;
   oneof kind_specific {
     KubernetesPodData pod = 100;
     KubernetesNodeData node = 101;
@@ -131,12 +130,12 @@ message KubernetesCiliumClusterwideNetworkPolicyData {
 // https://github.com/cilium/cilium/blob/40fafc202f3c16dfa287af9eb4dc3f3e72a120f3/pkg/k8s/apis/cilium.io/v2/cidrgroups_types.go#L23-L32
 message KubernetesCiliumCIDRGroupData {
   // Spec contains the CIDRGroup specification.
-  CiliumCIDRGroupSpec spec = 1;
+  CiliumCIDRGroup spec = 1;
 }
 
-// CiliumCIDRGroupSpec defines the specification for a CiliumCIDRGroup.
+// CiliumCIDRGroup defines the specification for a CiliumCIDRGroup.
 // https://github.com/cilium/cilium/blob/40fafc202f3c16dfa287af9eb4dc3f3e72a120f3/pkg/k8s/apis/cilium.io/v2/cidrgroups_types.go#L34-L40
-message CiliumCIDRGroupSpec {
+message CiliumCIDRGroup {
   // ExternalCIDRs is a list of CIDRs selecting peers outside the clusters.
   repeated string external_cidrs = 1;
 }
