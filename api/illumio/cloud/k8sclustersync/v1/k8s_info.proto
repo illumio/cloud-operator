@@ -751,12 +751,12 @@ message GetConfigurationUpdatesRequest {
 // Log level configuration:
 //   (0+) update_configuration, sent whenever the log level changes.
 //
-// Network policies:
-//   1. (0+) network_policy_data, one message for each policy in the initial snapshot.
-//   2. (1) network_policy_snapshot_complete, indicates the initial snapshot is complete.
-//   3. (0+) network_policy_mutation, one message for each policy create/update/delete.
+// Configured Kubernetes objects:
+//   1. (0+) resource_data, one message for each object in the initial snapshot.
+//   2. (1) resource_snapshot_complete, indicates the initial snapshot is complete.
+//   3. (0+) resource_mutation, one message for each object create/update/delete.
 //
-// On stream reconnection, the server sends a new full snapshot of network policies.
+// On stream reconnection, the server sends a new full snapshot of configured objects.
 message GetConfigurationUpdatesResponse {
   message Configuration {
     // The operator's log level.
