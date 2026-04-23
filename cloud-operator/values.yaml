@@ -77,22 +77,6 @@ openshift:
   # OpenShift with OVN-k, because port 4739 is not open in that case.
   workerNodeCidrs: []
 
-vpcCni:
-  # Enable VPC CNI flow collector (for EKS clusters only)
-  enabled: false
-  # Create ClusterNetworkPolicy with action:Pass to enable flow logging for ALL pods.
-  # This is REQUIRED for comprehensive flow logging - without it, only pods with
-  # explicit NetworkPolicy will emit flow logs.
-  #
-  # Prerequisites:
-  # 1. EKS cluster (not Auto Mode or Fargate)
-  # 2. VPC CNI addon with enableNetworkPolicy: true
-  # 3. Policy event logs enabled: nodeAgent.enablePolicyEventLogs: true
-  #
-  # The ClusterNetworkPolicy CRD must exist (networking.k8s.aws/v1alpha1).
-  # If the CRD doesn't exist, this resource will be skipped.
-  createFlowLoggingPolicy: true
-
 falco:
   enabled: false
   namespace: falco

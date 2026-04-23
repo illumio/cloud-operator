@@ -267,20 +267,6 @@
         },
         "tolerations": {
             "type": "array"
-        },
-        "vpcCni": {
-            "type": "object",
-            "description": "VPC CNI flow collector configuration for EKS clusters",
-            "properties": {
-                "enabled": {
-                    "type": "boolean",
-                    "description": "Enable VPC CNI flow collector"
-                },
-                "createFlowLoggingPolicy": {
-                    "type": "boolean",
-                    "description": "Create ClusterNetworkPolicy with action:Pass to enable flow logging for all pods"
-                }
-            }
         }
     }
 }

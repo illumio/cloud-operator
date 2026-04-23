@@ -5,6 +5,7 @@ package flows
 import (
 	"context"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -121,6 +122,19 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 	// Check for AWS VPC CNI (EKS standard clusters)
 	if collector.IsVPCCNIAvailable(ctx, config.Logger, clientset) {
 		config.Logger.Info("Using AWS VPC CNI flow collector")
+
+		// Check CRD and create ClusterNetworkPolicy for comprehensive flow logging
+		discoveryClient := config.K8sClient.GetDiscoveryClient()
+		dynamicClient := config.K8sClient.GetDynamicClient()
+
+		if vpccni.IsCRDAvailable(config.Logger, discoveryClient) {
+			if err := vpccni.EnsureFlowLoggingPolicy(ctx, config.Logger, dynamicClient); err != nil {
+				config.Logger.Warn("Failed to create ClusterNetworkPolicy, flow logging may be limited",
+					zap.Error(err))
+			}
+		} else {
+			config.Logger.Warn("ClusterNetworkPolicy CRD not found - enable network policy in VPC CNI addon for comprehensive flow logging")
+		}
 
 		factory := &vpccni.Factory{
 			Logger:       config.Logger,
