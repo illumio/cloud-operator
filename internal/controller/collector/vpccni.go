@@ -117,14 +117,19 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 		srcPort, destPort    uint32
 	)
 
-	if isOldFormat && log.SrcIP != "" && log.DestIP != "" {
+	switch {
+	case isOldFormat:
 		// Old format: fields are in separate JSON keys
+		if log.SrcIP == "" || log.DestIP == "" {
+			return nil, ErrVPCCNIInvalidLog
+		}
+
 		srcIP = log.SrcIP
 		srcPort = log.SrcPort
 		destIP = log.DestIP
 		destPort = log.DestPort
 		proto = log.Proto
-	} else {
+	case isNewFormat:
 		// New format (v1.2.2+): parse from embedded msg string
 		var ok bool
 
@@ -132,6 +137,9 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 		if !ok {
 			return nil, ErrVPCCNIInvalidLog
 		}
+	default:
+		// Should not reach here due to earlier check, but be defensive
+		return nil, ErrVPCCNINotFlowLog
 	}
 
 	// Validate required fields
@@ -150,10 +158,12 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 		return nil, ErrVPCCNIInvalidIP
 	}
 
-	// Convert protocol string to lowercase for CreateLayer4Message
+	// Convert protocol string to lowercase for CreateLayer4Message.
+	// VPC CNI may report "UNKNOWN" for some protocols; default to TCP
+	// as it's the most common and provides a reasonable flow record.
 	protoStr := strings.ToLower(proto)
 	if protoStr == "unknown" {
-		protoStr = "tcp" // default to TCP for unknown
+		protoStr = "tcp"
 	}
 
 	layer4Message, err := CreateLayer4Message(protoStr, srcPort, destPort, ipVersion)
