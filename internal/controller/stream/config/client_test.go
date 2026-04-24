@@ -194,12 +194,12 @@ func (s *ConfigClientTestSuite) TestClose_Idempotent() {
 	s.True(s.client.closed)
 }
 
-func (s *ConfigClientTestSuite) TestRun_NetworkPolicyMutation_Create() {
+func (s *ConfigClientTestSuite) TestRun_ConfiguredObjectMutation_Create() {
 	resp := &pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_NetworkPolicyMutation{
-			NetworkPolicyMutation: &pb.NetworkPolicyMutation{
-				Mutation: &pb.NetworkPolicyMutation_CreatePolicy{
-					CreatePolicy: &pb.ConfiguredNetworkPolicyData{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
+			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
+					CreateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "policy-123",
 						Name: "test-policy",
 					},
@@ -214,16 +214,16 @@ func (s *ConfigClientTestSuite) TestRun_NetworkPolicyMutation_Create() {
 
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
-	_, _, _, policyMutations := s.stats.GetAndResetStats()
-	s.Equal(uint64(1), policyMutations, "policy mutations should be incremented")
+	_, _, _, configuredObjectMutations := s.stats.GetAndResetStats()
+	s.Equal(uint64(1), configuredObjectMutations, "configured object mutations should be incremented")
 }
 
-func (s *ConfigClientTestSuite) TestRun_NetworkPolicyMutation_Update() {
+func (s *ConfigClientTestSuite) TestRun_ConfiguredObjectMutation_Update() {
 	resp := &pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_NetworkPolicyMutation{
-			NetworkPolicyMutation: &pb.NetworkPolicyMutation{
-				Mutation: &pb.NetworkPolicyMutation_UpdatePolicy{
-					UpdatePolicy: &pb.ConfiguredNetworkPolicyData{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
+			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
+					UpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "policy-123",
 						Name: "test-policy",
 					},
@@ -238,16 +238,16 @@ func (s *ConfigClientTestSuite) TestRun_NetworkPolicyMutation_Update() {
 
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
-	_, _, _, policyMutations := s.stats.GetAndResetStats()
-	s.Equal(uint64(1), policyMutations, "policy mutations should be incremented")
+	_, _, _, configuredObjectMutations := s.stats.GetAndResetStats()
+	s.Equal(uint64(1), configuredObjectMutations, "configured object mutations should be incremented")
 }
 
-func (s *ConfigClientTestSuite) TestRun_NetworkPolicyMutation_Delete() {
+func (s *ConfigClientTestSuite) TestRun_ConfiguredObjectMutation_Delete() {
 	resp := &pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_NetworkPolicyMutation{
-			NetworkPolicyMutation: &pb.NetworkPolicyMutation{
-				Mutation: &pb.NetworkPolicyMutation_DeletePolicy{
-					DeletePolicy: &pb.DeleteNetworkPolicy{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
+			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
+					DeleteObject: &pb.DeleteConfiguredKubernetesObject{
 						Id: "policy-123",
 					},
 				},
@@ -261,6 +261,6 @@ func (s *ConfigClientTestSuite) TestRun_NetworkPolicyMutation_Delete() {
 
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
-	_, _, _, policyMutations := s.stats.GetAndResetStats()
-	s.Equal(uint64(1), policyMutations, "policy mutations should be incremented")
+	_, _, _, configuredObjectMutations := s.stats.GetAndResetStats()
+	s.Equal(uint64(1), configuredObjectMutations, "configured object mutations should be incremented")
 }

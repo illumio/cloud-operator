@@ -244,15 +244,15 @@ func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConf
 		return err
 	}
 
-	// Send policy snapshot complete
+	// Send configured object snapshot complete
 	snapshotResp := &pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_NetworkPolicySnapshotComplete{
-			NetworkPolicySnapshotComplete: &pb.NetworkPolicySnapshotComplete{},
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
 	}
 
 	if err := stream.Send(snapshotResp); err != nil {
-		logger.Error("Failed to send policy snapshot complete", zap.Error(err))
+		logger.Error("Failed to send configured object snapshot complete", zap.Error(err))
 
 		return err
 	}

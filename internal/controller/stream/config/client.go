@@ -77,32 +77,32 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 			c.bufferedGrpcSyncer.UpdateLogLevel(update.UpdateConfiguration.GetLogLevel())
 		}
 
-	case *pb.GetConfigurationUpdatesResponse_NetworkPolicyData:
-		c.logger.Debug("Received network policy data",
-			zap.String("id", update.NetworkPolicyData.GetId()),
+	case *pb.GetConfigurationUpdatesResponse_ResourceData:
+		c.logger.Debug("Received configured object data",
+			zap.String("id", update.ResourceData.GetId()),
 		)
 
-	case *pb.GetConfigurationUpdatesResponse_NetworkPolicySnapshotComplete:
-		c.logger.Debug("Received network policy snapshot complete")
+	case *pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete:
+		c.logger.Debug("Received configured object snapshot complete")
 
-	case *pb.GetConfigurationUpdatesResponse_NetworkPolicyMutation:
-		mutation := update.NetworkPolicyMutation
+	case *pb.GetConfigurationUpdatesResponse_ResourceMutation:
+		mutation := update.ResourceMutation
 		switch m := mutation.GetMutation().(type) {
-		case *pb.NetworkPolicyMutation_CreatePolicy:
-			c.logger.Debug("Received create policy mutation",
-				zap.String("id", m.CreatePolicy.GetId()),
+		case *pb.ConfiguredKubernetesObjectMutation_CreateObject:
+			c.logger.Debug("Received create object mutation",
+				zap.String("id", m.CreateObject.GetId()),
 			)
-		case *pb.NetworkPolicyMutation_UpdatePolicy:
-			c.logger.Debug("Received update policy mutation",
-				zap.String("id", m.UpdatePolicy.GetId()),
+		case *pb.ConfiguredKubernetesObjectMutation_UpdateObject:
+			c.logger.Debug("Received update object mutation",
+				zap.String("id", m.UpdateObject.GetId()),
 			)
-		case *pb.NetworkPolicyMutation_DeletePolicy:
-			c.logger.Debug("Received delete policy mutation",
-				zap.String("id", m.DeletePolicy.GetId()),
+		case *pb.ConfiguredKubernetesObjectMutation_DeleteObject:
+			c.logger.Debug("Received delete object mutation",
+				zap.String("id", m.DeleteObject.GetId()),
 			)
 		}
 
-		c.stats.IncrementPolicyMutations()
+		c.stats.IncrementConfiguredObjectMutations()
 
 	default:
 		c.logger.Warn("Received unknown configuration update", zap.Any("response", resp))
