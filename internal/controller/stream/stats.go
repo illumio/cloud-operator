@@ -13,10 +13,10 @@ import (
 // Stats tracks statistics for flows and resource mutations.
 // All counters are safe for concurrent access.
 type Stats struct {
-	flowsReceived              atomic.Uint64
-	flowsSentToClusterSync     atomic.Uint64
-	resourceMutations          atomic.Uint64
-	configuredObjectMutations  atomic.Uint64
+	flowsReceived             atomic.Uint64
+	flowsSentToClusterSync    atomic.Uint64
+	resourceMutations         atomic.Uint64
+	configuredObjectMutations atomic.Uint64
 }
 
 // NewStats creates a new Stats instance.
