@@ -83,7 +83,7 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 		)
 
 	case *pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete:
-		c.logger.Debug("Received configured object snapshot complete")
+		c.logger.Info("Received configured object snapshot complete")
 
 	case *pb.GetConfigurationUpdatesResponse_ResourceMutation:
 		mutation := update.ResourceMutation
@@ -100,6 +100,8 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 			c.logger.Debug("Received delete object mutation",
 				zap.String("id", m.DeleteObject.GetId()),
 			)
+		default:
+			c.logger.Warn("Received unknown configured object mutation", zap.Any("response", resp))
 		}
 
 		c.stats.IncrementConfiguredObjectMutations()
