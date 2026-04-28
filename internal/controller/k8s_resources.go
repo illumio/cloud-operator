@@ -77,25 +77,26 @@ func GetMetadataFromResource(logger *zap.Logger, resource unstructured.Unstructu
 }
 
 // ConvertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
-func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, clientset kubernetes.Interface, resource string) *pb.KubernetesObjectData {
+func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, clientset kubernetes.Interface, kind, apiVersion string) *pb.KubernetesObjectData {
 	ownerReferences := convertOwnerReferences(obj.GetOwnerReferences())
 
 	objMetadata := &pb.KubernetesObjectData{
 		Annotations:       obj.GetAnnotations(),
 		CreationTimestamp: convertToProtoTimestamp(obj.CreationTimestamp),
-		Kind:              resource,
+		Kind:              kind,
 		Labels:            obj.GetLabels(),
 		Name:              obj.GetName(),
 		OwnerReferences:   ownerReferences,
 		ResourceVersion:   obj.GetResourceVersion(),
 		Uid:               string(obj.GetUID()),
+		ApiVersion:        apiVersion,
 	}
 
 	if obj.GetNamespace() != "" {
 		objMetadata.Namespace = &obj.Namespace
 	}
 
-	switch resource {
+	switch kind {
 	case "Pod":
 		podIPS := getPodIPAddresses(ctx, obj.GetName(), clientset, obj.GetNamespace())
 

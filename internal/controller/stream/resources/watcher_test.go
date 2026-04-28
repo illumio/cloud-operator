@@ -215,6 +215,8 @@ func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 	logger := zap.NewNop()
 	rm := &Watcher{
 		resourceName:    "namespaces",
+		apiGroup:        "",
+		apiVersion:      "v1",
 		logger:          logger,
 		resourcesClient: &mockResourceStreamSender{},
 	}
@@ -224,8 +226,9 @@ func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 	ch := make(chan *pb.KubernetesResourceMutation, 3)
 
 	const (
-		nsKind    = "Namespace"
-		defaultNS = "default"
+		nsKind       = "Namespace"
+		nsAPIVersion = "v1"
+		defaultNS    = "default"
 	)
 
 	u1 := newUnstructuredNamespace("n1", "10")
@@ -246,19 +249,19 @@ func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 
 	if got := (<-ch).GetCreateResource(); got == nil {
 		t.Fatalf("expected CreateResource mutation")
-	} else if got.GetKind() != nsKind || got.GetName() != "n1" || got.GetNamespace() != defaultNS || got.GetResourceVersion() != "10" {
+	} else if got.GetKind() != nsKind || got.GetName() != "n1" || got.GetNamespace() != defaultNS || got.GetResourceVersion() != "10" || got.GetApiVersion() != nsAPIVersion {
 		t.Fatalf("unexpected metadata in CreateResource: %#v", got)
 	}
 
 	if got := (<-ch).GetUpdateResource(); got == nil {
 		t.Fatalf("expected UpdateResource mutation")
-	} else if got.GetKind() != nsKind || got.GetName() != "n1" || got.GetNamespace() != defaultNS || got.GetResourceVersion() != "11" {
+	} else if got.GetKind() != nsKind || got.GetName() != "n1" || got.GetNamespace() != defaultNS || got.GetResourceVersion() != "11" || got.GetApiVersion() != nsAPIVersion {
 		t.Fatalf("unexpected metadata in UpdateResource: %#v", got)
 	}
 
 	if got := (<-ch).GetDeleteResource(); got == nil {
 		t.Fatalf("expected DeleteResource mutation")
-	} else if got.GetKind() != nsKind || got.GetName() != "n1" || got.GetNamespace() != defaultNS || got.GetResourceVersion() != "12" {
+	} else if got.GetKind() != nsKind || got.GetName() != "n1" || got.GetNamespace() != defaultNS || got.GetResourceVersion() != "12" || got.GetApiVersion() != nsAPIVersion {
 		t.Fatalf("unexpected metadata in DeleteResource: %#v", got)
 	}
 }
@@ -721,14 +724,14 @@ func TestFetchResources_Success(t *testing.T) {
 	rm := &Watcher{
 		resourceName:  "pods",
 		apiGroup:      "",
+		apiVersion:    "v1",
 		dynamicClient: dyn,
 		logger:        logger,
 	}
 
 	ctx := context.Background()
-	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
 
-	result, err := rm.FetchResources(ctx, gvr, "default")
+	result, err := rm.FetchResources(ctx, "default")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -762,13 +765,14 @@ func TestFetchResources_Forbidden(t *testing.T) {
 	rm := &Watcher{
 		resourceName:  "pods",
 		apiGroup:      "",
+		apiVersion:    "v1",
 		dynamicClient: dyn,
 		logger:        logger,
 	}
 
 	ctx := context.Background()
 
-	_, err := rm.FetchResources(ctx, gvr, "default")
+	_, err := rm.FetchResources(ctx, "default")
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -848,13 +852,14 @@ func TestListResources_Success(t *testing.T) {
 	rm := &Watcher{
 		resourceName:  "pods",
 		apiGroup:      "",
+		apiVersion:    "v1",
 		dynamicClient: dyn,
 		logger:        logger,
 	}
 
 	ctx := context.Background()
 
-	metas, _, kind, err := rm.ListResources(ctx, gvr, metav1.NamespaceAll)
+	metas, _, kind, apiVersion, err := rm.ListResources(ctx, metav1.NamespaceAll)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -867,6 +872,30 @@ func TestListResources_Success(t *testing.T) {
 
 	if kind != "Pod" {
 		t.Errorf("expected kind 'Pod', got %q", kind)
+	}
+
+	if apiVersion != "v1" {
+		t.Errorf("expected api_version 'v1', got %q", apiVersion)
+	}
+}
+
+func TestListResources_FetchError(t *testing.T) {
+	logger := zap.NewNop()
+	scheme := runtime.NewScheme()
+
+	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme,
+		map[schema.GroupVersionResource]string{gvr: "PodList"},
+	)
+	dyn.PrependReactor("list", "*", func(action clientgotesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewForbidden(schema.GroupResource{Resource: "pods"}, "", errors.New("forbidden"))
+	})
+
+	rm := &Watcher{resourceName: "pods", apiGroup: "", apiVersion: "v1", dynamicClient: dyn, logger: logger}
+
+	_, _, _, _, err := rm.ListResources(context.Background(), metav1.NamespaceAll)
+	if err == nil {
+		t.Fatal("expected error, got nil")
 	}
 }
 
