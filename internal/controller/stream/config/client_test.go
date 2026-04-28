@@ -132,14 +132,30 @@ func (s *ConfigClientTestSuite) TestRun_VerboseDebuggingOverride() {
 }
 
 func (s *ConfigClientTestSuite) TestRun_UnknownResponse() {
-	// Unknown response type (nil inner response)
+	// Unknown outer response type causes the stream to close with an error.
 	unknownResp := &pb.GetConfigurationUpdatesResponse{}
 	s.mockStream.On("Recv").Return(unknownResp, nil).Once()
-	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
 	err := s.client.Run(context.Background())
 
-	s.Require().NoError(err)
+	s.Require().Error(err)
+	s.mockStream.AssertExpectations(s.T())
+}
+
+func (s *ConfigClientTestSuite) TestRun_UnknownMutationType() {
+	// Unknown mutation type inside a ResourceMutation causes the stream to close with an error.
+	mutationResp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
+			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
+				Mutation: nil,
+			},
+		},
+	}
+	s.mockStream.On("Recv").Return(mutationResp, nil).Once()
+
+	err := s.client.Run(context.Background())
+
+	s.Require().Error(err)
 	s.mockStream.AssertExpectations(s.T())
 }
 

@@ -58,12 +58,14 @@ func (c *configClient) Run(ctx context.Context) error {
 			return err
 		}
 
-		c.handleConfigUpdate(resp)
+		if err := c.handleConfigUpdate(resp); err != nil {
+			return err
+		}
 	}
 }
 
 // handleConfigUpdate processes a configuration update response.
-func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesResponse) {
+func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesResponse) error {
 	switch update := resp.GetResponse().(type) {
 	case *pb.GetConfigurationUpdatesResponse_UpdateConfiguration:
 		c.logger.Info("Received configuration update",
@@ -101,14 +103,20 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 				zap.String("id", m.DeleteObject.GetId()),
 			)
 		default:
-			c.logger.Warn("Received unknown configured object mutation", zap.Any("response", resp))
+			c.logger.Error("Received unknown configured object mutation, closing stream", zap.Any("response", resp))
+
+			return errors.New("server sent unknown configured object mutation type")
 		}
 
 		c.stats.IncrementConfiguredObjectMutations()
 
 	default:
-		c.logger.Warn("Received unknown configuration update", zap.Any("response", resp))
+		c.logger.Error("Received unknown configuration update, closing stream", zap.Any("response", resp))
+
+		return errors.New("server sent unknown configuration update type")
 	}
+
+	return nil
 }
 
 // SendKeepalive sends a keepalive message on the configuration stream.
