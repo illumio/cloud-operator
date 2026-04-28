@@ -112,9 +112,14 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 	// For Cilium policies, we need the full unstructured object to extract the spec.
 	// Note: r.resourceName is lowercase plural (e.g., "ciliumnetworkpolicies").
 	if controller.IsCiliumPolicy(r.resourceName) {
-		return r.listCiliumResources(ctx, logger, objGVR)
+		return r.listAndSendCiliumResources(ctx, logger, objGVR)
 	}
 
+	return r.listAndSendResources(ctx, logger, objGVR)
+}
+
+// listAndSendResources lists standard K8s resources and sends them via gRPC.
+func (r *Watcher) listAndSendResources(ctx context.Context, logger *zap.Logger, objGVR schema.GroupVersionResource) (string, error) {
 	objs, resourceListVersion, resourceK8sKind, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
 		return "", err
@@ -123,8 +128,7 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 	for _, obj := range objs {
 		metadataObj := controller.ConvertMetaObjectToMetadata(ctx, obj, r.clientset, resourceK8sKind)
 
-		err = r.resourcesClient.SendObjectData(logger, metadataObj)
-		if err != nil {
+		if err := r.resourcesClient.SendObjectData(logger, metadataObj); err != nil {
 			r.logger.Error("Cannot send object metadata", zap.Error(err))
 
 			return "", err
@@ -142,11 +146,10 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 	return resourceListVersion, nil
 }
 
-// listCiliumResources handles listing Cilium network policies with full spec conversion.
-// Note: This function intentionally parallels DynamicListResources. The duplication exists because
+// listAndSendCiliumResources lists Cilium network policies and sends them via gRPC.
 // Cilium policies require ConvertUnstructuredToCiliumPolicy to extract the full policy spec,
 // while regular resources use ConvertMetaObjectToMetadata for just metadata extraction.
-func (r *Watcher) listCiliumResources(ctx context.Context, logger *zap.Logger, objGVR schema.GroupVersionResource) (string, error) {
+func (r *Watcher) listAndSendCiliumResources(ctx context.Context, logger *zap.Logger, objGVR schema.GroupVersionResource) (string, error) {
 	unstructuredResources, err := r.FetchResources(ctx, objGVR, metav1.NamespaceAll)
 	if err != nil {
 		return "", err
@@ -165,20 +168,19 @@ func (r *Watcher) listCiliumResources(ctx context.Context, logger *zap.Logger, o
 			return "", fmt.Errorf("failed to convert Cilium policy %s/%s: %w", item.GetNamespace(), item.GetName(), err)
 		}
 
-		r.logger.Info("Sending Cilium policy",
+		r.logger.Debug("Sending Cilium policy",
 			zap.String("name", item.GetName()),
 			zap.String("namespace", item.GetNamespace()),
 			zap.String("kind", item.GetKind()))
 
-		err = r.resourcesClient.SendObjectData(logger, metadataObj)
-		if err != nil {
+		if err := r.resourcesClient.SendObjectData(logger, metadataObj); err != nil {
 			r.logger.Error("Cannot send Cilium policy metadata", zap.Error(err))
 
 			return "", err
 		}
 	}
 
-	r.logger.Info("Successfully sent Cilium policies", zap.Int("count", len(unstructuredResources.Items)))
+	r.logger.Debug("Successfully sent Cilium policies", zap.Int("count", len(unstructuredResources.Items)))
 
 	select {
 	case <-ctx.Done():
