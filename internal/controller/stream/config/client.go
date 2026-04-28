@@ -30,6 +30,7 @@ type configClient struct {
 	logger             *zap.Logger
 	verboseDebugging   bool
 	bufferedGrpcSyncer *logging.BufferedGrpcWriteSyncer
+	stats              *stream.Stats
 
 	mutex  sync.RWMutex
 	closed bool
@@ -57,12 +58,14 @@ func (c *configClient) Run(ctx context.Context) error {
 			return err
 		}
 
-		c.handleConfigUpdate(resp)
+		if err := c.handleConfigUpdate(resp); err != nil {
+			return err
+		}
 	}
 }
 
 // handleConfigUpdate processes a configuration update response.
-func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesResponse) {
+func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesResponse) error {
 	switch update := resp.GetResponse().(type) {
 	case *pb.GetConfigurationUpdatesResponse_UpdateConfiguration:
 		c.logger.Info("Received configuration update",
@@ -75,9 +78,45 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 		} else {
 			c.bufferedGrpcSyncer.UpdateLogLevel(update.UpdateConfiguration.GetLogLevel())
 		}
+
+	case *pb.GetConfigurationUpdatesResponse_ResourceData:
+		c.logger.Debug("Received configured object data",
+			zap.String("id", update.ResourceData.GetId()),
+		)
+
+	case *pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete:
+		c.logger.Info("Received configured object snapshot complete")
+
+	case *pb.GetConfigurationUpdatesResponse_ResourceMutation:
+		mutation := update.ResourceMutation
+		switch m := mutation.GetMutation().(type) {
+		case *pb.ConfiguredKubernetesObjectMutation_CreateObject:
+			c.logger.Debug("Received create object mutation",
+				zap.String("id", m.CreateObject.GetId()),
+			)
+		case *pb.ConfiguredKubernetesObjectMutation_UpdateObject:
+			c.logger.Debug("Received update object mutation",
+				zap.String("id", m.UpdateObject.GetId()),
+			)
+		case *pb.ConfiguredKubernetesObjectMutation_DeleteObject:
+			c.logger.Debug("Received delete object mutation",
+				zap.String("id", m.DeleteObject.GetId()),
+			)
+		default:
+			c.logger.Error("Received unknown configured object mutation, closing stream", zap.Any("response", resp))
+
+			return errors.New("server sent unknown configured object mutation type")
+		}
+
+		c.stats.IncrementConfiguredObjectMutations()
+
 	default:
-		c.logger.Warn("Received unknown configuration update", zap.Any("response", resp))
+		c.logger.Error("Received unknown configuration update, closing stream", zap.Any("response", resp))
+
+		return errors.New("server sent unknown configuration update type")
 	}
+
+	return nil
 }
 
 // SendKeepalive sends a keepalive message on the configuration stream.

@@ -21,6 +21,7 @@ type Factory struct {
 	Logger             *zap.Logger
 	VerboseDebugging   bool
 	BufferedGrpcSyncer *logging.BufferedGrpcWriteSyncer
+	Stats              *stream.Stats
 }
 
 // NewStreamClient creates a new configuration stream client.
@@ -39,6 +40,7 @@ func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnI
 		logger:             f.Logger,
 		verboseDebugging:   f.VerboseDebugging,
 		bufferedGrpcSyncer: f.BufferedGrpcSyncer,
+		stats:              f.Stats,
 	}, nil
 }
 

@@ -14,6 +14,7 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
+	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
 
 // mockConfigurationStream mocks the stream.ConfigurationStream interface.
@@ -43,6 +44,7 @@ type ConfigClientTestSuite struct {
 	mockStream *mockConfigurationStream
 	syncer     *logging.BufferedGrpcWriteSyncer
 	logger     *zap.Logger
+	stats      *stream.Stats
 	client     *configClient
 }
 
@@ -54,10 +56,12 @@ func (s *ConfigClientTestSuite) SetupTest() {
 	s.mockStream = &mockConfigurationStream{}
 	s.logger = zap.NewNop()
 	s.syncer = logging.NewBufferedGrpcWriteSyncerForTest(s.logger)
+	s.stats = stream.NewStats()
 	s.client = &configClient{
 		stream:             s.mockStream,
 		logger:             s.logger,
 		bufferedGrpcSyncer: s.syncer,
+		stats:              s.stats,
 	}
 }
 
@@ -128,14 +132,30 @@ func (s *ConfigClientTestSuite) TestRun_VerboseDebuggingOverride() {
 }
 
 func (s *ConfigClientTestSuite) TestRun_UnknownResponse() {
-	// Unknown response type (nil inner response)
+	// Unknown outer response type causes the stream to close with an error.
 	unknownResp := &pb.GetConfigurationUpdatesResponse{}
 	s.mockStream.On("Recv").Return(unknownResp, nil).Once()
-	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
 	err := s.client.Run(context.Background())
 
-	s.Require().NoError(err)
+	s.Require().Error(err)
+	s.mockStream.AssertExpectations(s.T())
+}
+
+func (s *ConfigClientTestSuite) TestRun_UnknownMutationType() {
+	// Unknown mutation type inside a ResourceMutation causes the stream to close with an error.
+	mutationResp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
+			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
+				Mutation: nil,
+			},
+		},
+	}
+	s.mockStream.On("Recv").Return(mutationResp, nil).Once()
+
+	err := s.client.Run(context.Background())
+
+	s.Require().Error(err)
 	s.mockStream.AssertExpectations(s.T())
 }
 
@@ -188,4 +208,75 @@ func (s *ConfigClientTestSuite) TestClose_Idempotent() {
 	s.Require().NoError(err)
 
 	s.True(s.client.closed)
+}
+
+func (s *ConfigClientTestSuite) TestRun_ConfiguredObjectMutation_Create() {
+	resp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
+			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
+					CreateObject: &pb.ConfiguredKubernetesObjectData{
+						Id:   "policy-123",
+						Name: "test-policy",
+					},
+				},
+			},
+		},
+	}
+	s.mockStream.On("Recv").Return(resp, nil).Once()
+	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
+
+	err := s.client.Run(context.Background())
+
+	s.Require().NoError(err)
+	s.mockStream.AssertExpectations(s.T())
+	_, _, _, configuredObjectMutations := s.stats.GetAndResetStats()
+	s.Equal(uint64(1), configuredObjectMutations, "configured object mutations should be incremented")
+}
+
+func (s *ConfigClientTestSuite) TestRun_ConfiguredObjectMutation_Update() {
+	resp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
+			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
+					UpdateObject: &pb.ConfiguredKubernetesObjectData{
+						Id:   "policy-123",
+						Name: "test-policy",
+					},
+				},
+			},
+		},
+	}
+	s.mockStream.On("Recv").Return(resp, nil).Once()
+	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
+
+	err := s.client.Run(context.Background())
+
+	s.Require().NoError(err)
+	s.mockStream.AssertExpectations(s.T())
+	_, _, _, configuredObjectMutations := s.stats.GetAndResetStats()
+	s.Equal(uint64(1), configuredObjectMutations, "configured object mutations should be incremented")
+}
+
+func (s *ConfigClientTestSuite) TestRun_ConfiguredObjectMutation_Delete() {
+	resp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
+			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
+					DeleteObject: &pb.DeleteConfiguredKubernetesObject{
+						Id: "policy-123",
+					},
+				},
+			},
+		},
+	}
+	s.mockStream.On("Recv").Return(resp, nil).Once()
+	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
+
+	err := s.client.Run(context.Background())
+
+	s.Require().NoError(err)
+	s.mockStream.AssertExpectations(s.T())
+	_, _, _, configuredObjectMutations := s.stats.GetAndResetStats()
+	s.Equal(uint64(1), configuredObjectMutations, "configured object mutations should be incremented")
 }

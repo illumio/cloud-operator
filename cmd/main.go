@@ -250,6 +250,7 @@ func main() {
 					Logger:             logger,
 					VerboseDebugging:   viper.GetBool("verbose_debugging"),
 					BufferedGrpcSyncer: bufferedGrpcSyncer,
+					Stats:              stats,
 				},
 				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_configuration"),
 			},
