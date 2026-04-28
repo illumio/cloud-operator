@@ -99,14 +99,18 @@ func (c *vpccniClient) pollPod(ctx context.Context, pod *corev1.Pod) error {
 		sinceTime = time.Now().Add(-c.pollInterval)
 	}
 
+	// Capture poll start time before fetching logs to avoid gaps
+	// between request start and when we store lastPollTime
+	pollStart := time.Now()
+
 	logs, err := c.getLogsFromPod(ctx, pod.Name, sinceTime)
 	if err != nil {
 		return err
 	}
 
-	// Update last poll time
+	// Update last poll time to poll start to avoid missing logs
 	c.mu.Lock()
-	c.lastPollTime[pod.Name] = time.Now()
+	c.lastPollTime[pod.Name] = pollStart
 	c.mu.Unlock()
 
 	// Parse and cache flows

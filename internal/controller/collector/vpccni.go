@@ -31,9 +31,10 @@ const (
 
 // VPC CNI flow log errors.
 var (
-	ErrVPCCNIInvalidLog = errors.New("invalid VPC CNI flow log format")
-	ErrVPCCNIInvalidIP  = errors.New("invalid IP address in VPC CNI flow log")
-	ErrVPCCNINotFlowLog = errors.New("log line is not a flow log")
+	ErrVPCCNIInvalidLog      = errors.New("invalid VPC CNI flow log format")
+	ErrVPCCNIInvalidIP       = errors.New("invalid IP address in VPC CNI flow log")
+	ErrVPCCNINotFlowLog      = errors.New("log line is not a flow log")
+	ErrVPCCNIInvalidProtocol = errors.New("unsupported protocol in VPC CNI flow log")
 )
 
 // VPCCNIFlowLog represents the flow log format from aws-eks-nodeagent.
@@ -168,7 +169,7 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 
 	layer4Message, err := CreateLayer4Message(protoStr, srcPort, destPort, ipVersion)
 	if err != nil {
-		return nil, err
+		return nil, ErrVPCCNIInvalidProtocol
 	}
 
 	// Parse timestamp or use current time
@@ -207,10 +208,10 @@ func isIPv6(addr string) bool {
 
 // IsVPCCNIAvailable checks if AWS VPC CNI with flow logging is available in the cluster.
 // It looks for aws-node pods with the aws-eks-nodeagent container.
+// Checks multiple pods to handle rolling upgrades where some pods may not have nodeagent yet.
 func IsVPCCNIAvailable(ctx context.Context, logger *zap.Logger, k8sClient kubernetes.Interface) bool {
 	pods, err := k8sClient.CoreV1().Pods(AWSNodeNamespace).List(ctx, metav1.ListOptions{
 		LabelSelector: AWSNodeLabel,
-		Limit:         1,
 	})
 	if err != nil {
 		logger.Debug("Failed to list aws-node pods", zap.Error(err))
@@ -224,11 +225,14 @@ func IsVPCCNIAvailable(ctx context.Context, logger *zap.Logger, k8sClient kubern
 		return false
 	}
 
-	// Check if the aws-eks-nodeagent container exists
-	if hasNodeagentContainer(pods.Items[0]) {
-		logger.Debug("VPC CNI with aws-eks-nodeagent detected")
+	// Check if any pod has the aws-eks-nodeagent container
+	for i := range pods.Items {
+		if hasNodeagentContainer(pods.Items[i]) {
+			logger.Debug("VPC CNI with aws-eks-nodeagent detected",
+				zap.String("pod", pods.Items[i].Name))
 
-		return true
+			return true
+		}
 	}
 
 	logger.Debug("aws-node pods found but aws-eks-nodeagent container not present")
