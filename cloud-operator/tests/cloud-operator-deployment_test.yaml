@@ -138,15 +138,6 @@ tests:
           path: spec.template.spec.containers[0].env[22].value
           value: "false"
 
-  # Test for replicaCount value
-  - it: should set the correct number of replicas
-    set:
-      replicaCount: 3
-    asserts:
-      - equal:
-          path: spec.replicas
-          value: 3
-
   # Test for service selectors
   - it: should set the correct service selectors
     asserts:

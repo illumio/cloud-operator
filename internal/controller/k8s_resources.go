@@ -86,11 +86,15 @@ func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, cli
 		Kind:              resource,
 		Labels:            obj.GetLabels(),
 		Name:              obj.GetName(),
-		Namespace:         obj.GetNamespace(),
 		OwnerReferences:   ownerReferences,
 		ResourceVersion:   obj.GetResourceVersion(),
 		Uid:               string(obj.GetUID()),
 	}
+
+	if obj.GetNamespace() != "" {
+		objMetadata.Namespace = &obj.Namespace
+	}
+
 	switch resource {
 	case "Pod":
 		podIPS := getPodIPAddresses(ctx, obj.GetName(), clientset, obj.GetNamespace())
