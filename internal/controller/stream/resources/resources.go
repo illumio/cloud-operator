@@ -69,6 +69,7 @@ func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface
 			if apierrors.IsForbidden(err) {
 				continue
 			}
+
 			return nil, err
 		}
 
