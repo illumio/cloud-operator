@@ -104,7 +104,10 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 			return nil
 		}
 
-		c.handleMutation(update.ResourceMutation)
+		if err := c.handleMutation(update.ResourceMutation); err != nil {
+			return err
+		}
+
 		c.stats.IncrementConfiguredObjectMutations()
 
 	default:
@@ -131,7 +134,7 @@ func (c *configClient) handleUpdateConfiguration(config *pb.GetConfigurationUpda
 }
 
 // handleMutation processes a configured object mutation (create/update/delete).
-func (c *configClient) handleMutation(mutation *pb.ConfiguredKubernetesObjectMutation) {
+func (c *configClient) handleMutation(mutation *pb.ConfiguredKubernetesObjectMutation) error {
 	switch m := mutation.GetMutation().(type) {
 	case *pb.ConfiguredKubernetesObjectMutation_CreateObject:
 		c.cache.Store(m.CreateObject.GetId(), m.CreateObject)
@@ -154,8 +157,12 @@ func (c *configClient) handleMutation(mutation *pb.ConfiguredKubernetesObjectMut
 		)
 
 	default:
-		c.logger.Warn("Received unknown mutation type", zap.Any("mutation", mutation))
+		c.logger.Error("Received unknown configured object mutation, closing stream", zap.Any("mutation", mutation))
+
+		return errors.New("server sent unknown configured object mutation type")
 	}
+
+	return nil
 }
 
 // SendKeepalive sends a keepalive message on the configuration stream.

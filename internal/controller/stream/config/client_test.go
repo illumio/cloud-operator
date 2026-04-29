@@ -576,17 +576,17 @@ func (s *ConfigClientTestSuite) TestRun_UnknownMutationType() {
 
 	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
 	s.mockStream.On("Recv").Return(unknownMutationResp, nil).Once()
-	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
 	err := s.client.Run(context.Background())
 
-	// Should not panic, just log warning
-	s.Require().NoError(err)
+	// Unknown mutation type should close the stream with an error
+	s.Require().Error(err)
+	s.Contains(err.Error(), "unknown configured object mutation type")
 	s.mockStream.AssertExpectations(s.T())
 
-	// Stats still incremented (mutation was processed, just had unknown inner type)
+	// Stats should NOT be incremented (error occurred before increment)
 	_, _, _, configuredObjectMutations := s.stats.GetAndResetStats()
-	s.Equal(uint64(1), configuredObjectMutations)
+	s.Equal(uint64(0), configuredObjectMutations)
 }
 
 func (s *ConfigClientTestSuite) TestRun_ResourceDataWithEmptyId() {
