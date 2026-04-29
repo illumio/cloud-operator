@@ -46,9 +46,9 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 		require.NoError(t, err)
 
 		// pods should be in core group (empty string)
-		apiGroup, ok := result["pods"]
+		resourceInfo, ok := result["pods"]
 		assert.True(t, ok, "expected 'pods' to be in result")
-		assert.Empty(t, apiGroup, "expected pods apiGroup to be empty")
+		assert.Empty(t, resourceInfo.Group, "expected pods apiGroup to be empty")
 	})
 
 	t.Run("handles empty resources", func(t *testing.T) {
@@ -108,8 +108,8 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 		result, err := buildResourceApiGroupMap(resources, clientset, logger)
 		require.NoError(t, err)
 
-		assert.Equal(t, "apps", result["deployments"])
-		assert.Equal(t, "apps", result["statefulsets"])
+		assert.Equal(t, "apps", result["deployments"].Group)
+		assert.Equal(t, "apps", result["statefulsets"].Group)
 	})
 }
 

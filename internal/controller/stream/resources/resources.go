@@ -9,6 +9,8 @@ import (
 )
 
 var resourceList = []string{
+	"ciliumclusterwidenetworkpolicies",
+	"ciliumnetworkpolicies",
 	"cronjobs",
 	"customresourcedefinitions",
 	"daemonsets",
@@ -31,9 +33,15 @@ var resourceList = []string{
 	"statefulsets",
 }
 
-// buildResourceApiGroupMap creates a mapping between Kubernetes resources and their API groups.
-func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface, logger *zap.Logger) (map[string]string, error) {
-	resourceAPIGroupMap := make(map[string]string)
+// ResourceInfo holds the API group and preferred version for a resource.
+type ResourceInfo struct {
+	Group   string
+	Version string
+}
+
+// buildResourceApiGroupMap creates a mapping between Kubernetes resources and their API groups with preferred versions.
+func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface, logger *zap.Logger) (map[string]ResourceInfo, error) {
+	resourceAPIGroupMap := make(map[string]ResourceInfo)
 
 	resourceSet := make(map[string]struct{})
 	for _, resource := range resources {
@@ -50,6 +58,8 @@ func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface
 	}
 
 	for _, group := range apiGroups.Groups {
+		preferredVersion := group.PreferredVersion.Version
+
 		for _, version := range group.Versions {
 			resourceList, err := discoveryClient.ServerResourcesForGroupVersion(version.GroupVersion)
 			if err != nil {
@@ -71,7 +81,10 @@ func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface
 						continue
 					}
 
-					resourceAPIGroupMap[resource.Name] = group.Name
+					resourceAPIGroupMap[resource.Name] = ResourceInfo{
+						Group:   group.Name,
+						Version: preferredVersion,
+					}
 				}
 			}
 		}
@@ -83,5 +96,6 @@ func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface
 type watcherInfo struct {
 	resource        string
 	apiGroup        string
+	apiVersion      string
 	resourceVersion string
 }
