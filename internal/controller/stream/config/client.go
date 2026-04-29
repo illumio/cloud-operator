@@ -13,6 +13,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 )
 
 // Verify configClient implements stream.StreamClient.
@@ -31,6 +32,7 @@ type configClient struct {
 	verboseDebugging   bool
 	bufferedGrpcSyncer *logging.BufferedGrpcWriteSyncer
 	stats              *stream.Stats
+	cache              *cache.ConfiguredObjectCache
 
 	mutex  sync.RWMutex
 	closed bool
@@ -68,46 +70,41 @@ func (c *configClient) Run(ctx context.Context) error {
 func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesResponse) error {
 	switch update := resp.GetResponse().(type) {
 	case *pb.GetConfigurationUpdatesResponse_UpdateConfiguration:
-		c.logger.Info("Received configuration update",
-			zap.Stringer("log_level", update.UpdateConfiguration.GetLogLevel()),
-		)
-
-		if c.verboseDebugging {
-			c.logger.Debug("verboseDebugging is true, setting log level to debug")
-			c.bufferedGrpcSyncer.UpdateLogLevel(pb.LogLevel_LOG_LEVEL_DEBUG)
-		} else {
-			c.bufferedGrpcSyncer.UpdateLogLevel(update.UpdateConfiguration.GetLogLevel())
-		}
+		c.handleUpdateConfiguration(update.UpdateConfiguration)
 
 	case *pb.GetConfigurationUpdatesResponse_ResourceData:
-		c.logger.Debug("Received configured object data",
+		if c.cache.IsSnapshotComplete() {
+			c.logger.Warn("Received ResourceData after snapshot complete, ignoring")
+
+			return nil
+		}
+
+		c.cache.Store(update.ResourceData.GetId(), update.ResourceData)
+		c.logger.Debug("Stored configured object from snapshot",
 			zap.String("id", update.ResourceData.GetId()),
+			zap.String("name", update.ResourceData.GetName()),
 		)
 
 	case *pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete:
-		c.logger.Info("Received configured object snapshot complete")
+		if c.cache.IsSnapshotComplete() {
+			c.logger.Warn("Received duplicate ResourceSnapshotComplete, ignoring")
 
-	case *pb.GetConfigurationUpdatesResponse_ResourceMutation:
-		mutation := update.ResourceMutation
-		switch m := mutation.GetMutation().(type) {
-		case *pb.ConfiguredKubernetesObjectMutation_CreateObject:
-			c.logger.Debug("Received create object mutation",
-				zap.String("id", m.CreateObject.GetId()),
-			)
-		case *pb.ConfiguredKubernetesObjectMutation_UpdateObject:
-			c.logger.Debug("Received update object mutation",
-				zap.String("id", m.UpdateObject.GetId()),
-			)
-		case *pb.ConfiguredKubernetesObjectMutation_DeleteObject:
-			c.logger.Debug("Received delete object mutation",
-				zap.String("id", m.DeleteObject.GetId()),
-			)
-		default:
-			c.logger.Error("Received unknown configured object mutation, closing stream", zap.Any("response", resp))
-
-			return errors.New("server sent unknown configured object mutation type")
+			return nil
 		}
 
+		c.cache.SetSnapshotComplete()
+		c.logger.Info("Configuration snapshot complete",
+			zap.Int("object_count", c.cache.Len()),
+		)
+
+	case *pb.GetConfigurationUpdatesResponse_ResourceMutation:
+		if !c.cache.IsSnapshotComplete() {
+			c.logger.Warn("Received ResourceMutation before snapshot complete, ignoring")
+
+			return nil
+		}
+
+		c.handleMutation(update.ResourceMutation)
 		c.stats.IncrementConfiguredObjectMutations()
 
 	default:
@@ -117,6 +114,48 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 	}
 
 	return nil
+}
+
+// handleUpdateConfiguration processes a log level configuration update.
+func (c *configClient) handleUpdateConfiguration(config *pb.GetConfigurationUpdatesResponse_Configuration) {
+	c.logger.Info("Received configuration update",
+		zap.Stringer("log_level", config.GetLogLevel()),
+	)
+
+	if c.verboseDebugging {
+		c.logger.Debug("verboseDebugging is true, setting log level to debug")
+		c.bufferedGrpcSyncer.UpdateLogLevel(pb.LogLevel_LOG_LEVEL_DEBUG)
+	} else {
+		c.bufferedGrpcSyncer.UpdateLogLevel(config.GetLogLevel())
+	}
+}
+
+// handleMutation processes a configured object mutation (create/update/delete).
+func (c *configClient) handleMutation(mutation *pb.ConfiguredKubernetesObjectMutation) {
+	switch m := mutation.GetMutation().(type) {
+	case *pb.ConfiguredKubernetesObjectMutation_CreateObject:
+		c.cache.Store(m.CreateObject.GetId(), m.CreateObject)
+		c.logger.Debug("Created configured object",
+			zap.String("id", m.CreateObject.GetId()),
+			zap.String("name", m.CreateObject.GetName()),
+		)
+
+	case *pb.ConfiguredKubernetesObjectMutation_UpdateObject:
+		c.cache.Store(m.UpdateObject.GetId(), m.UpdateObject)
+		c.logger.Debug("Updated configured object",
+			zap.String("id", m.UpdateObject.GetId()),
+			zap.String("name", m.UpdateObject.GetName()),
+		)
+
+	case *pb.ConfiguredKubernetesObjectMutation_DeleteObject:
+		c.cache.Delete(m.DeleteObject.GetId())
+		c.logger.Debug("Deleted configured object",
+			zap.String("id", m.DeleteObject.GetId()),
+		)
+
+	default:
+		c.logger.Warn("Received unknown mutation type", zap.Any("mutation", mutation))
+	}
 }
 
 // SendKeepalive sends a keepalive message on the configuration stream.
