@@ -56,7 +56,7 @@ func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 		suite.T().Error("could not create clientset")
 	}
 	// Execute the function under test.
-	got := ConvertMetaObjectToMetadata(context.Background(), configMap, k8sClient.GetClientset(), "configMap", "v1")
+	got := ConvertMetaObjectToMetadata(context.Background(), configMap, k8sClient.GetClientset(), "configMap", "", "v1")
 
 	// Define what you expect to get.
 	want := metav1.ObjectMeta{
@@ -136,6 +136,7 @@ func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 	tests := map[string]struct {
 		objMeta    metav1.ObjectMeta
 		kind       string
+		apiGroup   string
 		apiVersion string
 		expected   *pb.KubernetesObjectData
 	}{
@@ -149,17 +150,19 @@ func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 				ResourceVersion:   "test-version",
 				UID:               "test-uid",
 			},
-			kind:       "Pod",
+			kind:       "test-resource",
+			apiGroup:   "",
 			apiVersion: "v1",
 			expected: &pb.KubernetesObjectData{
 				Annotations:       sampleData,
 				CreationTimestamp: convertToProtoTimestamp(creationTimestamp),
-				Kind:              "Pod",
+				Kind:              "test-resource",
 				Labels:            sampleData,
 				Name:              "test-name",
 				Namespace:         ptrString("test-namespace"),
 				ResourceVersion:   "test-version",
 				Uid:               "test-uid",
+				ApiGroup:          "",
 				ApiVersion:        "v1",
 			},
 		},
@@ -174,6 +177,7 @@ func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 				UID:               "test-uid",
 			},
 			kind:       "Node",
+			apiGroup:   "",
 			apiVersion: "v1",
 			expected: &pb.KubernetesObjectData{
 				Annotations:       sampleData,
@@ -183,6 +187,7 @@ func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 				Name:              "test-node",
 				ResourceVersion:   "test-version",
 				Uid:               "test-uid",
+				ApiGroup:          "",
 				ApiVersion:        "v1",
 			},
 		},
@@ -197,7 +202,8 @@ func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 				UID:               "test-uid",
 			},
 			kind:       "Deployment",
-			apiVersion: "apps/v1",
+			apiGroup:   "apps",
+			apiVersion: "v1",
 			expected: &pb.KubernetesObjectData{
 				Annotations:       sampleData,
 				CreationTimestamp: convertToProtoTimestamp(creationTimestamp),
@@ -207,14 +213,15 @@ func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 				Namespace:         ptrString("test-namespace"),
 				ResourceVersion:   "test-version",
 				Uid:               "test-uid",
-				ApiVersion:        "apps/v1",
+				ApiGroup:          "apps",
+				ApiVersion:        "v1",
 			},
 		},
 	}
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			result := ConvertMetaObjectToMetadata(context.Background(), tt.objMeta, clientset, tt.kind, tt.apiVersion)
+			result := ConvertMetaObjectToMetadata(context.Background(), tt.objMeta, clientset, tt.kind, tt.apiGroup, tt.apiVersion)
 			suite.Equal(tt.expected, result)
 		})
 	}

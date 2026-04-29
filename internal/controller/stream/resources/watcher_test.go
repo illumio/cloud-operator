@@ -227,6 +227,7 @@ func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 
 	const (
 		nsKind       = "Namespace"
+		nsAPIGroup   = ""
 		nsAPIVersion = "v1"
 		defaultNS    = "default"
 	)
@@ -249,7 +250,7 @@ func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 
 	if got := (<-ch).GetCreateResource(); got == nil {
 		t.Fatalf("expected CreateResource mutation")
-	} else if got.GetKind() != nsKind || got.GetName() != "n1" || got.GetNamespace() != defaultNS || got.GetResourceVersion() != "10" || got.GetApiVersion() != nsAPIVersion {
+	} else if got.GetKind() != nsKind || got.GetName() != "n1" || got.GetNamespace() != defaultNS || got.GetResourceVersion() != "10" || got.GetApiGroup() != nsAPIGroup || got.GetApiVersion() != nsAPIVersion {
 		t.Fatalf("unexpected metadata in CreateResource: %#v", got)
 	}
 
@@ -859,7 +860,7 @@ func TestListResources_Success(t *testing.T) {
 
 	ctx := context.Background()
 
-	metas, _, kind, apiVersion, err := rm.ListResources(ctx, metav1.NamespaceAll)
+	metas, _, kind, apiGroup, apiVersion, err := rm.ListResources(ctx, metav1.NamespaceAll)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -872,6 +873,10 @@ func TestListResources_Success(t *testing.T) {
 
 	if kind != "Pod" {
 		t.Errorf("expected kind 'Pod', got %q", kind)
+	}
+
+	if apiGroup != "" {
+		t.Errorf("expected empty apiGroup, got %q", apiGroup)
 	}
 
 	if apiVersion != "v1" {
@@ -893,7 +898,7 @@ func TestListResources_FetchError(t *testing.T) {
 
 	rm := &Watcher{resourceName: "pods", apiGroup: "", apiVersion: "v1", dynamicClient: dyn, logger: logger}
 
-	_, _, _, _, err := rm.ListResources(context.Background(), metav1.NamespaceAll)
+	_, _, _, _, _, err := rm.ListResources(context.Background(), metav1.NamespaceAll)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

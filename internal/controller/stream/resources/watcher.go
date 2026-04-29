@@ -107,13 +107,13 @@ func (r *Watcher) WatchK8sResources(ctx context.Context, cancel context.CancelFu
 
 // DynamicListResources lists a specified resource dynamically and sends down the current gRPC stream.
 func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) (string, error) {
-	objs, resourceListVersion, resourceK8sKind, apiVersion, err := r.ListResources(ctx, metav1.NamespaceAll)
+	objs, resourceListVersion, resourceK8sKind, apiGroup, apiVersion, err := r.ListResources(ctx, metav1.NamespaceAll)
 	if err != nil {
 		return "", err
 	}
 
 	for _, obj := range objs {
-		metadataObj := controller.ConvertMetaObjectToMetadata(ctx, obj, r.clientset, resourceK8sKind, apiVersion)
+		metadataObj := controller.ConvertMetaObjectToMetadata(ctx, obj, r.clientset, resourceK8sKind, apiGroup, apiVersion)
 
 		err = r.resourcesClient.SendObjectData(logger, metadataObj)
 		if err != nil {
@@ -259,18 +259,20 @@ func (r *Watcher) ExtractObjectMetas(resources *unstructured.UnstructuredList) (
 	return objectMetas, nil
 }
 
-func (r *Watcher) ListResources(ctx context.Context, namespace string) ([]metav1.ObjectMeta, string, string, string, error) {
+func (r *Watcher) ListResources(ctx context.Context, namespace string) ([]metav1.ObjectMeta, string, string, string, string, error) {
 	unstructuredResources, err := r.FetchResources(ctx, namespace)
 	if err != nil {
-		return nil, "", "", "", err
+		return nil, "", "", "", "", err
 	}
 
 	objectMetas, err := r.ExtractObjectMetas(unstructuredResources)
 	if err != nil {
-		return nil, "", "", "", err
+		return nil, "", "", "", "", err
 	}
 
-	return objectMetas, unstructuredResources.GetResourceVersion(), removeListSuffix(unstructuredResources.GetKind()), unstructuredResources.GetAPIVersion(), nil
+	resourcesGvk := unstructuredResources.GroupVersionKind()
+
+	return objectMetas, unstructuredResources.GetResourceVersion(), removeListSuffix(resourcesGvk.Kind), resourcesGvk.Group, resourcesGvk.Version, nil
 }
 
 func removeListSuffix(s string) string {
@@ -372,7 +374,7 @@ func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutati
 	}
 
 	resourceGvk := event.Object.GetObjectKind().GroupVersionKind()
-	metadataObj := controller.ConvertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resourceGvk.Kind, resourceGvk.GroupVersion().String())
+	metadataObj := controller.ConvertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resourceGvk.Kind, resourceGvk.Group, resourceGvk.Version)
 
 	mutation := r.resourcesClient.CreateMutationObject(metadataObj, event.Type)
 

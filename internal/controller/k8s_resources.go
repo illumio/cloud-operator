@@ -77,7 +77,7 @@ func GetMetadataFromResource(logger *zap.Logger, resource unstructured.Unstructu
 }
 
 // ConvertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
-func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, clientset kubernetes.Interface, kind, apiVersion string) *pb.KubernetesObjectData {
+func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, clientset kubernetes.Interface, kind, apiGroup, apiVersion string) *pb.KubernetesObjectData {
 	ownerReferences := convertOwnerReferences(obj.GetOwnerReferences())
 
 	objMetadata := &pb.KubernetesObjectData{
@@ -89,6 +89,7 @@ func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, cli
 		OwnerReferences:   ownerReferences,
 		ResourceVersion:   obj.GetResourceVersion(),
 		Uid:               string(obj.GetUID()),
+		ApiGroup:          apiGroup,
 		ApiVersion:        apiVersion,
 	}
 
