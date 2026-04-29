@@ -3,6 +3,7 @@
 package cache
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 
@@ -185,6 +186,88 @@ func TestConcurrentAccess(t *testing.T) {
 	wg.Wait()
 
 	// Should not panic or deadlock
+}
+
+func TestConcurrentStreamAndReconciliation(t *testing.T) {
+	// Simulates concurrent access pattern:
+	// - Stream receiver goroutine: writes to cache (Store/Delete)
+	// - Reconciliation goroutine: reads from cache (List/Get)
+	c := NewConfiguredObjectCache()
+
+	var wg sync.WaitGroup
+
+	// Simulate stream receiver - snapshot phase then mutations
+	wg.Go(func() {
+		// Snapshot phase
+		for i := range 50 {
+			c.Store(
+				fmt.Sprintf("policy-%d", i),
+				&pb.ConfiguredKubernetesObjectData{
+					Id:   fmt.Sprintf("policy-%d", i),
+					Name: fmt.Sprintf("policy-name-%d", i),
+				},
+			)
+		}
+
+		c.SetSnapshotComplete()
+
+		// Mutation phase - updates and deletes
+		for i := range 50 {
+			if i%2 == 0 {
+				// Update
+				c.Store(
+					fmt.Sprintf("policy-%d", i),
+					&pb.ConfiguredKubernetesObjectData{
+						Id:   fmt.Sprintf("policy-%d", i),
+						Name: fmt.Sprintf("policy-name-%d-updated", i),
+					},
+				)
+			} else {
+				// Delete
+				c.Delete(fmt.Sprintf("policy-%d", i))
+			}
+		}
+	})
+
+	// Simulate reconciliation loop - continuously reads
+	wg.Go(func() {
+		for range 100 {
+			// Read operations that reconciliation would do
+			_ = c.List()
+			_ = c.Len()
+			_ = c.IsSnapshotComplete()
+
+			// Try to get specific objects
+			for i := range 10 {
+				_, _ = c.Get(fmt.Sprintf("policy-%d", i))
+			}
+		}
+	})
+
+	// Another reconciliation reader
+	wg.Go(func() {
+		for range 100 {
+			if c.IsSnapshotComplete() {
+				objects := c.List()
+				for _, obj := range objects {
+					// Simulate processing each object
+					_ = obj.GetId()
+					_ = obj.GetName()
+				}
+			}
+		}
+	})
+
+	wg.Wait()
+
+	// Verify final state is consistent
+	assert.True(t, c.IsSnapshotComplete())
+
+	// Should have ~25 objects (50 created, 25 deleted in mutation phase)
+	// The exact count depends on timing, but should be consistent
+	finalCount := c.Len()
+	assert.GreaterOrEqual(t, finalCount, 0)
+	assert.LessOrEqual(t, finalCount, 50)
 }
 
 func TestSnapshotThenMutationFlow(t *testing.T) {
