@@ -41,6 +41,8 @@ message KubernetesObjectData {
   repeated KubernetesOwnerReference owner_references = 7;
   string resource_version = 8;
   string uid = 9;
+  string api_group = 10;
+  string api_version = 11;
   oneof kind_specific {
     KubernetesPodData pod = 100;
     KubernetesNodeData node = 101;

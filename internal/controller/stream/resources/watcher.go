@@ -35,8 +35,9 @@ const MutationCheckpointInterval = 60 * time.Second
 
 // WatcherConfig holds the configuration for creating a new Watcher.
 type WatcherConfig struct {
-	ResourceName    string
+	ResourceName    string // plural-lowercase (e.g., "pods")
 	ApiGroup        string
+	ApiVersion      string
 	Clientset       kubernetes.Interface
 	BaseLogger      *zap.Logger
 	DynamicClient   dynamic.Interface
@@ -46,8 +47,9 @@ type WatcherConfig struct {
 
 // Watcher encapsulates components for listing and managing Kubernetes resources.
 type Watcher struct {
-	resourceName    string
+	resourceName    string // plural-lowercase (e.g., "pods")
 	apiGroup        string
+	apiVersion      string
 	clientset       kubernetes.Interface
 	logger          *zap.Logger
 	dynamicClient   dynamic.Interface
@@ -60,16 +62,27 @@ func NewWatcher(config WatcherConfig) *Watcher {
 	logger := config.BaseLogger.With(
 		zap.String("resource", config.ResourceName),
 		zap.String("api_group", config.ApiGroup),
+		zap.String("api_version", config.ApiVersion),
 	)
 
 	return &Watcher{
 		resourceName:    config.ResourceName,
 		apiGroup:        config.ApiGroup,
+		apiVersion:      config.ApiVersion,
 		clientset:       config.Clientset,
 		logger:          logger,
 		dynamicClient:   config.DynamicClient,
 		resourcesClient: config.ResourcesClient,
 		limiter:         config.Limiter,
+	}
+}
+
+// gvr returns the GroupVersionResource for this watcher.
+func (r *Watcher) gvr() schema.GroupVersionResource {
+	return schema.GroupVersionResource{
+		Group:    r.apiGroup,
+		Version:  r.apiVersion,
+		Resource: r.resourceName,
 	}
 }
 
@@ -93,16 +106,14 @@ func (r *Watcher) WatchK8sResources(ctx context.Context, cancel context.CancelFu
 }
 
 // DynamicListResources lists a specified resource dynamically and sends down the current gRPC stream.
-func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger, apiGroup string) (string, error) {
-	objGVR := schema.GroupVersionResource{Group: apiGroup, Version: "v1", Resource: r.resourceName}
-
-	objs, resourceListVersion, resourceK8sKind, err := r.ListResources(ctx, objGVR, metav1.NamespaceAll)
+func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) (string, error) {
+	objs, resourceListVersion, resourceK8sKind, apiGroup, apiVersion, err := r.ListResources(ctx, metav1.NamespaceAll)
 	if err != nil {
 		return "", err
 	}
 
 	for _, obj := range objs {
-		metadataObj := controller.ConvertMetaObjectToMetadata(ctx, obj, r.clientset, resourceK8sKind)
+		metadataObj := controller.ConvertMetaObjectToMetadata(ctx, obj, r.clientset, resourceK8sKind, apiGroup, apiVersion)
 
 		err = r.resourcesClient.SendObjectData(logger, metadataObj)
 		if err != nil {
@@ -213,7 +224,9 @@ func (r *Watcher) handleWatchError(err error, lastResourceVersion string, logger
 	}
 }
 
-func (r *Watcher) FetchResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) (*unstructured.UnstructuredList, error) {
+func (r *Watcher) FetchResources(ctx context.Context, namespace string) (*unstructured.UnstructuredList, error) {
+	resource := r.gvr()
+
 	unstructuredResources, err := r.dynamicClient.Resource(resource).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsForbidden(err) {
@@ -246,26 +259,24 @@ func (r *Watcher) ExtractObjectMetas(resources *unstructured.UnstructuredList) (
 	return objectMetas, nil
 }
 
-func (r *Watcher) ListResources(ctx context.Context, resource schema.GroupVersionResource, namespace string) ([]metav1.ObjectMeta, string, string, error) {
-	unstructuredResources, err := r.FetchResources(ctx, resource, namespace)
+func (r *Watcher) ListResources(ctx context.Context, namespace string) ([]metav1.ObjectMeta, string, string, string, string, error) {
+	unstructuredResources, err := r.FetchResources(ctx, namespace)
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", "", "", "", err
 	}
 
 	objectMetas, err := r.ExtractObjectMetas(unstructuredResources)
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", "", "", "", err
 	}
 
-	return objectMetas, unstructuredResources.GetResourceVersion(), removeListSuffix(unstructuredResources.GetKind()), nil
+	resourcesGvk := unstructuredResources.GroupVersionKind()
+
+	return objectMetas, unstructuredResources.GetResourceVersion(), removeListSuffix(resourcesGvk.Kind), resourcesGvk.Group, resourcesGvk.Version, nil
 }
 
 func removeListSuffix(s string) string {
-	if strings.HasSuffix(s, "List") {
-		return s[:len(s)-4]
-	}
-
-	return s
+	return strings.TrimSuffix(s, "List")
 }
 
 func (r *Watcher) newWatcher(ctx context.Context, resourceVersion string, logger *zap.Logger) (watch.Interface, error) {
@@ -275,7 +286,7 @@ func (r *Watcher) newWatcher(ctx context.Context, resourceVersion string, logger
 		AllowWatchBookmarks: true,
 	}
 
-	objGVR := schema.GroupVersionResource{Group: r.apiGroup, Version: "v1", Resource: r.resourceName}
+	objGVR := r.gvr()
 
 	w, err := r.dynamicClient.Resource(objGVR).Namespace(metav1.NamespaceAll).Watch(ctx, watchOptions)
 	if err != nil {
@@ -362,8 +373,8 @@ func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutati
 		return "", fmt.Errorf("failed to convert runtime.Object to metav1.ObjectMeta: %w", err)
 	}
 
-	resource := event.Object.GetObjectKind().GroupVersionKind().Kind
-	metadataObj := controller.ConvertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resource)
+	resourceGvk := event.Object.GetObjectKind().GroupVersionKind()
+	metadataObj := controller.ConvertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resourceGvk.Kind, resourceGvk.Group, resourceGvk.Version)
 
 	mutation := r.resourcesClient.CreateMutationObject(metadataObj, event.Type)
 
@@ -373,5 +384,5 @@ func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutati
 	case mutationChan <- mutation:
 	}
 
-	return convertedData.GetResourceVersion(), nil
+	return metadataObj.GetResourceVersion(), nil
 }

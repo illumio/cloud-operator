@@ -431,6 +431,8 @@ type KubernetesObjectData struct {
 	OwnerReferences []*KubernetesOwnerReference `protobuf:"bytes,7,rep,name=owner_references,json=ownerReferences,proto3" json:"owner_references,omitempty"`
 	ResourceVersion string                      `protobuf:"bytes,8,opt,name=resource_version,json=resourceVersion,proto3" json:"resource_version,omitempty"`
 	Uid             string                      `protobuf:"bytes,9,opt,name=uid,proto3" json:"uid,omitempty"`
+	ApiGroup        string                      `protobuf:"bytes,10,opt,name=api_group,json=apiGroup,proto3" json:"api_group,omitempty"`
+	ApiVersion      string                      `protobuf:"bytes,11,opt,name=api_version,json=apiVersion,proto3" json:"api_version,omitempty"`
 	// Types that are valid to be assigned to KindSpecific:
 	//
 	//	*KubernetesObjectData_Pod
@@ -534,6 +536,20 @@ func (x *KubernetesObjectData) GetResourceVersion() string {
 func (x *KubernetesObjectData) GetUid() string {
 	if x != nil {
 		return x.Uid
+	}
+	return ""
+}
+
+func (x *KubernetesObjectData) GetApiGroup() string {
+	if x != nil {
+		return x.ApiGroup
+	}
+	return ""
+}
+
+func (x *KubernetesObjectData) GetApiVersion() string {
+	if x != nil {
+		return x.ApiVersion
 	}
 	return ""
 }
@@ -5351,7 +5367,7 @@ var File_illumio_cloud_k8sclustersync_v1_k8s_info_proto protoreflect.FileDescrip
 const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\n" +
 	".illumio/cloud/k8sclustersync/v1/k8s_info.proto\x12\x1fillumio.cloud.k8sclustersync.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1egoogle/protobuf/wrappers.proto\"\v\n" +
-	"\tKeepalive\"\x81\v\n" +
+	"\tKeepalive\"\xbf\v\n" +
 	"\x14KubernetesObjectData\x12h\n" +
 	"\vannotations\x18\x01 \x03(\v2F.illumio.cloud.k8sclustersync.v1.KubernetesObjectData.AnnotationsEntryR\vannotations\x12I\n" +
 	"\x12creation_timestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x11creationTimestamp\x12\x12\n" +
@@ -5361,7 +5377,11 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\tnamespace\x18\x06 \x01(\tH\x01R\tnamespace\x88\x01\x01\x12d\n" +
 	"\x10owner_references\x18\a \x03(\v29.illumio.cloud.k8sclustersync.v1.KubernetesOwnerReferenceR\x0fownerReferences\x12)\n" +
 	"\x10resource_version\x18\b \x01(\tR\x0fresourceVersion\x12\x10\n" +
-	"\x03uid\x18\t \x01(\tR\x03uid\x12F\n" +
+	"\x03uid\x18\t \x01(\tR\x03uid\x12\x1b\n" +
+	"\tapi_group\x18\n" +
+	" \x01(\tR\bapiGroup\x12\x1f\n" +
+	"\vapi_version\x18\v \x01(\tR\n" +
+	"apiVersion\x12F\n" +
 	"\x03pod\x18d \x01(\v22.illumio.cloud.k8sclustersync.v1.KubernetesPodDataH\x00R\x03pod\x12I\n" +
 	"\x04node\x18e \x01(\v23.illumio.cloud.k8sclustersync.v1.KubernetesNodeDataH\x00R\x04node\x12R\n" +
 	"\aservice\x18f \x01(\v26.illumio.cloud.k8sclustersync.v1.KubernetesServiceDataH\x00R\aservice\x12e\n" +

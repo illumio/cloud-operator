@@ -31,9 +31,15 @@ var resourceList = []string{
 	"statefulsets",
 }
 
-// buildResourceApiGroupMap creates a mapping between Kubernetes resources and their API groups.
-func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface, logger *zap.Logger) (map[string]string, error) {
-	resourceAPIGroupMap := make(map[string]string)
+// ResourceInfo holds the API group and preferred version for a resource.
+type ResourceInfo struct {
+	Group   string
+	Version string
+}
+
+// buildResourceApiGroupMap creates a mapping between Kubernetes resources and their API groups with preferred versions.
+func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface, logger *zap.Logger) (map[string]ResourceInfo, error) {
+	resourceAPIGroupMap := make(map[string]ResourceInfo)
 
 	resourceSet := make(map[string]struct{})
 	for _, resource := range resources {
@@ -50,28 +56,28 @@ func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface
 	}
 
 	for _, group := range apiGroups.Groups {
-		for _, version := range group.Versions {
-			resourceList, err := discoveryClient.ServerResourcesForGroupVersion(version.GroupVersion)
-			if err != nil {
-				if apierrors.IsForbidden(err) {
-					continue
-				} else {
-					return nil, err
-				}
+		if group.Name == "metrics.k8s.io" {
+			logger.Debug("Skipping metrics.k8s.io group as it causes issues with discovery")
+
+			continue
+		}
+
+		// Query only the preferred version rather than iterating all group.Versions.
+		// All resources in our resource list always present in the preferred version,
+		resourceList, err := discoveryClient.ServerResourcesForGroupVersion(group.PreferredVersion.GroupVersion)
+		if err != nil {
+			if apierrors.IsForbidden(err) {
+				continue
 			}
 
-			for _, resource := range resourceList.APIResources {
-				if _, exists := resourceSet[resource.Name]; exists {
-					if group.Name == "metrics.k8s.io" {
-						logger.Info("Skipping this as it causes issues with discovery",
-							zap.String("group", group.Name),
-							zap.String("resource", resource.Name),
-						)
+			return nil, err
+		}
 
-						continue
-					}
-
-					resourceAPIGroupMap[resource.Name] = group.Name
+		for _, resource := range resourceList.APIResources {
+			if _, exists := resourceSet[resource.Name]; exists {
+				resourceAPIGroupMap[resource.Name] = ResourceInfo{
+					Group:   group.Name,
+					Version: group.PreferredVersion.Version,
 				}
 			}
 		}
@@ -81,7 +87,8 @@ func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface
 }
 
 type watcherInfo struct {
-	resource        string
+	resource        string // plural-lowercase (e.g., "pods")
 	apiGroup        string
+	apiVersion      string
 	resourceVersion string
 }
