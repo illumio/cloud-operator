@@ -215,8 +215,8 @@ func (s *ConfigClientTestSuite) TestRun_ResourceDataDuringSnapshot() {
 	s.mockStream.AssertExpectations(s.T())
 
 	// Verify object was stored in cache
-	obj, ok := s.client.cache.Get("policy-1")
-	s.True(ok)
+	obj := s.client.cache.Get("policy-1")
+	s.NotNil(obj)
 	s.Equal("allow-web", obj.GetName())
 }
 
@@ -247,8 +247,7 @@ func (s *ConfigClientTestSuite) TestRun_ResourceDataAfterSnapshotComplete() {
 	s.mockStream.AssertExpectations(s.T())
 
 	// Verify object was NOT stored (ResourceData after snapshot complete is ignored)
-	_, ok := s.client.cache.Get("policy-late")
-	s.False(ok)
+	s.Nil(s.client.cache.Get("policy-late"))
 }
 
 func (s *ConfigClientTestSuite) TestRun_SnapshotComplete() {
@@ -270,13 +269,13 @@ func (s *ConfigClientTestSuite) TestRun_SnapshotComplete() {
 	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
-	s.False(s.client.cache.IsSnapshotComplete())
+	s.False(s.client.cache.NotifyReady())
 
 	err := s.client.Run(context.Background())
 
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
-	s.True(s.client.cache.IsSnapshotComplete())
+	s.True(s.client.cache.NotifyReady())
 	s.Equal(1, s.client.cache.Len())
 }
 
@@ -295,7 +294,7 @@ func (s *ConfigClientTestSuite) TestRun_DuplicateSnapshotComplete() {
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
 	// Should still be complete (duplicate ignored, no error)
-	s.True(s.client.cache.IsSnapshotComplete())
+	s.True(s.client.cache.NotifyReady())
 }
 
 func (s *ConfigClientTestSuite) TestRun_MutationBeforeSnapshotComplete() {
@@ -320,8 +319,7 @@ func (s *ConfigClientTestSuite) TestRun_MutationBeforeSnapshotComplete() {
 	s.mockStream.AssertExpectations(s.T())
 
 	// Verify mutation was ignored (before snapshot complete)
-	_, ok := s.client.cache.Get("policy-early")
-	s.False(ok)
+	s.Nil(s.client.cache.Get("policy-early"))
 
 	// Stats should NOT be incremented for ignored mutations
 	_, _, _, configuredObjectMutations := s.stats.GetAndResetStats()
@@ -357,8 +355,8 @@ func (s *ConfigClientTestSuite) TestRun_MutationCreate() {
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
 
-	obj, ok := s.client.cache.Get("policy-new")
-	s.True(ok)
+	obj := s.client.cache.Get("policy-new")
+	s.NotNil(obj)
 	s.Equal("new-policy", obj.GetName())
 
 	// Stats should be incremented
@@ -404,8 +402,8 @@ func (s *ConfigClientTestSuite) TestRun_MutationUpdate() {
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
 
-	obj, ok := s.client.cache.Get("policy-1")
-	s.True(ok)
+	obj := s.client.cache.Get("policy-1")
+	s.NotNil(obj)
 	s.Equal("updated-name", obj.GetName())
 
 	// Stats should be incremented
@@ -450,8 +448,7 @@ func (s *ConfigClientTestSuite) TestRun_MutationDelete() {
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
 
-	_, ok := s.client.cache.Get("policy-1")
-	s.False(ok)
+	s.Nil(s.client.cache.Get("policy-1"))
 	s.Equal(0, s.client.cache.Len())
 
 	// Stats should be incremented
@@ -519,18 +516,17 @@ func (s *ConfigClientTestSuite) TestRun_FullSnapshotThenMutationsFlow() {
 	s.mockStream.AssertExpectations(s.T())
 
 	// Verify final state
-	s.True(s.client.cache.IsSnapshotComplete())
+	s.True(s.client.cache.NotifyReady())
 	s.Equal(2, s.client.cache.Len()) // p1 (updated) and p3, p2 was deleted
 
-	obj1, ok := s.client.cache.Get("p1")
-	s.True(ok)
+	obj1 := s.client.cache.Get("p1")
+	s.NotNil(obj1)
 	s.Equal("policy-1-updated", obj1.GetName())
 
-	_, ok = s.client.cache.Get("p2")
-	s.False(ok) // Deleted
+	s.Nil(s.client.cache.Get("p2")) // Deleted
 
-	obj3, ok := s.client.cache.Get("p3")
-	s.True(ok)
+	obj3 := s.client.cache.Get("p3")
+	s.NotNil(obj3)
 	s.Equal("policy-3", obj3.GetName())
 
 	// Stats: 3 mutations (create, update, delete)
@@ -555,7 +551,7 @@ func (s *ConfigClientTestSuite) TestRun_EmptySnapshot() {
 	s.mockStream.AssertExpectations(s.T())
 
 	// Snapshot complete with empty cache is valid
-	s.True(s.client.cache.IsSnapshotComplete())
+	s.True(s.client.cache.NotifyReady())
 	s.Equal(0, s.client.cache.Len())
 }
 
@@ -608,8 +604,8 @@ func (s *ConfigClientTestSuite) TestRun_ResourceDataWithEmptyId() {
 	s.mockStream.AssertExpectations(s.T())
 
 	// Object stored with empty string key (edge case but valid Go behavior)
-	obj, ok := s.client.cache.Get("")
-	s.True(ok)
+	obj := s.client.cache.Get("")
+	s.NotNil(obj)
 	s.Equal("policy-with-empty-id", obj.GetName())
 }
 
