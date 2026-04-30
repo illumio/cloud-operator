@@ -16,7 +16,7 @@ import (
 // Access patterns:
 // 1. For snapshot ingestion, caller manages locking directly:
 //	cache.Mutex.Lock()
-//	cache.ClearLocked()
+//	cache.Reset()
 //	cache.InsertLocked(id, obj)
 //	cache.NotifyReady()
 //	cache.Mutex.Unlock()

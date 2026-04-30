@@ -22,17 +22,6 @@ func isReady(c *ConfiguredObjectCache) bool {
 	}
 }
 
-// beginSnapshot is a test helper that locks and clears the cache.
-func beginSnapshot(c *ConfiguredObjectCache) {
-	c.Mutex.Lock()
-	c.ClearLocked()
-}
-
-// endSnapshot is a test helper that signals ready and unlocks the cache.
-func endSnapshot(c *ConfiguredObjectCache) {
-	c.NotifyReady()
-	c.Mutex.Unlock()
-}
 
 func TestNewConfiguredObjectCache(t *testing.T) {
 	cache := NewConfiguredObjectCache()
@@ -143,7 +132,7 @@ func TestBeginEndSnapshot(t *testing.T) {
 
 	// Snapshot ingestion - caller manages lock directly
 	cache.Mutex.Lock()
-	cache.ClearLocked()
+	cache.Reset()
 	cache.InsertLocked("id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1"})
 	cache.InsertLocked("id-2", &pb.ConfiguredKubernetesObjectData{Id: "id-2"})
 	cache.NotifyReady()
@@ -153,7 +142,7 @@ func TestBeginEndSnapshot(t *testing.T) {
 	assert.Equal(t, 2, cache.Len())
 }
 
-func TestClearLockedClearsCache(t *testing.T) {
+func TestResetClearsCache(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	// Add some data and complete first snapshot
@@ -164,9 +153,9 @@ func TestClearLockedClearsCache(t *testing.T) {
 
 	assert.Equal(t, 1, cache.Len())
 
-	// New snapshot (simulates reconnect) - ClearLocked should clear
+	// New snapshot (simulates reconnect) - Reset should clear
 	cache.Mutex.Lock()
-	cache.ClearLocked()
+	cache.Reset()
 	assert.Equal(t, 0, cache.LenLocked())
 	cache.Mutex.Unlock()
 }
@@ -225,8 +214,10 @@ func TestReadyChannelBlocksUntilSnapshotComplete(t *testing.T) {
 	}
 
 	// Complete snapshot
-	beginSnapshot(cache)
-	endSnapshot(cache)
+	cache.Mutex.Lock()
+	cache.Reset()
+	cache.NotifyReady()
+	cache.Mutex.Unlock()
 
 	// Now goroutine should unblock
 	<-done
@@ -236,7 +227,8 @@ func TestConcurrentReadersBlockedDuringSnapshot(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	// Begin snapshot - acquires write lock
-	beginSnapshot(cache)
+	cache.Mutex.Lock()
+	cache.Reset()
 
 	// Try to read in another goroutine - should block
 	readStarted := make(chan struct{})
@@ -259,7 +251,8 @@ func TestConcurrentReadersBlockedDuringSnapshot(t *testing.T) {
 	}
 
 	// End snapshot - releases lock
-	endSnapshot(cache)
+	cache.NotifyReady()
+	cache.Mutex.Unlock()
 
 	// Now reader should complete
 	<-readDone
@@ -271,10 +264,12 @@ func TestSnapshotThenMutationFlow(t *testing.T) {
 	// Snapshot phase
 	assert.False(t, isReady(cache))
 
-	beginSnapshot(cache)
+	cache.Mutex.Lock()
+	cache.Reset()
 	cache.InsertLocked("policy-1", &pb.ConfiguredKubernetesObjectData{Id: "policy-1", Name: "allow-web"})
 	cache.InsertLocked("policy-2", &pb.ConfiguredKubernetesObjectData{Id: "policy-2", Name: "deny-db"})
-	endSnapshot(cache)
+	cache.NotifyReady()
+	cache.Mutex.Unlock()
 
 	assert.True(t, isReady(cache))
 	assert.Equal(t, 2, cache.Len())
@@ -299,8 +294,10 @@ func TestConcurrentMutationsAfterSnapshot(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	// Complete initial snapshot
-	beginSnapshot(cache)
-	endSnapshot(cache)
+	cache.Mutex.Lock()
+	cache.Reset()
+	cache.NotifyReady()
+	cache.Mutex.Unlock()
 
 	var wg sync.WaitGroup
 
@@ -346,21 +343,25 @@ func TestMultipleSnapshots(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	// First snapshot
-	beginSnapshot(cache)
+	cache.Mutex.Lock()
+	cache.Reset()
 	cache.InsertLocked("id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1", Name: "v1"})
-	endSnapshot(cache)
+	cache.NotifyReady()
+	cache.Mutex.Unlock()
 
 	assert.Equal(t, 1, cache.Len())
 	obj := cache.Get("id-1")
 	assert.Equal(t, "v1", obj.GetName())
 
 	// Second snapshot (simulates reconnect) - should clear and reset
-	beginSnapshot(cache)
+	cache.Mutex.Lock()
+	cache.Reset()
 	assert.Equal(t, 0, cache.LenLocked()) // Cleared - use LenLocked since we hold the lock
 
 	cache.InsertLocked("id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1", Name: "v2"})
 	cache.InsertLocked("id-2", &pb.ConfiguredKubernetesObjectData{Id: "id-2", Name: "new"})
-	endSnapshot(cache)
+	cache.NotifyReady()
+	cache.Mutex.Unlock()
 
 	assert.Equal(t, 2, cache.Len())
 	obj = cache.Get("id-1")
