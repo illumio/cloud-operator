@@ -23,6 +23,7 @@ type Factory struct {
 	VerboseDebugging   bool
 	BufferedGrpcSyncer *logging.BufferedGrpcWriteSyncer
 	Stats              *stream.Stats
+	Cache              *cache.ConfiguredObjectCache
 }
 
 // NewStreamClient creates a new configuration stream client.
@@ -42,7 +43,7 @@ func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnI
 		verboseDebugging:   f.VerboseDebugging,
 		bufferedGrpcSyncer: f.BufferedGrpcSyncer,
 		stats:              f.Stats,
-		cache:              cache.NewConfiguredObjectCache(),
+		cache:              f.Cache,
 	}, nil
 }
 
