@@ -18,6 +18,16 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 )
 
+// isReady is a test helper to check if the cache's Ready channel is closed.
+func isReady(c *cache.ConfiguredObjectCache) bool {
+	select {
+	case <-c.Ready():
+		return true
+	default:
+		return false
+	}
+}
+
 // mockConfigurationStream mocks the stream.ConfigurationStream interface.
 type mockConfigurationStream struct {
 	mock.Mock
@@ -269,13 +279,13 @@ func (s *ConfigClientTestSuite) TestRun_SnapshotComplete() {
 	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
-	s.False(s.client.cache.NotifyReady())
+	s.False(isReady(s.client.cache))
 
 	err := s.client.Run(context.Background())
 
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
-	s.True(s.client.cache.NotifyReady())
+	s.True(isReady(s.client.cache))
 	s.Equal(1, s.client.cache.Len())
 }
 
@@ -294,7 +304,7 @@ func (s *ConfigClientTestSuite) TestRun_DuplicateSnapshotComplete() {
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
 	// Should still be complete (duplicate ignored, no error)
-	s.True(s.client.cache.NotifyReady())
+	s.True(isReady(s.client.cache))
 }
 
 func (s *ConfigClientTestSuite) TestRun_MutationBeforeSnapshotComplete() {
@@ -516,7 +526,7 @@ func (s *ConfigClientTestSuite) TestRun_FullSnapshotThenMutationsFlow() {
 	s.mockStream.AssertExpectations(s.T())
 
 	// Verify final state
-	s.True(s.client.cache.NotifyReady())
+	s.True(isReady(s.client.cache))
 	s.Equal(2, s.client.cache.Len()) // p1 (updated) and p3, p2 was deleted
 
 	obj1 := s.client.cache.Get("p1")
@@ -551,7 +561,7 @@ func (s *ConfigClientTestSuite) TestRun_EmptySnapshot() {
 	s.mockStream.AssertExpectations(s.T())
 
 	// Snapshot complete with empty cache is valid
-	s.True(s.client.cache.NotifyReady())
+	s.True(isReady(s.client.cache))
 	s.Equal(0, s.client.cache.Len())
 }
 

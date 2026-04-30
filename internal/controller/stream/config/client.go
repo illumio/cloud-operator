@@ -38,19 +38,31 @@ type configClient struct {
 	closed bool
 }
 
+// isSnapshotComplete checks if the cache has completed its first snapshot.
+func (c *configClient) isSnapshotComplete() bool {
+	select {
+	case <-c.cache.Ready():
+		return true
+	default:
+		return false
+	}
+}
+
 // Run receives configuration updates from the server until the stream closes.
 func (c *configClient) Run(ctx context.Context) error {
-	// Begin snapshot - locks cache and clears it
-	// Readers are blocked until EndSnapshot is called
-	c.cache.BeginSnapshot()
+	// Lock cache writes, and clear for new snapshot
+	// Readers are blocked until we unlock
+	c.cache.Mutex.Lock()
+	c.cache.Reset()
+
 	c.logger.Debug("Started configuration snapshot, cache locked")
 
 	for {
 		select {
 		case <-ctx.Done():
 			// If we haven't completed snapshot, unlock before returning
-			if !c.cache.NotifyReady() {
-				c.cache.EndSnapshot()
+			if !c.isSnapshotComplete() {
+				c.cache.Mutex.Unlock()
 			}
 
 			return ctx.Err()
@@ -62,8 +74,8 @@ func (c *configClient) Run(ctx context.Context) error {
 			c.logger.Info("Server closed the GetConfigurationUpdates stream")
 
 			// If we haven't completed snapshot, unlock before returning
-			if !c.cache.NotifyReady() {
-				c.cache.EndSnapshot()
+			if !c.isSnapshotComplete() {
+				c.cache.Mutex.Unlock()
 			}
 
 			return nil
@@ -73,8 +85,8 @@ func (c *configClient) Run(ctx context.Context) error {
 			c.logger.Error("Configuration stream terminated", zap.Error(err))
 
 			// If we haven't completed snapshot, unlock before returning
-			if !c.cache.NotifyReady() {
-				c.cache.EndSnapshot()
+			if !c.isSnapshotComplete() {
+				c.cache.Mutex.Unlock()
 			}
 
 			return err
@@ -93,13 +105,13 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 		c.handleUpdateConfiguration(update.UpdateConfiguration)
 
 	case *pb.GetConfigurationUpdatesResponse_ResourceData:
-		if c.cache.NotifyReady() {
+		if c.isSnapshotComplete() {
 			c.logger.Warn("Received ResourceData after snapshot complete, ignoring")
 
 			return nil
 		}
 
-		// During snapshot, we hold the lock - use unlocked method
+		// During snapshot, we hold the lock
 		c.cache.InsertLocked(update.ResourceData.GetId(), update.ResourceData)
 		c.logger.Debug("Stored configured object from snapshot",
 			zap.String("id", update.ResourceData.GetId()),
@@ -107,20 +119,22 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 		)
 
 	case *pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete:
-		if c.cache.NotifyReady() {
+		if c.isSnapshotComplete() {
 			c.logger.Warn("Received duplicate ResourceSnapshotComplete, ignoring")
 
 			return nil
 		}
 
-		// End snapshot - unlocks cache and signals ready
-		c.cache.EndSnapshot()
+		// Snapshot complete - signal ready and release lock
+		c.cache.NotifyReady()
+		objectCount := c.cache.LenLocked()
+		c.cache.Mutex.Unlock()
 		c.logger.Info("Configuration snapshot complete",
-			zap.Int("object_count", c.cache.Len()),
+			zap.Int("object_count", objectCount),
 		)
 
 	case *pb.GetConfigurationUpdatesResponse_ResourceMutation:
-		if !c.cache.NotifyReady() {
+		if !c.isSnapshotComplete() {
 			c.logger.Warn("Received ResourceMutation before snapshot complete, ignoring")
 
 			return nil

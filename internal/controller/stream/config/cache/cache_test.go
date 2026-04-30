@@ -12,13 +12,35 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
+// isReady is a test helper to check if the cache's Ready channel is closed.
+func isReady(c *ConfiguredObjectCache) bool {
+	select {
+	case <-c.Ready():
+		return true
+	default:
+		return false
+	}
+}
+
+// beginSnapshot is a test helper that locks and clears the cache.
+func beginSnapshot(c *ConfiguredObjectCache) {
+	c.Mutex.Lock()
+	c.ClearLocked()
+}
+
+// endSnapshot is a test helper that signals ready and unlocks the cache.
+func endSnapshot(c *ConfiguredObjectCache) {
+	c.NotifyReady()
+	c.Mutex.Unlock()
+}
+
 func TestNewConfiguredObjectCache(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	assert.NotNil(t, cache)
 	assert.NotNil(t, cache.objects)
 	assert.Equal(t, 0, cache.Len())
-	assert.False(t, cache.NotifyReady())
+	assert.False(t, isReady(cache))
 }
 
 func TestInsert(t *testing.T) {
@@ -117,36 +139,36 @@ func TestBeginEndSnapshot(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	// Initially not complete
-	assert.False(t, cache.NotifyReady())
+	assert.False(t, isReady(cache))
 
-	// Begin snapshot - locks cache
-	cache.BeginSnapshot()
-
-	// Insert during snapshot (unlocked method since we hold lock)
+	// Snapshot ingestion - caller manages lock directly
+	cache.Mutex.Lock()
+	cache.ClearLocked()
 	cache.InsertLocked("id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1"})
 	cache.InsertLocked("id-2", &pb.ConfiguredKubernetesObjectData{Id: "id-2"})
+	cache.NotifyReady()
+	cache.Mutex.Unlock()
 
-	// End snapshot - unlocks cache and signals ready
-	cache.EndSnapshot()
-
-	assert.True(t, cache.NotifyReady())
+	assert.True(t, isReady(cache))
 	assert.Equal(t, 2, cache.Len())
 }
 
-func TestBeginSnapshotClearsCache(t *testing.T) {
+func TestClearLockedClearsCache(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	// Add some data and complete first snapshot
-	cache.BeginSnapshot()
+	cache.Mutex.Lock()
 	cache.InsertLocked("id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1"})
-	cache.EndSnapshot()
+	cache.NotifyReady()
+	cache.Mutex.Unlock()
 
 	assert.Equal(t, 1, cache.Len())
 
-	// Begin new snapshot (simulates reconnect) - should clear
-	cache.BeginSnapshot()
-	assert.Equal(t, 0, cache.LenUnlocked()) // Use LenUnlocked since we hold the lock
-	cache.EndSnapshot()
+	// New snapshot (simulates reconnect) - ClearLocked should clear
+	cache.Mutex.Lock()
+	cache.ClearLocked()
+	assert.Equal(t, 0, cache.LenLocked())
+	cache.Mutex.Unlock()
 }
 
 func TestReadyChannel(t *testing.T) {
@@ -161,8 +183,7 @@ func TestReadyChannel(t *testing.T) {
 	}
 
 	// Complete the snapshot
-	cache.BeginSnapshot()
-	cache.EndSnapshot()
+	cache.NotifyReady()
 
 	// Ready channel should be closed now
 	select {
@@ -173,22 +194,16 @@ func TestReadyChannel(t *testing.T) {
 	}
 }
 
-func TestReadyChannelClosedOnlyOnce(t *testing.T) {
+func TestMarkReadyIdempotent(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
-	// First snapshot
-	cache.BeginSnapshot()
-	cache.EndSnapshot()
+	// First call closes channel
+	cache.NotifyReady()
+	assert.True(t, isReady(cache))
 
-	// Channel should be closed
-	assert.True(t, cache.NotifyReady())
-
-	// Second snapshot (reconnect) - should not panic
-	cache.BeginSnapshot()
-	cache.EndSnapshot()
-
-	// Still complete
-	assert.True(t, cache.NotifyReady())
+	// Second call should not panic
+	cache.NotifyReady()
+	assert.True(t, isReady(cache))
 }
 
 func TestReadyChannelBlocksUntilSnapshotComplete(t *testing.T) {
@@ -210,8 +225,8 @@ func TestReadyChannelBlocksUntilSnapshotComplete(t *testing.T) {
 	}
 
 	// Complete snapshot
-	cache.BeginSnapshot()
-	cache.EndSnapshot()
+	beginSnapshot(cache)
+	endSnapshot(cache)
 
 	// Now goroutine should unblock
 	<-done
@@ -221,7 +236,7 @@ func TestConcurrentReadersBlockedDuringSnapshot(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	// Begin snapshot - acquires write lock
-	cache.BeginSnapshot()
+	beginSnapshot(cache)
 
 	// Try to read in another goroutine - should block
 	readStarted := make(chan struct{})
@@ -244,7 +259,7 @@ func TestConcurrentReadersBlockedDuringSnapshot(t *testing.T) {
 	}
 
 	// End snapshot - releases lock
-	cache.EndSnapshot()
+	endSnapshot(cache)
 
 	// Now reader should complete
 	<-readDone
@@ -254,14 +269,14 @@ func TestSnapshotThenMutationFlow(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	// Snapshot phase
-	assert.False(t, cache.NotifyReady())
+	assert.False(t, isReady(cache))
 
-	cache.BeginSnapshot()
+	beginSnapshot(cache)
 	cache.InsertLocked("policy-1", &pb.ConfiguredKubernetesObjectData{Id: "policy-1", Name: "allow-web"})
 	cache.InsertLocked("policy-2", &pb.ConfiguredKubernetesObjectData{Id: "policy-2", Name: "deny-db"})
-	cache.EndSnapshot()
+	endSnapshot(cache)
 
-	assert.True(t, cache.NotifyReady())
+	assert.True(t, isReady(cache))
 	assert.Equal(t, 2, cache.Len())
 
 	// Mutation phase - create (uses locked method)
@@ -284,8 +299,8 @@ func TestConcurrentMutationsAfterSnapshot(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	// Complete initial snapshot
-	cache.BeginSnapshot()
-	cache.EndSnapshot()
+	beginSnapshot(cache)
+	endSnapshot(cache)
 
 	var wg sync.WaitGroup
 
@@ -308,7 +323,7 @@ func TestConcurrentMutationsAfterSnapshot(t *testing.T) {
 			defer wg.Done()
 			_ = cache.Values()
 			_ = cache.Len()
-			_ = cache.NotifyReady()
+			_ = isReady(cache)
 		}()
 	}
 
@@ -324,33 +339,33 @@ func TestConcurrentMutationsAfterSnapshot(t *testing.T) {
 	wg.Wait()
 
 	// Should not panic or deadlock
-	assert.True(t, cache.NotifyReady())
+	assert.True(t, isReady(cache))
 }
 
 func TestMultipleSnapshots(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	// First snapshot
-	cache.BeginSnapshot()
+	beginSnapshot(cache)
 	cache.InsertLocked("id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1", Name: "v1"})
-	cache.EndSnapshot()
+	endSnapshot(cache)
 
 	assert.Equal(t, 1, cache.Len())
 	obj := cache.Get("id-1")
 	assert.Equal(t, "v1", obj.GetName())
 
 	// Second snapshot (simulates reconnect) - should clear and reset
-	cache.BeginSnapshot()
-	assert.Equal(t, 0, cache.LenUnlocked()) // Cleared - use LenUnlocked since we hold the lock
+	beginSnapshot(cache)
+	assert.Equal(t, 0, cache.LenLocked()) // Cleared - use LenLocked since we hold the lock
 
 	cache.InsertLocked("id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1", Name: "v2"})
 	cache.InsertLocked("id-2", &pb.ConfiguredKubernetesObjectData{Id: "id-2", Name: "new"})
-	cache.EndSnapshot()
+	endSnapshot(cache)
 
 	assert.Equal(t, 2, cache.Len())
 	obj = cache.Get("id-1")
 	assert.Equal(t, "v2", obj.GetName())
 
 	// Ready should still be true (channel was closed on first snapshot)
-	assert.True(t, cache.NotifyReady())
+	assert.True(t, isReady(cache))
 }
