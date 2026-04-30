@@ -34,6 +34,7 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/logging"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config"
+	configcache "github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cache"
 	"github.com/illumio/cloud-operator/internal/controller/stream/logs"
@@ -220,6 +221,7 @@ func main() {
 		viper.GetInt("flow_cache_max_size"),
 		make(chan pb.Flow, viper.GetInt("flow_cache_channel_buffer_size")),
 	)
+	configuredObjectCache := configcache.NewConfiguredObjectCache()
 
 	// Create TlsAuthProps once - persists DisableTLS/DisableALPN flags across reconnections
 	tlsAuthProps := &tls.AuthProperties{}
@@ -251,6 +253,7 @@ func main() {
 					VerboseDebugging:   viper.GetBool("verbose_debugging"),
 					BufferedGrpcSyncer: bufferedGrpcSyncer,
 					Stats:              stats,
+					Cache:              configuredObjectCache,
 				},
 				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_configuration"),
 			},
