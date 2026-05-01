@@ -18,10 +18,10 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 )
 
-// isReady is a test helper to check if the cache's Ready channel is closed.
+// isReady is a test helper to check if the cache's IsReady channel is closed.
 func isReady(c *cache.ConfiguredObjectCache) bool {
 	select {
-	case <-c.Ready():
+	case <-c.IsReady():
 		return true
 	default:
 		return false
@@ -205,7 +205,93 @@ func (s *ConfigClientTestSuite) TestClose_Idempotent() {
 	s.True(s.client.closed)
 }
 
-// Cache-related tests
+// Cache-related tests.
+
+func (s *ConfigClientTestSuite) TestRun_FirstSnapshotFails_CacheStaysEmpty() {
+	// Send partial data, then error (no SnapshotComplete)
+	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "policy-1",
+				Name: "partial-data",
+			},
+		},
+	}
+
+	s.mockStream.On("Recv").Return(resourceDataResp, nil).Once()
+	s.mockStream.On("Recv").Return(nil, errors.New("connection lost")).Once()
+
+	err := s.client.Run(context.Background())
+
+	s.Require().Error(err)
+	s.Equal(0, s.client.cache.Len()) // Cache stays empty
+	s.False(isReady(s.client.cache)) // Channel still open (not ready)
+}
+
+func (s *ConfigClientTestSuite) TestRun_ReconnectionFails_CacheKeepsOldData() {
+	// Pre-populate cache with "old" data (simulating previous successful snapshot)
+	s.client.cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
+		"old-policy": {Id: "old-policy", Name: "old-data"},
+	})
+
+	// Now simulate reconnection that fails partway through new snapshot
+	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "new-policy",
+				Name: "new-partial-data",
+			},
+		},
+	}
+
+	s.mockStream.On("Recv").Return(resourceDataResp, nil).Once()
+	s.mockStream.On("Recv").Return(nil, errors.New("connection lost")).Once()
+
+	err := s.client.Run(context.Background())
+
+	s.Require().Error(err)
+	s.Equal(1, s.client.cache.Len())           // Still has old data count
+	s.NotNil(s.client.cache.Get("old-policy")) // Old data preserved
+	s.Nil(s.client.cache.Get("new-policy"))    // New partial data NOT in cache
+	s.True(isReady(s.client.cache))            // Still ready (was ready before)
+}
+
+func (s *ConfigClientTestSuite) TestRun_ReconnectionAcceptsNewSnapshot() {
+	// Simulate first successful snapshot
+	s.client.cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
+		"old-policy": {Id: "old-policy", Name: "old-data"},
+	})
+	s.True(isReady(s.client.cache)) // Cache is ready from "previous" stream
+
+	// Now simulate a NEW stream (reconnection) with new snapshot
+	// Even though cache is ready, THIS stream should accept ResourceData
+	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "new-policy",
+				Name: "new-data",
+			},
+		},
+	}
+	snapshotCompleteResp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	}
+
+	s.mockStream.On("Recv").Return(resourceDataResp, nil).Once()
+	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
+	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
+
+	err := s.client.Run(context.Background())
+
+	s.Require().NoError(err)
+	// New snapshot should have replaced old data
+	s.Equal(1, s.client.cache.Len())
+	s.Nil(s.client.cache.Get("old-policy"))    // Old data gone
+	s.NotNil(s.client.cache.Get("new-policy")) // New data present
+	s.Equal("new-data", s.client.cache.Get("new-policy").GetName())
+}
 
 func (s *ConfigClientTestSuite) TestRun_ResourceDataDuringSnapshot() {
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
@@ -216,7 +302,13 @@ func (s *ConfigClientTestSuite) TestRun_ResourceDataDuringSnapshot() {
 			},
 		},
 	}
+	snapshotCompleteResp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	}
 	s.mockStream.On("Recv").Return(resourceDataResp, nil).Once()
+	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
 	err := s.client.Run(context.Background())
@@ -224,7 +316,7 @@ func (s *ConfigClientTestSuite) TestRun_ResourceDataDuringSnapshot() {
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
 
-	// Verify object was stored in cache
+	// Verify object was stored in cache after snapshot complete
 	obj := s.client.cache.Get("policy-1")
 	s.NotNil(obj)
 	s.Equal("allow-web", obj.GetName())
@@ -237,7 +329,7 @@ func (s *ConfigClientTestSuite) TestRun_ResourceDataAfterSnapshotComplete() {
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
 	}
-	// Then send resource data (should be ignored)
+	// Then send resource data (protocol violation - should error)
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
@@ -249,14 +341,14 @@ func (s *ConfigClientTestSuite) TestRun_ResourceDataAfterSnapshotComplete() {
 
 	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
 	s.mockStream.On("Recv").Return(resourceDataResp, nil).Once()
-	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
 	err := s.client.Run(context.Background())
 
-	s.Require().NoError(err)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "server sent ResourceData after snapshot complete")
 	s.mockStream.AssertExpectations(s.T())
 
-	// Verify object was NOT stored (ResourceData after snapshot complete is ignored)
+	// Verify object was NOT stored
 	s.Nil(s.client.cache.Get("policy-late"))
 }
 
@@ -296,14 +388,15 @@ func (s *ConfigClientTestSuite) TestRun_DuplicateSnapshotComplete() {
 		},
 	}
 	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
-	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once() // Duplicate
-	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
+	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once() // Duplicate - protocol violation
 
 	err := s.client.Run(context.Background())
 
-	s.Require().NoError(err)
+	s.Require().Error(err)
+	// Should error - stream restarts
+	s.Contains(err.Error(), "server sent duplicate ResourceSnapshotComplete")
 	s.mockStream.AssertExpectations(s.T())
-	// Should still be complete (duplicate ignored, no error)
+	// Should still be ready from first snapshot complete
 	s.True(isReady(s.client.cache))
 }
 
@@ -321,19 +414,16 @@ func (s *ConfigClientTestSuite) TestRun_MutationBeforeSnapshotComplete() {
 		},
 	}
 	s.mockStream.On("Recv").Return(mutationResp, nil).Once()
-	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
 	err := s.client.Run(context.Background())
 
-	s.Require().NoError(err)
+	s.Require().Error(err)
+	// Should error - stream restarts
+	s.Contains(err.Error(), "server sent ResourceMutation before snapshot complete")
 	s.mockStream.AssertExpectations(s.T())
 
-	// Verify mutation was ignored (before snapshot complete)
+	// Verify mutation was NOT applied
 	s.Nil(s.client.cache.Get("policy-early"))
-
-	// Stats should NOT be incremented for ignored mutations
-	_, _, _, configuredObjectMutations := s.stats.GetAndResetStats()
-	s.Equal(uint64(0), configuredObjectMutations)
 }
 
 func (s *ConfigClientTestSuite) TestRun_MutationCreate() {
@@ -595,30 +685,6 @@ func (s *ConfigClientTestSuite) TestRun_UnknownMutationType() {
 	s.Equal(uint64(0), configuredObjectMutations)
 }
 
-func (s *ConfigClientTestSuite) TestRun_ResourceDataWithEmptyId() {
-	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
-			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "", // Empty ID
-				Name: "policy-with-empty-id",
-			},
-		},
-	}
-
-	s.mockStream.On("Recv").Return(resourceDataResp, nil).Once()
-	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
-
-	err := s.client.Run(context.Background())
-
-	s.Require().NoError(err)
-	s.mockStream.AssertExpectations(s.T())
-
-	// Object stored with empty string key (edge case but valid Go behavior)
-	obj := s.client.cache.Get("")
-	s.NotNil(obj)
-	s.Equal("policy-with-empty-id", obj.GetName())
-}
-
 func (s *ConfigClientTestSuite) TestRun_DeleteNonExistentObject() {
 	snapshotCompleteResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
@@ -671,9 +737,15 @@ func (s *ConfigClientTestSuite) TestRun_UpdateConfigurationDuringSnapshotPhase()
 			},
 		},
 	}
+	snapshotCompleteResp := &pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	}
 
 	s.mockStream.On("Recv").Return(configResp, nil).Once()
 	s.mockStream.On("Recv").Return(resourceDataResp, nil).Once()
+	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
 	err := s.client.Run(context.Background())

@@ -12,22 +12,15 @@ import (
 
 // ConfiguredObjectCache stores configured Kubernetes objects received from CloudSecure.
 // It tracks the desired state that CloudSecure wants in the cluster.
-
-// Access patterns:
-// 1. For snapshot ingestion, caller manages locking directly:
-//	cache.Mutex.Lock()
-//	cache.Reset()
-//	cache.InsertLocked(id, obj)
-//	cache.NotifyReady()
-//	cache.Mutex.Unlock()
 //
-// 2. For mutations after snapshot, use regular methods which handle locking internally.
-
-// Block on <-cache.Ready() to wait for the first snapshot to complete before reading.
+// Access patterns:
+//   - Snapshot: Build a local map, then call ReplaceAll() to atomically swap it in
+//   - Mutations: Use Insert() and Delete() which handle locking internally
+//   - Reading (for the reconciler): Use Get(), Values(), Len() which handle locking internally
+//
+// Block on <-cache.IsReady() to wait for the first snapshot to complete before reading.
 type ConfiguredObjectCache struct {
-	// Mutex is exported so callers can hold the lock across multiple operations
-	// (e.g., during snapshot ingestion). Use *Locked methods when holding this lock.
-	Mutex sync.RWMutex
+	mutex sync.RWMutex
 
 	// objects maps object ID to its ConfiguredKubernetesObjectData.
 	objects map[string]*pb.ConfiguredKubernetesObjectData
@@ -44,65 +37,62 @@ func NewConfiguredObjectCache() *ConfiguredObjectCache {
 	}
 }
 
-// Ready returns a channel that is closed when the first snapshot is complete.
-// Use <-cache.Ready() to block until the cache has consistent data.
-func (c *ConfiguredObjectCache) Ready() <-chan struct{} {
+// IsReady returns a channel that is closed when the first snapshot is complete.
+// Use <-cache.IsReady() to block until the cache has consistent data.
+func (c *ConfiguredObjectCache) IsReady() <-chan struct{} {
 	return c.ready
 }
 
-// Reset removes all objects from the cache.
-// Caller MUST hold Mutex before calling this method.
-//
-// This method exists because the cache is a singleton with external references
-// (e.g., reconciliation loops waiting on Ready()). On stream reconnection,
-// the client clears the cache to ingest a fresh snapshot rather than creating
-// a new cache instance, which would orphan those references.
-func (c *ConfiguredObjectCache) Reset() {
-	c.objects = make(map[string]*pb.ConfiguredKubernetesObjectData)
-}
+// ReplaceAll atomically replaces all objects in the cache with the provided map.
+// Use this for snapshot ingestion: build a local map, then call ReplaceAll to
+// swap it in. The cache remains consistent until the swap completes.
+// Also marks the cache as ready on first call to indicate cache now has valid data.
+func (c *ConfiguredObjectCache) ReplaceAll(objects map[string]*pb.ConfiguredKubernetesObjectData) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
-// InsertLocked adds or updates an object in the cache when the caller already holds the lock.
-func (c *ConfiguredObjectCache) InsertLocked(id string, obj *pb.ConfiguredKubernetesObjectData) {
-	c.objects[id] = obj
+	c.objects = objects
+
+	// Mark ready (idempotent - safe to call on reconnect)
+	select {
+	case <-c.ready:
+		// Already closed
+	default:
+		close(c.ready)
+	}
 }
 
 // Insert adds or updates an object in the cache.
-// This method handles locking internally - use for mutations after snapshot.
+// Use for mutations after snapshot is complete.
 func (c *ConfiguredObjectCache) Insert(id string, obj *pb.ConfiguredKubernetesObjectData) {
-	c.Mutex.Lock()
-	defer c.Mutex.Unlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
 	c.objects[id] = obj
 }
 
 // Delete removes an object from the cache by ID.
-// This method handles locking internally - use for mutations after snapshot.
+// Use for mutations after snapshot is complete.
 func (c *ConfiguredObjectCache) Delete(id string) {
-	c.Mutex.Lock()
-	defer c.Mutex.Unlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
 	delete(c.objects, id)
 }
 
 // Get retrieves an object by ID. Returns nil if not found.
 func (c *ConfiguredObjectCache) Get(id string) *pb.ConfiguredKubernetesObjectData {
-	c.Mutex.RLock()
-	defer c.Mutex.RUnlock()
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
 
 	return c.objects[id]
 }
 
 // Values returns all objects in the cache, sorted by ID for consistency.
 func (c *ConfiguredObjectCache) Values() []*pb.ConfiguredKubernetesObjectData {
-	c.Mutex.RLock()
-	defer c.Mutex.RUnlock()
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
 
-	return c.valuesLocked()
-}
-
-// valuesLocked returns all objects sorted by ID when the caller already holds the lock.
-// Caller MUST hold at least a read lock.
-func (c *ConfiguredObjectCache) valuesLocked() []*pb.ConfiguredKubernetesObjectData {
 	if len(c.objects) == 0 {
 		return nil
 	}
@@ -117,26 +107,8 @@ func (c *ConfiguredObjectCache) valuesLocked() []*pb.ConfiguredKubernetesObjectD
 
 // Len returns the number of objects in the cache.
 func (c *ConfiguredObjectCache) Len() int {
-	c.Mutex.RLock()
-	defer c.Mutex.RUnlock()
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
 
 	return len(c.objects)
-}
-
-// LenLocked returns the number of objects when the caller already holds the lock.
-// Caller MUST hold at least a read lock.
-func (c *ConfiguredObjectCache) LenLocked() int {
-	return len(c.objects)
-}
-
-// NotifyReady marks the cache as ready, after a consistent snapshot has been
-// successfully inserted into the cache. This method is idempotent.
-// The mutex must be held for writes when calling this method.
-func (c *ConfiguredObjectCache) NotifyReady() {
-	select {
-	case <-c.ready:
-		// The channel is already closed. Do nothing.
-	default:
-		close(c.ready)
-	}
 }

@@ -5,6 +5,7 @@ package cache
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,20 +16,19 @@ import (
 // isReady is a test helper to check if the cache's Ready channel is closed.
 func isReady(c *ConfiguredObjectCache) bool {
 	select {
-	case <-c.Ready():
+	case <-c.IsReady():
 		return true
 	default:
 		return false
 	}
 }
 
-
 func TestNewConfiguredObjectCache(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	assert.NotNil(t, cache)
-	assert.NotNil(t, cache.objects)
 	assert.Equal(t, 0, cache.Len())
+	assert.Nil(t, cache.Values())
 	assert.False(t, isReady(cache))
 }
 
@@ -124,40 +124,57 @@ func TestValuesEmpty(t *testing.T) {
 	assert.Nil(t, list) // Returns nil for empty cache
 }
 
-func TestBeginEndSnapshot(t *testing.T) {
+func TestReplaceAll(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
-	// Initially not complete
+	// Initially not ready
 	assert.False(t, isReady(cache))
 
-	// Snapshot ingestion - caller manages lock directly
-	cache.Mutex.Lock()
-	cache.Reset()
-	cache.InsertLocked("id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1"})
-	cache.InsertLocked("id-2", &pb.ConfiguredKubernetesObjectData{Id: "id-2"})
-	cache.NotifyReady()
-	cache.Mutex.Unlock()
+	// Build snapshot and replace
+	snapshot := map[string]*pb.ConfiguredKubernetesObjectData{
+		"id-1": {Id: "id-1", Name: "policy-1"},
+		"id-2": {Id: "id-2", Name: "policy-2"},
+	}
+	cache.ReplaceAll(snapshot)
 
 	assert.True(t, isReady(cache))
 	assert.Equal(t, 2, cache.Len())
+	assert.Equal(t, "policy-1", cache.Get("id-1").GetName())
+	assert.Equal(t, "policy-2", cache.Get("id-2").GetName())
 }
 
-func TestResetClearsCache(t *testing.T) {
+func TestReplaceAllWithEmptyMap(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
-	// Add some data and complete first snapshot
-	cache.Mutex.Lock()
-	cache.InsertLocked("id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1"})
-	cache.NotifyReady()
-	cache.Mutex.Unlock()
+	// ReplaceAll with empty map should still mark ready
+	cache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
+
+	assert.True(t, isReady(cache))
+	assert.Equal(t, 0, cache.Len())
+}
+
+func TestReplaceAllReplacesExisting(t *testing.T) {
+	cache := NewConfiguredObjectCache()
+
+	// First snapshot
+	snapshot1 := map[string]*pb.ConfiguredKubernetesObjectData{
+		"id-1": {Id: "id-1", Name: "v1"},
+	}
+	cache.ReplaceAll(snapshot1)
 
 	assert.Equal(t, 1, cache.Len())
+	assert.Equal(t, "v1", cache.Get("id-1").GetName())
 
-	// New snapshot (simulates reconnect) - Reset should clear
-	cache.Mutex.Lock()
-	cache.Reset()
-	assert.Equal(t, 0, cache.LenLocked())
-	cache.Mutex.Unlock()
+	// Second snapshot (simulates reconnect) - completely replaces
+	snapshot2 := map[string]*pb.ConfiguredKubernetesObjectData{
+		"id-1": {Id: "id-1", Name: "v2"},
+		"id-2": {Id: "id-2", Name: "new"},
+	}
+	cache.ReplaceAll(snapshot2)
+
+	assert.Equal(t, 2, cache.Len())
+	assert.Equal(t, "v2", cache.Get("id-1").GetName())
+	assert.Equal(t, "new", cache.Get("id-2").GetName())
 }
 
 func TestReadyChannel(t *testing.T) {
@@ -165,34 +182,39 @@ func TestReadyChannel(t *testing.T) {
 
 	// Ready channel should be open (not complete)
 	select {
-	case <-cache.Ready():
+	case <-cache.IsReady():
 		t.Fatal("Ready channel should not be closed yet")
 	default:
 		// Expected
 	}
 
-	// Complete the snapshot
-	cache.NotifyReady()
+	// Complete the snapshot via ReplaceAll
+	cache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
 
 	// Ready channel should be closed now
 	select {
-	case <-cache.Ready():
+	case <-cache.IsReady():
 		// Expected
 	default:
 		t.Fatal("Ready channel should be closed")
 	}
 }
 
-func TestMarkReadyIdempotent(t *testing.T) {
+func TestReplaceAllIdempotentReady(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
-	// First call closes channel
-	cache.NotifyReady()
+	// First call marks ready
+	cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
+		"id-1": {Id: "id-1"},
+	})
 	assert.True(t, isReady(cache))
 
-	// Second call should not panic
-	cache.NotifyReady()
+	// Second call should not panic (idempotent)
+	cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
+		"id-2": {Id: "id-2"},
+	})
 	assert.True(t, isReady(cache))
+	assert.Equal(t, 1, cache.Len()) // Only id-2
 }
 
 func TestReadyChannelBlocksUntilSnapshotComplete(t *testing.T) {
@@ -201,7 +223,7 @@ func TestReadyChannelBlocksUntilSnapshotComplete(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() {
-		<-cache.Ready() // Should block until EndSnapshot
+		<-cache.IsReady() // Should block until ReplaceAll
 		close(done)
 	}()
 
@@ -214,67 +236,28 @@ func TestReadyChannelBlocksUntilSnapshotComplete(t *testing.T) {
 	}
 
 	// Complete snapshot
-	cache.Mutex.Lock()
-	cache.Reset()
-	cache.NotifyReady()
-	cache.Mutex.Unlock()
+	cache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
 
 	// Now goroutine should unblock
 	<-done
 }
 
-func TestConcurrentReadersBlockedDuringSnapshot(t *testing.T) {
-	cache := NewConfiguredObjectCache()
-
-	// Begin snapshot - acquires write lock
-	cache.Mutex.Lock()
-	cache.Reset()
-
-	// Try to read in another goroutine - should block
-	readStarted := make(chan struct{})
-	readDone := make(chan struct{})
-
-	go func() {
-		close(readStarted)
-		_ = cache.Values() // This should block until EndSnapshot
-		close(readDone)
-	}()
-
-	<-readStarted
-
-	// Reader should be blocked
-	select {
-	case <-readDone:
-		t.Fatal("Reader should be blocked during snapshot")
-	default:
-		// Expected - reader is blocked
-	}
-
-	// End snapshot - releases lock
-	cache.NotifyReady()
-	cache.Mutex.Unlock()
-
-	// Now reader should complete
-	<-readDone
-}
-
 func TestSnapshotThenMutationFlow(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
-	// Snapshot phase
+	// Snapshot phase - build local map
 	assert.False(t, isReady(cache))
 
-	cache.Mutex.Lock()
-	cache.Reset()
-	cache.InsertLocked("policy-1", &pb.ConfiguredKubernetesObjectData{Id: "policy-1", Name: "allow-web"})
-	cache.InsertLocked("policy-2", &pb.ConfiguredKubernetesObjectData{Id: "policy-2", Name: "deny-db"})
-	cache.NotifyReady()
-	cache.Mutex.Unlock()
+	snapshot := map[string]*pb.ConfiguredKubernetesObjectData{
+		"policy-1": {Id: "policy-1", Name: "allow-web"},
+		"policy-2": {Id: "policy-2", Name: "deny-db"},
+	}
+	cache.ReplaceAll(snapshot)
 
 	assert.True(t, isReady(cache))
 	assert.Equal(t, 2, cache.Len())
 
-	// Mutation phase - create (uses locked method)
+	// Mutation phase - create
 	cache.Insert("policy-3", &pb.ConfiguredKubernetesObjectData{Id: "policy-3", Name: "new-policy"})
 	assert.Equal(t, 3, cache.Len())
 
@@ -294,10 +277,7 @@ func TestConcurrentMutationsAfterSnapshot(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	// Complete initial snapshot
-	cache.Mutex.Lock()
-	cache.Reset()
-	cache.NotifyReady()
-	cache.Mutex.Unlock()
+	cache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
 
 	var wg sync.WaitGroup
 
@@ -343,30 +323,161 @@ func TestMultipleSnapshots(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	// First snapshot
-	cache.Mutex.Lock()
-	cache.Reset()
-	cache.InsertLocked("id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1", Name: "v1"})
-	cache.NotifyReady()
-	cache.Mutex.Unlock()
+	cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
+		"id-1": {Id: "id-1", Name: "v1"},
+	})
 
 	assert.Equal(t, 1, cache.Len())
-	obj := cache.Get("id-1")
-	assert.Equal(t, "v1", obj.GetName())
+	assert.Equal(t, "v1", cache.Get("id-1").GetName())
 
-	// Second snapshot (simulates reconnect) - should clear and reset
-	cache.Mutex.Lock()
-	cache.Reset()
-	assert.Equal(t, 0, cache.LenLocked()) // Cleared - use LenLocked since we hold the lock
-
-	cache.InsertLocked("id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1", Name: "v2"})
-	cache.InsertLocked("id-2", &pb.ConfiguredKubernetesObjectData{Id: "id-2", Name: "new"})
-	cache.NotifyReady()
-	cache.Mutex.Unlock()
+	// Second snapshot (simulates reconnect) - completely replaces
+	cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
+		"id-1": {Id: "id-1", Name: "v2"},
+		"id-2": {Id: "id-2", Name: "new"},
+	})
 
 	assert.Equal(t, 2, cache.Len())
-	obj = cache.Get("id-1")
-	assert.Equal(t, "v2", obj.GetName())
+	assert.Equal(t, "v2", cache.Get("id-1").GetName())
+	assert.Equal(t, "new", cache.Get("id-2").GetName())
 
-	// Ready should still be true (channel was closed on first snapshot)
+	// Ready should still be true
 	assert.True(t, isReady(cache))
+}
+
+func TestConcurrentReplaceAllAndReads(t *testing.T) {
+	cache := NewConfiguredObjectCache()
+
+	// Initial snapshot
+	cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
+		"id-1": {Id: "id-1", Name: "initial"},
+	})
+
+	var wg sync.WaitGroup
+
+	// Concurrent ReplaceAll calls (simulating rapid reconnects)
+	for i := range 10 {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
+				"id-1": {Id: "id-1", Name: "version-" + string(rune('0'+i))},
+			})
+		}(i)
+	}
+
+	// Concurrent reads
+	for range 100 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = cache.Get("id-1")
+			_ = cache.Values()
+			_ = cache.Len()
+		}()
+	}
+
+	wg.Wait()
+
+	// Should not panic or deadlock
+	assert.True(t, isReady(cache))
+	assert.Equal(t, 1, cache.Len())
+}
+
+func TestAtomicSwap_ReadersNeverSeePartialData(t *testing.T) {
+	cache := NewConfiguredObjectCache()
+
+	// Create two distinct snapshots - each has objects with matching "version" in name
+	snapshotA := map[string]*pb.ConfiguredKubernetesObjectData{
+		"obj-1": {Id: "obj-1", Name: "A-1"},
+		"obj-2": {Id: "obj-2", Name: "A-2"},
+		"obj-3": {Id: "obj-3", Name: "A-3"},
+	}
+	snapshotB := map[string]*pb.ConfiguredKubernetesObjectData{
+		"obj-1": {Id: "obj-1", Name: "B-1"},
+		"obj-2": {Id: "obj-2", Name: "B-2"},
+		"obj-3": {Id: "obj-3", Name: "B-3"},
+	}
+
+	// Start with snapshot A
+	cache.ReplaceAll(snapshotA)
+
+	var wg sync.WaitGroup
+	inconsistentRead := false
+
+	// Writer: swap between A and B repeatedly
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			if i%2 == 0 {
+				cache.ReplaceAll(snapshotB)
+			} else {
+				cache.ReplaceAll(snapshotA)
+			}
+		}
+	}()
+
+	// Readers: verify all objects have same version prefix
+	for r := 0; r < 10; r++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 500; i++ {
+				values := cache.Values()
+				if len(values) == 0 {
+					continue
+				}
+
+				// All objects should have same prefix (A- or B-)
+				firstPrefix := values[0].GetName()[:2]
+				for _, v := range values {
+					if v.GetName()[:2] != firstPrefix {
+						inconsistentRead = true
+						return
+					}
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	assert.False(t, inconsistentRead, "Reader saw mixed data from different snapshots")
+}
+
+func TestAtomicSwap_ReadersNeverBlockForever(t *testing.T) {
+	cache := NewConfiguredObjectCache()
+	cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
+		"id-1": {Id: "id-1", Name: "initial"},
+	})
+
+	// Channel to signal reader completion
+	done := make(chan struct{})
+
+	// Writer: continuously swap data
+	go func() {
+		for i := 0; i < 10000; i++ {
+			cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
+				"id-1": {Id: "id-1", Name: "version"},
+			})
+		}
+	}()
+
+	// Reader: read continuously while writer is swapping
+	go func() {
+		for i := 0; i < 10000; i++ {
+			_ = cache.Values()
+			_ = cache.Get("id-1")
+			_ = cache.Len()
+		}
+		close(done)
+	}()
+
+	// Wait with timeout - if reader blocks forever, test fails
+	select {
+	case <-done:
+		// Success - reader completed
+	case <-time.After(5 * time.Second):
+		t.Fatal("Reader blocked forever - possible deadlock")
+	}
 }

@@ -38,33 +38,18 @@ type configClient struct {
 	closed bool
 }
 
-// isSnapshotComplete checks if the cache has completed its first snapshot.
-func (c *configClient) isSnapshotComplete() bool {
-	select {
-	case <-c.cache.Ready():
-		return true
-	default:
-		return false
-	}
-}
-
 // Run receives configuration updates from the server until the stream closes.
 func (c *configClient) Run(ctx context.Context) error {
-	// Lock cache writes, and clear for new snapshot
-	// Readers are blocked until we unlock
-	c.cache.Mutex.Lock()
-	c.cache.Reset()
+	// Local state for THIS stream (not the cache's global state)
+	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
+	snapshotComplete := false
 
-	c.logger.Debug("Started configuration snapshot, cache locked")
+	c.logger.Debug("Started configuration snapshot ingestion")
 
 	for {
 		select {
 		case <-ctx.Done():
-			// If we haven't completed snapshot, unlock before returning
-			if !c.isSnapshotComplete() {
-				c.cache.Mutex.Unlock()
-			}
-
+			// Just return - cache keeps its previous consistent state
 			return ctx.Err()
 		default:
 		}
@@ -72,72 +57,54 @@ func (c *configClient) Run(ctx context.Context) error {
 		resp, err := c.stream.Recv()
 		if errors.Is(err, io.EOF) {
 			c.logger.Info("Server closed the GetConfigurationUpdates stream")
-
-			// If we haven't completed snapshot, unlock before returning
-			if !c.isSnapshotComplete() {
-				c.cache.Mutex.Unlock()
-			}
-
+			// Just return - cache keeps its previous consistent state
 			return nil
 		}
 
 		if err != nil {
 			c.logger.Error("Configuration stream terminated", zap.Error(err))
-
-			// If we haven't completed snapshot, unlock before returning
-			if !c.isSnapshotComplete() {
-				c.cache.Mutex.Unlock()
-			}
-
+			// Just return - cache keeps its previous consistent state
 			return err
 		}
 
-		if err := c.handleConfigUpdate(resp); err != nil {
+		if err := c.handleConfigUpdate(resp, pendingSnapshot, &snapshotComplete); err != nil {
 			return err
 		}
 	}
 }
 
 // handleConfigUpdate processes a configuration update response.
-func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesResponse) error {
+// snapshotComplete tracks whether this current stream's snapshot has completed.
+func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesResponse, pendingSnapshot map[string]*pb.ConfiguredKubernetesObjectData, snapshotComplete *bool) error {
 	switch update := resp.GetResponse().(type) {
 	case *pb.GetConfigurationUpdatesResponse_UpdateConfiguration:
 		c.handleUpdateConfiguration(update.UpdateConfiguration)
 
 	case *pb.GetConfigurationUpdatesResponse_ResourceData:
-		if c.isSnapshotComplete() {
-			c.logger.Warn("Received ResourceData after snapshot complete, ignoring")
-
-			return nil
+		if *snapshotComplete {
+			// Return an error to restart the stream, since we are out of sync with server
+			return errors.New("server sent ResourceData after snapshot complete")
 		}
-
-		// During snapshot, we hold the lock
-		c.cache.InsertLocked(update.ResourceData.GetId(), update.ResourceData)
-		c.logger.Debug("Stored configured object from snapshot",
-			zap.String("id", update.ResourceData.GetId()),
-			zap.String("name", update.ResourceData.GetName()),
-		)
+		pendingSnapshot[update.ResourceData.GetId()] = update.ResourceData
 
 	case *pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete:
-		if c.isSnapshotComplete() {
-			c.logger.Warn("Received duplicate ResourceSnapshotComplete, ignoring")
-
-			return nil
+		if *snapshotComplete {
+			// Return an error to restart the stream, since we are out of sync with server
+			return errors.New("server sent duplicate ResourceSnapshotComplete")
 		}
 
-		// Snapshot complete - signal ready and release lock
-		c.cache.NotifyReady()
-		objectCount := c.cache.LenLocked()
-		c.cache.Mutex.Unlock()
+		// Atomically swap pending snapshot into cache
+		objectCount := len(pendingSnapshot)
+		c.cache.ReplaceAll(pendingSnapshot)
+		*snapshotComplete = true
 		c.logger.Info("Configuration snapshot complete",
 			zap.Int("object_count", objectCount),
 		)
 
 	case *pb.GetConfigurationUpdatesResponse_ResourceMutation:
-		if !c.isSnapshotComplete() {
-			c.logger.Warn("Received ResourceMutation before snapshot complete, ignoring")
-
-			return nil
+		if !*snapshotComplete {
+			// Return an error to restart the stream, since we are out of sync with server
+			return errors.New("server sent ResourceMutation before snapshot complete")
 		}
 
 		if err := c.handleMutation(update.ResourceMutation); err != nil {
@@ -147,8 +114,6 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 		c.stats.IncrementConfiguredObjectMutations()
 
 	default:
-		c.logger.Error("Received unknown configuration update, closing stream", zap.Any("response", resp))
-
 		return errors.New("server sent unknown configuration update type")
 	}
 
@@ -170,7 +135,6 @@ func (c *configClient) handleUpdateConfiguration(config *pb.GetConfigurationUpda
 }
 
 // handleMutation processes a configured object mutation (create/update/delete).
-// This is called after snapshot is complete, so we use regular locked methods.
 func (c *configClient) handleMutation(mutation *pb.ConfiguredKubernetesObjectMutation) error {
 	switch m := mutation.GetMutation().(type) {
 	case *pb.ConfiguredKubernetesObjectMutation_CreateObject:
@@ -194,8 +158,6 @@ func (c *configClient) handleMutation(mutation *pb.ConfiguredKubernetesObjectMut
 		)
 
 	default:
-		c.logger.Error("Received unknown configured object mutation, closing stream", zap.Any("mutation", mutation))
-
 		return errors.New("server sent unknown configured object mutation type")
 	}
 
