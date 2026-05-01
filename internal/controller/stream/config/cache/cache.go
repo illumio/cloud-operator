@@ -62,15 +62,8 @@ func (c *ConfiguredObjectCache) Reset() {
 }
 
 // InsertLocked adds or updates an object in the cache when the caller already holds the lock.
-// Use during snapshot ingestion after BeginSnapshot() has been called.
 func (c *ConfiguredObjectCache) InsertLocked(id string, obj *pb.ConfiguredKubernetesObjectData) {
 	c.objects[id] = obj
-}
-
-// DeleteLocked removes an object from the cache by ID when the caller already holds the lock.
-// Use during snapshot ingestion after BeginSnapshot() has been called.
-func (c *ConfiguredObjectCache) DeleteLocked(id string) {
-	delete(c.objects, id)
 }
 
 // Insert adds or updates an object in the cache.
