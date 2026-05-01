@@ -10,36 +10,51 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-// ConfiguredObjectCache stores configured Kubernetes objects received from CloudSecure.
-// It tracks the desired state that CloudSecure wants in the cluster.
+// ObjectCache is a generic thread-safe cache for storing objects by ID.
+// It supports atomic replacement for snapshot-based updates.
+//
+// This cache is generic to support both:
+//   - Config cache: stores *pb.ConfiguredKubernetesObjectData from CloudSecure (desired state)
+//   - Runtime cache: stores *unstructured.Unstructured from Kubernetes (actual state)
 //
 // Access patterns:
 //   - Snapshot: Build a local map, then call ReplaceAll() to atomically swap it in
 //   - Mutations: Use Insert() and Delete() which handle locking internally
-//   - Reading (for the reconciler): Use Get(), Values(), Len() which handle locking internally
+//   - Reading: Use Get(), Values(), Len() which handle locking internally
 //
 // Block on <-cache.IsReady() to wait for the first snapshot to complete before reading.
-type ConfiguredObjectCache struct {
+type ObjectCache[T any] struct {
 	mutex sync.RWMutex
 
-	// objects maps object ID to its ConfiguredKubernetesObjectData.
-	objects map[string]*pb.ConfiguredKubernetesObjectData
+	// objects maps object ID to its value.
+	objects map[string]T
 
 	// ready is closed when the first snapshot is complete.
 	ready chan struct{}
 }
 
-// NewConfiguredObjectCache creates a new cache instance.
-func NewConfiguredObjectCache() *ConfiguredObjectCache {
-	return &ConfiguredObjectCache{
-		objects: make(map[string]*pb.ConfiguredKubernetesObjectData),
+// NewObjectCache creates a new cache instance.
+func NewObjectCache[T any]() *ObjectCache[T] {
+	return &ObjectCache[T]{
+		objects: make(map[string]T),
 		ready:   make(chan struct{}),
 	}
 }
 
+// ConfiguredObjectCache is the cache type for CloudSecure configured objects.
+type ConfiguredObjectCache = ObjectCache[*pb.ConfiguredKubernetesObjectData]
+
+// TODO - The runtime cache will use unstructured objects because reconciliation may require
+// Kubernetes metadata fields not present in the proto, such as resourceVersion and ownerReferences
+
+// NewConfiguredObjectCache creates a new cache for configured objects.
+func NewConfiguredObjectCache() *ConfiguredObjectCache {
+	return NewObjectCache[*pb.ConfiguredKubernetesObjectData]()
+}
+
 // IsReady returns a channel that is closed when the first snapshot is complete.
 // Use <-cache.IsReady() to block until the cache has consistent data.
-func (c *ConfiguredObjectCache) IsReady() <-chan struct{} {
+func (c *ObjectCache[T]) IsReady() <-chan struct{} {
 	return c.ready
 }
 
@@ -47,7 +62,7 @@ func (c *ConfiguredObjectCache) IsReady() <-chan struct{} {
 // Use this for snapshot ingestion: build a local map, then call ReplaceAll to
 // swap it in. The cache remains consistent until the swap completes.
 // Also marks the cache as ready on first call to indicate cache now has valid data.
-func (c *ConfiguredObjectCache) ReplaceAll(objects map[string]*pb.ConfiguredKubernetesObjectData) {
+func (c *ObjectCache[T]) ReplaceAll(objects map[string]T) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -64,7 +79,7 @@ func (c *ConfiguredObjectCache) ReplaceAll(objects map[string]*pb.ConfiguredKube
 
 // Insert adds or updates an object in the cache.
 // Use for mutations after snapshot is complete.
-func (c *ConfiguredObjectCache) Insert(id string, obj *pb.ConfiguredKubernetesObjectData) {
+func (c *ObjectCache[T]) Insert(id string, obj T) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -73,15 +88,15 @@ func (c *ConfiguredObjectCache) Insert(id string, obj *pb.ConfiguredKubernetesOb
 
 // Delete removes an object from the cache by ID.
 // Use for mutations after snapshot is complete.
-func (c *ConfiguredObjectCache) Delete(id string) {
+func (c *ObjectCache[T]) Delete(id string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
 	delete(c.objects, id)
 }
 
-// Get retrieves an object by ID. Returns nil if not found.
-func (c *ConfiguredObjectCache) Get(id string) *pb.ConfiguredKubernetesObjectData {
+// Get retrieves an object by ID. Returns the zero value if not found.
+func (c *ObjectCache[T]) Get(id string) T {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
@@ -89,7 +104,7 @@ func (c *ConfiguredObjectCache) Get(id string) *pb.ConfiguredKubernetesObjectDat
 }
 
 // Values returns all objects in the cache, sorted by ID for consistency.
-func (c *ConfiguredObjectCache) Values() []*pb.ConfiguredKubernetesObjectData {
+func (c *ObjectCache[T]) Values() []T {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
@@ -97,7 +112,7 @@ func (c *ConfiguredObjectCache) Values() []*pb.ConfiguredKubernetesObjectData {
 		return nil
 	}
 
-	result := make([]*pb.ConfiguredKubernetesObjectData, 0, len(c.objects))
+	result := make([]T, 0, len(c.objects))
 	for _, key := range slices.Sorted(maps.Keys(c.objects)) {
 		result = append(result, c.objects[key])
 	}
@@ -106,7 +121,7 @@ func (c *ConfiguredObjectCache) Values() []*pb.ConfiguredKubernetesObjectData {
 }
 
 // Len returns the number of objects in the cache.
-func (c *ConfiguredObjectCache) Len() int {
+func (c *ObjectCache[T]) Len() int {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
