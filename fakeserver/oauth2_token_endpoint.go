@@ -105,7 +105,7 @@ func (a *AuthService) authenticateHandler(w http.ResponseWriter, r *http.Request
 
 	var req TokenRequest
 
-	err := r.ParseForm() // G120: This is a fake test server, no need for size limits
+	err := r.ParseForm() //nolint:gosec // G120: This is a fake test server, no need for size limits
 	if err != nil {
 		a.logger.Error("Invalid request, unable to parse form", zap.Error(err))
 		http.Error(w, "Invalid request", http.StatusBadRequest)
@@ -113,9 +113,9 @@ func (a *AuthService) authenticateHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	req.GrantType = r.FormValue("grant_type")       // G120: fake test server
-	req.ClientID = r.FormValue("client_id")         // G120: fake test server
-	req.ClientSecret = r.FormValue("client_secret") // G120: fake test server
+	req.GrantType = r.FormValue("grant_type")       //nolint:gosec // G120: fake test server
+	req.ClientID = r.FormValue("client_id")         //nolint:gosec // G120: fake test server
+	req.ClientSecret = r.FormValue("client_secret") //nolint:gosec // G120: fake test server
 
 	a.logger.Info("Received credentials", zap.String("client_id", req.ClientID), zap.String("client_secret", req.ClientSecret))
 

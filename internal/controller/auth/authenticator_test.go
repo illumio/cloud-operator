@@ -141,7 +141,7 @@ func (suite *AuthTestSuite) TestWriteK8sSecret() {
 		expectedError       bool
 		expectedErrMsg      string
 	}{
-		"failure": { // G101: test credentials, not real
+		"failure": { //nolint:gosec // G101: test credentials, not real
 			namespaceExists:     false,
 			secretExists:        false,
 			clusterClientID:     "test-client-id",
@@ -150,7 +150,7 @@ func (suite *AuthTestSuite) TestWriteK8sSecret() {
 			expectedError:       true,
 			expectedErrMsg:      "failed to read cluster credentials from k8s secret for update: secrets \"write-test-secret\" not found",
 		},
-		"success": { // G101: test credentials, not real
+		"success": { //nolint:gosec // G101: test credentials, not real
 			namespaceExists:     true,
 			secretExists:        true,
 			clusterClientID:     "test-client-id",

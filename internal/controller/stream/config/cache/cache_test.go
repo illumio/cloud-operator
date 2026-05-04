@@ -3,6 +3,7 @@
 package cache
 
 import (
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -364,7 +365,7 @@ func TestConcurrentReplaceAllAndReads(t *testing.T) {
 			defer wg.Done()
 
 			cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
-				"id-1": {Id: "id-1", Name: "version-" + string(rune('0'+i))},
+				"id-1": {Id: "id-1", Name: "version-" + strconv.Itoa(i)},
 			})
 		}(i)
 	}
