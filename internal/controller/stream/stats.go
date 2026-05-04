@@ -13,9 +13,10 @@ import (
 // Stats tracks statistics for flows and resource mutations.
 // All counters are safe for concurrent access.
 type Stats struct {
-	flowsReceived          atomic.Uint64
-	flowsSentToClusterSync atomic.Uint64
-	resourceMutations      atomic.Uint64
+	flowsReceived             atomic.Uint64
+	flowsSentToClusterSync    atomic.Uint64
+	resourceMutations         atomic.Uint64
+	configuredObjectMutations atomic.Uint64
 }
 
 // NewStats creates a new Stats instance.
@@ -38,11 +39,17 @@ func (s *Stats) IncrementResourceMutations() {
 	s.resourceMutations.Add(1)
 }
 
+// IncrementConfiguredObjectMutations increments the count of configured object mutations.
+func (s *Stats) IncrementConfiguredObjectMutations() {
+	s.configuredObjectMutations.Add(1)
+}
+
 // GetAndResetStats returns the current stats and resets all counters to zero.
-func (s *Stats) GetAndResetStats() (flowsReceived, flowsSent, mutations uint64) {
+func (s *Stats) GetAndResetStats() (flowsReceived, flowsSent, resourceMutations, configuredObjectMutations uint64) {
 	flowsReceived = s.flowsReceived.Swap(0)
 	flowsSent = s.flowsSentToClusterSync.Swap(0)
-	mutations = s.resourceMutations.Swap(0)
+	resourceMutations = s.resourceMutations.Swap(0)
+	configuredObjectMutations = s.configuredObjectMutations.Swap(0)
 
 	return
 }
@@ -72,12 +79,13 @@ func StartStatsLogger(ctx context.Context, logger *zap.Logger, stats *Stats, per
 
 				return
 			case <-ticker.C:
-				flowsReceived, flowsSent, mutations := stats.GetAndResetStats()
+				flowsReceived, flowsSent, resourceMutations, configuredObjectMutations := stats.GetAndResetStats()
 				logger.Info("Stream statistics",
 					zap.Duration("period", period),
 					zap.Uint64("flows_received", flowsReceived),
 					zap.Uint64("flows_sent_to_cluster_sync", flowsSent),
-					zap.Uint64("resource_mutations", mutations),
+					zap.Uint64("resource_mutations", resourceMutations),
+					zap.Uint64("configured_object_mutations", configuredObjectMutations),
 				)
 			}
 		}

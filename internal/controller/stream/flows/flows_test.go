@@ -68,7 +68,7 @@ func TestFlowSinkAdapter_IncrementFlowsReceived(t *testing.T) {
 	adapter.IncrementFlowsReceived()
 	adapter.IncrementFlowsReceived()
 
-	flowsReceived, _, _ := stats.GetAndResetStats()
+	flowsReceived, _, _, _ := stats.GetAndResetStats()
 	assert.Equal(t, uint64(3), flowsReceived)
 }
 

@@ -11,6 +11,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 )
 
 // Verify Factory implements stream.StreamClientFactory.
@@ -21,6 +22,8 @@ type Factory struct {
 	Logger             *zap.Logger
 	VerboseDebugging   bool
 	BufferedGrpcSyncer *logging.BufferedGrpcWriteSyncer
+	Stats              *stream.Stats
+	Cache              *cache.ConfiguredObjectCache
 }
 
 // NewStreamClient creates a new configuration stream client.
@@ -39,6 +42,8 @@ func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnI
 		logger:             f.Logger,
 		verboseDebugging:   f.VerboseDebugging,
 		bufferedGrpcSyncer: f.BufferedGrpcSyncer,
+		stats:              f.Stats,
+		cache:              f.Cache,
 	}, nil
 }
 

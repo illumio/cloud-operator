@@ -46,9 +46,10 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 		require.NoError(t, err)
 
 		// pods should be in core group (empty string)
-		apiGroup, ok := result["pods"]
+		resourceInfo, ok := result["pods"]
 		assert.True(t, ok, "expected 'pods' to be in result")
-		assert.Empty(t, apiGroup, "expected pods apiGroup to be empty")
+		assert.Empty(t, resourceInfo.Group, "expected pods apiGroup to be empty")
+		assert.Equal(t, "v1", resourceInfo.Version)
 	})
 
 	t.Run("handles empty resources", func(t *testing.T) {
@@ -86,6 +87,26 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 		assert.False(t, ok, "expected 'nodes' to be skipped for metrics.k8s.io group")
 	})
 
+	t.Run("requested resource not in any discovered group", func(t *testing.T) {
+		clientset := k8sfake.NewSimpleClientset()
+
+		fakeDiscovery, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
+		require.True(t, ok)
+
+		fakeDiscovery.Resources = []*metav1.APIResourceList{
+			{
+				GroupVersion: "v1",
+				APIResources: []metav1.APIResource{
+					{Name: "pods", Kind: "Pod"},
+				},
+			},
+		}
+
+		result, err := buildResourceApiGroupMap([]string{"deployments"}, clientset, logger)
+		require.NoError(t, err)
+		assert.Empty(t, result, "expected no match for resource not present in any group")
+	})
+
 	t.Run("handles apps group resources", func(t *testing.T) {
 		clientset := k8sfake.NewSimpleClientset()
 
@@ -108,8 +129,10 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 		result, err := buildResourceApiGroupMap(resources, clientset, logger)
 		require.NoError(t, err)
 
-		assert.Equal(t, "apps", result["deployments"])
-		assert.Equal(t, "apps", result["statefulsets"])
+		assert.Equal(t, "apps", result["deployments"].Group)
+		assert.Equal(t, "v1", result["deployments"].Version)
+		assert.Equal(t, "apps", result["statefulsets"].Group)
+		assert.Equal(t, "v1", result["statefulsets"].Version)
 	})
 }
 
