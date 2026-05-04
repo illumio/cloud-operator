@@ -125,6 +125,16 @@ func TestParseVPCCNIFlowLog(t *testing.T) {
 			input:   `{"level":"debug","ts":"2026-04-13T21:18:46.888Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28"}`,
 			wantErr: ErrVPCCNIInvalidLog,
 		},
+		{
+			name:    "missing timestamp",
+			input:   `{"level":"info","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.0.1","Src Port":1234,"Dest IP":"10.0.0.2","Dest Port":80,"Proto":"TCP","Verdict":"ACCEPT"}`,
+			wantErr: ErrVPCCNIInvalidTimestamp,
+		},
+		{
+			name:    "invalid timestamp format",
+			input:   `{"level":"info","ts":"not-a-timestamp","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.0.1","Src Port":1234,"Dest IP":"10.0.0.2","Dest Port":80,"Proto":"TCP","Verdict":"ACCEPT"}`,
+			wantErr: ErrVPCCNIInvalidTimestamp,
+		},
 	}
 
 	for _, tt := range tests {
@@ -183,6 +193,95 @@ func TestParseVPCCNIFlowLog(t *testing.T) {
 	}
 }
 
+func TestParseOldFormat(t *testing.T) {
+	tests := []struct {
+		name         string
+		log          VPCCNIFlowLog
+		wantOk       bool
+		wantSrcIP    string
+		wantSrcPort  uint32
+		wantDestIP   string
+		wantDestPort uint32
+		wantProto    string
+	}{
+		{
+			name: "valid TCP flow",
+			log: VPCCNIFlowLog{
+				SrcIP:    "10.0.141.167",
+				SrcPort:  39197,
+				DestIP:   "172.20.0.10",
+				DestPort: 53,
+				Proto:    "TCP",
+			},
+			wantOk:       true,
+			wantSrcIP:    "10.0.141.167",
+			wantSrcPort:  39197,
+			wantDestIP:   "172.20.0.10",
+			wantDestPort: 53,
+			wantProto:    "TCP",
+		},
+		{
+			name: "missing source IP",
+			log: VPCCNIFlowLog{
+				DestIP:   "172.20.0.10",
+				DestPort: 53,
+				Proto:    "TCP",
+			},
+			wantOk: false,
+		},
+		{
+			name: "missing dest IP",
+			log: VPCCNIFlowLog{
+				SrcIP:   "10.0.141.167",
+				SrcPort: 39197,
+				Proto:   "TCP",
+			},
+			wantOk: false,
+		},
+		{
+			name:   "empty log",
+			log:    VPCCNIFlowLog{},
+			wantOk: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srcIP, srcPort, destIP, destPort, proto, ok := parseOldFormat(&tt.log)
+
+			if ok != tt.wantOk {
+				t.Errorf("parseOldFormat() ok = %v, want %v", ok, tt.wantOk)
+
+				return
+			}
+
+			if !tt.wantOk {
+				return
+			}
+
+			if srcIP != tt.wantSrcIP {
+				t.Errorf("srcIP = %v, want %v", srcIP, tt.wantSrcIP)
+			}
+
+			if srcPort != tt.wantSrcPort {
+				t.Errorf("srcPort = %v, want %v", srcPort, tt.wantSrcPort)
+			}
+
+			if destIP != tt.wantDestIP {
+				t.Errorf("destIP = %v, want %v", destIP, tt.wantDestIP)
+			}
+
+			if destPort != tt.wantDestPort {
+				t.Errorf("destPort = %v, want %v", destPort, tt.wantDestPort)
+			}
+
+			if proto != tt.wantProto {
+				t.Errorf("proto = %v, want %v", proto, tt.wantProto)
+			}
+		})
+	}
+}
+
 func TestParseFlowFromMsg(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -228,8 +327,13 @@ func TestParseFlowFromMsg(t *testing.T) {
 			wantOk: false,
 		},
 		{
-			name:   "not a flow message",
+			name:   "not a flow message - missing Flow Info prefix",
 			msg:    "Starting up ebpf client",
+			wantOk: false,
+		},
+		{
+			name:   "missing Flow Info prefix",
+			msg:    "Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT",
 			wantOk: false,
 		},
 	}

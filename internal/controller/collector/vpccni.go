@@ -31,10 +31,11 @@ const (
 
 // VPC CNI flow log errors.
 var (
-	ErrVPCCNIInvalidLog      = errors.New("invalid VPC CNI flow log format")
-	ErrVPCCNIInvalidIP       = errors.New("invalid IP address in VPC CNI flow log")
-	ErrVPCCNINotFlowLog      = errors.New("log line is not a flow log")
-	ErrVPCCNIInvalidProtocol = errors.New("unsupported protocol in VPC CNI flow log")
+	ErrVPCCNIInvalidLog       = errors.New("invalid VPC CNI flow log format")
+	ErrVPCCNIInvalidIP        = errors.New("invalid IP address in VPC CNI flow log")
+	ErrVPCCNINotFlowLog       = errors.New("log line is not a flow log")
+	ErrVPCCNIInvalidProtocol  = errors.New("unsupported protocol in VPC CNI flow log")
+	ErrVPCCNIInvalidTimestamp = errors.New("invalid or missing timestamp in VPC CNI flow log")
 )
 
 // VPCCNIFlowLog represents the flow log format from aws-eks-nodeagent.
@@ -56,17 +57,18 @@ type VPCCNIFlowLog struct {
 	Caller    string `json:"caller"` // v1.2.2+
 	Message   string `json:"msg"`
 	SrcIP     string `json:"Src IP"`
-	SrcPort   uint32 `json:"Src Port"`
-	DestIP    string `json:"Dest IP"`
-	DestPort  uint32 `json:"Dest Port"`
-	Proto     string `json:"Proto"`   // TCP, UDP, ICMP, SCTP, UNKNOWN
-	Verdict   string `json:"Verdict"` // ACCEPT, DENY, EXPIRED/DELETED
+
+	SrcPort  uint32 `json:"Src Port"`
+	DestIP   string `json:"Dest IP"`
+	DestPort uint32 `json:"Dest Port"`
+	Proto    string `json:"Proto"`   // TCP, UDP, ICMP, SCTP, UNKNOWN
+	Verdict  string `json:"Verdict"` // ACCEPT, DENY, EXPIRED/DELETED
 }
 
 // flowMsgPattern extracts flow data from the embedded msg string in v1.2.2+ format.
 // Example: "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress".
 var flowMsgPattern = regexp.MustCompile(
-	`Src IP:\s*(\S+)\s+Src Port:\s*(\d+)\s+Dest IP:\s*(\S+)\s+Dest Port:\s*(\d+)\s+Proto\s+(\S+)\s+Verdict\s+(\S+)`,
+	`Flow Info:\s*Src IP:\s*(\S+)\s+Src Port:\s*(\d+)\s+Dest IP:\s*(\S+)\s+Dest Port:\s*(\d+)\s+Proto\s+(\S+)\s+Verdict\s+(\S+)`,
 )
 
 // parseFlowFromMsg extracts flow data from the embedded msg string (v1.2.2+ format).
@@ -87,6 +89,15 @@ func parseFlowFromMsg(msg string) (srcIP string, srcPort uint32, destIP string, 
 	}
 
 	return matches[1], uint32(srcPortInt), matches[3], uint32(destPortInt), matches[5], matches[6], true
+}
+
+// parseOldFormat extracts flow data from separate JSON fields (v1.0.x - v1.2.1 format).
+func parseOldFormat(log *VPCCNIFlowLog) (srcIP string, srcPort uint32, destIP string, destPort uint32, proto string, ok bool) {
+	if log.SrcIP == "" || log.DestIP == "" {
+		return "", 0, "", 0, "", false
+	}
+
+	return log.SrcIP, log.SrcPort, log.DestIP, log.DestPort, log.Proto, true
 }
 
 // ParseVPCCNIFlowLog parses a VPC CNI flow log line into a FiveTupleFlow.
@@ -116,35 +127,19 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 	var (
 		srcIP, destIP, proto string
 		srcPort, destPort    uint32
+		ok                   bool
 	)
 
 	switch {
 	case isOldFormat:
-		// Old format: fields are in separate JSON keys
-		if log.SrcIP == "" || log.DestIP == "" {
-			return nil, ErrVPCCNIInvalidLog
-		}
-
-		srcIP = log.SrcIP
-		srcPort = log.SrcPort
-		destIP = log.DestIP
-		destPort = log.DestPort
-		proto = log.Proto
+		srcIP, srcPort, destIP, destPort, proto, ok = parseOldFormat(&log)
 	case isNewFormat:
-		// New format (v1.2.2+): parse from embedded msg string
-		var ok bool
-
 		srcIP, srcPort, destIP, destPort, proto, _, ok = parseFlowFromMsg(log.Message)
-		if !ok {
-			return nil, ErrVPCCNIInvalidLog
-		}
 	default:
-		// Should not reach here due to earlier check, but be defensive
 		return nil, ErrVPCCNINotFlowLog
 	}
 
-	// Validate required fields
-	if srcIP == "" || destIP == "" {
+	if !ok {
 		return nil, ErrVPCCNIInvalidLog
 	}
 
@@ -172,16 +167,19 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 		return nil, ErrVPCCNIInvalidProtocol
 	}
 
-	// Parse timestamp or use current time
-	ts := timestamppb.Now()
+	// Parse timestamp - drop flows without valid timestamps (consistent with Cilium/Falco)
+	if log.Timestamp == "" {
+		return nil, ErrVPCCNIInvalidTimestamp
+	}
 
-	if log.Timestamp != "" {
-		// AWS uses ISO 8601 format: "2024-09-23T12:36:53.562Z"
-		if parsedTime, err := time.Parse(time.RFC3339Nano, log.Timestamp); err == nil {
-			ts = timestamppb.New(parsedTime)
-		} else if parsedTime, err := time.Parse("2006-01-02T15:04:05.999Z", log.Timestamp); err == nil {
-			ts = timestamppb.New(parsedTime)
-		}
+	var ts *timestamppb.Timestamp
+	// AWS uses ISO 8601 format: "2024-09-23T12:36:53.562Z"
+	if parsedTime, err := time.Parse(time.RFC3339Nano, log.Timestamp); err == nil {
+		ts = timestamppb.New(parsedTime)
+	} else if parsedTime, err := time.Parse("2006-01-02T15:04:05.999Z", log.Timestamp); err == nil {
+		ts = timestamppb.New(parsedTime)
+	} else {
+		return nil, ErrVPCCNIInvalidTimestamp
 	}
 
 	flow := &pb.FiveTupleFlow{
