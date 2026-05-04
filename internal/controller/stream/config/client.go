@@ -85,6 +85,7 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 			// Return an error to restart the stream, since we are out of sync with server
 			return errors.New("server sent ResourceData after snapshot complete")
 		}
+
 		pendingSnapshot[update.ResourceData.GetId()] = update.ResourceData
 
 	case *pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete:
@@ -96,7 +97,9 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 		// Atomically swap pending snapshot into cache
 		objectCount := len(pendingSnapshot)
 		c.cache.ReplaceAll(pendingSnapshot)
+
 		*snapshotComplete = true
+
 		c.logger.Info("Configuration snapshot complete",
 			zap.Int("object_count", objectCount),
 		)

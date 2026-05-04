@@ -284,8 +284,10 @@ func TestConcurrentMutationsAfterSnapshot(t *testing.T) {
 	// Concurrent inserts
 	for i := range 100 {
 		wg.Add(1)
+
 		go func(i int) {
 			defer wg.Done()
+
 			cache.Insert(
 				string(rune('a'+i%26)),
 				&pb.ConfiguredKubernetesObjectData{Id: string(rune('a' + i%26)), Name: "policy"},
@@ -295,20 +297,20 @@ func TestConcurrentMutationsAfterSnapshot(t *testing.T) {
 
 	// Concurrent reads
 	for range 100 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_ = cache.Values()
 			_ = cache.Len()
 			_ = isReady(cache)
-		}()
+		})
 	}
 
 	// Concurrent deletes
 	for i := range 50 {
 		wg.Add(1)
+
 		go func(i int) {
 			defer wg.Done()
+
 			cache.Delete(string(rune('a' + i%26)))
 		}(i)
 	}
@@ -357,8 +359,10 @@ func TestConcurrentReplaceAllAndReads(t *testing.T) {
 	// Concurrent ReplaceAll calls (simulating rapid reconnects)
 	for i := range 10 {
 		wg.Add(1)
+
 		go func(i int) {
 			defer wg.Done()
+
 			cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
 				"id-1": {Id: "id-1", Name: "version-" + string(rune('0'+i))},
 			})
@@ -367,13 +371,11 @@ func TestConcurrentReplaceAllAndReads(t *testing.T) {
 
 	// Concurrent reads
 	for range 100 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_ = cache.Get("id-1")
 			_ = cache.Values()
 			_ = cache.Len()
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -402,27 +404,25 @@ func TestAtomicSwap_ReadersNeverSeePartialData(t *testing.T) {
 	cache.ReplaceAll(snapshotA)
 
 	var wg sync.WaitGroup
+
 	inconsistentRead := false
 
 	// Writer: swap between A and B repeatedly
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 1000; i++ {
+
+	wg.Go(func() {
+		for i := range 1000 {
 			if i%2 == 0 {
 				cache.ReplaceAll(snapshotB)
 			} else {
 				cache.ReplaceAll(snapshotA)
 			}
 		}
-	}()
+	})
 
 	// Readers: verify all objects have same version prefix
-	for r := 0; r < 10; r++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := 0; i < 500; i++ {
+	for range 10 {
+		wg.Go(func() {
+			for range 500 {
 				values := cache.Values()
 				if len(values) == 0 {
 					continue
@@ -433,11 +433,12 @@ func TestAtomicSwap_ReadersNeverSeePartialData(t *testing.T) {
 				for _, v := range values {
 					if v.GetName()[:2] != firstPrefix {
 						inconsistentRead = true
+
 						return
 					}
 				}
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -456,7 +457,7 @@ func TestAtomicSwap_ReadersNeverBlockForever(t *testing.T) {
 
 	// Writer: continuously swap data
 	go func() {
-		for i := 0; i < 10000; i++ {
+		for range 10000 {
 			cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
 				"id-1": {Id: "id-1", Name: "version"},
 			})
@@ -465,11 +466,12 @@ func TestAtomicSwap_ReadersNeverBlockForever(t *testing.T) {
 
 	// Reader: read continuously while writer is swapping
 	go func() {
-		for i := 0; i < 10000; i++ {
+		for range 10000 {
 			_ = cache.Values()
 			_ = cache.Get("id-1")
 			_ = cache.Len()
 		}
+
 		close(done)
 	}()
 

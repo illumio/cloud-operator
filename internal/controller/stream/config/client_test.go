@@ -307,6 +307,7 @@ func (s *ConfigClientTestSuite) TestRun_ResourceDataDuringSnapshot() {
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
 	}
+
 	s.mockStream.On("Recv").Return(resourceDataResp, nil).Once()
 	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, io.EOF).Once()

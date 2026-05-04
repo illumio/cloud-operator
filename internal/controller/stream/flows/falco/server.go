@@ -46,7 +46,7 @@ func StartServer(ctx context.Context, logger *zap.Logger, falcoEventChan chan st
 			Control: func(network, address string, c syscall.RawConn) error {
 				return c.Control(func(fd uintptr) {
 					// SO_REUSEADDR allows immediate reusing the port after it has been closed.
-					err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1) //nolint:gosec
+					err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1)
 					if err != nil {
 						logger.Fatal("Failed to set SO_REUSEADDR socket option on Falco server socket", zap.Error(err))
 					}
