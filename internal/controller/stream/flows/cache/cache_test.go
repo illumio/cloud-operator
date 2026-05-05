@@ -130,6 +130,34 @@ func TestFlowCache_AddFlowToCache(t *testing.T) {
 	assert.Equal(t, flow, c.queue.Front().Value)
 }
 
+func TestFlowCache_AddFlowToCache_SortedOrder(t *testing.T) {
+	outFlows := make(chan pb.Flow, 10)
+	c := NewFlowCache(10*time.Second, 100, outFlows)
+
+	now := time.Now()
+	flow1 := &MockFlow{startTimestamp: now.Add(-10 * time.Second), key: "flow1"} // oldest
+	flow2 := &MockFlow{startTimestamp: now.Add(-5 * time.Second), key: "flow2"}  // middle
+	flow3 := &MockFlow{startTimestamp: now, key: "flow3"}                        // newest
+
+	// Add out of order: newest, oldest, middle
+	c.addFlowToCache(flow3)
+	c.addFlowToCache(flow1)
+	c.addFlowToCache(flow2)
+
+	assert.Len(t, c.cache, 3)
+	assert.Equal(t, 3, c.queue.Len())
+
+	// Verify sorted order: oldest at front, newest at back
+	elem := c.queue.Front()
+	assert.Equal(t, flow1, elem.Value, "oldest flow should be at front")
+
+	elem = elem.Next()
+	assert.Equal(t, flow2, elem.Value, "middle flow should be second")
+
+	elem = elem.Next()
+	assert.Equal(t, flow3, elem.Value, "newest flow should be at back")
+}
+
 func TestFlowCache_EvictOldestFlow(t *testing.T) {
 	outFlows := make(chan pb.Flow, 10)
 	c := NewFlowCache(10*time.Second, 100, outFlows)

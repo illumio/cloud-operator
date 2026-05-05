@@ -27,6 +27,21 @@ roleRef:
   kind: Role
   name: hubble-client-certs-reader
   apiGroup: rbac.authorization.k8s.io
+---
+# RoleBinding for reading AWS VPC CNI pod logs in kube-system namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: kube-system
+  name: cloud-operator-read-aws-vpc-cni-logs
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.serviceAccount.name }}
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: aws-vpc-cni-logs-reader
+  apiGroup: rbac.authorization.k8s.io
 {{- if (lookup "v1" "Namespace" "" "gke-managed-dpv2-observability") }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1

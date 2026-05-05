@@ -1,4 +1,4 @@
-Copyright 2024 Illumio, Inc. All Rights Reserved.
+Copyright 2026 Illumio, Inc. All Rights Reserved.
 
 {{- if .Release.IsInstall -}}
   Congratulations! You have successfully installed the cloud-operator Helm chart.

@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -37,9 +39,11 @@ type FlowSink interface {
 	IncrementFlowsReceived()
 }
 
-// K8sClientGetter provides access to Kubernetes client.
+// K8sClientGetter provides access to Kubernetes clients.
 type K8sClientGetter interface {
 	GetClientset() kubernetes.Interface
+	GetDynamicClient() dynamic.Interface
+	GetDiscoveryClient() discovery.DiscoveryInterface
 }
 
 // CreateLayer3Message creates a Layer3 IP message from source/destination addresses.

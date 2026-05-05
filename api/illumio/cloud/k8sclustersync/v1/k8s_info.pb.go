@@ -39,6 +39,8 @@ const (
 	FlowCollector_FLOW_COLLECTOR_FALCO FlowCollector = 3
 	// Indicates that OVN-Kubernetes is deployed and configured for collecting network flows.
 	FlowCollector_FLOW_COLLECTOR_OVNK FlowCollector = 4
+	// Indicates that AWS VPC CNI is deployed with Network Policy Agent for collecting network flows.
+	FlowCollector_FLOW_COLLECTOR_AWS_VPC_CNI FlowCollector = 5
 )
 
 // Enum value maps for FlowCollector.
@@ -49,6 +51,7 @@ var (
 		2: "FLOW_COLLECTOR_CILIUM",
 		3: "FLOW_COLLECTOR_FALCO",
 		4: "FLOW_COLLECTOR_OVNK",
+		5: "FLOW_COLLECTOR_AWS_VPC_CNI",
 	}
 	FlowCollector_value = map[string]int32{
 		"FLOW_COLLECTOR_UNSPECIFIED": 0,
@@ -56,6 +59,7 @@ var (
 		"FLOW_COLLECTOR_CILIUM":      2,
 		"FLOW_COLLECTOR_FALCO":       3,
 		"FLOW_COLLECTOR_OVNK":        4,
+		"FLOW_COLLECTOR_AWS_VPC_CNI":     5,
 	}
 )
 
