@@ -97,25 +97,15 @@ func (r *Reconciler) processNextWorkItem(ctx context.Context) bool {
 
 // Reconcile synchronizes all configured objects from CloudSecure to Kubernetes.
 // It applies objects that are new or changed, and deletes objects that are no longer configured.
+// Callers must ensure caches are ready before calling (main.go waits for IsReady).
 func (r *Reconciler) Reconcile(ctx context.Context) error {
-	// Wait for both caches to be ready
-	select {
-	case <-r.configCache.IsReady():
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-
-	select {
-	case <-r.runtimeCache.IsReady():
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-
 	// Get all configured objects (desired state)
 	configuredObjects := r.configCache.Values()
 
 	// Track which IDs we've seen in config (for deletion detection)
 	configuredIDs := make(map[string]bool)
+
+	var errs []error
 
 	// Apply each configured object
 	for _, configObj := range configuredObjects {
@@ -127,7 +117,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 				zap.String("name", configObj.GetName()),
 				zap.Error(err),
 			)
-			// Continue with other objects
+			errs = append(errs, fmt.Errorf("apply %s: %w", configObj.GetId(), err))
 		}
 	}
 
@@ -146,9 +136,13 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 					zap.String("name", runtimeObj.GetName()),
 					zap.Error(err),
 				)
-				// Continue with other objects
+				errs = append(errs, fmt.Errorf("delete %s: %w", id, err))
 			}
 		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("reconciliation had %d errors", len(errs))
 	}
 
 	return nil

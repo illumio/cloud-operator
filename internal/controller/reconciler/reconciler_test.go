@@ -204,23 +204,6 @@ func TestGetGVRFromUnstructured(t *testing.T) {
 	}
 }
 
-func TestReconcile_WaitsForCaches(t *testing.T) {
-	logger := zap.NewNop()
-	client := newMockClient()
-	configCache := cache.NewConfiguredObjectCache()
-	runtimeCache := cache.NewRuntimeCache()
-
-	r := NewReconciler(logger, client, configCache, runtimeCache)
-
-	// Create a context that cancels immediately
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	// Reconcile should return context error since caches aren't ready
-	err := r.Reconcile(ctx)
-	assert.ErrorIs(t, err, context.Canceled)
-}
-
 func TestReconcile_EmptyCaches(t *testing.T) {
 	logger := zap.NewNop()
 	client := newMockClient()

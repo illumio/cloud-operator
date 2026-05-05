@@ -86,7 +86,6 @@ func NewInformerManager(
 // Start begins watching Kubernetes resources and populating the cache.
 // It blocks until the context is cancelled or Stop() is called.
 func (m *InformerManager) Start(ctx context.Context) error {
-	// Register informers for each resource type we care about
 	gvrs := []schema.GroupVersionResource{
 		CiliumNetworkPolicyGVR,
 		CiliumClusterwideNetworkPolicyGVR,
