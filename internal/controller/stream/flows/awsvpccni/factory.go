@@ -12,8 +12,8 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/collector"
 )
 
-// DefaultPollInterval is the default interval for polling logs.
-const DefaultPollInterval = 5 * time.Second
+// DefaultPollInterval is the default interval for polling logs (matches kubectl default).
+const DefaultPollInterval = 1 * time.Second
 
 // flowCollector is the interface for flow collectors returned by this factory.
 // Matches flows.Collector interface via structural typing.
