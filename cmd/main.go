@@ -32,6 +32,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
+	"github.com/illumio/cloud-operator/internal/controller/reconciler"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config"
 	configcache "github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
@@ -231,6 +232,53 @@ func main() {
 	if err != nil {
 		logger.Fatal("Failed to create Kubernetes client", zap.Error(err))
 	}
+
+	// Create runtime cache for tracking actual cluster state (for reconciliation)
+	runtimeCache := configcache.NewRuntimeCache()
+
+	// Start informer manager to populate runtime cache from Kubernetes
+	informerManager := reconciler.NewInformerManager(
+		logger,
+		k8sClient,
+		runtimeCache,
+	)
+
+	go func() {
+		if err := informerManager.Start(ctx); err != nil {
+			logger.Error("Informer manager stopped", zap.Error(err))
+		}
+	}()
+
+	// Create the reconciler (owns its workqueue internally)
+	policyReconciler := reconciler.NewReconciler(
+		logger,
+		k8sClient,
+		configuredObjectCache,
+		runtimeCache,
+	)
+
+	// Wire cache change notifications to enqueue reconciliation
+	configuredObjectCache.OnChange(policyReconciler.Enqueue)
+	runtimeCache.OnChange(policyReconciler.Enqueue)
+
+	// Start reconciler after caches are ready
+	go func() {
+		// Wait for caches to sync before starting reconciliation
+		select {
+		case <-configuredObjectCache.IsReady():
+		case <-ctx.Done():
+			return
+		}
+
+		select {
+		case <-runtimeCache.IsReady():
+		case <-ctx.Done():
+			return
+		}
+
+		logger.Info("Caches synced, starting reconciler")
+		policyReconciler.Run(ctx)
+	}()
 
 	// Detect flow collector type at startup
 	flowCollectorType, flowCollectorName, flowCollectorFactory := flows.DetectFlowCollector(ctx, flows.CollectorConfig{
