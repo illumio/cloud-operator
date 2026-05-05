@@ -13,7 +13,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 )
 
-func TestParseVPCCNIFlowLog(t *testing.T) {
+func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 	tests := []struct {
 		name      string
 		input     string
@@ -57,27 +57,27 @@ func TestParseVPCCNIFlowLog(t *testing.T) {
 		{
 			name:    "not a flow log - different message",
 			input:   `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client","msg":"Starting up","Src IP":"10.0.0.1"}`,
-			wantErr: ErrVPCCNINotFlowLog,
+			wantErr: ErrAWSVPCCNINotFlowLog,
 		},
 		{
 			name:    "not a flow log - different logger",
 			input:   `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"other-client","msg":"Flow Info: ","Src IP":"10.0.0.1","Dest IP":"10.0.0.2"}`,
-			wantErr: ErrVPCCNINotFlowLog,
+			wantErr: ErrAWSVPCCNINotFlowLog,
 		},
 		{
 			name:    "invalid JSON",
 			input:   `not json at all`,
-			wantErr: ErrVPCCNINotFlowLog,
+			wantErr: ErrAWSVPCCNINotFlowLog,
 		},
 		{
 			name:    "missing source IP",
 			input:   `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client","msg":"Flow Info: ","Dest IP":"10.0.0.2","Proto":"TCP"}`,
-			wantErr: ErrVPCCNIInvalidLog,
+			wantErr: ErrAWSVPCCNIInvalidLog,
 		},
 		{
 			name:    "missing dest IP",
 			input:   `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.0.1","Proto":"TCP"}`,
-			wantErr: ErrVPCCNIInvalidLog,
+			wantErr: ErrAWSVPCCNIInvalidLog,
 		},
 		{
 			name:      "UNKNOWN protocol defaults to TCP",
@@ -123,23 +123,23 @@ func TestParseVPCCNIFlowLog(t *testing.T) {
 		{
 			name:    "v1.2.2+ format - invalid msg (missing fields)",
 			input:   `{"level":"debug","ts":"2026-04-13T21:18:46.888Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28"}`,
-			wantErr: ErrVPCCNIInvalidLog,
+			wantErr: ErrAWSVPCCNIInvalidLog,
 		},
 		{
 			name:    "missing timestamp",
 			input:   `{"level":"info","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.0.1","Src Port":1234,"Dest IP":"10.0.0.2","Dest Port":80,"Proto":"TCP","Verdict":"ACCEPT"}`,
-			wantErr: ErrVPCCNIInvalidTimestamp,
+			wantErr: ErrAWSVPCCNIInvalidTimestamp,
 		},
 		{
 			name:    "invalid timestamp format",
 			input:   `{"level":"info","ts":"not-a-timestamp","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.0.1","Src Port":1234,"Dest IP":"10.0.0.2","Dest Port":80,"Proto":"TCP","Verdict":"ACCEPT"}`,
-			wantErr: ErrVPCCNIInvalidTimestamp,
+			wantErr: ErrAWSVPCCNIInvalidTimestamp,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			flow, err := ParseVPCCNIFlowLog(tt.input)
+			flow, err := ParseAWSVPCCNIFlowLog(tt.input)
 
 			if tt.wantErr != nil {
 				if err == nil {
@@ -196,7 +196,7 @@ func TestParseVPCCNIFlowLog(t *testing.T) {
 func TestParseOldFormat(t *testing.T) {
 	tests := []struct {
 		name         string
-		log          VPCCNIFlowLog
+		log          AWSVPCCNIFlowLog
 		wantOk       bool
 		wantSrcIP    string
 		wantSrcPort  uint32
@@ -206,7 +206,7 @@ func TestParseOldFormat(t *testing.T) {
 	}{
 		{
 			name: "valid TCP flow",
-			log: VPCCNIFlowLog{
+			log: AWSVPCCNIFlowLog{
 				SrcIP:    "10.0.141.167",
 				SrcPort:  39197,
 				DestIP:   "172.20.0.10",
@@ -222,7 +222,7 @@ func TestParseOldFormat(t *testing.T) {
 		},
 		{
 			name: "missing source IP",
-			log: VPCCNIFlowLog{
+			log: AWSVPCCNIFlowLog{
 				DestIP:   "172.20.0.10",
 				DestPort: 53,
 				Proto:    "TCP",
@@ -231,7 +231,7 @@ func TestParseOldFormat(t *testing.T) {
 		},
 		{
 			name: "missing dest IP",
-			log: VPCCNIFlowLog{
+			log: AWSVPCCNIFlowLog{
 				SrcIP:   "10.0.141.167",
 				SrcPort: 39197,
 				Proto:   "TCP",
@@ -240,7 +240,7 @@ func TestParseOldFormat(t *testing.T) {
 		},
 		{
 			name:   "empty log",
-			log:    VPCCNIFlowLog{},
+			log:    AWSVPCCNIFlowLog{},
 			wantOk: false,
 		},
 	}
@@ -401,7 +401,7 @@ func TestIsIPv6(t *testing.T) {
 	}
 }
 
-func TestIsVPCCNIAvailable(t *testing.T) {
+func TestIsAWSVPCCNIAvailable(t *testing.T) {
 	logger := zap.NewNop()
 	ctx := context.Background()
 
@@ -504,9 +504,9 @@ func TestIsVPCCNIAvailable(t *testing.T) {
 				}
 			}
 
-			result := IsVPCCNIAvailable(ctx, logger, client)
+			result := IsAWSVPCCNIAvailable(ctx, logger, client)
 			if result != tt.expected {
-				t.Errorf("IsVPCCNIAvailable() = %v, want %v", result, tt.expected)
+				t.Errorf("IsAWSVPCCNIAvailable() = %v, want %v", result, tt.expected)
 			}
 		})
 	}

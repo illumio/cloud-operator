@@ -123,8 +123,7 @@ func main() {
 	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "verbose_debugging", "VERBOSE_DEBUGGING")
-	bindEnv(logger, "grpc_internal_logging", "GRPC_INTERNAL_LOGGING")
-	bindEnv(logger, "vpc_cni_poll_interval", "VPC_CNI_POLL_INTERVAL")
+	bindEnv(logger, "aws_vpc_cni_logs_polling_interval", "AWS_VPC_CNI_LOGS_POLLING_INTERVAL")
 
 	// Set default values
 	viper.SetDefault("cilium_namespaces", []string{"kube-system", "gke-managed-dpv2-observability"})
@@ -148,7 +147,7 @@ func main() {
 	viper.SetDefault("tls_skip_verify", false)
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("verbose_debugging", false)
-	viper.SetDefault("vpc_cni_poll_interval", "5s")
+	viper.SetDefault("aws_vpc_cni_logs_polling_interval", "1s")
 
 	if viper.GetBool("grpc_internal_logging") {
 		logging.SetupGRPCInternalLogging(logger)
@@ -191,7 +190,7 @@ func main() {
 		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
 		zap.String("token_endpoint", envConfig.TokenEndpoint),
 		zap.Bool("verbose_debugging", viper.GetBool("verbose_debugging")),
-		zap.Duration("vpc_cni_poll_interval", viper.GetDuration("vpc_cni_poll_interval")),
+		zap.Duration("aws_vpc_cni_logs_polling_interval", viper.GetDuration("aws_vpc_cni_logs_polling_interval")),
 	)
 
 	// Start the gops agent
@@ -238,15 +237,15 @@ func main() {
 
 	// Detect flow collector type at startup
 	flowCollectorType, flowCollectorName, flowCollectorFactory := flows.DetectFlowCollector(ctx, flows.CollectorConfig{
-		Logger:             logger,
-		FlowCache:          flowCache,
-		Stats:              stats,
-		K8sClient:          k8sClient,
-		CiliumNamespaces:   viper.GetStringSlice("cilium_namespaces"),
-		IPFIXCollectorPort: viper.GetString("ipfix_collector_port"),
-		OVNKNamespace:      viper.GetString("ovnk_namespace"),
-		TlsAuthProps:       tlsAuthProps,
-		VPCCNIPollInterval: viper.GetDuration("vpc_cni_poll_interval"),
+		Logger:                   logger,
+		FlowCache:                flowCache,
+		Stats:                    stats,
+		K8sClient:                k8sClient,
+		CiliumNamespaces:         viper.GetStringSlice("cilium_namespaces"),
+		IPFIXCollectorPort:       viper.GetString("ipfix_collector_port"),
+		OVNKNamespace:            viper.GetString("ovnk_namespace"),
+		TlsAuthProps:             tlsAuthProps,
+		AWSVPCCNIPollingInterval: viper.GetDuration("aws_vpc_cni_logs_polling_interval"),
 	})
 
 	// Create factory config with all stream factories

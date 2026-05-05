@@ -22,6 +22,17 @@ rules:
   resources: ["secrets"]
   resourceNames: ["hubble-relay-client-certs"] # Name of the Secret
   verbs: ["get"]
+---
+# Role for reading AWS VPC CNI pod logs in kube-system namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: kube-system
+  name: aws-vpc-cni-logs-reader
+rules:
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
 {{- if (lookup "v1" "Namespace" "" "gke-managed-dpv2-observability") }}
 ---
 # Role to read secrets in the GKE managed observability namespace

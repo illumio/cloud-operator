@@ -1,6 +1,6 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package vpccni
+package awsvpccni
 
 import (
 	"bytes"
@@ -156,7 +156,7 @@ func (c *vpccniClient) parseLogs(ctx context.Context, logs string, podName strin
 			continue
 		}
 
-		flow, err := collector.ParseVPCCNIFlowLog(line)
+		flow, err := collector.ParseAWSVPCCNIFlowLog(line)
 		if err != nil {
 			// Not a flow log line, skip silently
 			continue

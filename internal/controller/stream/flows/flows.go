@@ -49,6 +49,6 @@ type CollectorConfig struct {
 	TlsAuthProps       *tls.AuthProperties
 	IPFIXCollectorPort string
 	OVNKNamespace      string
-	// VPC CNI configuration
-	VPCCNIPollInterval time.Duration
+	// AWS VPC CNI configuration
+	AWSVPCCNIPollingInterval time.Duration
 }

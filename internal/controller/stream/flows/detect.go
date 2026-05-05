@@ -11,10 +11,10 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/collector"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/awsvpccni"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cilium"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/falco"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/ovnk"
-	"github.com/illumio/cloud-operator/internal/controller/stream/flows/vpccni"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
@@ -53,7 +53,7 @@ type flowCollectorAdapter struct {
 }
 
 // collectorFactoryFunc wraps a function to implement CollectorFactory.
-// This allows subpackage factories (cilium, falco, ovnk, vpccni) to be used as CollectorFactory
+// This allows subpackage factories (cilium, falco, ovnk, awsvpccni) to be used as CollectorFactory
 // without importing the flows package (which would create an import cycle).
 type collectorFactoryFunc func(ctx context.Context) (Collector, error)
 
@@ -120,15 +120,15 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 	}
 
 	// Check for AWS VPC CNI (EKS standard clusters)
-	if collector.IsVPCCNIAvailable(ctx, config.Logger, clientset) {
+	if collector.IsAWSVPCCNIAvailable(ctx, config.Logger, clientset) {
 		config.Logger.Info("Using AWS VPC CNI flow collector")
 
 		// Check CRD and create ClusterNetworkPolicy for comprehensive flow logging
 		discoveryClient := config.K8sClient.GetDiscoveryClient()
 		dynamicClient := config.K8sClient.GetDynamicClient()
 
-		if vpccni.IsCRDAvailable(config.Logger, discoveryClient) {
-			if err := vpccni.EnsureFlowLoggingPolicy(ctx, config.Logger, dynamicClient); err != nil {
+		if awsvpccni.IsCRDAvailable(config.Logger, discoveryClient) {
+			if err := awsvpccni.EnsureFlowLoggingPolicy(ctx, config.Logger, dynamicClient); err != nil {
 				config.Logger.Warn("Failed to create ClusterNetworkPolicy, flow logging may be limited",
 					zap.Error(err))
 			}
@@ -136,14 +136,14 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 			config.Logger.Warn("ClusterNetworkPolicy CRD not found - enable network policy in VPC CNI addon for comprehensive flow logging")
 		}
 
-		factory := &vpccni.Factory{
+		factory := &awsvpccni.Factory{
 			Logger:       config.Logger,
 			FlowSink:     flowSink,
 			K8sClient:    clientset,
-			PollInterval: config.VPCCNIPollInterval,
+			PollInterval: config.AWSVPCCNIPollingInterval,
 		}
 
-		return pb.FlowCollector_FLOW_COLLECTOR_VPC_CNI, "VPC-CNI", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
+		return pb.FlowCollector_FLOW_COLLECTOR_AWS_VPC_CNI, "AWS-VPC-CNI", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
 			return factory.NewCollector(ctx)
 		})
 	}

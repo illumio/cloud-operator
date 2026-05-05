@@ -29,16 +29,16 @@ const (
 	AWSEksNodeagentContainer = "aws-eks-nodeagent"
 )
 
-// VPC CNI flow log errors.
+// AWS VPC CNI flow log errors.
 var (
-	ErrVPCCNIInvalidLog       = errors.New("invalid VPC CNI flow log format")
-	ErrVPCCNIInvalidIP        = errors.New("invalid IP address in VPC CNI flow log")
-	ErrVPCCNINotFlowLog       = errors.New("log line is not a flow log")
-	ErrVPCCNIInvalidProtocol  = errors.New("unsupported protocol in VPC CNI flow log")
-	ErrVPCCNIInvalidTimestamp = errors.New("invalid or missing timestamp in VPC CNI flow log")
+	ErrAWSVPCCNIInvalidLog       = errors.New("invalid AWS VPC CNI flow log format")
+	ErrAWSVPCCNIInvalidIP        = errors.New("invalid IP address in AWS VPC CNI flow log")
+	ErrAWSVPCCNINotFlowLog       = errors.New("log line is not a flow log")
+	ErrAWSVPCCNIInvalidProtocol  = errors.New("unsupported protocol in AWS VPC CNI flow log")
+	ErrAWSVPCCNIInvalidTimestamp = errors.New("invalid or missing timestamp in AWS VPC CNI flow log")
 )
 
-// VPCCNIFlowLog represents the flow log format from aws-eks-nodeagent.
+// AWSVPCCNIFlowLog represents the flow log format from aws-eks-nodeagent.
 //
 // Old format (v1.0.x - v1.2.1):
 // {"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client",
@@ -50,7 +50,7 @@ var (
 // {"level":"debug","ts":"2026-04-13T21:18:46.888Z","caller":"runtime/asm_amd64.s:1700",
 //
 //	"msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress"}
-type VPCCNIFlowLog struct {
+type AWSVPCCNIFlowLog struct {
 	Level     string `json:"level"`
 	Timestamp string `json:"ts"`
 	Logger    string `json:"logger"` // v1.0.x - v1.2.1
@@ -92,7 +92,7 @@ func parseFlowFromMsg(msg string) (srcIP string, srcPort uint32, destIP string, 
 }
 
 // parseOldFormat extracts flow data from separate JSON fields (v1.0.x - v1.2.1 format).
-func parseOldFormat(log *VPCCNIFlowLog) (srcIP string, srcPort uint32, destIP string, destPort uint32, proto string, ok bool) {
+func parseOldFormat(log *AWSVPCCNIFlowLog) (srcIP string, srcPort uint32, destIP string, destPort uint32, proto string, ok bool) {
 	if log.SrcIP == "" || log.DestIP == "" {
 		return "", 0, "", 0, "", false
 	}
@@ -100,19 +100,19 @@ func parseOldFormat(log *VPCCNIFlowLog) (srcIP string, srcPort uint32, destIP st
 	return log.SrcIP, log.SrcPort, log.DestIP, log.DestPort, log.Proto, true
 }
 
-// ParseVPCCNIFlowLog parses a VPC CNI flow log line into a FiveTupleFlow.
+// ParseAWSVPCCNIFlowLog parses a VPC CNI flow log line into a FiveTupleFlow.
 // Supports both old format (v1.0.x - v1.2.1) with separate JSON fields
 // and new format (v1.2.2+) with embedded msg string.
-func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
-	var log VPCCNIFlowLog
+func ParseAWSVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
+	var log AWSVPCCNIFlowLog
 
 	if err := json.Unmarshal([]byte(line), &log); err != nil {
-		return nil, ErrVPCCNINotFlowLog
+		return nil, ErrAWSVPCCNINotFlowLog
 	}
 
 	// Check if this is a flow log (must have "Flow Info" in message)
 	if !strings.Contains(log.Message, "Flow Info") {
-		return nil, ErrVPCCNINotFlowLog
+		return nil, ErrAWSVPCCNINotFlowLog
 	}
 
 	// For old format (v1.0.x - v1.2.1), also require ebpf-client logger
@@ -121,7 +121,7 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 	isNewFormat := log.Caller != "" && log.Logger == ""
 
 	if !isOldFormat && !isNewFormat {
-		return nil, ErrVPCCNINotFlowLog
+		return nil, ErrAWSVPCCNINotFlowLog
 	}
 
 	var (
@@ -136,11 +136,11 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 	case isNewFormat:
 		srcIP, srcPort, destIP, destPort, proto, _, ok = parseFlowFromMsg(log.Message)
 	default:
-		return nil, ErrVPCCNINotFlowLog
+		return nil, ErrAWSVPCCNINotFlowLog
 	}
 
 	if !ok {
-		return nil, ErrVPCCNIInvalidLog
+		return nil, ErrAWSVPCCNIInvalidLog
 	}
 
 	// Determine IP version
@@ -151,7 +151,7 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 
 	layer3Message, err := CreateLayer3Message(srcIP, destIP, ipVersion)
 	if err != nil {
-		return nil, ErrVPCCNIInvalidIP
+		return nil, ErrAWSVPCCNIInvalidIP
 	}
 
 	// Convert protocol string to lowercase for CreateLayer4Message.
@@ -164,12 +164,12 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 
 	layer4Message, err := CreateLayer4Message(protoStr, srcPort, destPort, ipVersion)
 	if err != nil {
-		return nil, ErrVPCCNIInvalidProtocol
+		return nil, ErrAWSVPCCNIInvalidProtocol
 	}
 
 	// Parse timestamp - drop flows without valid timestamps (consistent with Cilium/Falco)
 	if log.Timestamp == "" {
-		return nil, ErrVPCCNIInvalidTimestamp
+		return nil, ErrAWSVPCCNIInvalidTimestamp
 	}
 
 	var ts *timestamppb.Timestamp
@@ -179,7 +179,7 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 	} else if parsedTime, err := time.Parse("2006-01-02T15:04:05.999Z", log.Timestamp); err == nil {
 		ts = timestamppb.New(parsedTime)
 	} else {
-		return nil, ErrVPCCNIInvalidTimestamp
+		return nil, ErrAWSVPCCNIInvalidTimestamp
 	}
 
 	flow := &pb.FiveTupleFlow{
@@ -195,19 +195,13 @@ func ParseVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 
 // isIPv6 checks if the given address is an IPv6 address.
 func isIPv6(addr string) bool {
-	for _, c := range addr {
-		if c == ':' {
-			return true
-		}
-	}
-
-	return false
+	return strings.ContainsRune(addr, ':')
 }
 
-// IsVPCCNIAvailable checks if AWS VPC CNI with flow logging is available in the cluster.
+// IsAWSVPCCNIAvailable checks if AWS VPC CNI with flow logging is available in the cluster.
 // It looks for aws-node pods with the aws-eks-nodeagent container.
 // Checks multiple pods to handle rolling upgrades where some pods may not have nodeagent yet.
-func IsVPCCNIAvailable(ctx context.Context, logger *zap.Logger, k8sClient kubernetes.Interface) bool {
+func IsAWSVPCCNIAvailable(ctx context.Context, logger *zap.Logger, k8sClient kubernetes.Interface) bool {
 	pods, err := k8sClient.CoreV1().Pods(AWSNodeNamespace).List(ctx, metav1.ListOptions{
 		LabelSelector: AWSNodeLabel,
 	})
@@ -226,7 +220,7 @@ func IsVPCCNIAvailable(ctx context.Context, logger *zap.Logger, k8sClient kubern
 	// Check if any pod has the aws-eks-nodeagent container
 	for i := range pods.Items {
 		if hasNodeagentContainer(pods.Items[i]) {
-			logger.Debug("VPC CNI with aws-eks-nodeagent detected",
+			logger.Debug("AWS VPC CNI with aws-eks-nodeagent detected",
 				zap.String("pod", pods.Items[i].Name))
 
 			return true

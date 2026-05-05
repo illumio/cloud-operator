@@ -1,6 +1,6 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package vpccni
+package awsvpccni
 
 import (
 	"context"

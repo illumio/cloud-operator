@@ -181,8 +181,31 @@ func (c *FlowCache) evictOldestFlow(ctx context.Context, logger *zap.Logger) err
 	return nil
 }
 
+// addFlowToCache inserts a flow into the cache in timestamp-sorted order.
+// Flows are ordered by StartTimestamp (oldest at front, newest at back).
+// This ensures correct eviction order and handles out-of-order flows from
+// multiple sources (e.g., VPC CNI polling multiple pods).
 func (c *FlowCache) addFlowToCache(flow pb.Flow) {
-	c.queue.PushBack(flow)
+	flowTimestamp := flow.StartTimestamp()
+
+	// Search from back since most flows arrive roughly in order
+	for e := c.queue.Back(); e != nil; e = e.Prev() {
+		existing, ok := e.Value.(pb.Flow)
+		if !ok {
+			continue
+		}
+
+		if !existing.StartTimestamp().After(flowTimestamp) {
+			// Insert after this element (flow is newer or same time)
+			c.queue.InsertAfter(flow, e)
+			c.cache[flow.Key()] = flow
+
+			return
+		}
+	}
+
+	// Flow is oldest, insert at front
+	c.queue.PushFront(flow)
 	c.cache[flow.Key()] = flow
 }
 

@@ -460,7 +460,7 @@ enum FlowCollector {
   // Indicates that OVN-Kubernetes is deployed and configured for collecting network flows.
   FLOW_COLLECTOR_OVNK = 4;
   // Indicates that AWS VPC CNI is deployed with Network Policy Agent for collecting network flows.
-  FLOW_COLLECTOR_VPC_CNI = 5;
+  FLOW_COLLECTOR_AWS_VPC_CNI = 5;
 }
 
 // Message sent by the operator in a KubernetesResources request stream.
