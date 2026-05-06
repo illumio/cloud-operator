@@ -3,6 +3,8 @@
 package controller
 
 import (
+	"errors"
+
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -26,7 +28,7 @@ func IsCiliumPolicy(kindOrResource string) bool {
 // This handles both CiliumNetworkPolicy and CiliumClusterwideNetworkPolicy.
 func ConvertUnstructuredToCiliumPolicy(obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 	if obj == nil {
-		return nil, nil
+		return nil, errors.New("cannot convert nil object")
 	}
 
 	kind := obj.GetKind()
@@ -174,12 +176,15 @@ func convertCiliumMatchExpressions(expressions []any) []*pb.LabelSelectorRequire
 		}
 
 		req := &pb.LabelSelectorRequirement{}
+
 		if key, found, _ := unstructured.NestedString(exprMap, "key"); found {
 			req.Key = key
 		}
+
 		if operator, found, _ := unstructured.NestedString(exprMap, "operator"); found {
 			req.Operator = operator
 		}
+
 		if values, found, _ := unstructured.NestedStringSlice(exprMap, "values"); found {
 			req.Values = values
 		}
@@ -305,9 +310,11 @@ func convertCiliumCIDRSets(cidrSets []any) []*pb.CiliumPolicyCIDRSet {
 		}
 
 		protoSet := &pb.CiliumPolicyCIDRSet{}
+
 		if cidr, found, _ := unstructured.NestedString(cidrSetMap, "cidr"); found {
 			protoSet.Cidr = proto.String(cidr)
 		}
+
 		if except, found, _ := unstructured.NestedStringSlice(cidrSetMap, "except"); found {
 			protoSet.Except = except
 		}
@@ -357,9 +364,11 @@ func convertCiliumPorts(ports []any) []*pb.CiliumPolicyPort {
 		}
 
 		protoPort := &pb.CiliumPolicyPort{}
+
 		if portVal, found, _ := unstructured.NestedString(portMap, "port"); found {
 			protoPort.Port = portVal
 		}
+
 		if protocol, found, _ := unstructured.NestedString(portMap, "protocol"); found {
 			protoPort.Protocol = proto.String(protocol)
 		}
