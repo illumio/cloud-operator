@@ -150,6 +150,7 @@ func (r *Watcher) listCiliumResources(ctx context.Context, logger *zap.Logger) (
 
 	for i := range unstructuredResources.Items {
 		item := &unstructuredResources.Items[i]
+
 		metadataObj, err := controller.ConvertUnstructuredToCiliumPolicy(item)
 		if err != nil {
 			r.logger.Error("Cannot convert Cilium policy",
@@ -436,6 +437,7 @@ func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutati
 		}
 
 		var err error
+
 		metadataObj, err = controller.ConvertUnstructuredToCiliumPolicy(unstructuredObj)
 		if err != nil {
 			return "", fmt.Errorf("failed to convert Cilium policy: %w", err)

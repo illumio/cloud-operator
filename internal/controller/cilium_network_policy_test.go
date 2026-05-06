@@ -36,8 +36,9 @@ func TestIsCiliumPolicy(t *testing.T) {
 
 func TestConvertUnstructuredToCiliumPolicy_Nil(t *testing.T) {
 	result, err := ConvertUnstructuredToCiliumPolicy(nil)
-	require.NoError(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "cannot convert nil object")
 }
 
 func TestConvertUnstructuredToCiliumPolicy_Basic(t *testing.T) {
