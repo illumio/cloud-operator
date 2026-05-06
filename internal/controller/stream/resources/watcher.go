@@ -421,7 +421,7 @@ func getResourceVersionFromBookmark(event watch.Event) (string, error) {
 
 func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation) (string, error) {
 	if event.Object == nil {
-		return "", fmt.Errorf("event object is nil")
+		return "", errors.New("event object is nil")
 	}
 
 	// Note: resourceGvk.Kind is PascalCase (e.g., "CiliumNetworkPolicy").
@@ -433,7 +433,7 @@ func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutati
 	if controller.IsCiliumPolicy(resourceGvk.Kind) {
 		unstructuredObj, ok := event.Object.(*unstructured.Unstructured)
 		if !ok {
-			return "", fmt.Errorf("failed to convert event object to unstructured for Cilium policy")
+			return "", errors.New("failed to convert event object to unstructured for Cilium policy")
 		}
 
 		var err error
