@@ -88,6 +88,8 @@ func TestConvertUnstructuredToCiliumPolicy_Basic(t *testing.T) {
 	assert.Equal(t, "CiliumNetworkPolicy", result.GetKind())
 	assert.Equal(t, "test-uid", result.GetUid())
 	assert.Equal(t, "12345", result.GetResourceVersion())
+	assert.Equal(t, "cilium.io", result.GetApiGroup())
+	assert.Equal(t, "v2", result.GetApiVersion())
 
 	ciliumPolicy := result.GetCiliumNetworkPolicy()
 	require.NotNil(t, ciliumPolicy)
@@ -136,6 +138,9 @@ func TestConvertUnstructuredToCiliumPolicy_ClusterwidePolicy(t *testing.T) {
 
 	assert.Equal(t, "clusterwide-policy", result.GetName())
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", result.GetKind())
+	assert.Empty(t, result.GetNamespace(), "cluster-scoped policy should have no namespace")
+	assert.Equal(t, "cilium.io", result.GetApiGroup())
+	assert.Equal(t, "v2", result.GetApiVersion())
 
 	ciliumPolicy := result.GetCiliumClusterwideNetworkPolicy()
 	require.NotNil(t, ciliumPolicy)
@@ -503,6 +508,14 @@ func TestConvertUnstructuredToCiliumPolicy_WithICMP(t *testing.T) {
 										"family": "IPv6",
 										"type":   float64(128),
 									},
+									map[string]any{
+										"family": "IPv4",
+										"type":   "EchoReply",
+									},
+									map[string]any{
+										"family": "IPv4",
+										"type":   "3",
+									},
 								},
 							},
 						},
@@ -533,13 +546,19 @@ func TestConvertUnstructuredToCiliumPolicy_WithICMP(t *testing.T) {
 	require.Len(t, ingressRule.GetIcmps(), 1)
 
 	icmpRule := ingressRule.GetIcmps()[0]
-	require.Len(t, icmpRule.GetFields(), 2)
+	require.Len(t, icmpRule.GetFields(), 4)
 
 	assert.Equal(t, "IPv4", icmpRule.GetFields()[0].GetFamily())
 	assert.Equal(t, uint32(8), icmpRule.GetFields()[0].GetTypeInt())
 
 	assert.Equal(t, "IPv6", icmpRule.GetFields()[1].GetFamily())
 	assert.Equal(t, uint32(128), icmpRule.GetFields()[1].GetTypeInt())
+
+	assert.Equal(t, "IPv4", icmpRule.GetFields()[2].GetFamily())
+	assert.Equal(t, "EchoReply", icmpRule.GetFields()[2].GetTypeString())
+
+	assert.Equal(t, "IPv4", icmpRule.GetFields()[3].GetFamily())
+	assert.Equal(t, uint32(3), icmpRule.GetFields()[3].GetTypeInt(), "numeric string should parse to TypeInt")
 }
 
 func TestConvertUnstructuredToCiliumPolicy_WithAuthentication(t *testing.T) {
@@ -903,9 +922,9 @@ func TestConvertUnstructuredToCiliumPolicy_WithLabels(t *testing.T) {
 			},
 			"spec": map[string]any{
 				"endpointSelector": map[string]any{},
-				"labels": map[string]any{
-					"policy-type": "compliance",
-					"owner":       "security-team",
+				"labels": []any{
+					map[string]any{"key": "policy-type", "value": "compliance"},
+					map[string]any{"key": "owner", "value": "security-team"},
 				},
 			},
 		},
@@ -1080,4 +1099,219 @@ func TestConvertUnstructuredToCiliumPolicy_ComplexEgress(t *testing.T) {
 
 	require.NotNil(t, egressRule.GetAuthentication())
 	assert.Equal(t, "test-only", egressRule.GetAuthentication().GetMode())
+}
+
+func TestConvertUnstructuredToCiliumPolicy_CombinedSpecAndSpecs(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            "combined-policy",
+				"namespace":       "default",
+				"uid":             "combined-uid",
+				"resourceVersion": "80808",
+			},
+			"spec": map[string]any{
+				"endpointSelector": map[string]any{
+					"matchLabels": map[string]any{"app": "from-spec"},
+				},
+				"description": "Single spec rule",
+			},
+			"specs": []any{
+				map[string]any{
+					"endpointSelector": map[string]any{
+						"matchLabels": map[string]any{"app": "from-specs-1"},
+					},
+					"description": "First specs rule",
+				},
+				map[string]any{
+					"endpointSelector": map[string]any{
+						"matchLabels": map[string]any{"app": "from-specs-2"},
+					},
+					"description": "Second specs rule",
+				},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	ciliumPolicy := result.GetCiliumNetworkPolicy()
+	require.NotNil(t, ciliumPolicy)
+	require.Len(t, ciliumPolicy.GetSpecs(), 3, "should combine spec (1) + specs (2)")
+
+	assert.Equal(t, "from-spec", ciliumPolicy.GetSpecs()[0].GetEndpointSelector().GetMatchLabels()["app"])
+	assert.Equal(t, "Single spec rule", ciliumPolicy.GetSpecs()[0].GetDescription())
+
+	assert.Equal(t, "from-specs-1", ciliumPolicy.GetSpecs()[1].GetEndpointSelector().GetMatchLabels()["app"])
+	assert.Equal(t, "from-specs-2", ciliumPolicy.GetSpecs()[2].GetEndpointSelector().GetMatchLabels()["app"])
+}
+
+func TestConvertUnstructuredToCiliumPolicy_IngressFromCIDR(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            "ingress-cidr-policy",
+				"namespace":       "default",
+				"uid":             "icidr-uid",
+				"resourceVersion": "90909",
+			},
+			"spec": map[string]any{
+				"endpointSelector": map[string]any{},
+				"ingress": []any{
+					map[string]any{
+						"fromCIDR": []any{"10.0.0.0/8", "172.16.0.0/12"},
+						"fromCIDRSet": []any{
+							map[string]any{
+								"cidr":   "192.168.0.0/16",
+								"except": []any{"192.168.1.0/24"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	require.NoError(t, err)
+
+	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
+	require.Len(t, spec.GetIngressRules(), 1)
+
+	ingressRule := spec.GetIngressRules()[0]
+	assert.ElementsMatch(t, []string{"10.0.0.0/8", "172.16.0.0/12"}, ingressRule.GetFromCidr())
+
+	require.Len(t, ingressRule.GetFromCidrSet(), 1)
+	assert.Equal(t, "192.168.0.0/16", ingressRule.GetFromCidrSet()[0].GetCidr())
+	assert.ElementsMatch(t, []string{"192.168.1.0/24"}, ingressRule.GetFromCidrSet()[0].GetExcept())
+}
+
+func TestConvertUnstructuredToCiliumPolicy_ICMPTypeOutOfRange(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            "icmp-range-policy",
+				"namespace":       "default",
+				"uid":             "icmprange-uid",
+				"resourceVersion": "10110",
+			},
+			"spec": map[string]any{
+				"endpointSelector": map[string]any{},
+				"ingress": []any{
+					map[string]any{
+						"icmps": []any{
+							map[string]any{
+								"fields": []any{
+									map[string]any{
+										"family": "IPv4",
+										"type":   int64(999),
+									},
+									map[string]any{
+										"family": "IPv4",
+										"type":   int64(-1),
+									},
+									map[string]any{
+										"family": "IPv4",
+										"type":   float64(300),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	require.NoError(t, err)
+
+	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
+	fields := spec.GetIngressRules()[0].GetIcmps()[0].GetFields()
+	require.Len(t, fields, 3)
+
+	for i, f := range fields {
+		assert.Equal(t, "IPv4", f.GetFamily())
+		assert.Nil(t, f.GetType(), "field[%d] with out-of-range value should have nil Type", i)
+	}
+}
+
+func TestConvertUnstructuredToCiliumPolicy_EgressToGroups(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            "egress-groups-policy",
+				"namespace":       "default",
+				"uid":             "egrp-uid",
+				"resourceVersion": "20220",
+			},
+			"spec": map[string]any{
+				"endpointSelector": map[string]any{},
+				"egress": []any{
+					map[string]any{
+						"toGroups": []any{
+							map[string]any{
+								"aws": map[string]any{
+									"labels": map[string]any{
+										"env": "staging",
+									},
+									"securityGroupsIds": []any{"sg-abcde"},
+									"region":            "eu-west-1",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	require.NoError(t, err)
+
+	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
+	require.Len(t, spec.GetEgressRules(), 1)
+
+	egressRule := spec.GetEgressRules()[0]
+	require.Len(t, egressRule.GetToGroups(), 1)
+
+	awsGroup := egressRule.GetToGroups()[0].GetAws()
+	require.NotNil(t, awsGroup)
+	assert.Equal(t, "staging", awsGroup.GetLabels()["env"])
+	assert.ElementsMatch(t, []string{"sg-abcde"}, awsGroup.GetSecurityGroupIds())
+	assert.Equal(t, "eu-west-1", awsGroup.GetRegion())
 }

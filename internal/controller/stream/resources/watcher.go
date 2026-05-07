@@ -107,19 +107,40 @@ func (r *Watcher) WatchK8sResources(ctx context.Context, cancel context.CancelFu
 
 // DynamicListResources lists a specified resource dynamically and sends down the current gRPC stream.
 func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) (string, error) {
-	// For Cilium policies, we need the full unstructured object to extract the spec.
-	// Note: r.resourceName is lowercase plural (e.g., "ciliumnetworkpolicies").
-	if controller.IsCiliumPolicy(r.resourceName) {
-		return r.listCiliumResources(ctx, logger)
-	}
-
-	objs, resourceListVersion, resourceK8sKind, apiGroup, apiVersion, err := r.ListResources(ctx, metav1.NamespaceAll)
+	unstructuredResources, err := r.FetchResources(ctx, metav1.NamespaceAll)
 	if err != nil {
 		return "", err
 	}
 
-	for _, obj := range objs {
-		metadataObj := controller.ConvertMetaObjectToMetadata(ctx, obj, r.clientset, resourceK8sKind, apiGroup, apiVersion)
+	isCilium := controller.IsCiliumPolicy(r.resourceName)
+	resourcesGvk := unstructuredResources.GroupVersionKind()
+
+	for i := range unstructuredResources.Items {
+		item := &unstructuredResources.Items[i]
+
+		var metadataObj *pb.KubernetesObjectData
+
+		if isCilium {
+			metadataObj, err = controller.ConvertUnstructuredToCiliumPolicy(item)
+			if err != nil {
+				r.logger.Error("Cannot convert Cilium policy",
+					zap.String("name", item.GetName()),
+					zap.String("namespace", item.GetNamespace()),
+					zap.Error(err))
+
+				return "", fmt.Errorf("failed to convert Cilium policy %s/%s: %w", item.GetNamespace(), item.GetName(), err)
+			}
+		} else {
+			objMeta, err := controller.GetMetadataFromResource(r.logger, *item)
+			if err != nil {
+				r.logger.Error("Cannot get metadata from resource", zap.Error(err))
+
+				return "", err
+			}
+
+			metadataObj = controller.ConvertMetaObjectToMetadata(ctx, *objMeta, r.clientset,
+				removeListSuffix(resourcesGvk.Kind), resourcesGvk.Group, resourcesGvk.Version)
+		}
 
 		if err := r.resourcesClient.SendObjectData(logger, metadataObj); err != nil {
 			r.logger.Error("Cannot send object metadata", zap.Error(err))
@@ -128,47 +149,7 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 		}
 	}
 
-	r.logger.Debug("Successfully sent k8s resources", zap.Int("count", len(objs)))
-
-	select {
-	case <-ctx.Done():
-		return "", ctx.Err()
-	default:
-	}
-
-	return resourceListVersion, nil
-}
-
-// listCiliumResources handles listing Cilium network policies with full spec conversion.
-// Cilium policies require ConvertUnstructuredToCiliumPolicy to extract the full policy spec,
-// while regular resources use ConvertMetaObjectToMetadata for just metadata extraction.
-func (r *Watcher) listCiliumResources(ctx context.Context, logger *zap.Logger) (string, error) {
-	unstructuredResources, err := r.FetchResources(ctx, metav1.NamespaceAll)
-	if err != nil {
-		return "", err
-	}
-
-	for i := range unstructuredResources.Items {
-		item := &unstructuredResources.Items[i]
-
-		metadataObj, err := controller.ConvertUnstructuredToCiliumPolicy(item)
-		if err != nil {
-			r.logger.Error("Cannot convert Cilium policy",
-				zap.String("name", item.GetName()),
-				zap.String("namespace", item.GetNamespace()),
-				zap.Error(err))
-
-			return "", fmt.Errorf("failed to convert Cilium policy %s/%s: %w", item.GetNamespace(), item.GetName(), err)
-		}
-
-		if err := r.resourcesClient.SendObjectData(logger, metadataObj); err != nil {
-			r.logger.Error("Cannot send Cilium policy metadata", zap.Error(err))
-
-			return "", err
-		}
-	}
-
-	r.logger.Debug("Successfully sent Cilium policies", zap.Int("count", len(unstructuredResources.Items)))
+	r.logger.Debug("Successfully sent resources", zap.Int("count", len(unstructuredResources.Items)))
 
 	select {
 	case <-ctx.Done():

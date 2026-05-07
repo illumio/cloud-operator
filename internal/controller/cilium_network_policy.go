@@ -32,25 +32,30 @@ func ConvertUnstructuredToCiliumPolicy(obj *unstructured.Unstructured) (*pb.Kube
 		return nil, errors.New("cannot convert nil object")
 	}
 
-	kind := obj.GetKind()
+	gvk := obj.GroupVersionKind()
 	namespace := obj.GetNamespace()
 
 	objMetadata := &pb.KubernetesObjectData{
 		Annotations:       obj.GetAnnotations(),
+		ApiGroup:          gvk.Group,
+		ApiVersion:        gvk.Version,
 		CreationTimestamp: timestamppb.New(obj.GetCreationTimestamp().Time),
-		Kind:              kind,
+		Kind:              gvk.Kind,
 		Labels:            obj.GetLabels(),
 		Name:              obj.GetName(),
-		Namespace:         proto.String(namespace),
 		OwnerReferences:   convertOwnerReferences(obj.GetOwnerReferences()),
 		ResourceVersion:   obj.GetResourceVersion(),
 		Uid:               string(obj.GetUID()),
 	}
 
+	if namespace != "" {
+		objMetadata.Namespace = proto.String(namespace)
+	}
+
 	// Extract specs from both 'spec' (single) and 'specs' (array) fields
 	specs := extractCiliumSpecs(obj)
 
-	switch kind {
+	switch gvk.Kind {
 	case "CiliumNetworkPolicy":
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
@@ -116,9 +121,9 @@ func convertCiliumPolicyRule(spec map[string]any) *pb.CiliumPolicyRule {
 		rule.Description = proto.String(description)
 	}
 
-	// Extract labels
-	if labels, found, _ := unstructured.NestedStringMap(spec, "labels"); found {
-		rule.Labels = labels
+	// Extract labels — Cilium labels are []Label ({key, value} structs), not map[string]string.
+	if labelsSlice, found, _ := unstructured.NestedSlice(spec, "labels"); found {
+		rule.Labels = convertCiliumLabelArray(labelsSlice)
 	}
 
 	// Extract enableDefaultDeny
@@ -163,6 +168,31 @@ func convertCiliumDefaultDeny(defaultDeny map[string]any) *pb.CiliumPolicyDefaul
 
 	if egress, found, _ := unstructured.NestedBool(defaultDeny, "egress"); found {
 		result.Egress = proto.Bool(egress)
+	}
+
+	return result
+}
+
+// convertCiliumLabelArray converts Cilium's LabelArray ([]Label with key/value structs) to map[string]string.
+func convertCiliumLabelArray(labels []any) map[string]string {
+	if len(labels) == 0 {
+		return nil
+	}
+
+	result := make(map[string]string, len(labels))
+
+	for _, label := range labels {
+		labelMap, ok := label.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		key, _, _ := unstructured.NestedString(labelMap, "key")
+		value, _, _ := unstructured.NestedString(labelMap, "value")
+
+		if key != "" {
+			result[key] = value
+		}
 	}
 
 	return result
@@ -239,7 +269,7 @@ func convertCiliumIngressRules(rules []any) []*pb.CiliumPolicyIngressRule {
 
 		// FromEndpoints
 		if fromEndpoints, found, _ := unstructured.NestedSlice(ruleMap, "fromEndpoints"); found {
-			protoRule.FromEndpoints = &pb.LabelSelectorList{Items: convertCiliumEndpointSelectors(fromEndpoints)}
+			protoRule.FromEndpoints = &pb.LabelSelectorList{Items: convertCiliumLabelSelectors(fromEndpoints)}
 		}
 
 		// FromCIDR
@@ -264,7 +294,7 @@ func convertCiliumIngressRules(rules []any) []*pb.CiliumPolicyIngressRule {
 
 		// FromNodes (for host policies)
 		if fromNodes, found, _ := unstructured.NestedSlice(ruleMap, "fromNodes"); found {
-			protoRule.FromNodes = convertCiliumNodeSelectors(fromNodes)
+			protoRule.FromNodes = convertCiliumLabelSelectors(fromNodes)
 		}
 
 		// ToPorts
@@ -306,7 +336,7 @@ func convertCiliumEgressRules(rules []any) []*pb.CiliumPolicyEgressRule {
 
 		// ToEndpoints
 		if toEndpoints, found, _ := unstructured.NestedSlice(ruleMap, "toEndpoints"); found {
-			protoRule.ToEndpoints = &pb.LabelSelectorList{Items: convertCiliumEndpointSelectors(toEndpoints)}
+			protoRule.ToEndpoints = &pb.LabelSelectorList{Items: convertCiliumLabelSelectors(toEndpoints)}
 		}
 
 		// ToCIDR
@@ -341,7 +371,7 @@ func convertCiliumEgressRules(rules []any) []*pb.CiliumPolicyEgressRule {
 
 		// ToNodes (for host policies)
 		if toNodes, found, _ := unstructured.NestedSlice(ruleMap, "toNodes"); found {
-			protoRule.ToNodes = convertCiliumNodeSelectors(toNodes)
+			protoRule.ToNodes = convertCiliumLabelSelectors(toNodes)
 		}
 
 		// ToPorts
@@ -365,28 +395,8 @@ func convertCiliumEgressRules(rules []any) []*pb.CiliumPolicyEgressRule {
 	return result
 }
 
-// convertCiliumEndpointSelectors converts endpoint selectors from unstructured to proto.
-func convertCiliumEndpointSelectors(selectors []any) []*pb.LabelSelector {
-	if len(selectors) == 0 {
-		return nil
-	}
-
-	result := make([]*pb.LabelSelector, 0, len(selectors))
-
-	for _, selector := range selectors {
-		selectorMap, ok := selector.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		result = append(result, convertCiliumLabelSelector(selectorMap))
-	}
-
-	return result
-}
-
-// convertCiliumNodeSelectors converts node selectors from unstructured to proto.
-func convertCiliumNodeSelectors(selectors []any) []*pb.LabelSelector {
+// convertCiliumLabelSelectors converts a slice of label selectors from unstructured to proto.
+func convertCiliumLabelSelectors(selectors []any) []*pb.LabelSelector {
 	if len(selectors) == 0 {
 		return nil
 	}
@@ -560,6 +570,8 @@ func convertCiliumICMPFields(fields []any) []*pb.CiliumPolicyICMPField {
 			case string:
 				if intVal, err := strconv.ParseUint(v, 10, 32); err == nil && intVal <= 255 {
 					protoField.Type = &pb.CiliumPolicyICMPField_TypeInt{TypeInt: uint32(intVal)}
+				} else {
+					protoField.Type = &pb.CiliumPolicyICMPField_TypeString{TypeString: v}
 				}
 			}
 		}
