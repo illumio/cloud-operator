@@ -32,6 +32,9 @@ linters:
     - wrapcheck
     - wsl
   settings:
+    goconst:
+      min-occurrences: 5 # Require 5+ occurrences before flagging (default is 3)
+      ignore-tests: true # Ignore constants in test files
     gosec:
       config:
         G302: "0644" # Allow creating file with mode 0644
