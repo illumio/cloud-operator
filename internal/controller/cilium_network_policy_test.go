@@ -1316,6 +1316,138 @@ func TestConvertUnstructuredToCiliumPolicy_EgressToGroups(t *testing.T) {
 	assert.Equal(t, "eu-west-1", awsGroup.GetRegion())
 }
 
+func TestConvertUnstructuredToCiliumPolicy_EmptyPolicy(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            "empty-policy",
+				"namespace":       "default",
+				"uid":             "empty-uid",
+				"resourceVersion": "11111",
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	ciliumPolicy := result.GetCiliumNetworkPolicy()
+	require.NotNil(t, ciliumPolicy)
+	assert.Empty(t, ciliumPolicy.GetSpecs(), "policy with no spec or specs should have empty specs")
+}
+
+func TestConvertUnstructuredToCiliumPolicy_MetadataFields(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name":              "metadata-policy",
+				"namespace":         "prod",
+				"uid":               "meta-uid-123",
+				"resourceVersion":   "99999",
+				"creationTimestamp": "2026-05-01T12:00:00Z",
+				"annotations": map[string]any{
+					"policy.cilium.io/description": "test annotation",
+				},
+				"labels": map[string]any{
+					"team": "platform",
+				},
+				"ownerReferences": []any{
+					map[string]any{
+						"apiVersion":         "apps/v1",
+						"kind":               "Deployment",
+						"name":               "my-deployment",
+						"uid":                "owner-uid-456",
+						"controller":         true,
+						"blockOwnerDeletion": true,
+					},
+				},
+			},
+			"spec": map[string]any{
+				"endpointSelector": map[string]any{},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assert.Equal(t, "metadata-policy", result.GetName())
+	assert.Equal(t, "prod", result.GetNamespace())
+	assert.Equal(t, "meta-uid-123", result.GetUid())
+	assert.Equal(t, "99999", result.GetResourceVersion())
+
+	assert.Equal(t, "test annotation", result.GetAnnotations()["policy.cilium.io/description"])
+	assert.Equal(t, "platform", result.GetLabels()["team"])
+
+	require.NotNil(t, result.GetCreationTimestamp())
+	assert.Equal(t, int64(2026), int64(result.GetCreationTimestamp().AsTime().Year()))
+
+	require.Len(t, result.GetOwnerReferences(), 1)
+	ownerRef := result.GetOwnerReferences()[0]
+	assert.Equal(t, "apps/v1", ownerRef.GetApiVersion())
+	assert.Equal(t, "Deployment", ownerRef.GetKind())
+	assert.Equal(t, "my-deployment", ownerRef.GetName())
+	assert.Equal(t, "owner-uid-456", ownerRef.GetUid())
+	assert.True(t, ownerRef.GetController())
+	assert.True(t, ownerRef.GetBlockOwnerDeletion())
+}
+
+func TestConvertUnstructuredToCiliumPolicy_IngressFromEntities(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            "entity-ingress-policy",
+				"namespace":       "default",
+				"uid":             "entity-uid",
+				"resourceVersion": "22222",
+			},
+			"spec": map[string]any{
+				"endpointSelector": map[string]any{},
+				"ingress": []any{
+					map[string]any{
+						"fromEntities": []any{"world", "host", "remote-node"},
+					},
+				},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	require.NoError(t, err)
+
+	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
+	require.Len(t, spec.GetIngressRules(), 1)
+
+	ingressRule := spec.GetIngressRules()[0]
+	assert.ElementsMatch(t, []string{"world", "host", "remote-node"}, ingressRule.GetFromEntities())
+}
+
 func TestConvertUnstructuredToCiliumPolicy_UnsupportedKind(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{

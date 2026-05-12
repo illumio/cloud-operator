@@ -17,10 +17,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/controller"
 )
 
 // ResourceStreamSender abstracts the operations for sending resources to CloudSecure.
@@ -30,6 +28,10 @@ type ResourceStreamSender interface {
 	CreateMutationObject(metadata *pb.KubernetesObjectData, eventType watch.EventType) *pb.KubernetesResourceMutation
 }
 
+// ResourceConverter converts an unstructured Kubernetes object into a
+// KubernetesObjectData proto. Each resource type provides its own implementation.
+type ResourceConverter func(ctx context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error)
+
 // MutationCheckpointInterval is the interval for logging mutation checkpoint messages.
 const MutationCheckpointInterval = 60 * time.Second
 
@@ -38,11 +40,11 @@ type WatcherConfig struct {
 	ResourceName    string // plural-lowercase (e.g., "pods")
 	ApiGroup        string
 	ApiVersion      string
-	Clientset       kubernetes.Interface
 	BaseLogger      *zap.Logger
 	DynamicClient   dynamic.Interface
 	ResourcesClient ResourceStreamSender
 	Limiter         *rate.Limiter
+	Converter       ResourceConverter
 }
 
 // Watcher encapsulates components for listing and managing Kubernetes resources.
@@ -50,11 +52,11 @@ type Watcher struct {
 	resourceName    string // plural-lowercase (e.g., "pods")
 	apiGroup        string
 	apiVersion      string
-	clientset       kubernetes.Interface
 	logger          *zap.Logger
 	dynamicClient   dynamic.Interface
 	resourcesClient ResourceStreamSender
 	limiter         *rate.Limiter
+	converter       ResourceConverter
 }
 
 // NewWatcher creates a new Watcher for a specific resource type.
@@ -69,11 +71,11 @@ func NewWatcher(config WatcherConfig) *Watcher {
 		resourceName:    config.ResourceName,
 		apiGroup:        config.ApiGroup,
 		apiVersion:      config.ApiVersion,
-		clientset:       config.Clientset,
 		logger:          logger,
 		dynamicClient:   config.DynamicClient,
 		resourcesClient: config.ResourcesClient,
 		limiter:         config.Limiter,
+		converter:       config.Converter,
 	}
 }
 
@@ -112,34 +114,29 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 		return "", err
 	}
 
-	isCilium := controller.IsCiliumPolicy(r.resourceName)
-	resourcesGvk := unstructuredResources.GroupVersionKind()
+	// Dynamic client may not set GVK on individual list items; derive it from the list GVK.
+	listGvk := unstructuredResources.GroupVersionKind()
+	itemGvk := schema.GroupVersionKind{
+		Group:   listGvk.Group,
+		Version: listGvk.Version,
+		Kind:    removeListSuffix(listGvk.Kind),
+	}
 
 	for i := range unstructuredResources.Items {
 		item := &unstructuredResources.Items[i]
 
-		var metadataObj *pb.KubernetesObjectData
+		if item.GetKind() == "" {
+			item.SetGroupVersionKind(itemGvk)
+		}
 
-		if isCilium {
-			metadataObj, err = controller.ConvertUnstructuredToCiliumPolicy(item)
-			if err != nil {
-				r.logger.Error("Cannot convert Cilium policy",
-					zap.String("name", item.GetName()),
-					zap.String("namespace", item.GetNamespace()),
-					zap.Error(err))
+		metadataObj, err := r.converter(ctx, item)
+		if err != nil {
+			r.logger.Error("Cannot convert resource",
+				zap.String("name", item.GetName()),
+				zap.String("namespace", item.GetNamespace()),
+				zap.Error(err))
 
-				return "", fmt.Errorf("failed to convert Cilium policy %s/%s: %w", item.GetNamespace(), item.GetName(), err)
-			}
-		} else {
-			objMeta, err := controller.GetMetadataFromResource(r.logger, *item)
-			if err != nil {
-				r.logger.Error("Cannot get metadata from resource", zap.Error(err))
-
-				return "", err
-			}
-
-			metadataObj = controller.ConvertMetaObjectToMetadata(ctx, *objMeta, r.clientset,
-				removeListSuffix(resourcesGvk.Kind), resourcesGvk.Group, resourcesGvk.Version)
+			return "", fmt.Errorf("failed to convert resource %s/%s: %w", item.GetNamespace(), item.GetName(), err)
 		}
 
 		if err := r.resourcesClient.SendObjectData(logger, metadataObj); err != nil {
@@ -373,31 +370,14 @@ func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutati
 		return "", errors.New("event object is nil")
 	}
 
-	// Note: resourceGvk.Kind is PascalCase (e.g., "CiliumNetworkPolicy").
-	resourceGvk := event.Object.GetObjectKind().GroupVersionKind()
+	unstructuredObj, ok := event.Object.(*unstructured.Unstructured)
+	if !ok {
+		return "", fmt.Errorf("expected *unstructured.Unstructured, got %T", event.Object)
+	}
 
-	var metadataObj *pb.KubernetesObjectData
-
-	// Handle Cilium policies specially to extract full spec.
-	if controller.IsCiliumPolicy(resourceGvk.Kind) {
-		unstructuredObj, ok := event.Object.(*unstructured.Unstructured)
-		if !ok {
-			return "", errors.New("failed to convert event object to unstructured for Cilium policy")
-		}
-
-		var err error
-
-		metadataObj, err = controller.ConvertUnstructuredToCiliumPolicy(unstructuredObj)
-		if err != nil {
-			return "", fmt.Errorf("failed to convert Cilium policy: %w", err)
-		}
-	} else {
-		convertedData, err := controller.GetObjectMetadataFromRuntimeObject(event.Object)
-		if err != nil {
-			return "", fmt.Errorf("failed to convert runtime.Object to metav1.ObjectMeta: %w", err)
-		}
-
-		metadataObj = controller.ConvertMetaObjectToMetadata(ctx, *convertedData, r.clientset, resourceGvk.Kind, resourceGvk.Group, resourceGvk.Version)
+	metadataObj, err := r.converter(ctx, unstructuredObj)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert resource: %w", err)
 	}
 
 	mutation := r.resourcesClient.CreateMutationObject(metadataObj, event.Type)
