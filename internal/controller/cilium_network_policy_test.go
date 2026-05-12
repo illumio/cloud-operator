@@ -1315,3 +1315,26 @@ func TestConvertUnstructuredToCiliumPolicy_EgressToGroups(t *testing.T) {
 	assert.ElementsMatch(t, []string{"sg-abcde"}, awsGroup.GetSecurityGroupIds())
 	assert.Equal(t, "eu-west-1", awsGroup.GetRegion())
 }
+
+func TestConvertUnstructuredToCiliumPolicy_UnsupportedKind(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumEgressGatewayPolicy",
+			"metadata": map[string]any{
+				"name": "test-policy",
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumEgressGatewayPolicy",
+	})
+
+	_, err := ConvertUnstructuredToCiliumPolicy(obj)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported Cilium policy kind")
+	assert.Contains(t, err.Error(), "CiliumEgressGatewayPolicy")
+}
