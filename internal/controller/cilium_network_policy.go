@@ -4,6 +4,7 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 
 	"google.golang.org/protobuf/proto"
@@ -68,6 +69,8 @@ func ConvertUnstructuredToCiliumPolicy(obj *unstructured.Unstructured) (*pb.Kube
 				Specs: specs,
 			},
 		}
+	default:
+		return nil, fmt.Errorf("unsupported Cilium policy kind: %s", gvk.Kind)
 	}
 
 	return objMetadata, nil

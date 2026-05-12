@@ -276,38 +276,6 @@ func (r *Watcher) FetchResources(ctx context.Context, namespace string) (*unstru
 	return unstructuredResources, nil
 }
 
-func (r *Watcher) ExtractObjectMetas(resources *unstructured.UnstructuredList) ([]metav1.ObjectMeta, error) {
-	objectMetas := make([]metav1.ObjectMeta, 0, len(resources.Items))
-	for _, item := range resources.Items {
-		objMeta, err := controller.GetMetadataFromResource(r.logger, item)
-		if err != nil {
-			r.logger.Error("Cannot get metadata from resource", zap.Error(err))
-
-			return nil, err
-		}
-
-		objectMetas = append(objectMetas, *objMeta)
-	}
-
-	return objectMetas, nil
-}
-
-func (r *Watcher) ListResources(ctx context.Context, namespace string) ([]metav1.ObjectMeta, string, string, string, string, error) {
-	unstructuredResources, err := r.FetchResources(ctx, namespace)
-	if err != nil {
-		return nil, "", "", "", "", err
-	}
-
-	objectMetas, err := r.ExtractObjectMetas(unstructuredResources)
-	if err != nil {
-		return nil, "", "", "", "", err
-	}
-
-	resourcesGvk := unstructuredResources.GroupVersionKind()
-
-	return objectMetas, unstructuredResources.GetResourceVersion(), removeListSuffix(resourcesGvk.Kind), resourcesGvk.Group, resourcesGvk.Version, nil
-}
-
 func removeListSuffix(s string) string {
 	return strings.TrimSuffix(s, "List")
 }
