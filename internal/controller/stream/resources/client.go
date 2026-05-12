@@ -12,9 +12,11 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/watch"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller"
 	"github.com/illumio/cloud-operator/internal/controller/auth"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
@@ -68,6 +70,11 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		return err
 	}
 
+	coreConverter := controller.NewCoreResourceConverter(clientset, c.logger)
+	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+		return controller.ConvertUnstructuredToCiliumPolicy(obj)
+	}
+
 	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
 	sharedLimiter := rate.NewLimiter(1, 5)
 	resourceManagers := make(map[string]*Watcher)
@@ -81,15 +88,20 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		default:
 		}
 
+		converter := coreConverter
+		if controller.IsCiliumPolicy(resource) {
+			converter = ciliumConverter
+		}
+
 		resourceManager := NewWatcher(WatcherConfig{
 			ResourceName:    resource,
 			ApiGroup:        resourceInfo.Group,
 			ApiVersion:      resourceInfo.Version,
-			Clientset:       clientset,
 			BaseLogger:      c.logger,
 			DynamicClient:   dynamicClient,
 			ResourcesClient: c,
 			Limiter:         sharedLimiter,
+			Converter:       converter,
 		})
 		resourceManagers[resource] = resourceManager
 
