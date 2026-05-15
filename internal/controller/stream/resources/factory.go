@@ -38,18 +38,15 @@ func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnI
 		return nil, err
 	}
 
-	client := &resourcesClient{
+	return &resourcesClient{
 		grpcStream:    grpcStream,
 		logger:        f.Logger,
 		k8sClient:     f.K8sClient,
 		stats:         f.Stats,
 		flowCollector: f.FlowCollectorType,
 		clusterName:   f.ClusterName,
-	}
-
-	client.runtimeCache = f.Cache
-
-	return client, nil
+		runtimeCache:  f.Cache,
+	}, nil
 }
 
 // Name returns the stream name for logging.

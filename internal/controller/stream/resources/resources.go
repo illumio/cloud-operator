@@ -8,14 +8,14 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// CiliumResources lists the Cilium resources managed by the reconciler.
-var CiliumResources = []string{
+// ConfiguredResourceKinds lists the kinds of resources managed by the reconciler.
+var ConfiguredResourceKinds = []string{
 	"ciliumcidrgroups",
 	"ciliumclusterwidenetworkpolicies",
 	"ciliumnetworkpolicies",
 }
 
-var resourceList = append(CiliumResources,
+var resourceList = append(ConfiguredResourceKinds,
 	"cronjobs",
 	"customresourcedefinitions",
 	"daemonsets",

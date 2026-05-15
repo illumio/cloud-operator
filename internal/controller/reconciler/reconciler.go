@@ -56,7 +56,7 @@ func NewReconciler(
 // It blocks until the context is cancelled.
 func (r *Reconciler) Start(ctx context.Context) {
 	// Discover API groups for Cilium resources
-	resourceInfo, err := resources.BuildResourceAPIGroupMap(resources.CiliumResources, r.client.GetClientset(), r.logger)
+	resourceInfo, err := resources.BuildResourceAPIGroupMap(resources.ConfiguredResourceKinds, r.client.GetClientset(), r.logger)
 	if err != nil {
 		r.logger.Warn("Failed to build resource API group map for Cilium resources", zap.Error(err))
 		// Continue with empty map - reconciler will log errors for unknown resources
@@ -68,23 +68,23 @@ func (r *Reconciler) Start(ctx context.Context) {
 	// Wait for both caches to be ready before reconciling
 	r.logger.Info("Waiting for config and runtime caches to be ready for reconciliation loop")
 
-	configCh := r.configCache.IsReady()
-	runtimeCh := r.runtimeCache.IsReady()
+	configCacheIsReady := r.configCache.IsReady()
+	runtimeCacheIsReady := r.runtimeCache.IsReady()
 
-	for configCh != nil || runtimeCh != nil {
+	for configCacheIsReady != nil || runtimeCacheIsReady != nil {
 		select {
 		case <-ctx.Done():
 			r.logger.Info("Context cancelled while waiting for caches")
 
 			return
-		case <-configCh:
+		case <-configCacheIsReady:
 			r.logger.Debug("Config cache is ready")
 
-			configCh = nil
-		case <-runtimeCh:
+			configCacheIsReady = nil
+		case <-runtimeCacheIsReady:
 			r.logger.Debug("Runtime cache is ready")
 
-			runtimeCh = nil
+			runtimeCacheIsReady = nil
 		}
 	}
 
