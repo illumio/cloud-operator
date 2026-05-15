@@ -160,7 +160,6 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 		}
 
 		// Add operator-managed objects to the runtime snapshot for reconciliation.
-		// Add operator-managed objects to the runtime snapshot for reconciliation.
 		if r.runtimeCache != nil && r.isManagedByOperator(item) {
 			id := item.GetLabels()[controller.CloudSecureIDLabel]
 			if id != "" {
@@ -345,23 +344,18 @@ func (r *Watcher) handleWatchEvent(
 	case watch.Added, watch.Modified, watch.Deleted:
 		logger.Debug("Received mutation from watcher", zap.String("type", string(event.Type)))
 
-		resourceVersion, err := r.processMutation(ctx, event, mutationChan)
+		resourceVersion, metadataObj, err := r.processMutation(ctx, event, mutationChan)
 		if err != nil {
 			return "", false, err
 		}
 
-		// Additionally update the runtime cache for operator-managed Cilium resources.
+		// Additionally update the runtime cache for operator-managed resources.
 		if r.runtimeCache != nil {
 			obj := event.Object.(*unstructured.Unstructured)
 
 			if r.isManagedByOperator(obj) {
 				id := obj.GetLabels()[controller.CloudSecureIDLabel]
 				if id != "" {
-					metadataObj, err := r.converter(ctx, obj)
-					if err != nil {
-						return "", false, fmt.Errorf("failed to convert resource: %w", err)
-					}
-
 					configured := controller.BuildConfiguredFromMetadata(id, metadataObj)
 
 					switch event.Type {
@@ -416,28 +410,28 @@ func getResourceVersionFromBookmark(event watch.Event) (string, error) {
 	return resourceVersion, nil
 }
 
-func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation) (string, error) {
+func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation) (string, *pb.KubernetesObjectData, error) {
 	if event.Object == nil {
-		return "", errors.New("event object is nil")
+		return "", nil, errors.New("event object is nil")
 	}
 
 	unstructuredObj, ok := event.Object.(*unstructured.Unstructured)
 	if !ok {
-		return "", fmt.Errorf("expected *unstructured.Unstructured, got %T", event.Object)
+		return "", nil, fmt.Errorf("expected *unstructured.Unstructured, got %T", event.Object)
 	}
 
 	metadataObj, err := r.converter(ctx, unstructuredObj)
 	if err != nil {
-		return "", fmt.Errorf("failed to convert resource: %w", err)
+		return "", nil, fmt.Errorf("failed to convert resource: %w", err)
 	}
 
 	mutation := r.resourcesClient.CreateMutationObject(metadataObj, event.Type)
 
 	select {
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return "", nil, ctx.Err()
 	case mutationChan <- mutation:
 	}
 
-	return metadataObj.GetResourceVersion(), nil
+	return metadataObj.GetResourceVersion(), metadataObj, nil
 }

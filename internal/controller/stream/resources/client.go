@@ -94,7 +94,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		converter := coreConverter
 		var runtimeCache *cache.ConfiguredObjectCache
 
-		if slices.Contains(CiliumResources, resource) {
+		if slices.Contains(ConfiguredResourceKinds, resource) {
 			converter = ciliumConverter
 			runtimeCache = c.runtimeCache
 		}
