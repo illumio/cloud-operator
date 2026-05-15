@@ -63,6 +63,10 @@ func NewConfiguredObjectCache() *ConfiguredObjectCache {
 	return NewObjectCache[*pb.ConfiguredKubernetesObjectData]()
 }
 
+// Close closes the resourceChanged channel, unblocking any goroutines waiting to send.
+func (c *ObjectCache[T]) Close() {
+	close(c.resourceChanged)
+}
 
 // IsReady returns a channel that is closed when the first snapshot is complete.
 // Use <-cache.IsReady() to block until the cache has consistent data.

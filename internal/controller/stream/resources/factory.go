@@ -23,8 +23,8 @@ type Factory struct {
 	K8sClient         k8sclient.Client
 	Stats             *stream.Stats
 	FlowCollectorType pb.FlowCollector
-	ClusterName       string             // Optional: cluster name for self-managed clusters
-	RuntimeCache      *cache.ConfiguredObjectCache
+	ClusterName       string // Optional: cluster name for self-managed clusters
+	Cache             *cache.ConfiguredObjectCache
 }
 
 // NewStreamClient creates a new resources stream client.
@@ -47,7 +47,7 @@ func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnI
 		clusterName:   f.ClusterName,
 	}
 
-	client.runtimeCache = f.RuntimeCache
+	client.runtimeCache = f.Cache
 
 	return client, nil
 }

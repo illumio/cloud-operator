@@ -40,7 +40,7 @@ type resourcesClient struct {
 	k8sClient     k8sclient.Client
 	stats         *stream.Stats
 	flowCollector pb.FlowCollector
-	clusterName   string                 // Optional: cluster name for self-managed clusters
+	clusterName  string // Optional: cluster name for self-managed clusters
 	runtimeCache *cache.ConfiguredObjectCache
 
 	mutex  sync.RWMutex
@@ -106,7 +106,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 			BaseLogger:      c.logger,
 			DynamicClient:   dynamicClient,
 			ResourcesClient: c,
-			RuntimeCache: runtimeCache,
+			RuntimeCache:    runtimeCache,
 			Limiter:         sharedLimiter,
 			Converter:       converter,
 		})
