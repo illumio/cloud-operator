@@ -28,7 +28,7 @@ type Reconciler struct {
 	logger       *zap.Logger
 	client       k8sclient.Client
 	configCache  *cache.ConfiguredObjectCache
-	runtimeCache *cache.RuntimeCache
+	runtimeCache *cache.ConfiguredObjectCache
 	resourceInfo map[string]resources.ResourceInfo // discovered API group/version info
 }
 
@@ -37,7 +37,7 @@ func NewReconciler(
 	logger *zap.Logger,
 	client k8sclient.Client,
 	configCache *cache.ConfiguredObjectCache,
-	runtimeCache *cache.RuntimeCache,
+	runtimeCache *cache.ConfiguredObjectCache,
 ) *Reconciler {
 	return &Reconciler{
 		logger:       logger,

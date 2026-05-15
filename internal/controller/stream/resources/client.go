@@ -41,7 +41,7 @@ type resourcesClient struct {
 	stats         *stream.Stats
 	flowCollector pb.FlowCollector
 	clusterName   string                 // Optional: cluster name for self-managed clusters
-	runtimeCache *cache.RuntimeCache // Optional: runtime cache for tracking operator-managed resources
+	runtimeCache *cache.ConfiguredObjectCache
 
 	mutex  sync.RWMutex
 	closed bool
@@ -92,8 +92,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		}
 
 		converter := coreConverter
-
-		var runtimeCache *cache.RuntimeCache
+		var runtimeCache *cache.ConfiguredObjectCache
 
 		if controller.IsCiliumResource(resource) {
 			converter = ciliumConverter
