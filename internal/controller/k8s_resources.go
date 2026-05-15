@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -36,6 +37,35 @@ func NewCoreResourceConverter(clientset kubernetes.Interface, logger *zap.Logger
 		return ConvertMetaObjectToMetadata(ctx, *objMeta, clientset, gvk.Kind, gvk.Group, gvk.Version), nil
 	}
 }
+
+//nolint:modernize // omitempty on ObjectMeta follows standard Kubernetes type conventions
+type (
+	// CiliumNetworkPolicy is a typed struct for building unstructured objects via ToUnstructured.
+	CiliumNetworkPolicy struct {
+		metav1.TypeMeta   `json:",inline"`
+		metav1.ObjectMeta `json:"metadata,omitempty"`
+
+		Spec  *pb.CiliumPolicyRule   `json:"spec,omitempty"`
+		Specs []*pb.CiliumPolicyRule `json:"specs,omitempty"`
+	}
+
+	// CiliumClusterwideNetworkPolicy is a typed struct for building unstructured objects via ToUnstructured.
+	CiliumClusterwideNetworkPolicy struct {
+		metav1.TypeMeta   `json:",inline"`
+		metav1.ObjectMeta `json:"metadata,omitempty"`
+
+		Spec  *pb.CiliumPolicyRule   `json:"spec,omitempty"`
+		Specs []*pb.CiliumPolicyRule `json:"specs,omitempty"`
+	}
+
+	// CiliumCIDRGroup is a typed struct for building unstructured objects via ToUnstructured.
+	CiliumCIDRGroup struct {
+		metav1.TypeMeta   `json:",inline"`
+		metav1.ObjectMeta `json:"metadata,omitempty"`
+
+		Spec *pb.CiliumCIDRGroup `json:"spec,omitempty"`
+	}
+)
 
 // convertObjectToMetadata extracts the ObjectMeta from a metav1.Object interface.
 func convertObjectToMetadata(obj metav1.Object) metav1.ObjectMeta {
@@ -574,4 +604,119 @@ func convertPodIPsToStrings(podIPs []v1.PodIP) []string {
 // convertToProtoTimestamp converts a Kubernetes metav1.Time into a Protobuf Timestamp.
 func convertToProtoTimestamp(k8sTime metav1.Time) *timestamppb.Timestamp {
 	return timestamppb.New(k8sTime.Time)
+}
+
+const (
+	// CloudSecureIDLabel is the label key used to store the CloudSecure object ID.
+	// This ID is the unique key in the desired state (config) cache. It is set as a label on
+	// Kubernetes objects during apply so the watcher can extract it and use it as the runtime
+	// cache key, allowing the reconciler to match desired vs actual state by the same ID.
+	CloudSecureIDLabel = "app.kubernetes.io/cloudsecure-id"
+
+	// ManagedByLabel is the standard Kubernetes label for identifying the managing component.
+	ManagedByLabel = "app.kubernetes.io/managed-by"
+
+	// ManagedByValue is the value used for the managed-by label.
+	ManagedByValue = "cloud-operator"
+)
+
+// ResourceKindInfo holds resource name and kind for a proto type.
+type ResourceKindInfo struct {
+	Resource string
+	Kind     string
+}
+
+// ResourceKindMap maps proto types to their K8s resource and kind.
+var ResourceKindMap = map[string]ResourceKindInfo{
+	"CiliumNetworkPolicy":            {Resource: "ciliumnetworkpolicies", Kind: "CiliumNetworkPolicy"},
+	"CiliumClusterwideNetworkPolicy": {Resource: "ciliumclusterwidenetworkpolicies", Kind: "CiliumClusterwideNetworkPolicy"},
+	"CiliumCidrGroup":                {Resource: "ciliumcidrgroups", Kind: "CiliumCIDRGroup"},
+}
+
+// ToApplyObject converts ConfiguredKubernetesObjectData to a runtime.Object wrapper
+// suitable for Server-Side Apply. The apiVersion is derived from the provided group/version.
+func ToApplyObject(data *pb.ConfiguredKubernetesObjectData, apiGroup, apiVersion string) (any, error) {
+	if data == nil {
+		return nil, errors.New("configured object data is nil")
+	}
+
+	// Build apiVersion string
+	fullAPIVersion := apiVersion
+	if apiGroup != "" {
+		fullAPIVersion = apiGroup + "/" + apiVersion
+	}
+
+	// Build ObjectMeta
+	objMeta := metav1.ObjectMeta{
+		Name:        data.GetName(),
+		Labels:      copyLabels(data.GetLabels(), data.GetId()),
+		Annotations: data.GetAnnotations(),
+	}
+
+	if ns := data.GetNamespace(); ns != "" {
+		objMeta.Namespace = ns
+	}
+
+	// Create the appropriate wrapper based on KindSpecific
+	switch ks := data.GetKindSpecific().(type) {
+	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
+		policy := &CiliumNetworkPolicy{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: fullAPIVersion,
+				Kind:       "CiliumNetworkPolicy",
+			},
+			ObjectMeta: objMeta,
+		}
+
+		specs := ks.CiliumNetworkPolicy.GetSpecs()
+		if len(specs) == 1 {
+			policy.Spec = specs[0]
+		} else {
+			policy.Specs = specs
+		}
+
+		return policy, nil
+
+	case *pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy:
+		policy := &CiliumClusterwideNetworkPolicy{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: fullAPIVersion,
+				Kind:       "CiliumClusterwideNetworkPolicy",
+			},
+			ObjectMeta: objMeta,
+		}
+
+		specs := ks.CiliumClusterwideNetworkPolicy.GetSpecs()
+		if len(specs) == 1 {
+			policy.Spec = specs[0]
+		} else {
+			policy.Specs = specs
+		}
+
+		return policy, nil
+
+	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
+		return &CiliumCIDRGroup{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: fullAPIVersion,
+				Kind:       "CiliumCIDRGroup",
+			},
+			ObjectMeta: objMeta,
+			Spec:       ks.CiliumCidrGroup.GetSpec(),
+		}, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
+	}
+}
+
+// copyLabels copies labels and adds the CloudSecure ID and managed-by labels.
+func copyLabels(labels map[string]string, id string) map[string]string {
+	result := make(map[string]string, len(labels)+2)
+	maps.Copy(result, labels)
+
+	result[CloudSecureIDLabel] = id
+	result[ManagedByLabel] = ManagedByValue
+
+	return result
 }

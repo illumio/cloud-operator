@@ -75,6 +75,43 @@ func ConvertUnstructuredToCiliumPolicy(obj *unstructured.Unstructured) (*pb.Kube
 	return objMetadata, nil
 }
 
+// SetConfiguredKindSpecific populates the KindSpecific field on a ConfiguredKubernetesObjectData
+// from an unstructured Cilium resource. Does nothing for non-Cilium or unrecognized kinds.
+func SetConfiguredKindSpecific(configured *pb.ConfiguredKubernetesObjectData, obj *unstructured.Unstructured) {
+	switch obj.GetKind() {
+	case "CiliumNetworkPolicy":
+		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
+				Specs: extractCiliumSpecs(obj),
+			},
+		}
+	case "CiliumClusterwideNetworkPolicy":
+		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+			CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+				Specs: extractCiliumSpecs(obj),
+			},
+		}
+	case "CiliumCIDRGroup":
+		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
+			CiliumCidrGroup: &pb.KubernetesCiliumCIDRGroupData{
+				Spec: extractCiliumCIDRGroupSpec(obj),
+			},
+		}
+	}
+}
+
+// extractCiliumCIDRGroupSpec extracts the CiliumCIDRGroup spec from an unstructured object.
+func extractCiliumCIDRGroupSpec(obj *unstructured.Unstructured) *pb.CiliumCIDRGroup {
+	cidrs, found, _ := unstructured.NestedStringSlice(obj.Object, "spec", "externalCIDRs")
+	if !found || len(cidrs) == 0 {
+		return nil
+	}
+
+	return &pb.CiliumCIDRGroup{
+		ExternalCidrs: cidrs,
+	}
+}
+
 // extractCiliumSpecs extracts CiliumPolicyRule specs from both 'spec' and 'specs' fields.
 func extractCiliumSpecs(obj *unstructured.Unstructured) []*pb.CiliumPolicyRule {
 	var result []*pb.CiliumPolicyRule

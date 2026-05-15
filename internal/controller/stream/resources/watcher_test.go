@@ -953,7 +953,7 @@ func TestDynamicListResources_CoreResources(t *testing.T) {
 	ctx := context.Background()
 
 	// Note: fake dynamic client may not set listVersion, so we just check no error.
-	_, err := rm.DynamicListResources(ctx, logger)
+	_, _, err := rm.DynamicListResources(ctx, logger)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -992,7 +992,7 @@ func TestDynamicListResources_CiliumResources(t *testing.T) {
 	ctx := context.Background()
 
 	// Note: fake dynamic client may not set listVersion, so we just check no error.
-	_, err := rm.DynamicListResources(ctx, logger)
+	_, _, err := rm.DynamicListResources(ctx, logger)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1038,7 +1038,7 @@ func TestDynamicListResources_FetchError(t *testing.T) {
 		resourcesClient: &mockResourceStreamSender{},
 	}
 
-	_, err := rm.DynamicListResources(context.Background(), logger)
+	_, _, err := rm.DynamicListResources(context.Background(), logger)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -1073,7 +1073,7 @@ func TestDynamicListResources_ContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := rm.DynamicListResources(ctx, logger)
+	_, _, err := rm.DynamicListResources(ctx, logger)
 	if err == nil {
 		t.Fatal("expected context error, got nil")
 	}
@@ -1170,7 +1170,7 @@ func TestDynamicListResources_ConverterError(t *testing.T) {
 		converter:       failingConverter,
 	}
 
-	_, err := rm.DynamicListResources(context.Background(), logger)
+	_, _, err := rm.DynamicListResources(context.Background(), logger)
 	if err == nil {
 		t.Fatal("expected error from failing converter, got nil")
 	}
@@ -1204,7 +1204,7 @@ func TestDynamicListResources_SendObjectDataError(t *testing.T) {
 		converter:       stubConverter,
 	}
 
-	_, err := rm.DynamicListResources(context.Background(), logger)
+	_, _, err := rm.DynamicListResources(context.Background(), logger)
 	if err == nil {
 		t.Fatal("expected error from failing sender, got nil")
 	}
@@ -1240,7 +1240,7 @@ func TestDynamicListResources_MultipleItems(t *testing.T) {
 		converter:       stubConverter,
 	}
 
-	_, err := rm.DynamicListResources(context.Background(), logger)
+	_, _, err := rm.DynamicListResources(context.Background(), logger)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

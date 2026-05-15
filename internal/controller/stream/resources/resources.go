@@ -8,9 +8,14 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-var resourceList = []string{
+// CiliumResources lists the Cilium resources managed by the reconciler.
+var CiliumResources = []string{
+	"ciliumcidrgroups",
 	"ciliumclusterwidenetworkpolicies",
 	"ciliumnetworkpolicies",
+}
+
+var resourceList = append(CiliumResources,
 	"cronjobs",
 	"customresourcedefinitions",
 	"daemonsets",
@@ -31,7 +36,7 @@ var resourceList = []string{
 	"serviceaccounts",
 	"services",
 	"statefulsets",
-}
+)
 
 // ResourceInfo holds the API group and preferred version for a resource.
 type ResourceInfo struct {
@@ -39,8 +44,9 @@ type ResourceInfo struct {
 	Version string
 }
 
-// buildResourceApiGroupMap creates a mapping between Kubernetes resources and their API groups with preferred versions.
-func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface, logger *zap.Logger) (map[string]ResourceInfo, error) {
+// BuildResourceAPIGroupMap creates a mapping between Kubernetes resources and their API groups with preferred versions.
+// Exported for use by the reconciler.
+func BuildResourceAPIGroupMap(resources []string, clientset kubernetes.Interface, logger *zap.Logger) (map[string]ResourceInfo, error) {
 	resourceAPIGroupMap := make(map[string]ResourceInfo)
 
 	resourceSet := make(map[string]struct{})
