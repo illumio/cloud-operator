@@ -32,6 +32,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
+	"github.com/illumio/cloud-operator/internal/controller/reconciler"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config"
 	configcache "github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
@@ -232,6 +233,20 @@ func main() {
 		logger.Fatal("Failed to create Kubernetes client", zap.Error(err))
 	}
 
+	// Create runtime cache for tracking actual cluster state (for reconciliation)
+	runtimeCache := configcache.NewRuntimeCache()
+
+	// Create and start the reconciler
+	// Start() discovers resources, waits for both desired and runtime caches, then runs the reconciliation loop
+	policyReconciler := reconciler.NewReconciler(
+		logger,
+		k8sClient,
+		configuredObjectCache,
+		runtimeCache,
+	)
+
+	go policyReconciler.Start(ctx)
+
 	// Detect flow collector type at startup
 	flowCollectorType, flowCollectorName, flowCollectorFactory := flows.DetectFlowCollector(ctx, flows.CollectorConfig{
 		Logger:             logger,
@@ -271,6 +286,7 @@ func main() {
 					K8sClient:         k8sClient,
 					FlowCollectorType: flowCollectorType,
 					ClusterName:       envConfig.ClusterName,
+					RuntimeCache:      runtimeCache,
 				},
 				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
 			},

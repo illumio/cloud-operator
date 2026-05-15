@@ -19,6 +19,8 @@ import (
 	"k8s.io/client-go/dynamic"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller"
+	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 )
 
 // ResourceStreamSender abstracts the operations for sending resources to CloudSecure.
@@ -42,7 +44,8 @@ type WatcherConfig struct {
 	ApiVersion      string
 	BaseLogger      *zap.Logger
 	DynamicClient   dynamic.Interface
-	ResourcesClient ResourceStreamSender
+	ResourcesClient ResourceStreamSender // for CloudSecure streaming
+	RuntimeCache    *cache.RuntimeCache  // for tracking operator-managed resources (optional, Cilium only)
 	Limiter         *rate.Limiter
 	Converter       ResourceConverter
 }
@@ -55,6 +58,7 @@ type Watcher struct {
 	logger          *zap.Logger
 	dynamicClient   dynamic.Interface
 	resourcesClient ResourceStreamSender
+	runtimeCache    *cache.RuntimeCache
 	limiter         *rate.Limiter
 	converter       ResourceConverter
 }
@@ -74,9 +78,16 @@ func NewWatcher(config WatcherConfig) *Watcher {
 		logger:          logger,
 		dynamicClient:   config.DynamicClient,
 		resourcesClient: config.ResourcesClient,
+		runtimeCache:    config.RuntimeCache,
 		limiter:         config.Limiter,
 		converter:       config.Converter,
 	}
+}
+
+// isManagedByOperator checks if the object has the managed-by label set by cloud-operator.
+func (r *Watcher) isManagedByOperator(obj *unstructured.Unstructured) bool {
+	labels := obj.GetLabels()
+	return labels[controller.ManagedByLabel] == controller.ManagedByValue
 }
 
 // gvr returns the GroupVersionResource for this watcher.
@@ -107,11 +118,12 @@ func (r *Watcher) WatchK8sResources(ctx context.Context, cancel context.CancelFu
 	}
 }
 
-// DynamicListResources lists a specified resource dynamically and sends down the current gRPC stream.
-func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) (string, error) {
+// DynamicListResources lists a specified resource dynamically, sends down the current gRPC stream,
+// and returns any operator-managed objects found for runtime cache population.
+func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) (string, map[string]*pb.ConfiguredKubernetesObjectData, error) {
 	unstructuredResources, err := r.FetchResources(ctx, metav1.NamespaceAll)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	// Dynamic client may not set GVK on individual list items; derive it from the list GVK.
@@ -122,12 +134,16 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 		Kind:    removeListSuffix(listGvk.Kind),
 	}
 
-	for _, item := range unstructuredResources.Items {
+	runtimeObjects := make(map[string]*pb.ConfiguredKubernetesObjectData)
+
+	for i := range unstructuredResources.Items {
+		item := &unstructuredResources.Items[i]
+
 		if item.GetKind() == "" {
 			item.SetGroupVersionKind(itemGvk)
 		}
 
-		metadataObj, err := r.converter(ctx, &item)
+		metadataObj, err := r.converter(ctx, item)
 		if err != nil {
 			r.logger.Warn("Skipping resource that failed conversion",
 				zap.String("kind", item.GetKind()),
@@ -143,7 +159,17 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 		if err := r.resourcesClient.SendObjectData(logger, metadataObj); err != nil {
 			r.logger.Error("Cannot send object metadata", zap.Error(err))
 
-			return "", err
+			return "", nil, err
+		}
+
+		// If managed by operator, build ConfiguredKubernetesObjectData and add to snapshot.
+		// Labels are stripped of operator-added labels (cloudsecure-id, managed-by) so
+		// proto.Equal comparison against the config cache is accurate.
+		if r.isManagedByOperator(item) {
+			configured := buildConfiguredObject(item)
+			if configured != nil {
+				runtimeObjects[configured.Id] = configured
+			}
 		}
 	}
 
@@ -151,11 +177,11 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 
 	select {
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return "", nil, ctx.Err()
 	default:
 	}
 
-	return unstructuredResources.GetResourceVersion(), nil
+	return unstructuredResources.GetResourceVersion(), runtimeObjects, nil
 }
 
 //nolint:gocognit // function is complex by nature (watch loop)
@@ -322,6 +348,28 @@ func (r *Watcher) handleWatchEvent(
 	case watch.Added, watch.Modified, watch.Deleted:
 		logger.Debug("Received mutation from watcher", zap.String("type", string(event.Type)))
 
+		// Cilium resource watchers update the runtime cache directly.
+		if r.runtimeCache != nil {
+			obj, ok := event.Object.(*unstructured.Unstructured)
+			if !ok {
+				return "", false, errors.New("event object is not unstructured")
+			}
+
+			if r.isManagedByOperator(obj) {
+				configured := buildConfiguredObject(obj)
+				if configured != nil {
+					switch event.Type {
+					case watch.Added, watch.Modified:
+						r.runtimeCache.Insert(configured.Id, configured)
+					case watch.Deleted:
+						r.runtimeCache.Delete(configured.Id)
+					}
+				}
+			}
+
+			return obj.GetResourceVersion(), true, nil
+		}
+
 		resourceVersion, err := r.processMutation(ctx, event, mutationChan)
 
 		return resourceVersion, true, err
@@ -390,4 +438,38 @@ func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutati
 	}
 
 	return metadataObj.GetResourceVersion(), nil
+}
+
+// buildConfiguredObject builds a ConfiguredKubernetesObjectData from an operator-managed
+// unstructured object. Labels added by the operator (cloudsecure-id, managed-by) are stripped
+// so proto.Equal comparison against the config cache is accurate.
+// Returns nil if the object has no CloudSecure ID.
+func buildConfiguredObject(obj *unstructured.Unstructured) *pb.ConfiguredKubernetesObjectData {
+	labels := obj.GetLabels()
+	id := labels[controller.CloudSecureIDLabel]
+	if id == "" {
+		return nil
+	}
+
+	filteredLabels := make(map[string]string, len(labels))
+	for k, v := range labels {
+		if k != controller.CloudSecureIDLabel && k != controller.ManagedByLabel {
+			filteredLabels[k] = v
+		}
+	}
+
+	configured := &pb.ConfiguredKubernetesObjectData{
+		Id:          id,
+		Name:        obj.GetName(),
+		Annotations: obj.GetAnnotations(),
+		Labels:      filteredLabels,
+	}
+
+	if ns := obj.GetNamespace(); ns != "" {
+		configured.Namespace = &ns
+	}
+
+	controller.SetConfiguredKindSpecific(configured, obj)
+
+	return configured
 }

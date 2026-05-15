@@ -11,6 +11,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 )
 
 // Verify Factory implements stream.StreamClientFactory.
@@ -22,7 +23,8 @@ type Factory struct {
 	K8sClient         k8sclient.Client
 	Stats             *stream.Stats
 	FlowCollectorType pb.FlowCollector
-	ClusterName       string // Optional: cluster name for self-managed clusters
+	ClusterName       string             // Optional: cluster name for self-managed clusters
+	RuntimeCache      *cache.RuntimeCache // Optional: runtime cache for tracking operator-managed resources
 }
 
 // NewStreamClient creates a new resources stream client.
@@ -36,14 +38,18 @@ func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnI
 		return nil, err
 	}
 
-	return &resourcesClient{
+	client := &resourcesClient{
 		grpcStream:    grpcStream,
 		logger:        f.Logger,
 		k8sClient:     f.K8sClient,
 		stats:         f.Stats,
 		flowCollector: f.FlowCollectorType,
 		clusterName:   f.ClusterName,
-	}, nil
+	}
+
+	client.runtimeCache = f.RuntimeCache
+
+	return client, nil
 }
 
 // Name returns the stream name for logging.
