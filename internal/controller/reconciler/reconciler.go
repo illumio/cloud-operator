@@ -9,8 +9,6 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -193,61 +191,26 @@ func (r *Reconciler) ReconcileAll(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// resourceForConfiguredObject returns the plural resource name for a configured object.
-func resourceForConfiguredObject(data *pb.ConfiguredKubernetesObjectData) (string, error) {
-	var protoType string
-
-	switch data.GetKindSpecific().(type) {
-	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
-		protoType = "CiliumNetworkPolicy"
-	case *pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy:
-		protoType = "CiliumClusterwideNetworkPolicy"
-	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
-		protoType = "CiliumCIDRGroup"
-	default:
-		return "", fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
-	}
-
-	info, ok := controller.ResourceKindMap[protoType]
-	if !ok {
-		return "", fmt.Errorf("unknown proto type: %s", protoType)
-	}
-
-	return info.Resource, nil
-}
-
 // applyObject applies a single configured object to Kubernetes using Server-Side Apply.
 func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKubernetesObjectData) error {
-	// Get resource name from proto type
-	resourceName, err := resourceForConfiguredObject(configObj)
+	resourceName, err := controller.ExtractResourceName(configObj)
 	if err != nil {
 		return err
 	}
 
-	// Get GVR from discovered resource info from desired state cache
 	info, ok := r.resourceInfo[resourceName]
 	if !ok {
 		return fmt.Errorf("resource not discovered: %s", resourceName)
 	}
 
+	// Convert to unstructured to be able to apply
+	desired, _, err := controller.ConvertToApplyObject(configObj, info.Group, info.Version)
+	if err != nil {
+		return fmt.Errorf("failed to create unstructured object: %w", err)
+	}
+
 	gvr := schema.GroupVersionResource{Group: info.Group, Version: info.Version, Resource: resourceName}
 
-	// Convert proto → typed Go struct → unstructured map.
-	// The dynamic client only accepts *unstructured.Unstructured; using typed Cilium clients
-	// would avoid this conversion but adds a large dependency
-	obj, err := controller.ToApplyObject(configObj, info.Group, info.Version)
-	if err != nil {
-		return fmt.Errorf("failed to create runtime object: %w", err)
-	}
-
-	unstructuredMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
-	if err != nil {
-		return fmt.Errorf("failed to convert to unstructured: %w", err)
-	}
-
-	desired := &unstructured.Unstructured{Object: unstructuredMap}
-
-	// Use Server-Side Apply
 	applied, err := r.client.ApplyResource(ctx, gvr, desired.GetNamespace(), desired, FieldManager)
 	if err != nil {
 		return fmt.Errorf("failed to apply: %w", err)
@@ -265,7 +228,7 @@ func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKu
 
 // deleteObject deletes an object from Kubernetes by deriving the GVR from the configured object.
 func (r *Reconciler) deleteObject(ctx context.Context, obj *pb.ConfiguredKubernetesObjectData) error {
-	resourceName, err := resourceForConfiguredObject(obj)
+	resourceName, err := controller.ExtractResourceName(obj)
 	if err != nil {
 		return err
 	}

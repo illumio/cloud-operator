@@ -1313,9 +1313,9 @@ type CiliumPolicyIngressRule struct {
 	// Wrapped to distinguish nil (implicit wildcard when to_ports is set) from empty (selects nothing).
 	FromEndpoints *LabelSelectorList `protobuf:"bytes,1,opt,name=from_endpoints,json=fromEndpoints,proto3,oneof" json:"from_endpoints,omitempty"`
 	// FromCIDR allows/denies traffic from specific CIDR ranges.
-	FromCidr []string `protobuf:"bytes,2,rep,name=from_cidr,json=fromCidr,proto3" json:"from_cidr,omitempty"`
+	FromCidr []string `protobuf:"bytes,2,rep,name=from_cidr,json=fromCIDR,proto3" json:"from_cidr,omitempty"`
 	// FromCIDRSet allows/denies traffic from CIDR ranges with exceptions.
-	FromCidrSet []*CiliumPolicyCIDRSet `protobuf:"bytes,3,rep,name=from_cidr_set,json=fromCidrSet,proto3" json:"from_cidr_set,omitempty"`
+	FromCidrSet []*CiliumPolicyCIDRSet `protobuf:"bytes,3,rep,name=from_cidr_set,json=fromCIDRSet,proto3" json:"from_cidr_set,omitempty"`
 	// FromEntities allows/denies traffic from Cilium-defined entities (e.g., "world", "cluster", "host").
 	FromEntities []string `protobuf:"bytes,4,rep,name=from_entities,json=fromEntities,proto3" json:"from_entities,omitempty"`
 	// FromGroups allows/denies traffic from cloud provider security groups.
@@ -1436,14 +1436,14 @@ type CiliumPolicyEgressRule struct {
 	// Wrapped to distinguish nil (implicit wildcard when to_ports is set) from empty (selects nothing).
 	ToEndpoints *LabelSelectorList `protobuf:"bytes,1,opt,name=to_endpoints,json=toEndpoints,proto3,oneof" json:"to_endpoints,omitempty"`
 	// ToCIDR allows/denies traffic to specific CIDR ranges.
-	ToCidr []string `protobuf:"bytes,2,rep,name=to_cidr,json=toCidr,proto3" json:"to_cidr,omitempty"`
+	ToCidr []string `protobuf:"bytes,2,rep,name=to_cidr,json=toCIDR,proto3" json:"to_cidr,omitempty"`
 	// ToCIDRSet allows/denies traffic to CIDR ranges with exceptions.
-	ToCidrSet []*CiliumPolicyCIDRSet `protobuf:"bytes,3,rep,name=to_cidr_set,json=toCidrSet,proto3" json:"to_cidr_set,omitempty"`
+	ToCidrSet []*CiliumPolicyCIDRSet `protobuf:"bytes,3,rep,name=to_cidr_set,json=toCIDRSet,proto3" json:"to_cidr_set,omitempty"`
 	// ToEntities allows/denies traffic to Cilium-defined entities (e.g., "world", "cluster", "host").
 	ToEntities []string `protobuf:"bytes,4,rep,name=to_entities,json=toEntities,proto3" json:"to_entities,omitempty"`
 	// ToFQDNs allows traffic to DNS names (e.g., "*.example.com").
 	// Note: Not applicable for deny rules (field is ignored).
-	ToFqdns []*CiliumPolicyFQDNSelector `protobuf:"bytes,5,rep,name=to_fqdns,json=toFqdns,proto3" json:"to_fqdns,omitempty"`
+	ToFqdns []*CiliumPolicyFQDNSelector `protobuf:"bytes,5,rep,name=to_fqdns,json=toFQDNs,proto3" json:"to_fqdns,omitempty"`
 	// ToServices allows/denies traffic to Kubernetes services.
 	ToServices []*CiliumPolicyService `protobuf:"bytes,6,rep,name=to_services,json=toServices,proto3" json:"to_services,omitempty"`
 	// ToGroups allows/denies traffic to cloud provider security groups.
@@ -5459,8 +5459,8 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\a_egress\"\xe8\x05\n" +
 	"\x17CiliumPolicyIngressRule\x12^\n" +
 	"\x0efrom_endpoints\x18\x01 \x01(\v22.illumio.cloud.k8sclustersync.v1.LabelSelectorListH\x00R\rfromEndpoints\x88\x01\x01\x12\x1b\n" +
-	"\tfrom_cidr\x18\x02 \x03(\tR\bfromCidr\x12X\n" +
-	"\rfrom_cidr_set\x18\x03 \x03(\v24.illumio.cloud.k8sclustersync.v1.CiliumPolicyCIDRSetR\vfromCidrSet\x12#\n" +
+	"\tfrom_cidr\x18\x02 \x03(\tR\bfromCIDR\x12X\n" +
+	"\rfrom_cidr_set\x18\x03 \x03(\v24.illumio.cloud.k8sclustersync.v1.CiliumPolicyCIDRSetR\vfromCIDRSet\x12#\n" +
 	"\rfrom_entities\x18\x04 \x03(\tR\ffromEntities\x12S\n" +
 	"\vfrom_groups\x18\x05 \x03(\v22.illumio.cloud.k8sclustersync.v1.CiliumPolicyGroupR\n" +
 	"fromGroups\x12M\n" +
@@ -5473,11 +5473,11 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x0f_authentication\"\xfa\x06\n" +
 	"\x16CiliumPolicyEgressRule\x12Z\n" +
 	"\fto_endpoints\x18\x01 \x01(\v22.illumio.cloud.k8sclustersync.v1.LabelSelectorListH\x00R\vtoEndpoints\x88\x01\x01\x12\x17\n" +
-	"\ato_cidr\x18\x02 \x03(\tR\x06toCidr\x12T\n" +
-	"\vto_cidr_set\x18\x03 \x03(\v24.illumio.cloud.k8sclustersync.v1.CiliumPolicyCIDRSetR\ttoCidrSet\x12\x1f\n" +
+	"\ato_cidr\x18\x02 \x03(\tR\x06toCIDR\x12T\n" +
+	"\vto_cidr_set\x18\x03 \x03(\v24.illumio.cloud.k8sclustersync.v1.CiliumPolicyCIDRSetR\ttoCIDRSet\x12\x1f\n" +
 	"\vto_entities\x18\x04 \x03(\tR\n" +
 	"toEntities\x12T\n" +
-	"\bto_fqdns\x18\x05 \x03(\v29.illumio.cloud.k8sclustersync.v1.CiliumPolicyFQDNSelectorR\atoFqdns\x12U\n" +
+	"\bto_fqdns\x18\x05 \x03(\v29.illumio.cloud.k8sclustersync.v1.CiliumPolicyFQDNSelectorR\atoFQDNs\x12U\n" +
 	"\vto_services\x18\x06 \x03(\v24.illumio.cloud.k8sclustersync.v1.CiliumPolicyServiceR\n" +
 	"toServices\x12O\n" +
 	"\tto_groups\x18\a \x03(\v22.illumio.cloud.k8sclustersync.v1.CiliumPolicyGroupR\btoGroups\x12I\n" +

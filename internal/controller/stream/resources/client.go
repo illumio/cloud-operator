@@ -92,13 +92,11 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		}
 
 		converter := coreConverter
+
+		var runtimeCache *cache.RuntimeCache
+
 		if controller.IsCiliumResource(resource) {
 			converter = ciliumConverter
-		}
-
-		// Only Cilium watchers get the runtime cache for reconciliation
-		var runtimeCache *cache.RuntimeCache
-		if slices.Contains(CiliumResources, resource) {
 			runtimeCache = c.runtimeCache
 		}
 
