@@ -234,7 +234,7 @@ func main() {
 	}
 
 	// Create runtime cache for tracking actual cluster state (for reconciliation)
-	runtimeCache := configcache.NewRuntimeCache()
+	runtimeCache := configcache.NewConfiguredObjectCache()
 
 	// Create and start the reconciler
 	// Start() discovers resources, waits for both desired and runtime caches, then runs the reconciliation loop

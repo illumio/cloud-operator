@@ -24,7 +24,7 @@ type Factory struct {
 	Stats             *stream.Stats
 	FlowCollectorType pb.FlowCollector
 	ClusterName       string             // Optional: cluster name for self-managed clusters
-	RuntimeCache      *cache.RuntimeCache // Optional: runtime cache for tracking operator-managed resources
+	RuntimeCache      *cache.ConfiguredObjectCache
 }
 
 // NewStreamClient creates a new resources stream client.

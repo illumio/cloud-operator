@@ -45,7 +45,7 @@ type WatcherConfig struct {
 	BaseLogger      *zap.Logger
 	DynamicClient   dynamic.Interface
 	ResourcesClient ResourceStreamSender // for CloudSecure streaming
-	RuntimeCache    *cache.RuntimeCache  // for tracking operator-managed resources (optional, Cilium only)
+	RuntimeCache    *cache.ConfiguredObjectCache  // set only for Cilium resource watchers
 	Limiter         *rate.Limiter
 	Converter       ResourceConverter
 }
@@ -58,7 +58,7 @@ type Watcher struct {
 	logger          *zap.Logger
 	dynamicClient   dynamic.Interface
 	resourcesClient ResourceStreamSender
-	runtimeCache    *cache.RuntimeCache
+	runtimeCache    *cache.ConfiguredObjectCache
 	limiter         *rate.Limiter
 	converter       ResourceConverter
 }

@@ -87,7 +87,7 @@ func TestNewReconciler(t *testing.T) {
 	logger := zap.NewNop()
 	client := newMockClient()
 	configCache := cache.NewConfiguredObjectCache()
-	runtimeCache := cache.NewRuntimeCache()
+	runtimeCache := cache.NewConfiguredObjectCache()
 
 	r := NewReconciler(logger, client, configCache, runtimeCache)
 
@@ -102,7 +102,7 @@ func TestReconcile_EmptyCaches(t *testing.T) {
 	logger := zap.NewNop()
 	client := newMockClient()
 	configCache := cache.NewConfiguredObjectCache()
-	runtimeCache := cache.NewRuntimeCache()
+	runtimeCache := cache.NewConfiguredObjectCache()
 
 	// Drain channels so ReplaceAll doesn't block
 	go func() {

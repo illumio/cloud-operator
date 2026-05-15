@@ -63,15 +63,6 @@ func NewConfiguredObjectCache() *ConfiguredObjectCache {
 	return NewObjectCache[*pb.ConfiguredKubernetesObjectData]()
 }
 
-// RuntimeCache is the cache type for runtime Kubernetes objects.
-// It stores the same proto type as the config cache, enabling symmetric comparison
-// using proto.Equal so the reconciler only applies when there's an actual diff.
-type RuntimeCache = ObjectCache[*pb.ConfiguredKubernetesObjectData]
-
-// NewRuntimeCache creates a new cache for runtime objects.
-func NewRuntimeCache() *RuntimeCache {
-	return NewObjectCache[*pb.ConfiguredKubernetesObjectData]()
-}
 
 // IsReady returns a channel that is closed when the first snapshot is complete.
 // Use <-cache.IsReady() to block until the cache has consistent data.
