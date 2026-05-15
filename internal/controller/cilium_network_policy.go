@@ -67,17 +67,20 @@ func ConvertUnstructuredToCiliumResource(obj *unstructured.Unstructured) (*pb.Ku
 		objMetadata.Namespace = &namespace
 	}
 
+	// Extract specs from both 'spec' (single) and 'specs' (array) fields
+	specs := extractCiliumSpecs(obj)
+
 	switch gvk.Kind {
 	case "CiliumNetworkPolicy":
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
-				Specs: extractCiliumSpecs(obj),
+				Specs: specs,
 			},
 		}
 	case "CiliumClusterwideNetworkPolicy":
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_CiliumClusterwideNetworkPolicy{
 			CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
-				Specs: extractCiliumSpecs(obj),
+				Specs: specs,
 			},
 		}
 	case "CiliumCIDRGroup":
@@ -96,7 +99,8 @@ func ConvertUnstructuredToCiliumResource(obj *unstructured.Unstructured) (*pb.Ku
 // BuildConfiguredFromMetadata builds a ConfiguredKubernetesObjectData from the
 // already-converted KubernetesObjectData for the runtime cache. Operator-added
 // labels (cloudsecure-id, managed-by) are stripped so the runtime snapshot
-// matches the shape of the config cache.
+// matches the shape of the config cache. Annotations are excluded — the
+// reconciler handles annotation comparison by intersecting with desired state.
 func BuildConfiguredFromMetadata(id string, metadata *pb.KubernetesObjectData) *pb.ConfiguredKubernetesObjectData {
 	// Copy labels excluding operator-added ones so the runtime snapshot matches the config cache shape.
 	filteredLabels := make(map[string]string, len(metadata.GetLabels()))
@@ -107,11 +111,10 @@ func BuildConfiguredFromMetadata(id string, metadata *pb.KubernetesObjectData) *
 	}
 
 	configured := &pb.ConfiguredKubernetesObjectData{
-		Id:          id,
-		Name:        metadata.GetName(),
-		Namespace:   metadata.Namespace,
-		Annotations: metadata.GetAnnotations(),
-		Labels:      filteredLabels,
+		Id:        id,
+		Name:      metadata.GetName(),
+		Namespace: metadata.Namespace,
+		Labels:    filteredLabels,
 	}
 
 	setConfiguredKindSpecific(configured, metadata)

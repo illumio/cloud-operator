@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -21,6 +22,10 @@ import (
 const (
 	// FieldManager identifies cloud-operator as the owner of fields in Server-Side Apply.
 	FieldManager = "cloud-operator"
+
+	// FullReconcileInterval is the periodic safety net for full reconciliation,
+	// catching anything missed due to dropped events or transient failures.
+	FullReconcileInterval = 5 * time.Minute
 )
 
 // Reconciler synchronizes desired state from CloudSecure with actual state in Kubernetes.
@@ -85,47 +90,63 @@ func (r *Reconciler) Start(ctx context.Context) {
 
 	r.logger.Info("Both caches are ready, starting reconciliation loop")
 
-	configChan := r.configCache.ResourceChanged()
-	runtimeChan := r.runtimeCache.ResourceChanged()
+	// Do an initial full reconciliation before processing incremental changes.
+	if err := r.reconcileAll(ctx); err != nil {
+		r.logger.Error("Full reconciliation failed", zap.Error(err))
+	}
+
+	reconcileTimer := time.NewTimer(FullReconcileInterval)
 
 	for {
 		select {
 		case <-ctx.Done():
+			reconcileTimer.Stop()
+
 			return
-		case id := <-configChan:
-			r.handleChange(ctx, id)
-		case id := <-runtimeChan:
-			r.handleChange(ctx, id)
+		case <-reconcileTimer.C:
+			if err := r.reconcileAll(ctx); err != nil {
+				r.logger.Error("Full reconciliation failed", zap.Error(err))
+			}
+
+			reconcileTimer.Reset(FullReconcileInterval)
+		case id := <-r.configCache.ResourceChanged():
+			if id == cache.SnapshotReplaced {
+				if err := r.reconcileAll(ctx); err != nil {
+					r.logger.Error("Full reconciliation failed", zap.Error(err))
+				}
+
+				reconcileTimer.Reset(FullReconcileInterval)
+			} else {
+				if err := r.reconcileObject(ctx, id); err != nil {
+					r.logger.Error("Object reconciliation failed", zap.String("id", id), zap.Error(err))
+				}
+			}
+		case id := <-r.runtimeCache.ResourceChanged():
+			if id == cache.SnapshotReplaced {
+				if err := r.reconcileAll(ctx); err != nil {
+					r.logger.Error("Full reconciliation failed", zap.Error(err))
+				}
+
+				reconcileTimer.Reset(FullReconcileInterval)
+			} else {
+				if err := r.reconcileObject(ctx, id); err != nil {
+					r.logger.Error("Object reconciliation failed", zap.String("id", id), zap.Error(err))
+				}
+			}
 		}
 	}
 }
 
-// handleChange does either full or per-object reconciliation based on the ID.
-func (r *Reconciler) handleChange(ctx context.Context, id string) {
-	if id == cache.SnapshotReplaced {
-		if err := r.ReconcileAll(ctx); err != nil {
-			r.logger.Error("Full reconciliation failed", zap.Error(err))
-		}
-
-		return
-	}
-
-	if err := r.ReconcileObject(ctx, id); err != nil {
-		r.logger.Error("Object reconciliation failed",
-			zap.String("id", id), zap.Error(err))
-	}
-}
-
-// ReconcileObject reconciles a single object by ID.
+// reconcileObject reconciles a single object by ID.
 // It compares the config cache (desired) with the runtime cache (actual) for that ID
 // and applies or deletes as needed.
-func (r *Reconciler) ReconcileObject(ctx context.Context, id string) error {
+func (r *Reconciler) reconcileObject(ctx context.Context, id string) error {
 	configObj := r.configCache.Get(id)
 	runtimeObj := r.runtimeCache.Get(id)
 
 	switch {
 	// In config, not in runtime or different → apply
-	case configObj != nil && (runtimeObj == nil || !proto.Equal(configObj, runtimeObj)):
+	case configObj != nil && (runtimeObj == nil || !r.objectsMatch(configObj, runtimeObj)):
 		if err := r.applyObject(ctx, configObj); err != nil {
 			return fmt.Errorf("apply %s: %w", id, err)
 		}
@@ -140,51 +161,67 @@ func (r *Reconciler) ReconcileObject(ctx context.Context, id string) error {
 	return nil
 }
 
-// ReconcileAll synchronizes all configured objects from CloudSecure to Kubernetes.
-// It applies objects that are new or changed, and deletes objects that are no longer configured.
-// Called when the cache receives a full snapshot replacement ("" on the resourceChanged channel).
-func (r *Reconciler) ReconcileAll(ctx context.Context) error {
-	// Get all configured objects (desired state)
-	configuredObjects := r.configCache.Values()
+// objectsMatch compares a config object with a runtime object, filtering
+// runtime annotations to only include keys that CloudSecure explicitly set.
+// This prevents additional controllers modifying annotations causing false diffs.
+func (r *Reconciler) objectsMatch(configObj, runtimeObj *pb.ConfiguredKubernetesObjectData) bool {
+	// If config has no annotations, runtime shouldn't either for comparison purposes.
+	// Temporarily set runtime annotations to the intersection before comparing.
+	savedAnnotations := runtimeObj.Annotations
+	runtimeObj.Annotations = filterAnnotationsByDesired(runtimeObj.GetAnnotations(), configObj.GetAnnotations())
 
-	// Track which CloudSecure IDs we've seen in config (for deletion detection)
-	configuredIDs := make(map[string]bool)
+	match := proto.Equal(configObj, runtimeObj)
 
-	var errs []error
+	runtimeObj.Annotations = savedAnnotations
 
-	// Apply configured objects that are new or have changed
-	for _, configObj := range configuredObjects {
-		configuredIDs[configObj.GetId()] = true
+	return match
+}
 
-		// Skip apply if runtime state matches desired state
-		if runtimeObj := r.runtimeCache.Get(configObj.GetId()); runtimeObj != nil {
-			if proto.Equal(configObj, runtimeObj) {
-				continue
-			}
-		}
+// filterAnnotationsByDesired returns only runtime annotations whose keys
+// exist in the desired (config) annotations.
+func filterAnnotationsByDesired(runtimeAnnotations, desiredAnnotations map[string]string) map[string]string {
+	if len(desiredAnnotations) == 0 {
+		return nil
+	}
 
-		if err := r.applyObject(ctx, configObj); err != nil {
-			r.logger.Error("Failed to apply configured object",
-				zap.String("id", configObj.GetId()),
-				zap.String("name", configObj.GetName()),
-				zap.Error(err),
-			)
-			errs = append(errs, fmt.Errorf("apply %s: %w", configObj.GetId(), err))
+	if len(runtimeAnnotations) == 0 {
+		return nil
+	}
+
+	filtered := make(map[string]string, len(desiredAnnotations))
+
+	for key, value := range runtimeAnnotations {
+		if _, expected := desiredAnnotations[key]; expected {
+			filtered[key] = value
 		}
 	}
 
-	// Delete objects that exist in runtime but not in config
-	runtimeObjects := r.runtimeCache.Values()
-	for _, runtimeObj := range runtimeObjects {
-		if !configuredIDs[runtimeObj.GetId()] {
-			if err := r.deleteObject(ctx, runtimeObj); err != nil {
-				r.logger.Error("Failed to delete object",
-					zap.String("id", runtimeObj.GetId()),
-					zap.String("name", runtimeObj.GetName()),
-					zap.Error(err),
-				)
-				errs = append(errs, fmt.Errorf("delete %s: %w", runtimeObj.GetId(), err))
-			}
+	if len(filtered) == 0 {
+		return nil
+	}
+
+	return filtered
+}
+
+// reconcileAll synchronizes all configured objects from CloudSecure to Kubernetes.
+// It reconciles every ID from both caches, applying new/changed objects and deleting
+// objects no longer in the config.
+func (r *Reconciler) reconcileAll(ctx context.Context) error {
+	allIDs := make(map[string]struct{})
+
+	for _, obj := range r.configCache.Values() {
+		allIDs[obj.GetId()] = struct{}{}
+	}
+
+	for _, obj := range r.runtimeCache.Values() {
+		allIDs[obj.GetId()] = struct{}{}
+	}
+
+	var errs []error
+
+	for id := range allIDs {
+		if err := r.reconcileObject(ctx, id); err != nil {
+			errs = append(errs, err)
 		}
 	}
 

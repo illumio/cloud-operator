@@ -44,8 +44,8 @@ type WatcherConfig struct {
 	ApiVersion      string
 	BaseLogger      *zap.Logger
 	DynamicClient   dynamic.Interface
-	ResourcesClient ResourceStreamSender // for CloudSecure streaming
-	RuntimeCache    *cache.ConfiguredObjectCache  // set only for Cilium resource watchers
+	ResourcesClient ResourceStreamSender         // for CloudSecure streaming
+	RuntimeCache    *cache.ConfiguredObjectCache // set only for Cilium resource watchers
 	Limiter         *rate.Limiter
 	Converter       ResourceConverter
 }
@@ -159,6 +159,7 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 			return "", nil, err
 		}
 
+		// Add operator-managed objects to the runtime snapshot for reconciliation.
 		// Add operator-managed objects to the runtime snapshot for reconciliation.
 		if r.runtimeCache != nil && r.isManagedByOperator(item) {
 			id := item.GetLabels()[controller.CloudSecureIDLabel]
@@ -344,12 +345,14 @@ func (r *Watcher) handleWatchEvent(
 	case watch.Added, watch.Modified, watch.Deleted:
 		logger.Debug("Received mutation from watcher", zap.String("type", string(event.Type)))
 
-		// Cilium resource watchers update the runtime cache directly.
+		resourceVersion, err := r.processMutation(ctx, event, mutationChan)
+		if err != nil {
+			return "", false, err
+		}
+
+		// Additionally update the runtime cache for operator-managed Cilium resources.
 		if r.runtimeCache != nil {
-			obj, ok := event.Object.(*unstructured.Unstructured)
-			if !ok {
-				return "", false, errors.New("event object is not unstructured")
-			}
+			obj := event.Object.(*unstructured.Unstructured)
 
 			if r.isManagedByOperator(obj) {
 				id := obj.GetLabels()[controller.CloudSecureIDLabel]
@@ -369,13 +372,9 @@ func (r *Watcher) handleWatchEvent(
 					}
 				}
 			}
-
-			return obj.GetResourceVersion(), true, nil
 		}
 
-		resourceVersion, err := r.processMutation(ctx, event, mutationChan)
-
-		return resourceVersion, true, err
+		return resourceVersion, true, nil
 
 	default:
 		return "", false, fmt.Errorf("watcher returned an unknown or empty watch event of type %s", string(event.Type))

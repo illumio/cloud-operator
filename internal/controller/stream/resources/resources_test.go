@@ -136,8 +136,6 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 	})
 }
 
-// TODO add unit tests to here for the cilium resources
-
 func TestSetProcessingResources_Integration(t *testing.T) {
 	// Reset state
 	stream.SetProcessingResources(false)

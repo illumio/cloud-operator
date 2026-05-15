@@ -120,6 +120,6 @@ func TestReconcile_EmptyCaches(t *testing.T) {
 		"ciliumnetworkpolicies": {Group: "cilium.io", Version: "v2"},
 	}
 
-	err := r.ReconcileAll(context.Background())
+	err := r.reconcileAll(context.Background())
 	assert.NoError(t, err)
 }
