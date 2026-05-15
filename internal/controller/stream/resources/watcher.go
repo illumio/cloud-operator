@@ -159,13 +159,12 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 			return "", nil, err
 		}
 
-		// If managed by operator, build ConfiguredKubernetesObjectData and add to snapshot.
-		// Labels are stripped of operator-added labels (cloudsecure-id, managed-by) so
-		// proto.Equal comparison against the config cache is accurate.
-		if r.isManagedByOperator(item) {
-			configured := buildConfiguredObject(item)
-			if configured != nil {
-				runtimeObjects[configured.Id] = configured
+		// Add operator-managed objects to the runtime snapshot for reconciliation.
+		if r.runtimeCache != nil && r.isManagedByOperator(item) {
+			id := item.GetLabels()[controller.CloudSecureIDLabel]
+			if id != "" {
+				configured := controller.BuildConfiguredFromMetadata(id, metadataObj)
+				runtimeObjects[id] = configured
 			}
 		}
 	}
@@ -353,8 +352,15 @@ func (r *Watcher) handleWatchEvent(
 			}
 
 			if r.isManagedByOperator(obj) {
-				configured := buildConfiguredObject(obj)
-				if configured != nil {
+				id := obj.GetLabels()[controller.CloudSecureIDLabel]
+				if id != "" {
+					metadataObj, err := r.converter(ctx, obj)
+					if err != nil {
+						return "", false, fmt.Errorf("failed to convert resource: %w", err)
+					}
+
+					configured := controller.BuildConfiguredFromMetadata(id, metadataObj)
+
 					switch event.Type {
 					case watch.Added, watch.Modified:
 						r.runtimeCache.Insert(configured.Id, configured)
@@ -435,38 +441,4 @@ func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutati
 	}
 
 	return metadataObj.GetResourceVersion(), nil
-}
-
-// buildConfiguredObject builds a ConfiguredKubernetesObjectData from an operator-managed
-// unstructured object. Labels added by the operator (cloudsecure-id, managed-by) are stripped
-// so proto.Equal comparison against the config cache is accurate.
-// Returns nil if the object has no CloudSecure ID.
-func buildConfiguredObject(obj *unstructured.Unstructured) *pb.ConfiguredKubernetesObjectData {
-	labels := obj.GetLabels()
-	id := labels[controller.CloudSecureIDLabel]
-	if id == "" {
-		return nil
-	}
-
-	filteredLabels := make(map[string]string, len(labels))
-	for k, v := range labels {
-		if k != controller.CloudSecureIDLabel && k != controller.ManagedByLabel {
-			filteredLabels[k] = v
-		}
-	}
-
-	configured := &pb.ConfiguredKubernetesObjectData{
-		Id:          id,
-		Name:        obj.GetName(),
-		Annotations: obj.GetAnnotations(),
-		Labels:      filteredLabels,
-	}
-
-	if ns := obj.GetNamespace(); ns != "" {
-		configured.Namespace = &ns
-	}
-
-	controller.SetConfiguredKindSpecific(configured, obj)
-
-	return configured
 }

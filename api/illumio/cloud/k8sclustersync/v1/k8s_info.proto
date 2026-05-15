@@ -188,9 +188,9 @@ message CiliumPolicyIngressRule {
   // Wrapped to distinguish nil (implicit wildcard when to_ports is set) from empty (selects nothing).
   optional LabelSelectorList from_endpoints = 1;
   // FromCIDR allows/denies traffic from specific CIDR ranges.
-  repeated string from_cidr = 2;
+  repeated string from_cidr = 2 [json_name = "fromCIDR"];
   // FromCIDRSet allows/denies traffic from CIDR ranges with exceptions.
-  repeated CiliumPolicyCIDRSet from_cidr_set = 3;
+  repeated CiliumPolicyCIDRSet from_cidr_set = 3 [json_name = "fromCIDRSet"];
   // FromEntities allows/denies traffic from Cilium-defined entities (e.g., "world", "cluster", "host").
   repeated string from_entities = 4;
   // FromGroups allows/denies traffic from cloud provider security groups.
@@ -215,14 +215,14 @@ message CiliumPolicyEgressRule {
   // Wrapped to distinguish nil (implicit wildcard when to_ports is set) from empty (selects nothing).
   optional LabelSelectorList to_endpoints = 1;
   // ToCIDR allows/denies traffic to specific CIDR ranges.
-  repeated string to_cidr = 2;
+  repeated string to_cidr = 2 [json_name = "toCIDR"];
   // ToCIDRSet allows/denies traffic to CIDR ranges with exceptions.
-  repeated CiliumPolicyCIDRSet to_cidr_set = 3;
+  repeated CiliumPolicyCIDRSet to_cidr_set = 3 [json_name = "toCIDRSet"];
   // ToEntities allows/denies traffic to Cilium-defined entities (e.g., "world", "cluster", "host").
   repeated string to_entities = 4;
   // ToFQDNs allows traffic to DNS names (e.g., "*.example.com").
   // Note: Not applicable for deny rules (field is ignored).
-  repeated CiliumPolicyFQDNSelector to_fqdns = 5;
+  repeated CiliumPolicyFQDNSelector to_fqdns = 5 [json_name = "toFQDNs"];
   // ToServices allows/denies traffic to Kubernetes services.
   repeated CiliumPolicyService to_services = 6;
   // ToGroups allows/denies traffic to cloud provider security groups.

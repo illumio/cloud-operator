@@ -74,7 +74,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 	coreConverter := controller.NewCoreResourceConverter(clientset, c.logger)
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return controller.ConvertUnstructuredToCiliumPolicy(obj)
+		return controller.ConvertUnstructuredToCiliumResource(obj)
 	}
 
 	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
@@ -92,13 +92,10 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		}
 
 		converter := coreConverter
-		if controller.IsCiliumPolicy(resource) {
-			converter = ciliumConverter
-		}
-
-		// Only Cilium watchers get the runtime cache for reconciliation
 		var runtimeCache *cache.RuntimeCache
+
 		if slices.Contains(CiliumResources, resource) {
+			converter = ciliumConverter
 			runtimeCache = c.runtimeCache
 		}
 
