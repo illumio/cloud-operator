@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
@@ -50,7 +49,7 @@ func ConvertUnstructuredToCiliumPolicy(obj *unstructured.Unstructured) (*pb.Kube
 	}
 
 	if namespace != "" {
-		objMetadata.Namespace = proto.String(namespace)
+		objMetadata.Namespace = &namespace
 	}
 
 	// Extract specs from both 'spec' (single) and 'specs' (array) fields
@@ -121,7 +120,7 @@ func convertCiliumPolicyRule(spec map[string]any) *pb.CiliumPolicyRule {
 
 	// Extract description
 	if description, found, _ := unstructured.NestedString(spec, "description"); found {
-		rule.Description = proto.String(description)
+		rule.Description = &description
 	}
 
 	// Extract labels — Cilium labels are []Label ({key, value} structs), not map[string]string.
@@ -166,11 +165,11 @@ func convertCiliumDefaultDeny(defaultDeny map[string]any) *pb.CiliumPolicyDefaul
 	result := &pb.CiliumPolicyDefaultDeny{}
 
 	if ingress, found, _ := unstructured.NestedBool(defaultDeny, "ingress"); found {
-		result.Ingress = proto.Bool(ingress)
+		result.Ingress = &ingress
 	}
 
 	if egress, found, _ := unstructured.NestedBool(defaultDeny, "egress"); found {
-		result.Egress = proto.Bool(egress)
+		result.Egress = &egress
 	}
 
 	return result
@@ -435,11 +434,11 @@ func convertCiliumCIDRSets(cidrSets []any) []*pb.CiliumPolicyCIDRSet {
 		protoSet := &pb.CiliumPolicyCIDRSet{}
 
 		if cidr, found, _ := unstructured.NestedString(cidrSetMap, "cidr"); found {
-			protoSet.Cidr = proto.String(cidr)
+			protoSet.Cidr = &cidr
 		}
 
 		if cidrGroupRef, found, _ := unstructured.NestedString(cidrSetMap, "cidrGroupRef"); found {
-			protoSet.CidrGroupRef = proto.String(cidrGroupRef)
+			protoSet.CidrGroupRef = &cidrGroupRef
 		}
 
 		if cidrGroupSelector, found, _ := unstructured.NestedMap(cidrSetMap, "cidrGroupSelector"); found {
@@ -506,7 +505,7 @@ func convertCiliumAWSGroup(aws map[string]any) *pb.CiliumPolicyAWSGroup {
 	}
 
 	if region, found, _ := unstructured.NestedString(aws, "region"); found {
-		result.Region = proto.String(region)
+		result.Region = &region
 	}
 
 	return result
@@ -555,7 +554,7 @@ func convertCiliumICMPFields(fields []any) []*pb.CiliumPolicyICMPField {
 		protoField := &pb.CiliumPolicyICMPField{}
 
 		if family, found, _ := unstructured.NestedString(fieldMap, "family"); found {
-			protoField.Family = proto.String(family)
+			protoField.Family = &family
 		}
 
 		// Type can be either int or string in Cilium CRD
@@ -617,11 +616,11 @@ func convertCiliumFQDNSelectors(fqdns []any) []*pb.CiliumPolicyFQDNSelector {
 		protoFQDN := &pb.CiliumPolicyFQDNSelector{}
 
 		if matchName, found, _ := unstructured.NestedString(fqdnMap, "matchName"); found {
-			protoFQDN.MatchName = proto.String(matchName)
+			protoFQDN.MatchName = &matchName
 		}
 
 		if matchPattern, found, _ := unstructured.NestedString(fqdnMap, "matchPattern"); found {
-			protoFQDN.MatchPattern = proto.String(matchPattern)
+			protoFQDN.MatchPattern = &matchPattern
 		}
 
 		result = append(result, protoFQDN)
@@ -675,7 +674,7 @@ func convertCiliumK8sServiceSelector(selector map[string]any) *pb.CiliumPolicyK8
 	}
 
 	if namespace, found, _ := unstructured.NestedString(selector, "namespace"); found {
-		result.Namespace = proto.String(namespace)
+		result.Namespace = &namespace
 	}
 
 	return result
@@ -690,11 +689,11 @@ func convertCiliumK8sService(service map[string]any) *pb.CiliumPolicyK8SService 
 	result := &pb.CiliumPolicyK8SService{}
 
 	if serviceName, found, _ := unstructured.NestedString(service, "serviceName"); found {
-		result.ServiceName = proto.String(serviceName)
+		result.ServiceName = &serviceName
 	}
 
 	if namespace, found, _ := unstructured.NestedString(service, "namespace"); found {
-		result.Namespace = proto.String(namespace)
+		result.Namespace = &namespace
 	}
 
 	return result
@@ -751,17 +750,19 @@ func convertCiliumPorts(ports []any) []*pb.CiliumPolicyPort {
 			switch v := endPort.(type) {
 			case int64:
 				if v >= 0 && v <= 65535 {
-					protoPort.EndPort = proto.Int32(int32(v))
+					ep := int32(v)
+					protoPort.EndPort = &ep
 				}
 			case float64:
 				if v >= 0 && v <= 65535 {
-					protoPort.EndPort = proto.Int32(int32(v))
+					ep := int32(v)
+					protoPort.EndPort = &ep
 				}
 			}
 		}
 
 		if protocol, found, _ := unstructured.NestedString(portMap, "protocol"); found {
-			protoPort.Protocol = proto.String(protocol)
+			protoPort.Protocol = &protocol
 		}
 
 		result = append(result, protoPort)
