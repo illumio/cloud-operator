@@ -23,23 +23,6 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 )
 
-// ptrBool is a helper function to create pointers to bool values (used in metav1.OwnerReference)
-// Used to simulate the nil behavior of the optional fields.
-func ptrBool(b bool) *bool {
-	return &b
-}
-
-// ptrString is a helper function to create pointers to string values
-// Used to simulate the nil behavior of the optional fields.
-func ptrString(s string) *string {
-	return &s
-}
-
-// ptrUint32 is a helper function to create pointers to int32 values
-// Used to simulate the nil behavior of the optional fields.
-func ptrUint32(n uint32) *uint32 {
-	return &n
-}
 func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 	// Setup a mock object, e.g., a ConfigMap with predefined metadata
 	configMap := metav1.ObjectMeta{
@@ -159,7 +142,7 @@ func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 				Kind:              "test-resource",
 				Labels:            sampleData,
 				Name:              "test-name",
-				Namespace:         ptrString("test-namespace"),
+				Namespace:         new("test-namespace"),
 				ResourceVersion:   "test-version",
 				Uid:               "test-uid",
 				ApiGroup:          "",
@@ -210,7 +193,7 @@ func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 				Kind:              "Deployment",
 				Labels:            sampleData,
 				Name:              "test-deploy",
-				Namespace:         ptrString("test-namespace"),
+				Namespace:         new("test-namespace"),
 				ResourceVersion:   "test-version",
 				Uid:               "test-uid",
 				ApiGroup:          "apps",
@@ -240,8 +223,8 @@ func (suite *ControllerTestSuite) TestConvertOwnerReferences() {
 			ownerReferences: []metav1.OwnerReference{
 				{
 					APIVersion:         "v1",
-					BlockOwnerDeletion: ptrBool(true),
-					Controller:         ptrBool(true),
+					BlockOwnerDeletion: new(true),
+					Controller:         new(true),
 					Kind:               "Pod",
 					Name:               "pod-name",
 					UID:                "uid-1234",
@@ -284,16 +267,16 @@ func (suite *ControllerTestSuite) TestConvertOwnerReferences() {
 			ownerReferences: []metav1.OwnerReference{
 				{
 					APIVersion:         "v1",
-					BlockOwnerDeletion: ptrBool(false),
-					Controller:         ptrBool(true),
+					BlockOwnerDeletion: new(false),
+					Controller:         new(true),
 					Kind:               "ReplicaSet",
 					Name:               "replicaset-1",
 					UID:                "uid-9999",
 				},
 				{
 					APIVersion:         "apps/v1",
-					BlockOwnerDeletion: ptrBool(true),
-					Controller:         ptrBool(false),
+					BlockOwnerDeletion: new(true),
+					Controller:         new(false),
 					Kind:               "Deployment",
 					Name:               "deployment-2",
 					UID:                "uid-8888",
@@ -782,18 +765,18 @@ func (suite *ControllerTestSuite) TestConvertToKubernetesServiceData() {
 				// IpAddresses: []string{}, // Ignored in this test case
 				Ports: []*pb.KubernetesServiceData_ServicePort{
 					{
-						NodePort: ptrUint32(30001),
+						NodePort: new(uint32(30001)),
 						Port:     8080,
 						Protocol: "TCP",
 					},
 					{
-						NodePort: ptrUint32(30002),
+						NodePort: new(uint32(30002)),
 						Port:     443,
 						Protocol: "TCP",
 					},
 				},
 				Type:              "LoadBalancer",
-				ExternalName:      ptrString(""),
+				ExternalName:      new(""),
 				LoadBalancerClass: nil,
 			},
 			expectedError: nil,
