@@ -24,9 +24,10 @@ import (
 //
 // Block on <-cache.IsReady() to wait for the first snapshot to complete before reading.
 //
-// The cache notifies consumers of changes via an unbuffered resourceChanged channel.
+// The cache notifies consumers of changes via a send on the resourceChanged channel.
 // Insert and Delete send the object ID; ReplaceAll sends SnapshotReplaced to indicate
-// a full snapshot.
+// a full snapshot. If the consumer is busy, the notification is dropped — the consumer
+// reads current cache state directly, so missed signals are safe.
 type ObjectCache[T any] struct {
 	mutex sync.RWMutex
 
@@ -38,7 +39,7 @@ type ObjectCache[T any] struct {
 
 	// resourceChanged carries the ID of every resource modified.
 	// SnapshotReplaced ("*") indicates the entire cache was replaced via a full snapshot.
-	// Unbuffered: the sender blocks until the consumer reads.
+	// Sends are non-blocking: if the consumer is busy, the notification is dropped.
 	resourceChanged chan string
 }
 
@@ -102,7 +103,10 @@ func (c *ObjectCache[T]) ReplaceAll(objects map[string]T) {
 
 	c.mutex.Unlock()
 
-	c.resourceChanged <- SnapshotReplaced
+	select {
+	case c.resourceChanged <- SnapshotReplaced:
+	default:
+	}
 }
 
 // Insert adds or updates an object in the cache.
@@ -112,7 +116,10 @@ func (c *ObjectCache[T]) Insert(id string, obj T) {
 	c.objects[id] = obj
 	c.mutex.Unlock()
 
-	c.resourceChanged <- id
+	select {
+	case c.resourceChanged <- id:
+	default:
+	}
 }
 
 // Delete removes an object from the cache by ID.
@@ -122,7 +129,10 @@ func (c *ObjectCache[T]) Delete(id string) {
 	delete(c.objects, id)
 	c.mutex.Unlock()
 
-	c.resourceChanged <- id
+	select {
+	case c.resourceChanged <- id:
+	default:
+	}
 }
 
 // Get retrieves an object by ID. Returns the zero value if not found.
