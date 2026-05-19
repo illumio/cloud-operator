@@ -17,16 +17,20 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
-	"k8s.io/client-go/kubernetes/fake"
 	clientgotesting "k8s.io/client-go/testing"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller"
 )
 
 // mockResourceStreamSender is a mock implementation of ResourceStreamSender for testing.
-type mockResourceStreamSender struct{}
+type mockResourceStreamSender struct {
+	sentObjects []*pb.KubernetesObjectData
+}
 
-func (m *mockResourceStreamSender) SendObjectData(_ *zap.Logger, _ *pb.KubernetesObjectData) error {
+func (m *mockResourceStreamSender) SendObjectData(_ *zap.Logger, data *pb.KubernetesObjectData) error {
+	m.sentObjects = append(m.sentObjects, data)
+
 	return nil
 }
 
@@ -57,6 +61,31 @@ func (m *mockResourceStreamSender) CreateMutationObject(metadata *pb.KubernetesO
 	}
 
 	return mutation
+}
+
+// stubConverter returns a minimal KubernetesObjectData from the unstructured object's metadata.
+func stubConverter(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+	gvk := obj.GroupVersionKind()
+
+	return &pb.KubernetesObjectData{
+		Name:            obj.GetName(),
+		Namespace:       stringPtrOrNil(obj.GetNamespace()),
+		ResourceVersion: obj.GetResourceVersion(),
+		Kind:            gvk.Kind,
+		ApiGroup:        gvk.Group,
+		ApiVersion:      gvk.Version,
+		Uid:             string(obj.GetUID()),
+		Labels:          obj.GetLabels(),
+		Annotations:     obj.GetAnnotations(),
+	}, nil
+}
+
+func stringPtrOrNil(s string) *string {
+	if s == "" {
+		return nil
+	}
+
+	return &s
 }
 
 // helper: minimal unstructured Namespace with name and rv
@@ -154,6 +183,7 @@ func TestProcessMutation_SendsCorrectMutationTypes(t *testing.T) {
 		resourceName:    "namespaces",
 		logger:          logger,
 		resourcesClient: &mockResourceStreamSender{},
+		converter:       stubConverter,
 	}
 
 	ctx := t.Context()
@@ -197,6 +227,7 @@ func TestProcessMutation_RespectsContextCancellation(t *testing.T) {
 		resourceName:    "namespaces",
 		logger:          logger,
 		resourcesClient: &mockResourceStreamSender{},
+		converter:       stubConverter,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -219,6 +250,7 @@ func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 		apiVersion:      "v1",
 		logger:          logger,
 		resourcesClient: &mockResourceStreamSender{},
+		converter:       stubConverter,
 	}
 
 	ctx := t.Context()
@@ -306,6 +338,7 @@ func TestProcessMutation_BookmarkSendsNilMutation(t *testing.T) {
 		resourceName:    "namespaces",
 		logger:          logger,
 		resourcesClient: &mockResourceStreamSender{},
+		converter:       stubConverter,
 	}
 
 	ctx := t.Context()
@@ -336,6 +369,7 @@ func TestProcessMutation_ErrorEventSendsNilMutation(t *testing.T) {
 		resourceName:    "namespaces",
 		logger:          logger,
 		resourcesClient: &mockResourceStreamSender{},
+		converter:       stubConverter,
 	}
 
 	ctx := t.Context()
@@ -363,6 +397,7 @@ func TestProcessMutation_NilObject(t *testing.T) {
 		resourceName:    "namespaces",
 		logger:          logger,
 		resourcesClient: &mockResourceStreamSender{},
+		converter:       stubConverter,
 	}
 
 	ctx := t.Context()
@@ -372,6 +407,78 @@ func TestProcessMutation_NilObject(t *testing.T) {
 	_, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: nil}, ch)
 	if err == nil {
 		t.Fatalf("expected error for nil object, got nil")
+	}
+}
+
+func TestProcessMutation_CiliumPolicy(t *testing.T) {
+	logger := zap.NewNop()
+	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+		return controller.ConvertUnstructuredToCiliumPolicy(obj)
+	}
+	rm := &Watcher{
+		resourceName:    "ciliumnetworkpolicies",
+		logger:          logger,
+		resourcesClient: &mockResourceStreamSender{},
+		converter:       ciliumConverter,
+	}
+
+	ctx := t.Context()
+	ch := make(chan *pb.KubernetesResourceMutation, 1)
+
+	ciliumObj := newUnstructuredCiliumPolicy("test-policy", "default", "500")
+
+	rv, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: ciliumObj}, ch)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if rv != "500" {
+		t.Errorf("expected resourceVersion '500', got %q", rv)
+	}
+
+	m := <-ch
+	if m.GetCreateResource() == nil {
+		t.Fatalf("expected CreateResource mutation, got %#v", m)
+	}
+
+	created := m.GetCreateResource()
+	if created.GetKind() != "CiliumNetworkPolicy" {
+		t.Errorf("expected kind 'CiliumNetworkPolicy', got %q", created.GetKind())
+	}
+
+	if created.GetCiliumNetworkPolicy() == nil {
+		t.Errorf("expected CiliumNetworkPolicy kind-specific data to be set")
+	}
+}
+
+func TestProcessMutation_TypeAssertionFailure(t *testing.T) {
+	logger := zap.NewNop()
+	rm := &Watcher{
+		resourceName:    "pods",
+		logger:          logger,
+		resourcesClient: &mockResourceStreamSender{},
+		converter:       stubConverter,
+	}
+
+	ctx := t.Context()
+	ch := make(chan *pb.KubernetesResourceMutation, 1)
+
+	// Use a non-unstructured runtime.Object — the type assertion should fail.
+	obj := &fakeRuntimeObjectWithGVK{
+		gvk: schema.GroupVersionKind{
+			Group:   "",
+			Version: "v1",
+			Kind:    "Pod",
+		},
+	}
+
+	_, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: obj}, ch)
+	if err == nil {
+		t.Fatalf("expected error for non-unstructured object, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "expected *unstructured.Unstructured") {
+		t.Errorf("expected type assertion error, got: %v", err)
 	}
 }
 
@@ -545,6 +652,7 @@ func TestHandleWatchEvent_ErrorEvent(t *testing.T) {
 		resourceName:    "namespaces",
 		logger:          logger,
 		resourcesClient: &mockResourceStreamSender{},
+		converter:       stubConverter,
 	}
 
 	ctx := context.Background()
@@ -578,6 +686,7 @@ func TestHandleWatchEvent_BookmarkEvent(t *testing.T) {
 		resourceName:    "namespaces",
 		logger:          logger,
 		resourcesClient: &mockResourceStreamSender{},
+		converter:       stubConverter,
 	}
 
 	ctx := context.Background()
@@ -606,6 +715,7 @@ func TestHandleWatchEvent_AddedEvent(t *testing.T) {
 		resourceName:    "namespaces",
 		logger:          logger,
 		resourcesClient: &mockResourceStreamSender{},
+		converter:       stubConverter,
 	}
 
 	ctx := context.Background()
@@ -644,6 +754,7 @@ func TestHandleWatchEvent_UnknownEventType(t *testing.T) {
 		resourceName:    "namespaces",
 		logger:          logger,
 		resourcesClient: &mockResourceStreamSender{},
+		converter:       stubConverter,
 	}
 
 	ctx := context.Background()
@@ -670,17 +781,16 @@ func TestNewWatcher_Constructor(t *testing.T) {
 	logger := zap.NewNop()
 	scheme := runtime.NewScheme()
 	dyn := dynamicfake.NewSimpleDynamicClient(scheme)
-	clientset := fake.NewClientset()
 	limiter := rate.NewLimiter(1, 5)
 
 	config := WatcherConfig{
 		ResourceName:    "pods",
 		ApiGroup:        "",
-		Clientset:       clientset,
 		BaseLogger:      logger,
 		DynamicClient:   dyn,
 		ResourcesClient: &mockResourceStreamSender{},
 		Limiter:         limiter,
+		Converter:       stubConverter,
 	}
 
 	watcher := NewWatcher(config)
@@ -695,10 +805,6 @@ func TestNewWatcher_Constructor(t *testing.T) {
 
 	if watcher.apiGroup != "" {
 		t.Errorf("expected empty apiGroup, got %q", watcher.apiGroup)
-	}
-
-	if watcher.clientset != clientset {
-		t.Errorf("clientset not set correctly")
 	}
 
 	if watcher.dynamicClient != dyn {
@@ -783,64 +889,46 @@ func TestFetchResources_Forbidden(t *testing.T) {
 	}
 }
 
-func TestExtractObjectMetas_Success(t *testing.T) {
+func TestFetchResources_NotFound(t *testing.T) {
 	logger := zap.NewNop()
+	scheme := runtime.NewScheme()
+	gvr := schema.GroupVersionResource{Group: "cilium.io", Version: "v2", Resource: "ciliumnetworkpolicies"}
+
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme,
+		map[schema.GroupVersionResource]string{
+			gvr: "CiliumNetworkPolicyList",
+		},
+	)
+
+	notFoundErr := apierrors.NewNotFound(schema.GroupResource{Resource: "ciliumnetworkpolicies"}, "")
+
+	dyn.PrependReactor("list", "*", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		return true, nil, notFoundErr
+	})
 
 	rm := &Watcher{
-		logger: logger,
+		resourceName:  "ciliumnetworkpolicies",
+		apiGroup:      "cilium.io",
+		apiVersion:    "v2",
+		dynamicClient: dyn,
+		logger:        logger,
 	}
 
-	pod1 := newUnstructuredPod("pod1", "100")
-	pod2 := newUnstructuredPod("pod2", "101")
-
-	list := &unstructured.UnstructuredList{
-		Items: []unstructured.Unstructured{*pod1, *pod2},
+	_, err := rm.FetchResources(context.Background(), "default")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
 	}
 
-	metas, err := rm.ExtractObjectMetas(list)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(metas) != 2 {
-		t.Errorf("expected 2 metas, got %d", len(metas))
-	}
-
-	if metas[0].Name != "pod1" {
-		t.Errorf("expected name 'pod1', got %q", metas[0].Name)
-	}
-
-	if metas[1].Name != "pod2" {
-		t.Errorf("expected name 'pod2', got %q", metas[1].Name)
+	if !apierrors.IsNotFound(err) {
+		t.Errorf("expected NotFound error, got %v", err)
 	}
 }
 
-func TestExtractObjectMetas_EmptyList(t *testing.T) {
-	logger := zap.NewNop()
-
-	rm := &Watcher{
-		logger: logger,
-	}
-
-	list := &unstructured.UnstructuredList{
-		Items: []unstructured.Unstructured{},
-	}
-
-	metas, err := rm.ExtractObjectMetas(list)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(metas) != 0 {
-		t.Errorf("expected 0 metas, got %d", len(metas))
-	}
-}
-
-func TestListResources_Success(t *testing.T) {
+func TestDynamicListResources_CoreResources(t *testing.T) {
 	logger := zap.NewNop()
 	scheme := runtime.NewScheme()
 
-	pod := newUnstructuredPod("test-pod", "100")
+	pod := newUnstructuredPod("test-pod", "200")
 	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
 
 	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme,
@@ -850,41 +938,85 @@ func TestListResources_Success(t *testing.T) {
 		pod,
 	)
 
+	sender := &mockResourceStreamSender{}
+
 	rm := &Watcher{
-		resourceName:  "pods",
-		apiGroup:      "",
-		apiVersion:    "v1",
-		dynamicClient: dyn,
-		logger:        logger,
+		resourceName:    "pods",
+		apiGroup:        "",
+		apiVersion:      "v1",
+		dynamicClient:   dyn,
+		logger:          logger,
+		resourcesClient: sender,
+		converter:       stubConverter,
 	}
 
 	ctx := context.Background()
 
-	metas, _, kind, apiGroup, apiVersion, err := rm.ListResources(ctx, metav1.NamespaceAll)
+	// Note: fake dynamic client may not set listVersion, so we just check no error.
+	_, err := rm.DynamicListResources(ctx, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDynamicListResources_CiliumResources(t *testing.T) {
+	logger := zap.NewNop()
+	scheme := runtime.NewScheme()
+
+	ciliumPolicy := newUnstructuredCiliumPolicy("test-cilium-policy", "default", "300")
+
+	gvr := schema.GroupVersionResource{Group: "cilium.io", Version: "v2", Resource: "ciliumnetworkpolicies"}
+
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme,
+		map[schema.GroupVersionResource]string{
+			gvr: "CiliumNetworkPolicyList",
+		},
+		ciliumPolicy,
+	)
+
+	sender := &mockResourceStreamSender{}
+	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+		return controller.ConvertUnstructuredToCiliumPolicy(obj)
+	}
+
+	rm := &Watcher{
+		resourceName:    "ciliumnetworkpolicies",
+		apiGroup:        "cilium.io",
+		apiVersion:      "v2",
+		dynamicClient:   dyn,
+		logger:          logger,
+		resourcesClient: sender,
+		converter:       ciliumConverter,
+	}
+
+	ctx := context.Background()
+
+	// Note: fake dynamic client may not set listVersion, so we just check no error.
+	_, err := rm.DynamicListResources(ctx, logger)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(metas) != 1 {
-		t.Errorf("expected 1 meta, got %d", len(metas))
+	if len(sender.sentObjects) != 1 {
+		t.Fatalf("expected 1 sent object, got %d", len(sender.sentObjects))
 	}
 
-	// Note: fake dynamic client may not set listVersion, so we don't check it
+	sent := sender.sentObjects[0]
 
-	if kind != "Pod" {
-		t.Errorf("expected kind 'Pod', got %q", kind)
+	if sent.GetKind() != "CiliumNetworkPolicy" {
+		t.Errorf("expected kind 'CiliumNetworkPolicy', got %q", sent.GetKind())
 	}
 
-	if apiGroup != "" {
-		t.Errorf("expected empty apiGroup, got %q", apiGroup)
+	if sent.GetName() != "test-cilium-policy" {
+		t.Errorf("expected name 'test-cilium-policy', got %q", sent.GetName())
 	}
 
-	if apiVersion != "v1" {
-		t.Errorf("expected api_version 'v1', got %q", apiVersion)
+	if sent.GetCiliumNetworkPolicy() == nil {
+		t.Errorf("expected CiliumNetworkPolicy kind-specific data to be set")
 	}
 }
 
-func TestListResources_FetchError(t *testing.T) {
+func TestDynamicListResources_FetchError(t *testing.T) {
 	logger := zap.NewNop()
 	scheme := runtime.NewScheme()
 
@@ -892,15 +1024,58 @@ func TestListResources_FetchError(t *testing.T) {
 	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme,
 		map[schema.GroupVersionResource]string{gvr: "PodList"},
 	)
+
 	dyn.PrependReactor("list", "*", func(action clientgotesting.Action) (bool, runtime.Object, error) {
 		return true, nil, apierrors.NewForbidden(schema.GroupResource{Resource: "pods"}, "", errors.New("forbidden"))
 	})
 
-	rm := &Watcher{resourceName: "pods", apiGroup: "", apiVersion: "v1", dynamicClient: dyn, logger: logger}
+	rm := &Watcher{
+		resourceName:    "pods",
+		apiGroup:        "",
+		apiVersion:      "v1",
+		dynamicClient:   dyn,
+		logger:          logger,
+		resourcesClient: &mockResourceStreamSender{},
+	}
 
-	_, _, _, _, _, err := rm.ListResources(context.Background(), metav1.NamespaceAll)
+	_, err := rm.DynamicListResources(context.Background(), logger)
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestDynamicListResources_ContextCanceled(t *testing.T) {
+	logger := zap.NewNop()
+	scheme := runtime.NewScheme()
+
+	pod := newUnstructuredPod("test-pod", "400")
+	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
+
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme,
+		map[schema.GroupVersionResource]string{
+			gvr: "PodList",
+		},
+		pod,
+	)
+
+	sender := &mockResourceStreamSender{}
+
+	rm := &Watcher{
+		resourceName:    "pods",
+		apiGroup:        "",
+		apiVersion:      "v1",
+		dynamicClient:   dyn,
+		logger:          logger,
+		resourcesClient: sender,
+		converter:       stubConverter,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := rm.DynamicListResources(ctx, logger)
+	if err == nil {
+		t.Fatal("expected context error, got nil")
 	}
 }
 
@@ -915,3 +1090,266 @@ func newUnstructuredPod(name, rv string) *unstructured.Unstructured {
 
 	return obj
 }
+
+// helper: minimal unstructured CiliumNetworkPolicy
+func newUnstructuredCiliumPolicy(name, namespace, rv string) *unstructured.Unstructured {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            name,
+				"namespace":       namespace,
+				"resourceVersion": rv,
+			},
+			"spec": map[string]any{
+				"endpointSelector": map[string]any{},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	return obj
+}
+
+func TestProcessMutation_ConverterError(t *testing.T) {
+	logger := zap.NewNop()
+	failingConverter := func(_ context.Context, _ *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+		return nil, errors.New("conversion failed")
+	}
+	rm := &Watcher{
+		resourceName:    "pods",
+		logger:          logger,
+		resourcesClient: &mockResourceStreamSender{},
+		converter:       failingConverter,
+	}
+
+	ctx := t.Context()
+	ch := make(chan *pb.KubernetesResourceMutation, 1)
+
+	u := newUnstructuredPod("test-pod", "10")
+
+	_, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u}, ch)
+	if err == nil {
+		t.Fatalf("expected error from failing converter, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "failed to convert resource") {
+		t.Errorf("expected 'failed to convert resource' error, got: %v", err)
+	}
+}
+
+func TestDynamicListResources_ConverterError(t *testing.T) {
+	logger := zap.NewNop()
+	scheme := runtime.NewScheme()
+
+	pod := newUnstructuredPod("test-pod", "100")
+	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
+
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme,
+		map[schema.GroupVersionResource]string{gvr: "PodList"},
+		pod,
+	)
+
+	failingConverter := func(_ context.Context, _ *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+		return nil, errors.New("conversion failed")
+	}
+
+	rm := &Watcher{
+		resourceName:    "pods",
+		apiGroup:        "",
+		apiVersion:      "v1",
+		dynamicClient:   dyn,
+		logger:          logger,
+		resourcesClient: &mockResourceStreamSender{},
+		converter:       failingConverter,
+	}
+
+	_, err := rm.DynamicListResources(context.Background(), logger)
+	if err == nil {
+		t.Fatal("expected error from failing converter, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "failed to convert resource") {
+		t.Errorf("expected 'failed to convert resource' error, got: %v", err)
+	}
+}
+
+func TestDynamicListResources_SendObjectDataError(t *testing.T) {
+	logger := zap.NewNop()
+	scheme := runtime.NewScheme()
+
+	pod := newUnstructuredPod("test-pod", "100")
+	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
+
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme,
+		map[schema.GroupVersionResource]string{gvr: "PodList"},
+		pod,
+	)
+
+	failingSender := &mockFailingSender{}
+
+	rm := &Watcher{
+		resourceName:    "pods",
+		apiGroup:        "",
+		apiVersion:      "v1",
+		dynamicClient:   dyn,
+		logger:          logger,
+		resourcesClient: failingSender,
+		converter:       stubConverter,
+	}
+
+	_, err := rm.DynamicListResources(context.Background(), logger)
+	if err == nil {
+		t.Fatal("expected error from failing sender, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "send failed") {
+		t.Errorf("expected 'send failed' error, got: %v", err)
+	}
+}
+
+func TestDynamicListResources_MultipleItems(t *testing.T) {
+	logger := zap.NewNop()
+	scheme := runtime.NewScheme()
+
+	pod1 := newUnstructuredPod("pod-1", "100")
+	pod2 := newUnstructuredPod("pod-2", "101")
+	pod3 := newUnstructuredPod("pod-3", "102")
+	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
+
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme,
+		map[schema.GroupVersionResource]string{gvr: "PodList"},
+		pod1, pod2, pod3,
+	)
+
+	sender := &mockResourceStreamSender{}
+
+	rm := &Watcher{
+		resourceName:    "pods",
+		apiGroup:        "",
+		apiVersion:      "v1",
+		dynamicClient:   dyn,
+		logger:          logger,
+		resourcesClient: sender,
+		converter:       stubConverter,
+	}
+
+	_, err := rm.DynamicListResources(context.Background(), logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(sender.sentObjects) != 3 {
+		t.Fatalf("expected 3 sent objects, got %d", len(sender.sentObjects))
+	}
+
+	names := make(map[string]bool)
+	for _, obj := range sender.sentObjects {
+		names[obj.GetName()] = true
+	}
+
+	for _, expected := range []string{"pod-1", "pod-2", "pod-3"} {
+		if !names[expected] {
+			t.Errorf("expected sent object with name %q", expected)
+		}
+	}
+}
+
+func TestProcessMutation_CiliumClusterwidePolicy(t *testing.T) {
+	logger := zap.NewNop()
+	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+		return controller.ConvertUnstructuredToCiliumPolicy(obj)
+	}
+	rm := &Watcher{
+		resourceName:    "ciliumclusterwidenetworkpolicies",
+		logger:          logger,
+		resourcesClient: &mockResourceStreamSender{},
+		converter:       ciliumConverter,
+	}
+
+	ctx := t.Context()
+	ch := make(chan *pb.KubernetesResourceMutation, 1)
+
+	ciliumObj := newUnstructuredCiliumClusterwidePolicy("cluster-policy", "600")
+
+	rv, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: ciliumObj}, ch)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if rv != "600" {
+		t.Errorf("expected resourceVersion '600', got %q", rv)
+	}
+
+	m := <-ch
+	if m.GetCreateResource() == nil {
+		t.Fatalf("expected CreateResource mutation, got %#v", m)
+	}
+
+	created := m.GetCreateResource()
+	if created.GetKind() != "CiliumClusterwideNetworkPolicy" {
+		t.Errorf("expected kind 'CiliumClusterwideNetworkPolicy', got %q", created.GetKind())
+	}
+
+	if created.GetCiliumClusterwideNetworkPolicy() == nil {
+		t.Errorf("expected CiliumClusterwideNetworkPolicy kind-specific data to be set")
+	}
+
+	if created.GetNamespace() != "" {
+		t.Errorf("expected empty namespace for cluster-scoped policy, got %q", created.GetNamespace())
+	}
+}
+
+// helper: minimal unstructured CiliumClusterwideNetworkPolicy
+func newUnstructuredCiliumClusterwidePolicy(name, rv string) *unstructured.Unstructured {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumClusterwideNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            name,
+				"resourceVersion": rv,
+			},
+			"spec": map[string]any{
+				"nodeSelector": map[string]any{},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumClusterwideNetworkPolicy",
+	})
+
+	return obj
+}
+
+// mockFailingSender returns an error on SendObjectData.
+type mockFailingSender struct{}
+
+func (m *mockFailingSender) SendObjectData(_ *zap.Logger, _ *pb.KubernetesObjectData) error {
+	return errors.New("send failed")
+}
+
+func (m *mockFailingSender) CreateMutationObject(_ *pb.KubernetesObjectData, _ watch.EventType) *pb.KubernetesResourceMutation {
+	return nil
+}
+
+// fakeRuntimeObjectWithGVK implements runtime.Object with a specific GVK but is not *unstructured.Unstructured.
+type fakeRuntimeObjectWithGVK struct {
+	gvk schema.GroupVersionKind
+}
+
+func (f *fakeRuntimeObjectWithGVK) GetObjectKind() schema.ObjectKind { return f }
+func (f *fakeRuntimeObjectWithGVK) DeepCopyObject() runtime.Object   { return f }
+func (f *fakeRuntimeObjectWithGVK) SetGroupVersionKind(gvk schema.GroupVersionKind) {
+	f.gvk = gvk
+}
+func (f *fakeRuntimeObjectWithGVK) GroupVersionKind() schema.GroupVersionKind { return f.gvk }
