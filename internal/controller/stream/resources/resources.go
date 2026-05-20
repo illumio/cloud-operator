@@ -9,6 +9,7 @@ import (
 )
 
 var resourceList = []string{
+	"ciliumcidrgroups",
 	"ciliumclusterwidenetworkpolicies",
 	"ciliumnetworkpolicies",
 	"cronjobs",

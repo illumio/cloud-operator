@@ -1,4 +1,4 @@
-// Copyright 2024 Illumio, Inc. All Rights Reserved.
+// Copyright 2026 Illumio, Inc. All Rights Reserved.
 
 package controller
 
@@ -13,21 +13,21 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-// IsCiliumPolicy returns true if the input identifies a Cilium network policy.
+// IsCiliumResource returns true if the input identifies a Cilium resource.
 // Accepts both Kind (PascalCase) and resource name (lowercase plural).
-func IsCiliumPolicy(kindOrResource string) bool {
+func IsCiliumResource(kindOrResource string) bool {
 	switch kindOrResource {
-	case "CiliumNetworkPolicy", "CiliumClusterwideNetworkPolicy",
-		"ciliumnetworkpolicies", "ciliumclusterwidenetworkpolicies":
+	case "CiliumNetworkPolicy", "CiliumClusterwideNetworkPolicy", "CiliumCIDRGroup",
+		"ciliumnetworkpolicies", "ciliumclusterwidenetworkpolicies", "ciliumcidrgroups":
 		return true
 	default:
 		return false
 	}
 }
 
-// ConvertUnstructuredToCiliumPolicy converts an unstructured Cilium policy to a KubernetesObjectData proto.
-// This handles both CiliumNetworkPolicy and CiliumClusterwideNetworkPolicy.
-func ConvertUnstructuredToCiliumPolicy(obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+// ConvertUnstructuredToCiliumResource converts an unstructured Cilium resource to a KubernetesObjectData proto.
+// This handles CiliumNetworkPolicy, CiliumClusterwideNetworkPolicy, and CiliumCIDRGroup.
+func ConvertUnstructuredToCiliumResource(obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 	if obj == nil {
 		return nil, errors.New("cannot convert nil object")
 	}
@@ -52,8 +52,8 @@ func ConvertUnstructuredToCiliumPolicy(obj *unstructured.Unstructured) (*pb.Kube
 		objMetadata.Namespace = &namespace
 	}
 
-	// Extract specs from both 'spec' (single) and 'specs' (array) fields
-	specs := extractCiliumSpecs(obj)
+	// Convert specs from both 'spec' (single) and 'specs' (array) fields
+	specs := convertCiliumSpecs(obj)
 
 	switch gvk.Kind {
 	case "CiliumNetworkPolicy":
@@ -68,15 +68,19 @@ func ConvertUnstructuredToCiliumPolicy(obj *unstructured.Unstructured) (*pb.Kube
 				Specs: specs,
 			},
 		}
+	case "CiliumCIDRGroup":
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_CiliumCidrGroup{
+			CiliumCidrGroup: convertCiliumCIDRGroupData(obj),
+		}
 	default:
-		return nil, fmt.Errorf("unsupported Cilium policy kind: %s", gvk.Kind)
+		return nil, fmt.Errorf("unsupported Cilium resource kind: %s", gvk.Kind)
 	}
 
 	return objMetadata, nil
 }
 
-// extractCiliumSpecs extracts CiliumPolicyRule specs from both 'spec' and 'specs' fields.
-func extractCiliumSpecs(obj *unstructured.Unstructured) []*pb.CiliumPolicyRule {
+// convertCiliumSpecs converts CiliumPolicyRule specs from both 'spec' and 'specs' fields.
+func convertCiliumSpecs(obj *unstructured.Unstructured) []*pb.CiliumPolicyRule {
 	var result []*pb.CiliumPolicyRule
 
 	// Handle single 'spec' field
@@ -769,4 +773,18 @@ func convertCiliumPorts(ports []any) []*pb.CiliumPolicyPort {
 	}
 
 	return result
+}
+
+// convertCiliumCIDRGroupData converts an unstructured CiliumCIDRGroup to its proto representation.
+func convertCiliumCIDRGroupData(obj *unstructured.Unstructured) *pb.KubernetesCiliumCIDRGroupData {
+	var externalCIDRs []string
+	if cidrs, found, _ := unstructured.NestedStringSlice(obj.Object, "spec", "externalCIDRs"); found {
+		externalCIDRs = cidrs
+	}
+
+	return &pb.KubernetesCiliumCIDRGroupData{
+		Spec: &pb.CiliumCIDRGroup{
+			ExternalCidrs: externalCIDRs,
+		},
+	}
 }

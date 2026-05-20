@@ -413,7 +413,7 @@ func TestProcessMutation_NilObject(t *testing.T) {
 func TestProcessMutation_CiliumPolicy(t *testing.T) {
 	logger := zap.NewNop()
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return controller.ConvertUnstructuredToCiliumPolicy(obj)
+		return controller.ConvertUnstructuredToCiliumResource(obj)
 	}
 	rm := &Watcher{
 		resourceName:    "ciliumnetworkpolicies",
@@ -976,7 +976,7 @@ func TestDynamicListResources_CiliumResources(t *testing.T) {
 
 	sender := &mockResourceStreamSender{}
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return controller.ConvertUnstructuredToCiliumPolicy(obj)
+		return controller.ConvertUnstructuredToCiliumResource(obj)
 	}
 
 	rm := &Watcher{
@@ -1139,8 +1139,8 @@ func TestProcessMutation_ConverterError(t *testing.T) {
 		t.Fatalf("expected error from failing converter, got nil")
 	}
 
-	if !strings.Contains(err.Error(), "failed to convert resource") {
-		t.Errorf("expected 'failed to convert resource' error, got: %v", err)
+	if !strings.Contains(err.Error(), "failed to convert") {
+		t.Errorf("expected 'failed to convert' error, got: %v", err)
 	}
 }
 
@@ -1175,8 +1175,8 @@ func TestDynamicListResources_ConverterError(t *testing.T) {
 		t.Fatal("expected error from failing converter, got nil")
 	}
 
-	if !strings.Contains(err.Error(), "failed to convert resource") {
-		t.Errorf("expected 'failed to convert resource' error, got: %v", err)
+	if !strings.Contains(err.Error(), "failed to convert") {
+		t.Errorf("expected 'failed to convert' error, got: %v", err)
 	}
 }
 
@@ -1264,7 +1264,7 @@ func TestDynamicListResources_MultipleItems(t *testing.T) {
 func TestProcessMutation_CiliumClusterwidePolicy(t *testing.T) {
 	logger := zap.NewNop()
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return controller.ConvertUnstructuredToCiliumPolicy(obj)
+		return controller.ConvertUnstructuredToCiliumResource(obj)
 	}
 	rm := &Watcher{
 		resourceName:    "ciliumclusterwidenetworkpolicies",

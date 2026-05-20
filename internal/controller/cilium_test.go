@@ -1,4 +1,4 @@
-// Copyright 2024 Illumio, Inc. All Rights Reserved.
+// Copyright 2026 Illumio, Inc. All Rights Reserved.
 
 package controller
 
@@ -11,7 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-func TestIsCiliumPolicy(t *testing.T) {
+func TestIsCiliumResource(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -19,8 +19,10 @@ func TestIsCiliumPolicy(t *testing.T) {
 	}{
 		{"CiliumNetworkPolicy kind", "CiliumNetworkPolicy", true},
 		{"CiliumClusterwideNetworkPolicy kind", "CiliumClusterwideNetworkPolicy", true},
+		{"CiliumCIDRGroup kind", "CiliumCIDRGroup", true},
 		{"ciliumnetworkpolicies resource", "ciliumnetworkpolicies", true},
 		{"ciliumclusterwidenetworkpolicies resource", "ciliumclusterwidenetworkpolicies", true},
+		{"ciliumcidrgroups resource", "ciliumcidrgroups", true},
 		{"NetworkPolicy is not Cilium", "NetworkPolicy", false},
 		{"pods is not Cilium", "pods", false},
 		{"empty string", "", false},
@@ -28,20 +30,20 @@ func TestIsCiliumPolicy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := IsCiliumPolicy(tt.input)
+			result := IsCiliumResource(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestConvertUnstructuredToCiliumPolicy_Nil(t *testing.T) {
-	result, err := ConvertUnstructuredToCiliumPolicy(nil)
+func TestConvertUnstructuredToCiliumResource_Nil(t *testing.T) {
+	result, err := ConvertUnstructuredToCiliumResource(nil)
 	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "cannot convert nil object")
 }
 
-func TestConvertUnstructuredToCiliumPolicy_Basic(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_Basic(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -79,7 +81,7 @@ func TestConvertUnstructuredToCiliumPolicy_Basic(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -106,7 +108,7 @@ func TestConvertUnstructuredToCiliumPolicy_Basic(t *testing.T) {
 	assert.Equal(t, "frontend", ingressRule.GetFromEndpoints().GetItems()[0].GetMatchLabels()["role"])
 }
 
-func TestConvertUnstructuredToCiliumPolicy_ClusterwidePolicy(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_ClusterwidePolicy(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -132,7 +134,7 @@ func TestConvertUnstructuredToCiliumPolicy_ClusterwidePolicy(t *testing.T) {
 		Kind:    "CiliumClusterwideNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -151,7 +153,7 @@ func TestConvertUnstructuredToCiliumPolicy_ClusterwidePolicy(t *testing.T) {
 	assert.Equal(t, "worker", spec.GetNodeSelector().GetMatchLabels()["node-type"])
 }
 
-func TestConvertUnstructuredToCiliumPolicy_WithPorts(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_WithPorts(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -192,7 +194,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithPorts(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -213,7 +215,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithPorts(t *testing.T) {
 	assert.Equal(t, "443", portRule.GetPorts()[1].GetPort())
 }
 
-func TestConvertUnstructuredToCiliumPolicy_WithCIDR(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_WithCIDR(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -247,7 +249,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithCIDR(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -266,7 +268,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithCIDR(t *testing.T) {
 	assert.ElementsMatch(t, []string{"172.16.1.0/24"}, egressRule.GetToCidrSet()[0].GetExcept())
 }
 
-func TestConvertUnstructuredToCiliumPolicy_MultipleSpecs(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_MultipleSpecs(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -300,7 +302,7 @@ func TestConvertUnstructuredToCiliumPolicy_MultipleSpecs(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -315,7 +317,7 @@ func TestConvertUnstructuredToCiliumPolicy_MultipleSpecs(t *testing.T) {
 	assert.Equal(t, "Allow API traffic", ciliumPolicy.GetSpecs()[1].GetDescription())
 }
 
-func TestConvertUnstructuredToCiliumPolicy_WithDefaultDeny(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_WithDefaultDeny(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -342,7 +344,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithDefaultDeny(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -356,7 +358,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithDefaultDeny(t *testing.T) {
 	assert.False(t, spec.GetEnableDefaultDeny().GetEgress())
 }
 
-func TestConvertUnstructuredToCiliumPolicy_WithAWSGroups(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_WithAWSGroups(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -395,7 +397,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithAWSGroups(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -418,7 +420,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithAWSGroups(t *testing.T) {
 	assert.Equal(t, "us-west-2", awsGroup.GetRegion())
 }
 
-func TestConvertUnstructuredToCiliumPolicy_WithNodeSelectors(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_WithNodeSelectors(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -463,7 +465,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithNodeSelectors(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -482,7 +484,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithNodeSelectors(t *testing.T) {
 	assert.Equal(t, "control-plane", spec.GetEgressRules()[0].GetToNodes()[0].GetMatchLabels()["node-type"])
 }
 
-func TestConvertUnstructuredToCiliumPolicy_WithICMP(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_WithICMP(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -531,7 +533,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithICMP(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -561,7 +563,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithICMP(t *testing.T) {
 	assert.Equal(t, uint32(3), icmpRule.GetFields()[3].GetTypeInt(), "numeric string should parse to TypeInt")
 }
 
-func TestConvertUnstructuredToCiliumPolicy_WithAuthentication(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_WithAuthentication(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -591,7 +593,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithAuthentication(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -607,7 +609,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithAuthentication(t *testing.T) {
 	assert.Equal(t, "required", ingressRule.GetAuthentication().GetMode())
 }
 
-func TestConvertUnstructuredToCiliumPolicy_WithFQDN(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_WithFQDN(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -642,7 +644,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithFQDN(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -660,7 +662,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithFQDN(t *testing.T) {
 	assert.Equal(t, "*.internal.example.com", egressRule.GetToFqdns()[1].GetMatchPattern())
 }
 
-func TestConvertUnstructuredToCiliumPolicy_WithK8sServices(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_WithK8sServices(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -705,7 +707,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithK8sServices(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -731,7 +733,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithK8sServices(t *testing.T) {
 	assert.Equal(t, "database", k8sServiceSelector.GetSelector().GetMatchLabels()["app"])
 }
 
-func TestConvertUnstructuredToCiliumPolicy_WithCIDRGroupRef(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_WithCIDRGroupRef(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -770,7 +772,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithCIDRGroupRef(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -791,7 +793,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithCIDRGroupRef(t *testing.T) {
 	assert.Equal(t, "trusted", cidrGroupSelector.GetMatchLabels()["network-type"])
 }
 
-func TestConvertUnstructuredToCiliumPolicy_WithEndPort(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_WithEndPort(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -829,7 +831,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithEndPort(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -852,7 +854,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithEndPort(t *testing.T) {
 	assert.Equal(t, "TCP", port.GetProtocol())
 }
 
-func TestConvertUnstructuredToCiliumPolicy_WithDenyRules(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_WithDenyRules(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -891,7 +893,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithDenyRules(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -909,7 +911,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithDenyRules(t *testing.T) {
 	assert.ElementsMatch(t, []string{"world"}, spec.GetEgressDenyRules()[0].GetToEntities())
 }
 
-func TestConvertUnstructuredToCiliumPolicy_WithLabels(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_WithLabels(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -936,7 +938,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithLabels(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -949,7 +951,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithLabels(t *testing.T) {
 	assert.Equal(t, "security-team", spec.GetLabels()["owner"])
 }
 
-func TestConvertUnstructuredToCiliumPolicy_WithMatchExpressions(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_WithMatchExpressions(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -984,7 +986,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithMatchExpressions(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -1006,7 +1008,7 @@ func TestConvertUnstructuredToCiliumPolicy_WithMatchExpressions(t *testing.T) {
 	assert.Equal(t, "DoesNotExist", expr2.GetOperator())
 }
 
-func TestConvertUnstructuredToCiliumPolicy_ComplexEgress(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_ComplexEgress(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -1068,7 +1070,7 @@ func TestConvertUnstructuredToCiliumPolicy_ComplexEgress(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -1101,7 +1103,7 @@ func TestConvertUnstructuredToCiliumPolicy_ComplexEgress(t *testing.T) {
 	assert.Equal(t, "test-only", egressRule.GetAuthentication().GetMode())
 }
 
-func TestConvertUnstructuredToCiliumPolicy_CombinedSpecAndSpecs(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_CombinedSpecAndSpecs(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -1141,7 +1143,7 @@ func TestConvertUnstructuredToCiliumPolicy_CombinedSpecAndSpecs(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -1156,7 +1158,7 @@ func TestConvertUnstructuredToCiliumPolicy_CombinedSpecAndSpecs(t *testing.T) {
 	assert.Equal(t, "from-specs-2", ciliumPolicy.GetSpecs()[2].GetEndpointSelector().GetMatchLabels()["app"])
 }
 
-func TestConvertUnstructuredToCiliumPolicy_IngressFromCIDR(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_IngressFromCIDR(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -1190,7 +1192,7 @@ func TestConvertUnstructuredToCiliumPolicy_IngressFromCIDR(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 
 	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
@@ -1204,7 +1206,7 @@ func TestConvertUnstructuredToCiliumPolicy_IngressFromCIDR(t *testing.T) {
 	assert.ElementsMatch(t, []string{"192.168.1.0/24"}, ingressRule.GetFromCidrSet()[0].GetExcept())
 }
 
-func TestConvertUnstructuredToCiliumPolicy_ICMPTypeOutOfRange(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_ICMPTypeOutOfRange(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -1249,7 +1251,7 @@ func TestConvertUnstructuredToCiliumPolicy_ICMPTypeOutOfRange(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 
 	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
@@ -1262,7 +1264,7 @@ func TestConvertUnstructuredToCiliumPolicy_ICMPTypeOutOfRange(t *testing.T) {
 	}
 }
 
-func TestConvertUnstructuredToCiliumPolicy_EgressToGroups(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_EgressToGroups(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -1300,7 +1302,7 @@ func TestConvertUnstructuredToCiliumPolicy_EgressToGroups(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 
 	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
@@ -1316,7 +1318,7 @@ func TestConvertUnstructuredToCiliumPolicy_EgressToGroups(t *testing.T) {
 	assert.Equal(t, "eu-west-1", awsGroup.GetRegion())
 }
 
-func TestConvertUnstructuredToCiliumPolicy_EmptyPolicy(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_EmptyPolicy(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -1336,7 +1338,7 @@ func TestConvertUnstructuredToCiliumPolicy_EmptyPolicy(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -1345,7 +1347,7 @@ func TestConvertUnstructuredToCiliumPolicy_EmptyPolicy(t *testing.T) {
 	assert.Empty(t, ciliumPolicy.GetSpecs(), "policy with no spec or specs should have empty specs")
 }
 
-func TestConvertUnstructuredToCiliumPolicy_MetadataFields(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_MetadataFields(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -1385,7 +1387,7 @@ func TestConvertUnstructuredToCiliumPolicy_MetadataFields(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -1410,7 +1412,7 @@ func TestConvertUnstructuredToCiliumPolicy_MetadataFields(t *testing.T) {
 	assert.True(t, ownerRef.GetBlockOwnerDeletion())
 }
 
-func TestConvertUnstructuredToCiliumPolicy_IngressFromEntities(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_IngressFromEntities(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -1438,7 +1440,7 @@ func TestConvertUnstructuredToCiliumPolicy_IngressFromEntities(t *testing.T) {
 		Kind:    "CiliumNetworkPolicy",
 	})
 
-	result, err := ConvertUnstructuredToCiliumPolicy(obj)
+	result, err := ConvertUnstructuredToCiliumResource(obj)
 	require.NoError(t, err)
 
 	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
@@ -1448,7 +1450,7 @@ func TestConvertUnstructuredToCiliumPolicy_IngressFromEntities(t *testing.T) {
 	assert.ElementsMatch(t, []string{"world", "host", "remote-node"}, ingressRule.GetFromEntities())
 }
 
-func TestConvertUnstructuredToCiliumPolicy_UnsupportedKind(t *testing.T) {
+func TestConvertUnstructuredToCiliumResource_UnsupportedKind(t *testing.T) {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cilium.io/v2",
@@ -1465,8 +1467,74 @@ func TestConvertUnstructuredToCiliumPolicy_UnsupportedKind(t *testing.T) {
 		Kind:    "CiliumEgressGatewayPolicy",
 	})
 
-	_, err := ConvertUnstructuredToCiliumPolicy(obj)
+	_, err := ConvertUnstructuredToCiliumResource(obj)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported Cilium policy kind")
+	assert.Contains(t, err.Error(), "unsupported Cilium resource kind")
 	assert.Contains(t, err.Error(), "CiliumEgressGatewayPolicy")
+}
+
+func TestConvertUnstructuredToCiliumResource_CIDRGroup(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2alpha1",
+			"kind":       "CiliumCIDRGroup",
+			"metadata": map[string]any{
+				"name":            "office-networks",
+				"uid":             "cidrgroup-uid",
+				"resourceVersion": "33333",
+			},
+			"spec": map[string]any{
+				"externalCIDRs": []any{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2alpha1",
+		Kind:    "CiliumCIDRGroup",
+	})
+
+	result, err := ConvertUnstructuredToCiliumResource(obj)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assert.Equal(t, "office-networks", result.GetName())
+	assert.Equal(t, "CiliumCIDRGroup", result.GetKind())
+	assert.Empty(t, result.GetNamespace(), "CIDRGroup is cluster-scoped")
+
+	cidrGroup := result.GetCiliumCidrGroup()
+	require.NotNil(t, cidrGroup)
+	require.NotNil(t, cidrGroup.GetSpec())
+	assert.ElementsMatch(t, []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}, cidrGroup.GetSpec().GetExternalCidrs())
+}
+
+func TestConvertUnstructuredToCiliumResource_CIDRGroupEmpty(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2alpha1",
+			"kind":       "CiliumCIDRGroup",
+			"metadata": map[string]any{
+				"name":            "empty-cidrgroup",
+				"uid":             "empty-cidrgroup-uid",
+				"resourceVersion": "44444",
+			},
+			"spec": map[string]any{},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2alpha1",
+		Kind:    "CiliumCIDRGroup",
+	})
+
+	result, err := ConvertUnstructuredToCiliumResource(obj)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	cidrGroup := result.GetCiliumCidrGroup()
+	require.NotNil(t, cidrGroup)
+	require.NotNil(t, cidrGroup.GetSpec())
+	assert.Empty(t, cidrGroup.GetSpec().GetExternalCidrs())
 }

@@ -132,11 +132,12 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 		metadataObj, err := r.converter(ctx, item)
 		if err != nil {
 			r.logger.Error("Cannot convert resource",
+				zap.String("kind", item.GetKind()),
 				zap.String("name", item.GetName()),
 				zap.String("namespace", item.GetNamespace()),
 				zap.Error(err))
 
-			return "", fmt.Errorf("failed to convert resource %s/%s: %w", item.GetNamespace(), item.GetName(), err)
+			return "", fmt.Errorf("failed to convert %s resource %s/%s: %w", item.GetKind(), item.GetNamespace(), item.GetName(), err)
 		}
 
 		if err := r.resourcesClient.SendObjectData(logger, metadataObj); err != nil {
