@@ -7,8 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -35,6 +38,14 @@ func NewCoreResourceConverter(clientset kubernetes.Interface, logger *zap.Logger
 
 		return ConvertMetaObjectToMetadata(ctx, *objMeta, clientset, gvk.Kind, gvk.Group, gvk.Version), nil
 	}
+}
+
+// protoJSONMarshaler is configured for Kubernetes Server-Side Apply:
+// - UseProtoNames=false: converts snake_case proto fields to camelCase for K8s CRD compatibility
+// - EmitUnpopulated=false: omits empty/default fields so SSA doesn't claim ownership of unset fields
+var protoJSONMarshaler = protojson.MarshalOptions{
+	UseProtoNames:   false,
+	EmitUnpopulated: false,
 }
 
 // convertObjectToMetadata extracts the ObjectMeta from a metav1.Object interface.
@@ -574,4 +585,153 @@ func convertPodIPsToStrings(podIPs []v1.PodIP) []string {
 // convertToProtoTimestamp converts a Kubernetes metav1.Time into a Protobuf Timestamp.
 func convertToProtoTimestamp(k8sTime metav1.Time) *timestamppb.Timestamp {
 	return timestamppb.New(k8sTime.Time)
+}
+
+const (
+	// CloudSecureIDLabel is the label key used to store the CloudSecure object ID.
+	// This ID is the unique key in the desired state (config) cache. It is set as a label on
+	// Kubernetes objects during apply so the watcher can extract it and use it as the runtime
+	// cache key, allowing the reconciler to match desired vs actual state by the same ID.
+	CloudSecureIDLabel = "app.kubernetes.io/cloudsecure-id"
+
+	// ManagedByLabel is the standard Kubernetes label for identifying the managing component.
+	ManagedByLabel = "app.kubernetes.io/managed-by"
+
+	// ManagedByValue is the value used for the managed-by label.
+	ManagedByValue = "cloud-operator"
+)
+
+// ConvertToApplyObject converts ConfiguredKubernetesObjectData to an *unstructured.Unstructured
+// suitable for Server-Side Apply. Proto specs are marshaled via protojson to preserve strict typing
+// (integers stay integers, booleans stay booleans) and produce camelCase field names that match Cilium's CRD schema.
+func ConvertToApplyObject(data *pb.ConfiguredKubernetesObjectData, apiGroup, apiVersion string) (*unstructured.Unstructured, string, error) {
+	if data == nil {
+		return nil, "", errors.New("configured object data is nil")
+	}
+
+	fullAPIVersion := apiVersion
+	if apiGroup != "" {
+		fullAPIVersion = apiGroup + "/" + apiVersion
+	}
+
+	// Determine kind, resource name, and marshal specs via protojson
+	kind, resourceName, specFields, err := marshalConfiguredObjectSpecs(data)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Build the K8s object as a map
+	obj := map[string]any{
+		"apiVersion": fullAPIVersion,
+		"kind":       kind,
+		"metadata": map[string]any{
+			"name":        data.GetName(),
+			"labels":      copyLabels(data.GetLabels(), data.GetId()),
+			"annotations": data.GetAnnotations(),
+		},
+	}
+
+	if ns := data.GetNamespace(); ns != "" {
+		obj["metadata"].(map[string]any)["namespace"] = ns
+	}
+
+	// Merge spec fields (e.g., "spec", "specs") into the top-level object
+	maps.Copy(obj, specFields)
+
+	return &unstructured.Unstructured{Object: obj}, resourceName, nil
+}
+
+// marshalConfiguredObjectSpecs returns the K8s kind, plural resource name, and the spec fields as a map,
+// using protojson to marshal proto specs into clean JSON that preserves types.
+func marshalConfiguredObjectSpecs(data *pb.ConfiguredKubernetesObjectData) (string, string, map[string]any, error) {
+	switch ks := data.GetKindSpecific().(type) {
+	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
+		specFields, err := marshalPolicySpecs(ks.CiliumNetworkPolicy.GetSpecs())
+		if err != nil {
+			return "", "", nil, fmt.Errorf("failed to marshal CiliumNetworkPolicy specs: %w", err)
+		}
+
+		return "CiliumNetworkPolicy", "ciliumnetworkpolicies", specFields, nil
+
+	case *pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy:
+		specFields, err := marshalPolicySpecs(ks.CiliumClusterwideNetworkPolicy.GetSpecs())
+		if err != nil {
+			return "", "", nil, fmt.Errorf("failed to marshal CiliumClusterwideNetworkPolicy specs: %w", err)
+		}
+
+		return "CiliumClusterwideNetworkPolicy", "ciliumclusterwidenetworkpolicies", specFields, nil
+
+	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
+		spec := ks.CiliumCidrGroup.GetSpec()
+		if spec == nil {
+			return "CiliumCIDRGroup", "ciliumcidrgroups", map[string]any{}, nil
+		}
+
+		specMap, err := protoToMap(spec)
+		if err != nil {
+			return "", "", nil, fmt.Errorf("failed to marshal CiliumCIDRGroup spec: %w", err)
+		}
+
+		return "CiliumCIDRGroup", "ciliumcidrgroups", map[string]any{"spec": specMap}, nil
+
+	default:
+		return "", "", nil, fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
+	}
+}
+
+// marshalPolicySpecs marshals Cilium policy rules into the "spec" or "specs" field.
+// Cilium CRDs accept either a single "spec" or an array "specs".
+func marshalPolicySpecs(specs []*pb.CiliumPolicyRule) (map[string]any, error) {
+	if len(specs) == 0 {
+		return map[string]any{}, nil
+	}
+
+	if len(specs) == 1 {
+		specMap, err := protoToMap(specs[0])
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal policy spec: %w", err)
+		}
+
+		return map[string]any{"spec": specMap}, nil
+	}
+
+	specsList := make([]any, 0, len(specs))
+	for _, spec := range specs {
+		specMap, err := protoToMap(spec)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal policy spec: %w", err)
+		}
+
+		specsList = append(specsList, specMap)
+	}
+
+	return map[string]any{"specs": specsList}, nil
+}
+
+// protoToMap marshals a proto message to JSON via protojson, then unmarshals
+// into a map[string]any. This preserves strict typing (integers, booleans)
+// and produces camelCase field names matching Cilium's CRD schema.
+func protoToMap(msg proto.Message) (map[string]any, error) {
+	jsonBytes, err := protoJSONMarshaler.Marshal(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(jsonBytes, &result); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// copyLabels copies labels and adds the CloudSecure ID and managed-by labels.
+func copyLabels(labels map[string]string, id string) map[string]string {
+	result := make(map[string]string, len(labels)+2)
+	maps.Copy(result, labels)
+
+	result[CloudSecureIDLabel] = id
+	result[ManagedByLabel] = ManagedByValue
+
+	return result
 }

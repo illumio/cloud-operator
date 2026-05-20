@@ -11,6 +11,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 )
 
 // Verify Factory implements stream.StreamClientFactory.
@@ -23,6 +24,7 @@ type Factory struct {
 	Stats             *stream.Stats
 	FlowCollectorType pb.FlowCollector
 	ClusterName       string // Optional: cluster name for self-managed clusters
+	Cache             *cache.ConfiguredObjectCache
 }
 
 // NewStreamClient creates a new resources stream client.
@@ -43,6 +45,7 @@ func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnI
 		stats:         f.Stats,
 		flowCollector: f.FlowCollectorType,
 		clusterName:   f.ClusterName,
+		runtimeCache:  f.Cache,
 	}, nil
 }
 

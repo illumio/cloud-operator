@@ -20,6 +20,7 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/auth"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 	"github.com/illumio/cloud-operator/internal/version"
 )
 
@@ -39,7 +40,8 @@ type resourcesClient struct {
 	k8sClient     k8sclient.Client
 	stats         *stream.Stats
 	flowCollector pb.FlowCollector
-	clusterName   string // Optional: cluster name for self-managed clusters
+	clusterName  string // Optional: cluster name for self-managed clusters
+	runtimeCache *cache.ConfiguredObjectCache
 
 	mutex  sync.RWMutex
 	closed bool
@@ -54,7 +56,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 	dynamicClient := c.k8sClient.GetDynamicClient()
 	clientset := c.k8sClient.GetClientset()
 
-	resourceAPIGroupMap, err := buildResourceApiGroupMap(resourceList, clientset, c.logger)
+	resourceAPIGroupMap, err := BuildResourceAPIGroupMap(resourceList, clientset, c.logger)
 	if err != nil {
 		c.logger.Error("Failed to build resource api group map", zap.Error(err))
 
@@ -72,12 +74,13 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 	coreConverter := controller.NewCoreResourceConverter(clientset, c.logger)
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return controller.ConvertUnstructuredToCiliumPolicy(obj)
+		return controller.ConvertUnstructuredToCiliumResource(obj)
 	}
 
 	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
 	sharedLimiter := rate.NewLimiter(1, 5)
 	resourceManagers := make(map[string]*Watcher)
+	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
 
 	for _, resource := range slices.Sorted(maps.Keys(resourceAPIGroupMap)) {
 		resourceInfo := resourceAPIGroupMap[resource]
@@ -89,8 +92,11 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		}
 
 		converter := coreConverter
-		if controller.IsCiliumPolicy(resource) {
+		var runtimeCache *cache.ConfiguredObjectCache
+
+		if slices.Contains(ConfiguredResourceKinds, resource) {
 			converter = ciliumConverter
+			runtimeCache = c.runtimeCache
 		}
 
 		resourceManager := NewWatcher(WatcherConfig{
@@ -100,12 +106,13 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 			BaseLogger:      c.logger,
 			DynamicClient:   dynamicClient,
 			ResourcesClient: c,
+			RuntimeCache:    runtimeCache,
 			Limiter:         sharedLimiter,
 			Converter:       converter,
 		})
 		resourceManagers[resource] = resourceManager
 
-		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger)
+		resourceVersion, runtimeObjects, err := resourceManager.DynamicListResources(ctx, resourceManager.logger)
 		if err != nil {
 			// Skip resources that are unavailable due to RBAC or missing CRDs.
 			// NotFound can occur when a CRD is deleted after discovery but before listing.
@@ -122,12 +129,19 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 			return err
 		}
 
+		maps.Copy(pendingSnapshot, runtimeObjects)
+
 		allWatchInfos = append(allWatchInfos, watcherInfo{
 			resource:        resource,
 			apiGroup:        resourceInfo.Group,
 			apiVersion:      resourceInfo.Version,
 			resourceVersion: resourceVersion,
 		})
+	}
+
+	// Populate the runtime cache with all operator-managed resources discovered during the initial list
+	if c.runtimeCache != nil {
+		c.runtimeCache.ReplaceAll(pendingSnapshot)
 	}
 
 	err = c.sendResourceSnapshotComplete()

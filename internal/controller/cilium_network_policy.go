@@ -25,9 +25,24 @@ func IsCiliumPolicy(kindOrResource string) bool {
 	}
 }
 
-// ConvertUnstructuredToCiliumPolicy converts an unstructured Cilium policy to a KubernetesObjectData proto.
-// This handles both CiliumNetworkPolicy and CiliumClusterwideNetworkPolicy.
-func ConvertUnstructuredToCiliumPolicy(obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+// ExtractResourceName returns the plural resource name (e.g., "ciliumnetworkpolicies")
+// for a configured object by inspecting its KindSpecific oneof.
+func ExtractResourceName(data *pb.ConfiguredKubernetesObjectData) (string, error) {
+	switch data.GetKindSpecific().(type) {
+	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
+		return "ciliumnetworkpolicies", nil
+	case *pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy:
+		return "ciliumclusterwidenetworkpolicies", nil
+	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
+		return "ciliumcidrgroups", nil
+	default:
+		return "", fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
+	}
+}
+
+// ConvertUnstructuredToCiliumResource converts an unstructured Cilium resource to a KubernetesObjectData proto.
+// Handles CiliumNetworkPolicy, CiliumClusterwideNetworkPolicy, and CiliumCIDRGroup.
+func ConvertUnstructuredToCiliumResource(obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 	if obj == nil {
 		return nil, errors.New("cannot convert nil object")
 	}
@@ -68,11 +83,71 @@ func ConvertUnstructuredToCiliumPolicy(obj *unstructured.Unstructured) (*pb.Kube
 				Specs: specs,
 			},
 		}
+	case "CiliumCIDRGroup":
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_CiliumCidrGroup{
+			CiliumCidrGroup: &pb.KubernetesCiliumCIDRGroupData{
+				Spec: extractCiliumCIDRGroupSpec(obj),
+			},
+		}
 	default:
-		return nil, fmt.Errorf("unsupported Cilium policy kind: %s", gvk.Kind)
+		return nil, fmt.Errorf("unsupported Cilium resource kind: %s", gvk.Kind)
 	}
 
 	return objMetadata, nil
+}
+
+// BuildConfiguredFromMetadata builds a ConfiguredKubernetesObjectData from the
+// already-converted KubernetesObjectData for the runtime cache. Operator-added
+// labels (cloudsecure-id, managed-by) are stripped so the runtime snapshot
+// matches the shape of the config cache. Annotations are excluded — the
+// reconciler handles annotation comparison by intersecting with desired state.
+func BuildConfiguredFromMetadata(id string, metadata *pb.KubernetesObjectData) *pb.ConfiguredKubernetesObjectData {
+	// Copy labels excluding operator-added ones so the runtime snapshot matches the config cache shape.
+	filteredLabels := make(map[string]string, len(metadata.GetLabels()))
+	for k, v := range metadata.GetLabels() {
+		if k != CloudSecureIDLabel && k != ManagedByLabel {
+			filteredLabels[k] = v
+		}
+	}
+
+	configured := &pb.ConfiguredKubernetesObjectData{
+		Id:        id,
+		Name:      metadata.GetName(),
+		Namespace: metadata.Namespace,
+		Labels:    filteredLabels,
+	}
+
+	setConfiguredKindSpecific(configured, metadata)
+
+	return configured
+}
+
+// setConfiguredKindSpecific sets the KindSpecific field on a ConfiguredKubernetesObjectData
+// from a KubernetesObjectData source. Both use the same inner types, just different oneof wrappers.
+func setConfiguredKindSpecific(configured *pb.ConfiguredKubernetesObjectData, source *pb.KubernetesObjectData) {
+	if source.GetKindSpecific() == nil {
+		return
+	}
+
+	if policy := source.GetCiliumNetworkPolicy(); policy != nil {
+		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{CiliumNetworkPolicy: policy}
+	} else if ccnp := source.GetCiliumClusterwideNetworkPolicy(); ccnp != nil {
+		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{CiliumClusterwideNetworkPolicy: ccnp}
+	} else if cidr := source.GetCiliumCidrGroup(); cidr != nil {
+		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{CiliumCidrGroup: cidr}
+	}
+}
+
+// extractCiliumCIDRGroupSpec extracts the CiliumCIDRGroup spec from an unstructured object.
+func extractCiliumCIDRGroupSpec(obj *unstructured.Unstructured) *pb.CiliumCIDRGroup {
+	cidrs, found, _ := unstructured.NestedStringSlice(obj.Object, "spec", "externalCIDRs")
+	if !found || len(cidrs) == 0 {
+		return nil
+	}
+
+	return &pb.CiliumCIDRGroup{
+		ExternalCidrs: cidrs,
+	}
 }
 
 // extractCiliumSpecs extracts CiliumPolicyRule specs from both 'spec' and 'specs' fields.

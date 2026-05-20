@@ -19,6 +19,8 @@ import (
 	"k8s.io/client-go/dynamic"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller"
+	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 )
 
 // ResourceStreamSender abstracts the operations for sending resources to CloudSecure.
@@ -42,7 +44,8 @@ type WatcherConfig struct {
 	ApiVersion      string
 	BaseLogger      *zap.Logger
 	DynamicClient   dynamic.Interface
-	ResourcesClient ResourceStreamSender
+	ResourcesClient ResourceStreamSender         // for CloudSecure streaming
+	RuntimeCache    *cache.ConfiguredObjectCache // set only for Cilium resource watchers
 	Limiter         *rate.Limiter
 	Converter       ResourceConverter
 }
@@ -55,6 +58,7 @@ type Watcher struct {
 	logger          *zap.Logger
 	dynamicClient   dynamic.Interface
 	resourcesClient ResourceStreamSender
+	runtimeCache    *cache.ConfiguredObjectCache
 	limiter         *rate.Limiter
 	converter       ResourceConverter
 }
@@ -74,9 +78,16 @@ func NewWatcher(config WatcherConfig) *Watcher {
 		logger:          logger,
 		dynamicClient:   config.DynamicClient,
 		resourcesClient: config.ResourcesClient,
+		runtimeCache:    config.RuntimeCache,
 		limiter:         config.Limiter,
 		converter:       config.Converter,
 	}
+}
+
+// isManagedByOperator checks if the object has the managed-by label set by cloud-operator.
+func (r *Watcher) isManagedByOperator(obj *unstructured.Unstructured) bool {
+	labels := obj.GetLabels()
+	return labels[controller.ManagedByLabel] == controller.ManagedByValue
 }
 
 // gvr returns the GroupVersionResource for this watcher.
@@ -107,11 +118,12 @@ func (r *Watcher) WatchK8sResources(ctx context.Context, cancel context.CancelFu
 	}
 }
 
-// DynamicListResources lists a specified resource dynamically and sends down the current gRPC stream.
-func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) (string, error) {
+// DynamicListResources lists a specified resource dynamically, sends down the current gRPC stream,
+// and returns any operator-managed objects found for runtime cache population.
+func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) (string, map[string]*pb.ConfiguredKubernetesObjectData, error) {
 	unstructuredResources, err := r.FetchResources(ctx, metav1.NamespaceAll)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	// Dynamic client may not set GVK on individual list items; derive it from the list GVK.
@@ -121,6 +133,8 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 		Version: listGvk.Version,
 		Kind:    removeListSuffix(listGvk.Kind),
 	}
+
+	runtimeObjects := make(map[string]*pb.ConfiguredKubernetesObjectData)
 
 	for i := range unstructuredResources.Items {
 		item := &unstructuredResources.Items[i]
@@ -136,13 +150,22 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 				zap.String("namespace", item.GetNamespace()),
 				zap.Error(err))
 
-			return "", fmt.Errorf("failed to convert resource %s/%s: %w", item.GetNamespace(), item.GetName(), err)
+			return "", nil, fmt.Errorf("failed to convert resource %s/%s: %w", item.GetNamespace(), item.GetName(), err)
 		}
 
 		if err := r.resourcesClient.SendObjectData(logger, metadataObj); err != nil {
 			r.logger.Error("Cannot send object metadata", zap.Error(err))
 
-			return "", err
+			return "", nil, err
+		}
+
+		// Add operator-managed objects to the runtime snapshot for reconciliation.
+		if r.runtimeCache != nil && r.isManagedByOperator(item) {
+			id := item.GetLabels()[controller.CloudSecureIDLabel]
+			if id != "" {
+				configured := controller.BuildConfiguredFromMetadata(id, metadataObj)
+				runtimeObjects[id] = configured
+			}
 		}
 	}
 
@@ -150,11 +173,11 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 
 	select {
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return "", nil, ctx.Err()
 	default:
 	}
 
-	return unstructuredResources.GetResourceVersion(), nil
+	return unstructuredResources.GetResourceVersion(), runtimeObjects, nil
 }
 
 //nolint:gocognit // function is complex by nature (watch loop)
@@ -321,9 +344,31 @@ func (r *Watcher) handleWatchEvent(
 	case watch.Added, watch.Modified, watch.Deleted:
 		logger.Debug("Received mutation from watcher", zap.String("type", string(event.Type)))
 
-		resourceVersion, err := r.processMutation(ctx, event, mutationChan)
+		resourceVersion, metadataObj, err := r.processMutation(ctx, event, mutationChan)
+		if err != nil {
+			return "", false, err
+		}
 
-		return resourceVersion, true, err
+		// Additionally update the runtime cache for operator-managed resources.
+		if r.runtimeCache != nil {
+			obj := event.Object.(*unstructured.Unstructured)
+
+			if r.isManagedByOperator(obj) {
+				id := obj.GetLabels()[controller.CloudSecureIDLabel]
+				if id != "" {
+					configured := controller.BuildConfiguredFromMetadata(id, metadataObj)
+
+					switch event.Type {
+					case watch.Added, watch.Modified:
+						r.runtimeCache.Insert(configured.Id, configured)
+					case watch.Deleted:
+						r.runtimeCache.Delete(configured.Id)
+					}
+				}
+			}
+		}
+
+		return resourceVersion, true, nil
 
 	default:
 		return "", false, fmt.Errorf("watcher returned an unknown or empty watch event of type %s", string(event.Type))
@@ -365,28 +410,28 @@ func getResourceVersionFromBookmark(event watch.Event) (string, error) {
 	return resourceVersion, nil
 }
 
-func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation) (string, error) {
+func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation) (string, *pb.KubernetesObjectData, error) {
 	if event.Object == nil {
-		return "", errors.New("event object is nil")
+		return "", nil, errors.New("event object is nil")
 	}
 
 	unstructuredObj, ok := event.Object.(*unstructured.Unstructured)
 	if !ok {
-		return "", fmt.Errorf("expected *unstructured.Unstructured, got %T", event.Object)
+		return "", nil, fmt.Errorf("expected *unstructured.Unstructured, got %T", event.Object)
 	}
 
 	metadataObj, err := r.converter(ctx, unstructuredObj)
 	if err != nil {
-		return "", fmt.Errorf("failed to convert resource: %w", err)
+		return "", nil, fmt.Errorf("failed to convert resource: %w", err)
 	}
 
 	mutation := r.resourcesClient.CreateMutationObject(metadataObj, event.Type)
 
 	select {
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return "", nil, ctx.Err()
 	case mutationChan <- mutation:
 	}
 
-	return metadataObj.GetResourceVersion(), nil
+	return metadataObj.GetResourceVersion(), metadataObj, nil
 }

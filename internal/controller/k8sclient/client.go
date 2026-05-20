@@ -46,6 +46,15 @@ type Client interface {
 
 	// WatchResources watches for changes to resources of a given type.
 	WatchResources(ctx context.Context, gvr schema.GroupVersionResource, namespace string, resourceVersion string) (watch.Interface, error)
+
+	// GetResource retrieves a single resource by name.
+	GetResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string) (*unstructured.Unstructured, error)
+
+	// ApplyResource applies a resource using server-side apply.
+	ApplyResource(ctx context.Context, gvr schema.GroupVersionResource, namespace string, obj *unstructured.Unstructured, fieldManager string) (*unstructured.Unstructured, error)
+
+	// DeleteResource deletes a resource by name.
+	DeleteResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string) error
 }
 
 // realClient implements Client using actual K8s clients.
@@ -173,4 +182,29 @@ func (c *realClient) WatchResources(ctx context.Context, gvr schema.GroupVersion
 	}
 
 	return c.dynamicClient.Resource(gvr).Namespace(namespace).Watch(ctx, opts)
+}
+
+func (c *realClient) GetResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string) (*unstructured.Unstructured, error) {
+	if namespace == "" {
+		return c.dynamicClient.Resource(gvr).Get(ctx, name, metav1.GetOptions{})
+	}
+
+	return c.dynamicClient.Resource(gvr).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+}
+
+func (c *realClient) ApplyResource(ctx context.Context, gvr schema.GroupVersionResource, namespace string, obj *unstructured.Unstructured, fieldManager string) (*unstructured.Unstructured, error) {
+	opts := metav1.ApplyOptions{FieldManager: fieldManager, Force: true}
+	if namespace == "" {
+		return c.dynamicClient.Resource(gvr).Apply(ctx, obj.GetName(), obj, opts)
+	}
+
+	return c.dynamicClient.Resource(gvr).Namespace(namespace).Apply(ctx, obj.GetName(), obj, opts)
+}
+
+func (c *realClient) DeleteResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string) error {
+	if namespace == "" {
+		return c.dynamicClient.Resource(gvr).Delete(ctx, name, metav1.DeleteOptions{})
+	}
+
+	return c.dynamicClient.Resource(gvr).Namespace(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 }
