@@ -1141,15 +1141,15 @@ type CiliumPolicyRule struct {
 	// Controls whether this spec enables default deny for ingress/egress.
 	EnableDefaultDeny *CiliumPolicyDefaultDeny `protobuf:"bytes,5,opt,name=enable_default_deny,json=enableDefaultDeny,proto3,oneof" json:"enable_default_deny,omitempty"`
 	// Ingress rules define allowed incoming traffic.
-	IngressRules []*CiliumPolicyIngressRule `protobuf:"bytes,6,rep,name=ingress_rules,json=ingressRules,proto3" json:"ingress_rules,omitempty"`
+	Ingress []*CiliumPolicyIngressRule `protobuf:"bytes,6,rep,name=ingress,proto3" json:"ingress,omitempty"`
 	// Egress rules define allowed outgoing traffic.
-	EgressRules []*CiliumPolicyEgressRule `protobuf:"bytes,7,rep,name=egress_rules,json=egressRules,proto3" json:"egress_rules,omitempty"`
+	Egress []*CiliumPolicyEgressRule `protobuf:"bytes,7,rep,name=egress,proto3" json:"egress,omitempty"`
 	// IngressDeny rules explicitly deny incoming traffic.
-	IngressDenyRules []*CiliumPolicyIngressRule `protobuf:"bytes,8,rep,name=ingress_deny_rules,json=ingressDenyRules,proto3" json:"ingress_deny_rules,omitempty"`
+	IngressDeny []*CiliumPolicyIngressRule `protobuf:"bytes,8,rep,name=ingress_deny,json=ingressDeny,proto3" json:"ingress_deny,omitempty"`
 	// EgressDeny rules explicitly deny outgoing traffic.
-	EgressDenyRules []*CiliumPolicyEgressRule `protobuf:"bytes,9,rep,name=egress_deny_rules,json=egressDenyRules,proto3" json:"egress_deny_rules,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	EgressDeny    []*CiliumPolicyEgressRule `protobuf:"bytes,9,rep,name=egress_deny,json=egressDeny,proto3" json:"egress_deny,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CiliumPolicyRule) Reset() {
@@ -1217,30 +1217,30 @@ func (x *CiliumPolicyRule) GetEnableDefaultDeny() *CiliumPolicyDefaultDeny {
 	return nil
 }
 
-func (x *CiliumPolicyRule) GetIngressRules() []*CiliumPolicyIngressRule {
+func (x *CiliumPolicyRule) GetIngress() []*CiliumPolicyIngressRule {
 	if x != nil {
-		return x.IngressRules
+		return x.Ingress
 	}
 	return nil
 }
 
-func (x *CiliumPolicyRule) GetEgressRules() []*CiliumPolicyEgressRule {
+func (x *CiliumPolicyRule) GetEgress() []*CiliumPolicyEgressRule {
 	if x != nil {
-		return x.EgressRules
+		return x.Egress
 	}
 	return nil
 }
 
-func (x *CiliumPolicyRule) GetIngressDenyRules() []*CiliumPolicyIngressRule {
+func (x *CiliumPolicyRule) GetIngressDeny() []*CiliumPolicyIngressRule {
 	if x != nil {
-		return x.IngressDenyRules
+		return x.IngressDeny
 	}
 	return nil
 }
 
-func (x *CiliumPolicyRule) GetEgressDenyRules() []*CiliumPolicyEgressRule {
+func (x *CiliumPolicyRule) GetEgressDeny() []*CiliumPolicyEgressRule {
 	if x != nil {
-		return x.EgressDenyRules
+		return x.EgressDeny
 	}
 	return nil
 }
@@ -1303,7 +1303,7 @@ func (x *CiliumPolicyDefaultDeny) GetEgress() bool {
 
 // CiliumPolicyIngressRule defines a Cilium ingress rule.
 // Used for both allow and deny rules; allow vs deny is determined by which array
-// the rule belongs to (ingress_rules vs ingress_deny_rules) in CiliumPolicyRule.
+// the rule belongs to (ingress vs ingress_deny) in CiliumPolicyRule.
 // Separate from CiliumPolicyEgressRule to mirror Cilium's CRD structure and ensure
 // ingress rules only have from_* fields.
 // https://github.com/cilium/cilium/blob/40fafc202f3c16dfa287af9eb4dc3f3e72a120f3/pkg/policy/api/ingress.go#L133-L162
@@ -1428,7 +1428,7 @@ func (x *CiliumPolicyIngressRule) GetAuthentication() *CiliumPolicyAuthenticatio
 
 // CiliumPolicyEgressRule defines a Cilium egress rule.
 // Used for both allow and deny rules; allow vs deny is determined by which array
-// the rule belongs to (egress_rules vs egress_deny_rules) in CiliumPolicyRule.
+// the rule belongs to (egress vs egress_deny) in CiliumPolicyRule.
 // https://github.com/cilium/cilium/blob/40fafc202f3c16dfa287af9eb4dc3f3e72a120f3/pkg/policy/api/egress.go#L138-L183
 type CiliumPolicyEgressRule struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -5432,17 +5432,18 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x1dKubernetesCiliumCIDRGroupData\x12D\n" +
 	"\x04spec\x18\x01 \x01(\v20.illumio.cloud.k8sclustersync.v1.CiliumCIDRGroupR\x04spec\"8\n" +
 	"\x0fCiliumCIDRGroup\x12%\n" +
-	"\x0eexternal_cidrs\x18\x01 \x03(\tR\rexternalCidrs\"\xce\a\n" +
+	"\x0eexternal_cidrs\x18\x01 \x03(\tR\rexternalCidrs\"\xa2\a\n" +
 	"\x10CiliumPolicyRule\x12`\n" +
 	"\x11endpoint_selector\x18\x01 \x01(\v2..illumio.cloud.k8sclustersync.v1.LabelSelectorH\x00R\x10endpointSelector\x88\x01\x01\x12X\n" +
 	"\rnode_selector\x18\x02 \x01(\v2..illumio.cloud.k8sclustersync.v1.LabelSelectorH\x01R\fnodeSelector\x88\x01\x01\x12%\n" +
 	"\vdescription\x18\x03 \x01(\tH\x02R\vdescription\x88\x01\x01\x12U\n" +
 	"\x06labels\x18\x04 \x03(\v2=.illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.LabelsEntryR\x06labels\x12m\n" +
-	"\x13enable_default_deny\x18\x05 \x01(\v28.illumio.cloud.k8sclustersync.v1.CiliumPolicyDefaultDenyH\x03R\x11enableDefaultDeny\x88\x01\x01\x12]\n" +
-	"\ringress_rules\x18\x06 \x03(\v28.illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRuleR\fingressRules\x12Z\n" +
-	"\fegress_rules\x18\a \x03(\v27.illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRuleR\vegressRules\x12f\n" +
-	"\x12ingress_deny_rules\x18\b \x03(\v28.illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRuleR\x10ingressDenyRules\x12c\n" +
-	"\x11egress_deny_rules\x18\t \x03(\v27.illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRuleR\x0fegressDenyRules\x1a9\n" +
+	"\x13enable_default_deny\x18\x05 \x01(\v28.illumio.cloud.k8sclustersync.v1.CiliumPolicyDefaultDenyH\x03R\x11enableDefaultDeny\x88\x01\x01\x12R\n" +
+	"\aingress\x18\x06 \x03(\v28.illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRuleR\aingress\x12O\n" +
+	"\x06egress\x18\a \x03(\v27.illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRuleR\x06egress\x12[\n" +
+	"\fingress_deny\x18\b \x03(\v28.illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRuleR\vingressDeny\x12X\n" +
+	"\vegress_deny\x18\t \x03(\v27.illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRuleR\n" +
+	"egressDeny\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x14\n" +
@@ -5914,10 +5915,10 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	32,  // 19: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.node_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
 	74,  // 20: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.labels:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.LabelsEntry
 	17,  // 21: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.enable_default_deny:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyDefaultDeny
-	18,  // 22: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.ingress_rules:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule
-	19,  // 23: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.egress_rules:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule
-	18,  // 24: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.ingress_deny_rules:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule
-	19,  // 25: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.egress_deny_rules:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule
+	18,  // 22: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.ingress:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule
+	19,  // 23: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.egress:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule
+	18,  // 24: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.ingress_deny:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule
+	19,  // 25: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.egress_deny:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule
 	33,  // 26: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.from_endpoints:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelectorList
 	20,  // 27: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.from_cidr_set:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyCIDRSet
 	21,  // 28: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.from_groups:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyGroup
