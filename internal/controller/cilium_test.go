@@ -101,8 +101,8 @@ func TestConvertUnstructuredToCiliumResource_Basic(t *testing.T) {
 	require.NotNil(t, spec.GetEndpointSelector())
 	assert.Equal(t, "test", spec.GetEndpointSelector().GetMatchLabels()["app"])
 
-	require.Len(t, spec.GetIngressRules(), 1)
-	ingressRule := spec.GetIngressRules()[0]
+	require.Len(t, spec.GetIngress(), 1)
+	ingressRule := spec.GetIngress()[0]
 	require.NotNil(t, ingressRule.GetFromEndpoints())
 	require.Len(t, ingressRule.GetFromEndpoints().GetItems(), 1)
 	assert.Equal(t, "frontend", ingressRule.GetFromEndpoints().GetItems()[0].GetMatchLabels()["role"])
@@ -203,9 +203,9 @@ func TestConvertUnstructuredToCiliumResource_WithPorts(t *testing.T) {
 	require.Len(t, ciliumPolicy.GetSpecs(), 1)
 
 	spec := ciliumPolicy.GetSpecs()[0]
-	require.Len(t, spec.GetIngressRules(), 1)
+	require.Len(t, spec.GetIngress(), 1)
 
-	ingressRule := spec.GetIngressRules()[0]
+	ingressRule := spec.GetIngress()[0]
 	require.Len(t, ingressRule.GetToPorts(), 1)
 
 	portRule := ingressRule.GetToPorts()[0]
@@ -258,9 +258,9 @@ func TestConvertUnstructuredToCiliumResource_WithCIDR(t *testing.T) {
 	require.Len(t, ciliumPolicy.GetSpecs(), 1)
 
 	spec := ciliumPolicy.GetSpecs()[0]
-	require.Len(t, spec.GetEgressRules(), 1)
+	require.Len(t, spec.GetEgress(), 1)
 
-	egressRule := spec.GetEgressRules()[0]
+	egressRule := spec.GetEgress()[0]
 	assert.ElementsMatch(t, []string{"10.0.0.0/8", "192.168.0.0/16"}, egressRule.GetToCidr())
 
 	require.Len(t, egressRule.GetToCidrSet(), 1)
@@ -406,9 +406,9 @@ func TestConvertUnstructuredToCiliumResource_WithAWSGroups(t *testing.T) {
 	require.Len(t, ciliumPolicy.GetSpecs(), 1)
 
 	spec := ciliumPolicy.GetSpecs()[0]
-	require.Len(t, spec.GetIngressRules(), 1)
+	require.Len(t, spec.GetIngress(), 1)
 
-	ingressRule := spec.GetIngressRules()[0]
+	ingressRule := spec.GetIngress()[0]
 	require.Len(t, ingressRule.GetFromGroups(), 1)
 
 	group := ingressRule.GetFromGroups()[0]
@@ -475,13 +475,13 @@ func TestConvertUnstructuredToCiliumResource_WithNodeSelectors(t *testing.T) {
 
 	spec := ciliumPolicy.GetSpecs()[0]
 
-	require.Len(t, spec.GetIngressRules(), 1)
-	require.Len(t, spec.GetIngressRules()[0].GetFromNodes(), 1)
-	assert.Equal(t, "worker", spec.GetIngressRules()[0].GetFromNodes()[0].GetMatchLabels()["node-type"])
+	require.Len(t, spec.GetIngress(), 1)
+	require.Len(t, spec.GetIngress()[0].GetFromNodes(), 1)
+	assert.Equal(t, "worker", spec.GetIngress()[0].GetFromNodes()[0].GetMatchLabels()["node-type"])
 
-	require.Len(t, spec.GetEgressRules(), 1)
-	require.Len(t, spec.GetEgressRules()[0].GetToNodes(), 1)
-	assert.Equal(t, "control-plane", spec.GetEgressRules()[0].GetToNodes()[0].GetMatchLabels()["node-type"])
+	require.Len(t, spec.GetEgress(), 1)
+	require.Len(t, spec.GetEgress()[0].GetToNodes(), 1)
+	assert.Equal(t, "control-plane", spec.GetEgress()[0].GetToNodes()[0].GetMatchLabels()["node-type"])
 }
 
 func TestConvertUnstructuredToCiliumResource_WithICMP(t *testing.T) {
@@ -542,9 +542,9 @@ func TestConvertUnstructuredToCiliumResource_WithICMP(t *testing.T) {
 	require.Len(t, ciliumPolicy.GetSpecs(), 1)
 
 	spec := ciliumPolicy.GetSpecs()[0]
-	require.Len(t, spec.GetIngressRules(), 1)
+	require.Len(t, spec.GetIngress(), 1)
 
-	ingressRule := spec.GetIngressRules()[0]
+	ingressRule := spec.GetIngress()[0]
 	require.Len(t, ingressRule.GetIcmps(), 1)
 
 	icmpRule := ingressRule.GetIcmps()[0]
@@ -602,9 +602,9 @@ func TestConvertUnstructuredToCiliumResource_WithAuthentication(t *testing.T) {
 	require.Len(t, ciliumPolicy.GetSpecs(), 1)
 
 	spec := ciliumPolicy.GetSpecs()[0]
-	require.Len(t, spec.GetIngressRules(), 1)
+	require.Len(t, spec.GetIngress(), 1)
 
-	ingressRule := spec.GetIngressRules()[0]
+	ingressRule := spec.GetIngress()[0]
 	require.NotNil(t, ingressRule.GetAuthentication())
 	assert.Equal(t, "required", ingressRule.GetAuthentication().GetMode())
 }
@@ -653,9 +653,9 @@ func TestConvertUnstructuredToCiliumResource_WithFQDN(t *testing.T) {
 	require.Len(t, ciliumPolicy.GetSpecs(), 1)
 
 	spec := ciliumPolicy.GetSpecs()[0]
-	require.Len(t, spec.GetEgressRules(), 1)
+	require.Len(t, spec.GetEgress(), 1)
 
-	egressRule := spec.GetEgressRules()[0]
+	egressRule := spec.GetEgress()[0]
 	require.Len(t, egressRule.GetToFqdns(), 2)
 
 	assert.Equal(t, "api.example.com", egressRule.GetToFqdns()[0].GetMatchName())
@@ -716,9 +716,9 @@ func TestConvertUnstructuredToCiliumResource_WithK8sServices(t *testing.T) {
 	require.Len(t, ciliumPolicy.GetSpecs(), 1)
 
 	spec := ciliumPolicy.GetSpecs()[0]
-	require.Len(t, spec.GetEgressRules(), 1)
+	require.Len(t, spec.GetEgress(), 1)
 
-	egressRule := spec.GetEgressRules()[0]
+	egressRule := spec.GetEgress()[0]
 	require.Len(t, egressRule.GetToServices(), 2)
 
 	k8sService := egressRule.GetToServices()[0].GetK8SService()
@@ -781,9 +781,9 @@ func TestConvertUnstructuredToCiliumResource_WithCIDRGroupRef(t *testing.T) {
 	require.Len(t, ciliumPolicy.GetSpecs(), 1)
 
 	spec := ciliumPolicy.GetSpecs()[0]
-	require.Len(t, spec.GetEgressRules(), 1)
+	require.Len(t, spec.GetEgress(), 1)
 
-	egressRule := spec.GetEgressRules()[0]
+	egressRule := spec.GetEgress()[0]
 	require.Len(t, egressRule.GetToCidrSet(), 2)
 
 	assert.Equal(t, "office-networks", egressRule.GetToCidrSet()[0].GetCidrGroupRef())
@@ -840,9 +840,9 @@ func TestConvertUnstructuredToCiliumResource_WithEndPort(t *testing.T) {
 	require.Len(t, ciliumPolicy.GetSpecs(), 1)
 
 	spec := ciliumPolicy.GetSpecs()[0]
-	require.Len(t, spec.GetIngressRules(), 1)
+	require.Len(t, spec.GetIngress(), 1)
 
-	ingressRule := spec.GetIngressRules()[0]
+	ingressRule := spec.GetIngress()[0]
 	require.Len(t, ingressRule.GetToPorts(), 1)
 
 	portRule := ingressRule.GetToPorts()[0]
@@ -903,12 +903,12 @@ func TestConvertUnstructuredToCiliumResource_WithDenyRules(t *testing.T) {
 
 	spec := ciliumPolicy.GetSpecs()[0]
 
-	require.Len(t, spec.GetIngressDenyRules(), 1)
-	require.NotNil(t, spec.GetIngressDenyRules()[0].GetFromEndpoints())
-	assert.Equal(t, "untrusted", spec.GetIngressDenyRules()[0].GetFromEndpoints().GetItems()[0].GetMatchLabels()["app"])
+	require.Len(t, spec.GetIngressDeny(), 1)
+	require.NotNil(t, spec.GetIngressDeny()[0].GetFromEndpoints())
+	assert.Equal(t, "untrusted", spec.GetIngressDeny()[0].GetFromEndpoints().GetItems()[0].GetMatchLabels()["app"])
 
-	require.Len(t, spec.GetEgressDenyRules(), 1)
-	assert.ElementsMatch(t, []string{"world"}, spec.GetEgressDenyRules()[0].GetToEntities())
+	require.Len(t, spec.GetEgressDeny(), 1)
+	assert.ElementsMatch(t, []string{"world"}, spec.GetEgressDeny()[0].GetToEntities())
 }
 
 func TestConvertUnstructuredToCiliumResource_WithLabels(t *testing.T) {
@@ -1079,9 +1079,9 @@ func TestConvertUnstructuredToCiliumResource_ComplexEgress(t *testing.T) {
 	require.Len(t, ciliumPolicy.GetSpecs(), 1)
 
 	spec := ciliumPolicy.GetSpecs()[0]
-	require.Len(t, spec.GetEgressRules(), 1)
+	require.Len(t, spec.GetEgress(), 1)
 
-	egressRule := spec.GetEgressRules()[0]
+	egressRule := spec.GetEgress()[0]
 
 	require.NotNil(t, egressRule.GetToEndpoints())
 	assert.Equal(t, "database", egressRule.GetToEndpoints().GetItems()[0].GetMatchLabels()["app"])
@@ -1196,9 +1196,9 @@ func TestConvertUnstructuredToCiliumResource_IngressFromCIDR(t *testing.T) {
 	require.NoError(t, err)
 
 	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
-	require.Len(t, spec.GetIngressRules(), 1)
+	require.Len(t, spec.GetIngress(), 1)
 
-	ingressRule := spec.GetIngressRules()[0]
+	ingressRule := spec.GetIngress()[0]
 	assert.ElementsMatch(t, []string{"10.0.0.0/8", "172.16.0.0/12"}, ingressRule.GetFromCidr())
 
 	require.Len(t, ingressRule.GetFromCidrSet(), 1)
@@ -1255,7 +1255,7 @@ func TestConvertUnstructuredToCiliumResource_ICMPTypeOutOfRange(t *testing.T) {
 	require.NoError(t, err)
 
 	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
-	fields := spec.GetIngressRules()[0].GetIcmps()[0].GetFields()
+	fields := spec.GetIngress()[0].GetIcmps()[0].GetFields()
 	require.Len(t, fields, 3)
 
 	for i, f := range fields {
@@ -1306,9 +1306,9 @@ func TestConvertUnstructuredToCiliumResource_EgressToGroups(t *testing.T) {
 	require.NoError(t, err)
 
 	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
-	require.Len(t, spec.GetEgressRules(), 1)
+	require.Len(t, spec.GetEgress(), 1)
 
-	egressRule := spec.GetEgressRules()[0]
+	egressRule := spec.GetEgress()[0]
 	require.Len(t, egressRule.GetToGroups(), 1)
 
 	awsGroup := egressRule.GetToGroups()[0].GetAws()
@@ -1444,9 +1444,9 @@ func TestConvertUnstructuredToCiliumResource_IngressFromEntities(t *testing.T) {
 	require.NoError(t, err)
 
 	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
-	require.Len(t, spec.GetIngressRules(), 1)
+	require.Len(t, spec.GetIngress(), 1)
 
-	ingressRule := spec.GetIngressRules()[0]
+	ingressRule := spec.GetIngress()[0]
 	assert.ElementsMatch(t, []string{"world", "host", "remote-node"}, ingressRule.GetFromEntities())
 }
 
@@ -1632,15 +1632,15 @@ func TestConvertUnstructuredToCiliumResource_DenyRulesWithPorts(t *testing.T) {
 
 	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
 
-	require.Len(t, spec.GetIngressDenyRules(), 1)
-	ingressDeny := spec.GetIngressDenyRules()[0]
+	require.Len(t, spec.GetIngressDeny(), 1)
+	ingressDeny := spec.GetIngressDeny()[0]
 	require.Len(t, ingressDeny.GetToPorts(), 1)
 	require.Len(t, ingressDeny.GetToPorts()[0].GetPorts(), 1)
 	assert.Equal(t, "22", ingressDeny.GetToPorts()[0].GetPorts()[0].GetPort())
 	assert.Equal(t, "TCP", ingressDeny.GetToPorts()[0].GetPorts()[0].GetProtocol())
 
-	require.Len(t, spec.GetEgressDenyRules(), 1)
-	egressDeny := spec.GetEgressDenyRules()[0]
+	require.Len(t, spec.GetEgressDeny(), 1)
+	egressDeny := spec.GetEgressDeny()[0]
 	require.Len(t, egressDeny.GetToPorts(), 1)
 	require.Len(t, egressDeny.GetToPorts()[0].GetPorts(), 2)
 	assert.Equal(t, "25", egressDeny.GetToPorts()[0].GetPorts()[0].GetPort())
@@ -1688,9 +1688,9 @@ func TestConvertUnstructuredToCiliumResource_DenyRulesWithICMP(t *testing.T) {
 	require.NoError(t, err)
 
 	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
-	require.Len(t, spec.GetIngressDenyRules(), 1)
+	require.Len(t, spec.GetIngressDeny(), 1)
 
-	ingressDeny := spec.GetIngressDenyRules()[0]
+	ingressDeny := spec.GetIngressDeny()[0]
 	require.Len(t, ingressDeny.GetIcmps(), 1)
 	require.Len(t, ingressDeny.GetIcmps()[0].GetFields(), 1)
 	assert.Equal(t, "IPv4", ingressDeny.GetIcmps()[0].GetFields()[0].GetFamily())
@@ -1770,9 +1770,9 @@ func TestConvertUnstructuredToCiliumResource_EgressAuthentication(t *testing.T) 
 	require.NoError(t, err)
 
 	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
-	require.Len(t, spec.GetEgressRules(), 1)
+	require.Len(t, spec.GetEgress(), 1)
 
-	egressRule := spec.GetEgressRules()[0]
+	egressRule := spec.GetEgress()[0]
 	require.NotNil(t, egressRule.GetAuthentication())
 	assert.Equal(t, "always-fail", egressRule.GetAuthentication().GetMode())
 }
@@ -1886,7 +1886,7 @@ func TestConvertUnstructuredToCiliumResource_ICMPNegativeIntegerString(t *testin
 	require.NoError(t, err)
 
 	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
-	fields := spec.GetIngressRules()[0].GetIcmps()[0].GetFields()
+	fields := spec.GetIngress()[0].GetIcmps()[0].GetFields()
 	require.Len(t, fields, 1)
 
 	assert.Equal(t, "IPv4", fields[0].GetFamily())
@@ -1949,9 +1949,9 @@ func TestConvertUnstructuredToCiliumResource_EgressDenyWithICMP(t *testing.T) {
 	require.NoError(t, err)
 
 	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
-	require.Len(t, spec.GetEgressDenyRules(), 1)
+	require.Len(t, spec.GetEgressDeny(), 1)
 
-	egressDeny := spec.GetEgressDenyRules()[0]
+	egressDeny := spec.GetEgressDeny()[0]
 	assert.ElementsMatch(t, []string{"world"}, egressDeny.GetToEntities())
 
 	require.Len(t, egressDeny.GetToPorts(), 1)

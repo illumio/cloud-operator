@@ -155,19 +155,19 @@ func convertCiliumPolicyRule(rule *ciliumPolicy.Rule) *pb.CiliumPolicyRule {
 	}
 
 	if len(rule.Ingress) > 0 {
-		pbRule.IngressRules = convertIngressRules(rule.Ingress)
+		pbRule.Ingress = convertIngressRules(rule.Ingress)
 	}
 
 	if len(rule.Egress) > 0 {
-		pbRule.EgressRules = convertEgressRules(rule.Egress)
+		pbRule.Egress = convertEgressRules(rule.Egress)
 	}
 
 	if len(rule.IngressDeny) > 0 {
-		pbRule.IngressDenyRules = convertIngressDenyRules(rule.IngressDeny)
+		pbRule.IngressDeny = convertIngressDenyRules(rule.IngressDeny)
 	}
 
 	if len(rule.EgressDeny) > 0 {
-		pbRule.EgressDenyRules = convertEgressDenyRules(rule.EgressDeny)
+		pbRule.EgressDeny = convertEgressDenyRules(rule.EgressDeny)
 	}
 
 	return pbRule
