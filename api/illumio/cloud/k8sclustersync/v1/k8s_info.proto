@@ -159,13 +159,13 @@ message CiliumPolicyRule {
   // Controls whether this spec enables default deny for ingress/egress.
   optional CiliumPolicyDefaultDeny enable_default_deny = 5;
   // Ingress rules define allowed incoming traffic.
-  repeated CiliumPolicyIngressRule ingress_rules = 6;
+  repeated CiliumPolicyIngressRule ingress = 6;
   // Egress rules define allowed outgoing traffic.
-  repeated CiliumPolicyEgressRule egress_rules = 7;
+  repeated CiliumPolicyEgressRule egress = 7;
   // IngressDeny rules explicitly deny incoming traffic.
-  repeated CiliumPolicyIngressRule ingress_deny_rules = 8;
+  repeated CiliumPolicyIngressRule ingress_deny = 8;
   // EgressDeny rules explicitly deny outgoing traffic.
-  repeated CiliumPolicyEgressRule egress_deny_rules = 9;
+  repeated CiliumPolicyEgressRule egress_deny = 9;
 }
 
 // CiliumPolicyDefaultDeny controls default deny behavior for a spec.
@@ -179,7 +179,7 @@ message CiliumPolicyDefaultDeny {
 
 // CiliumPolicyIngressRule defines a Cilium ingress rule.
 // Used for both allow and deny rules; allow vs deny is determined by which array
-// the rule belongs to (ingress_rules vs ingress_deny_rules) in CiliumPolicyRule.
+// the rule belongs to (ingress vs ingress_deny) in CiliumPolicyRule.
 // Separate from CiliumPolicyEgressRule to mirror Cilium's CRD structure and ensure
 // ingress rules only have from_* fields.
 // https://github.com/cilium/cilium/blob/40fafc202f3c16dfa287af9eb4dc3f3e72a120f3/pkg/policy/api/ingress.go#L133-L162
@@ -208,7 +208,7 @@ message CiliumPolicyIngressRule {
 
 // CiliumPolicyEgressRule defines a Cilium egress rule.
 // Used for both allow and deny rules; allow vs deny is determined by which array
-// the rule belongs to (egress_rules vs egress_deny_rules) in CiliumPolicyRule.
+// the rule belongs to (egress vs egress_deny) in CiliumPolicyRule.
 // https://github.com/cilium/cilium/blob/40fafc202f3c16dfa287af9eb4dc3f3e72a120f3/pkg/policy/api/egress.go#L138-L183
 message CiliumPolicyEgressRule {
   // ToEndpoints selects destination endpoints by labels.
