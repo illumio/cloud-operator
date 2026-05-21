@@ -29,7 +29,7 @@ type ResourceStreamSender interface {
 }
 
 // ResourceConverter converts an unstructured Kubernetes object into a
-// KubernetesObjectData proto. Each resource type provides its own implementation.
+// KubernetesObjectData proto. Core and Cilium resources use separate implementations.
 type ResourceConverter func(ctx context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error)
 
 // MutationCheckpointInterval is the interval for logging mutation checkpoint messages.
@@ -122,22 +122,22 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 		Kind:    removeListSuffix(listGvk.Kind),
 	}
 
-	for i := range unstructuredResources.Items {
-		item := &unstructuredResources.Items[i]
-
+	for _, item := range unstructuredResources.Items {
 		if item.GetKind() == "" {
 			item.SetGroupVersionKind(itemGvk)
 		}
 
-		metadataObj, err := r.converter(ctx, item)
+		metadataObj, err := r.converter(ctx, &item)
 		if err != nil {
-			r.logger.Error("Cannot convert resource",
+			r.logger.Warn("Skipping resource that failed conversion",
 				zap.String("kind", item.GetKind()),
 				zap.String("name", item.GetName()),
 				zap.String("namespace", item.GetNamespace()),
+				zap.String("api_group", item.GroupVersionKind().Group),
+				zap.String("api_version", item.GroupVersionKind().Version),
 				zap.Error(err))
 
-			return "", fmt.Errorf("failed to convert %s resource %s/%s: %w", item.GetKind(), item.GetNamespace(), item.GetName(), err)
+			continue
 		}
 
 		if err := r.resourcesClient.SendObjectData(logger, metadataObj); err != nil {

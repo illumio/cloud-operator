@@ -1538,3 +1538,429 @@ func TestConvertUnstructuredToCiliumResource_CIDRGroupEmpty(t *testing.T) {
 	require.NotNil(t, cidrGroup.GetSpec())
 	assert.Empty(t, cidrGroup.GetSpec().GetExternalCidrs())
 }
+
+func TestConvertUnstructuredToCiliumResource_MalformedJSON(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name": "malformed-policy",
+			},
+			"spec": map[string]any{
+				"endpointSelector": map[string]any{
+					"matchLabels": "not-a-map",
+				},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	_, err := ConvertUnstructuredToCiliumResource(obj)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "deserializing")
+}
+
+func TestConvertUnstructuredToCiliumResource_DenyRulesWithPorts(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            "deny-ports-policy",
+				"namespace":       "default",
+				"uid":             "denyports-uid",
+				"resourceVersion": "50505",
+			},
+			"spec": map[string]any{
+				"endpointSelector": map[string]any{},
+				"ingressDeny": []any{
+					map[string]any{
+						"fromEndpoints": []any{
+							map[string]any{
+								"matchLabels": map[string]any{"app": "blocked"},
+							},
+						},
+						"toPorts": []any{
+							map[string]any{
+								"ports": []any{
+									map[string]any{
+										"port":     "22",
+										"protocol": "TCP",
+									},
+								},
+							},
+						},
+					},
+				},
+				"egressDeny": []any{
+					map[string]any{
+						"toEntities": []any{"world"},
+						"toPorts": []any{
+							map[string]any{
+								"ports": []any{
+									map[string]any{
+										"port":     "25",
+										"protocol": "TCP",
+									},
+									map[string]any{
+										"port":     "587",
+										"protocol": "TCP",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	result, err := ConvertUnstructuredToCiliumResource(obj)
+	require.NoError(t, err)
+
+	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
+
+	require.Len(t, spec.GetIngressDenyRules(), 1)
+	ingressDeny := spec.GetIngressDenyRules()[0]
+	require.Len(t, ingressDeny.GetToPorts(), 1)
+	require.Len(t, ingressDeny.GetToPorts()[0].GetPorts(), 1)
+	assert.Equal(t, "22", ingressDeny.GetToPorts()[0].GetPorts()[0].GetPort())
+	assert.Equal(t, "TCP", ingressDeny.GetToPorts()[0].GetPorts()[0].GetProtocol())
+
+	require.Len(t, spec.GetEgressDenyRules(), 1)
+	egressDeny := spec.GetEgressDenyRules()[0]
+	require.Len(t, egressDeny.GetToPorts(), 1)
+	require.Len(t, egressDeny.GetToPorts()[0].GetPorts(), 2)
+	assert.Equal(t, "25", egressDeny.GetToPorts()[0].GetPorts()[0].GetPort())
+	assert.Equal(t, "587", egressDeny.GetToPorts()[0].GetPorts()[1].GetPort())
+}
+
+func TestConvertUnstructuredToCiliumResource_DenyRulesWithICMP(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            "deny-icmp-policy",
+				"namespace":       "default",
+				"uid":             "denyicmp-uid",
+				"resourceVersion": "60606",
+			},
+			"spec": map[string]any{
+				"endpointSelector": map[string]any{},
+				"ingressDeny": []any{
+					map[string]any{
+						"icmps": []any{
+							map[string]any{
+								"fields": []any{
+									map[string]any{
+										"family": "IPv4",
+										"type":   int64(8),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	result, err := ConvertUnstructuredToCiliumResource(obj)
+	require.NoError(t, err)
+
+	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
+	require.Len(t, spec.GetIngressDenyRules(), 1)
+
+	ingressDeny := spec.GetIngressDenyRules()[0]
+	require.Len(t, ingressDeny.GetIcmps(), 1)
+	require.Len(t, ingressDeny.GetIcmps()[0].GetFields(), 1)
+	assert.Equal(t, "IPv4", ingressDeny.GetIcmps()[0].GetFields()[0].GetFamily())
+	assert.Equal(t, uint32(8), ingressDeny.GetIcmps()[0].GetFields()[0].GetTypeInt())
+}
+
+func TestConvertUnstructuredToCiliumResource_CIDRGroupV2(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumCIDRGroup",
+			"metadata": map[string]any{
+				"name":            "v2-cidrgroup",
+				"uid":             "v2cidrgroup-uid",
+				"resourceVersion": "70707",
+			},
+			"spec": map[string]any{
+				"externalCIDRs": []any{"10.0.0.0/8"},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumCIDRGroup",
+	})
+
+	result, err := ConvertUnstructuredToCiliumResource(obj)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assert.Equal(t, "v2", result.GetApiVersion())
+	assert.Equal(t, "CiliumCIDRGroup", result.GetKind())
+
+	cidrGroup := result.GetCiliumCidrGroup()
+	require.NotNil(t, cidrGroup)
+	assert.ElementsMatch(t, []string{"10.0.0.0/8"}, cidrGroup.GetSpec().GetExternalCidrs())
+}
+
+func TestConvertUnstructuredToCiliumResource_EgressAuthentication(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            "egress-auth-policy",
+				"namespace":       "default",
+				"uid":             "egressauth-uid",
+				"resourceVersion": "80808",
+			},
+			"spec": map[string]any{
+				"endpointSelector": map[string]any{},
+				"egress": []any{
+					map[string]any{
+						"toEndpoints": []any{
+							map[string]any{
+								"matchLabels": map[string]any{"app": "backend"},
+							},
+						},
+						"authentication": map[string]any{
+							"mode": "always-fail",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	result, err := ConvertUnstructuredToCiliumResource(obj)
+	require.NoError(t, err)
+
+	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
+	require.Len(t, spec.GetEgressRules(), 1)
+
+	egressRule := spec.GetEgressRules()[0]
+	require.NotNil(t, egressRule.GetAuthentication())
+	assert.Equal(t, "always-fail", egressRule.GetAuthentication().GetMode())
+}
+
+func TestConvertUnstructuredToCiliumResource_LabelArrayEmptyKey(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            "empty-key-label-policy",
+				"namespace":       "default",
+				"uid":             "emptykey-uid",
+				"resourceVersion": "90909",
+			},
+			"spec": map[string]any{
+				"endpointSelector": map[string]any{},
+				"labels": []any{
+					map[string]any{"key": "valid-key", "value": "valid-value"},
+					map[string]any{"key": "", "value": "should-be-rejected"},
+					map[string]any{"key": "another-key", "value": "another-value"},
+				},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	_, err := ConvertUnstructuredToCiliumResource(obj)
+	require.Error(t, err, "Cilium rejects labels with empty keys during deserialization")
+	assert.Contains(t, err.Error(), "does not contain label key")
+}
+
+func TestConvertUnstructuredToCiliumResource_DefaultDenyPartialIngress(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            "partial-deny-policy",
+				"namespace":       "default",
+				"uid":             "partialdeny-uid",
+				"resourceVersion": "10101",
+			},
+			"spec": map[string]any{
+				"endpointSelector": map[string]any{},
+				"enableDefaultDeny": map[string]any{
+					"ingress": true,
+				},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	result, err := ConvertUnstructuredToCiliumResource(obj)
+	require.NoError(t, err)
+
+	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
+	require.NotNil(t, spec.GetEnableDefaultDeny())
+	assert.True(t, spec.GetEnableDefaultDeny().GetIngress())
+	assert.False(t, spec.GetEnableDefaultDeny().GetEgress(), "unset egress should default to false")
+}
+
+func TestConvertUnstructuredToCiliumResource_ICMPNegativeIntegerString(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            "icmp-neg-string-policy",
+				"namespace":       "default",
+				"uid":             "icmpneg-uid",
+				"resourceVersion": "20202",
+			},
+			"spec": map[string]any{
+				"endpointSelector": map[string]any{},
+				"ingress": []any{
+					map[string]any{
+						"icmps": []any{
+							map[string]any{
+								"fields": []any{
+									map[string]any{
+										"family": "IPv4",
+										"type":   "-1",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	result, err := ConvertUnstructuredToCiliumResource(obj)
+	require.NoError(t, err)
+
+	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
+	fields := spec.GetIngressRules()[0].GetIcmps()[0].GetFields()
+	require.Len(t, fields, 1)
+
+	assert.Equal(t, "IPv4", fields[0].GetFamily())
+	assert.Equal(t, "-1", fields[0].GetTypeString(), "negative integer string should fall through to TypeString")
+}
+
+func TestConvertUnstructuredToCiliumResource_EgressDenyWithICMP(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cilium.io/v2",
+			"kind":       "CiliumNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            "egress-deny-icmp-policy",
+				"namespace":       "default",
+				"uid":             "egressdenyicmp-uid",
+				"resourceVersion": "30303",
+			},
+			"spec": map[string]any{
+				"endpointSelector": map[string]any{},
+				"egressDeny": []any{
+					map[string]any{
+						"toEntities": []any{"world"},
+						"toPorts": []any{
+							map[string]any{
+								"ports": []any{
+									map[string]any{
+										"port":     "443",
+										"protocol": "TCP",
+									},
+								},
+							},
+						},
+						"icmps": []any{
+							map[string]any{
+								"fields": []any{
+									map[string]any{
+										"family": "IPv4",
+										"type":   int64(8),
+									},
+									map[string]any{
+										"family": "IPv6",
+										"type":   "EchoReply",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cilium.io",
+		Version: "v2",
+		Kind:    "CiliumNetworkPolicy",
+	})
+
+	result, err := ConvertUnstructuredToCiliumResource(obj)
+	require.NoError(t, err)
+
+	spec := result.GetCiliumNetworkPolicy().GetSpecs()[0]
+	require.Len(t, spec.GetEgressDenyRules(), 1)
+
+	egressDeny := spec.GetEgressDenyRules()[0]
+	assert.ElementsMatch(t, []string{"world"}, egressDeny.GetToEntities())
+
+	require.Len(t, egressDeny.GetToPorts(), 1)
+	assert.Equal(t, "443", egressDeny.GetToPorts()[0].GetPorts()[0].GetPort())
+
+	require.Len(t, egressDeny.GetIcmps(), 1)
+	require.Len(t, egressDeny.GetIcmps()[0].GetFields(), 2)
+	assert.Equal(t, "IPv4", egressDeny.GetIcmps()[0].GetFields()[0].GetFamily())
+	assert.Equal(t, uint32(8), egressDeny.GetIcmps()[0].GetFields()[0].GetTypeInt())
+	assert.Equal(t, "IPv6", egressDeny.GetIcmps()[0].GetFields()[1].GetFamily())
+	assert.Equal(t, "EchoReply", egressDeny.GetIcmps()[0].GetFields()[1].GetTypeString())
+}

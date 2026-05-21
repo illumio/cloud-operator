@@ -5,13 +5,37 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"strconv"
 
+	ciliumv2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2"
+	ciliumSlimMetav1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1"
+	ciliumLabels "github.com/cilium/cilium/pkg/labels"
+	ciliumPolicy "github.com/cilium/cilium/pkg/policy/api"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	k8sUnstructured "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
+	k8sSchema "k8s.io/apimachinery/pkg/runtime/schema"
+	k8sSerializer "k8s.io/apimachinery/pkg/runtime/serializer"
+	k8sIntstr "k8s.io/apimachinery/pkg/util/intstr"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
+
+var ciliumScheme = k8sRuntime.NewScheme()
+var ciliumDecoder k8sRuntime.Decoder
+
+func init() {
+	if err := ciliumv2.AddToScheme(ciliumScheme); err != nil {
+		panic(fmt.Sprintf("failed to register Cilium types in scheme: %v", err))
+	}
+	// CIDRGroup was promoted from v2alpha1 to v2 in Cilium 1.16; handle both.
+	ciliumScheme.AddKnownTypeWithName(
+		k8sSchema.GroupVersionKind{Group: "cilium.io", Version: "v2alpha1", Kind: "CiliumCIDRGroup"},
+		&ciliumv2.CiliumCIDRGroup{},
+	)
+	ciliumDecoder = k8sSerializer.NewCodecFactory(ciliumScheme).UniversalDeserializer()
+}
 
 // IsCiliumResource returns true if the input identifies a Cilium resource.
 // Accepts both Kind (PascalCase) and resource name (lowercase plural).
@@ -27,7 +51,7 @@ func IsCiliumResource(kindOrResource string) bool {
 
 // ConvertUnstructuredToCiliumResource converts an unstructured Cilium resource to a KubernetesObjectData proto.
 // This handles CiliumNetworkPolicy, CiliumClusterwideNetworkPolicy, and CiliumCIDRGroup.
-func ConvertUnstructuredToCiliumResource(obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+func ConvertUnstructuredToCiliumResource(obj *k8sUnstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 	if obj == nil {
 		return nil, errors.New("cannot convert nil object")
 	}
@@ -52,25 +76,42 @@ func ConvertUnstructuredToCiliumResource(obj *unstructured.Unstructured) (*pb.Ku
 		objMetadata.Namespace = &namespace
 	}
 
-	// Convert specs from both 'spec' (single) and 'specs' (array) fields
-	specs := convertCiliumSpecs(obj)
+	jsonBytes, err := obj.MarshalJSON()
+	if err != nil {
+		return nil, fmt.Errorf("marshaling %s to JSON: %w", gvk.Kind, err)
+	}
 
 	switch gvk.Kind {
 	case "CiliumNetworkPolicy":
+		var cnp ciliumv2.CiliumNetworkPolicy
+		if err := decodeCiliumJSON(jsonBytes, &cnp); err != nil {
+			return nil, fmt.Errorf("deserializing %s: %w", gvk.Kind, err)
+		}
+
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
-				Specs: specs,
+				Specs: convertCiliumSpecs(cnp.Spec, cnp.Specs),
 			},
 		}
 	case "CiliumClusterwideNetworkPolicy":
+		var ccnp ciliumv2.CiliumClusterwideNetworkPolicy
+		if err := decodeCiliumJSON(jsonBytes, &ccnp); err != nil {
+			return nil, fmt.Errorf("deserializing %s: %w", gvk.Kind, err)
+		}
+
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_CiliumClusterwideNetworkPolicy{
 			CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
-				Specs: specs,
+				Specs: convertCiliumSpecs(ccnp.Spec, ccnp.Specs),
 			},
 		}
 	case "CiliumCIDRGroup":
+		var ccg ciliumv2.CiliumCIDRGroup
+		if err := decodeCiliumJSON(jsonBytes, &ccg); err != nil {
+			return nil, fmt.Errorf("deserializing %s: %w", gvk.Kind, err)
+		}
+
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_CiliumCidrGroup{
-			CiliumCidrGroup: convertCiliumCIDRGroupData(obj),
+			CiliumCidrGroup: convertCiliumCIDRGroupData(&ccg),
 		}
 	default:
 		return nil, fmt.Errorf("unsupported Cilium resource kind: %s", gvk.Kind)
@@ -79,712 +120,533 @@ func ConvertUnstructuredToCiliumResource(obj *unstructured.Unstructured) (*pb.Ku
 	return objMetadata, nil
 }
 
-// convertCiliumSpecs converts CiliumPolicyRule specs from both 'spec' and 'specs' fields.
-func convertCiliumSpecs(obj *unstructured.Unstructured) []*pb.CiliumPolicyRule {
+func decodeCiliumJSON(data []byte, into k8sRuntime.Object) error {
+	_, _, err := ciliumDecoder.Decode(data, nil, into)
+
+	return err
+}
+
+func convertCiliumSpecs(spec *ciliumPolicy.Rule, specs ciliumPolicy.Rules) []*pb.CiliumPolicyRule {
 	var result []*pb.CiliumPolicyRule
 
-	// Handle single 'spec' field
-	if spec, found, _ := unstructured.NestedMap(obj.Object, "spec"); found {
-		if rule := convertCiliumPolicyRule(spec); rule != nil {
-			result = append(result, rule)
-		}
+	if spec != nil {
+		result = append(result, convertCiliumPolicyRule(spec))
 	}
 
-	// Handle 'specs' array field
-	if specs, found, _ := unstructured.NestedSlice(obj.Object, "specs"); found {
-		for _, s := range specs {
-			if specMap, ok := s.(map[string]any); ok {
-				if rule := convertCiliumPolicyRule(specMap); rule != nil {
-					result = append(result, rule)
-				}
-			}
+	for _, s := range specs {
+		if s != nil {
+			result = append(result, convertCiliumPolicyRule(s))
 		}
 	}
 
 	return result
 }
 
-// convertCiliumPolicyRule converts a single Cilium policy spec to proto.
-func convertCiliumPolicyRule(spec map[string]any) *pb.CiliumPolicyRule {
-	if spec == nil {
-		return nil
+func convertCiliumPolicyRule(rule *ciliumPolicy.Rule) *pb.CiliumPolicyRule {
+	pbRule := &pb.CiliumPolicyRule{
+		EndpointSelector:  convertEndpointSelector(rule.EndpointSelector),
+		NodeSelector:      convertEndpointSelector(rule.NodeSelector),
+		Labels:            convertLabelArray(rule.Labels),
+		EnableDefaultDeny: convertDefaultDeny(rule.EnableDefaultDeny),
 	}
 
-	rule := &pb.CiliumPolicyRule{}
-
-	// Extract endpoint selector
-	if endpointSelector, found, _ := unstructured.NestedMap(spec, "endpointSelector"); found {
-		rule.EndpointSelector = convertCiliumLabelSelector(endpointSelector)
+	if rule.Description != "" {
+		pbRule.Description = &rule.Description
 	}
 
-	// Extract node selector (for clusterwide policies)
-	if nodeSelector, found, _ := unstructured.NestedMap(spec, "nodeSelector"); found {
-		rule.NodeSelector = convertCiliumLabelSelector(nodeSelector)
+	if len(rule.Ingress) > 0 {
+		pbRule.IngressRules = convertIngressRules(rule.Ingress)
 	}
 
-	// Extract description
-	if description, found, _ := unstructured.NestedString(spec, "description"); found {
-		rule.Description = &description
+	if len(rule.Egress) > 0 {
+		pbRule.EgressRules = convertEgressRules(rule.Egress)
 	}
 
-	// Extract labels — Cilium labels are []Label ({key, value} structs), not map[string]string.
-	if labelsSlice, found, _ := unstructured.NestedSlice(spec, "labels"); found {
-		rule.Labels = convertCiliumLabelArray(labelsSlice)
+	if len(rule.IngressDeny) > 0 {
+		pbRule.IngressDenyRules = convertIngressDenyRules(rule.IngressDeny)
 	}
 
-	// Extract enableDefaultDeny
-	if enableDefaultDeny, found, _ := unstructured.NestedMap(spec, "enableDefaultDeny"); found {
-		rule.EnableDefaultDeny = convertCiliumDefaultDeny(enableDefaultDeny)
+	if len(rule.EgressDeny) > 0 {
+		pbRule.EgressDenyRules = convertEgressDenyRules(rule.EgressDeny)
 	}
 
-	// Extract ingress rules
-	if ingress, found, _ := unstructured.NestedSlice(spec, "ingress"); found {
-		rule.IngressRules = convertCiliumIngressRules(ingress)
-	}
-
-	// Extract egress rules
-	if egress, found, _ := unstructured.NestedSlice(spec, "egress"); found {
-		rule.EgressRules = convertCiliumEgressRules(egress)
-	}
-
-	// Extract ingress deny rules
-	if ingressDeny, found, _ := unstructured.NestedSlice(spec, "ingressDeny"); found {
-		rule.IngressDenyRules = convertCiliumIngressRules(ingressDeny)
-	}
-
-	// Extract egress deny rules
-	if egressDeny, found, _ := unstructured.NestedSlice(spec, "egressDeny"); found {
-		rule.EgressDenyRules = convertCiliumEgressRules(egressDeny)
-	}
-
-	return rule
+	return pbRule
 }
 
-// convertCiliumDefaultDeny converts enableDefaultDeny from unstructured to proto.
-func convertCiliumDefaultDeny(defaultDeny map[string]any) *pb.CiliumPolicyDefaultDeny {
-	if defaultDeny == nil {
+// --- Label selector conversion (handles Cilium slim types) ---
+
+func convertEndpointSelector(sel ciliumPolicy.EndpointSelector) *pb.LabelSelector {
+	return convertSlimLabelSelector(sel.LabelSelector)
+}
+
+func convertSlimLabelSelector(sel *ciliumSlimMetav1.LabelSelector) *pb.LabelSelector {
+	if sel == nil {
 		return nil
 	}
 
-	result := &pb.CiliumPolicyDefaultDeny{}
+	pbSel := &pb.LabelSelector{}
 
-	if ingress, found, _ := unstructured.NestedBool(defaultDeny, "ingress"); found {
-		result.Ingress = &ingress
+	if len(sel.MatchLabels) > 0 {
+		matchLabels := make(map[string]string, len(sel.MatchLabels))
+		maps.Copy(matchLabels, sel.MatchLabels)
+		pbSel.MatchLabels = matchLabels
 	}
 
-	if egress, found, _ := unstructured.NestedBool(defaultDeny, "egress"); found {
-		result.Egress = &egress
+	if len(sel.MatchExpressions) > 0 {
+		pbSel.MatchExpressions = make([]*pb.LabelSelectorRequirement, 0, len(sel.MatchExpressions))
+		for _, expr := range sel.MatchExpressions {
+			pbSel.MatchExpressions = append(pbSel.MatchExpressions, &pb.LabelSelectorRequirement{
+				Key:      expr.Key,
+				Operator: string(expr.Operator),
+				Values:   expr.Values,
+			})
+		}
+	}
+
+	return pbSel
+}
+
+func convertEndpointSelectors(sels []ciliumPolicy.EndpointSelector) []*pb.LabelSelector {
+	if len(sels) == 0 {
+		return nil
+	}
+
+	result := make([]*pb.LabelSelector, 0, len(sels))
+	for _, sel := range sels {
+		result = append(result, convertEndpointSelector(sel))
 	}
 
 	return result
 }
 
-// convertCiliumLabelArray converts Cilium's LabelArray ([]Label with key/value structs) to map[string]string.
-func convertCiliumLabelArray(labels []any) map[string]string {
-	if len(labels) == 0 {
-		return nil
-	}
+// --- Ingress / Egress rules ---
 
-	result := make(map[string]string, len(labels))
-
-	for _, label := range labels {
-		labelMap, ok := label.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		key, _, _ := unstructured.NestedString(labelMap, "key")
-		value, _, _ := unstructured.NestedString(labelMap, "value")
-
-		if key != "" {
-			result[key] = value
-		}
-	}
-
-	return result
-}
-
-// convertCiliumLabelSelector converts a Cilium label selector from unstructured to proto.
-func convertCiliumLabelSelector(selector map[string]any) *pb.LabelSelector {
-	if selector == nil {
-		return nil
-	}
-
-	result := &pb.LabelSelector{}
-
-	if matchLabels, found, _ := unstructured.NestedStringMap(selector, "matchLabels"); found {
-		result.MatchLabels = matchLabels
-	}
-
-	if matchExpressions, found, _ := unstructured.NestedSlice(selector, "matchExpressions"); found {
-		result.MatchExpressions = convertCiliumMatchExpressions(matchExpressions)
-	}
-
-	return result
-}
-
-// convertCiliumMatchExpressions converts match expressions from unstructured to proto.
-func convertCiliumMatchExpressions(expressions []any) []*pb.LabelSelectorRequirement {
-	if len(expressions) == 0 {
-		return nil
-	}
-
-	result := make([]*pb.LabelSelectorRequirement, 0, len(expressions))
-
-	for _, expr := range expressions {
-		exprMap, ok := expr.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		req := &pb.LabelSelectorRequirement{}
-
-		if key, found, _ := unstructured.NestedString(exprMap, "key"); found {
-			req.Key = key
-		}
-
-		if operator, found, _ := unstructured.NestedString(exprMap, "operator"); found {
-			req.Operator = operator
-		}
-
-		if values, found, _ := unstructured.NestedStringSlice(exprMap, "values"); found {
-			req.Values = values
-		}
-
-		result = append(result, req)
-	}
-
-	return result
-}
-
-// convertCiliumIngressRules converts Cilium ingress rules from unstructured to proto.
-func convertCiliumIngressRules(rules []any) []*pb.CiliumPolicyIngressRule {
-	if len(rules) == 0 {
-		return nil
-	}
-
+func convertIngressRules(rules []ciliumPolicy.IngressRule) []*pb.CiliumPolicyIngressRule {
 	result := make([]*pb.CiliumPolicyIngressRule, 0, len(rules))
-
 	for _, rule := range rules {
-		ruleMap, ok := rule.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		protoRule := &pb.CiliumPolicyIngressRule{}
-
-		// FromEndpoints
-		if fromEndpoints, found, _ := unstructured.NestedSlice(ruleMap, "fromEndpoints"); found {
-			protoRule.FromEndpoints = &pb.LabelSelectorList{Items: convertCiliumLabelSelectors(fromEndpoints)}
-		}
-
-		// FromCIDR
-		if fromCIDR, found, _ := unstructured.NestedStringSlice(ruleMap, "fromCIDR"); found {
-			protoRule.FromCidr = fromCIDR
-		}
-
-		// FromCIDRSet
-		if fromCIDRSet, found, _ := unstructured.NestedSlice(ruleMap, "fromCIDRSet"); found {
-			protoRule.FromCidrSet = convertCiliumCIDRSets(fromCIDRSet)
-		}
-
-		// FromEntities
-		if fromEntities, found, _ := unstructured.NestedStringSlice(ruleMap, "fromEntities"); found {
-			protoRule.FromEntities = fromEntities
-		}
-
-		// FromGroups (cloud provider security groups)
-		if fromGroups, found, _ := unstructured.NestedSlice(ruleMap, "fromGroups"); found {
-			protoRule.FromGroups = convertCiliumGroups(fromGroups)
-		}
-
-		// FromNodes (for host policies)
-		if fromNodes, found, _ := unstructured.NestedSlice(ruleMap, "fromNodes"); found {
-			protoRule.FromNodes = convertCiliumLabelSelectors(fromNodes)
-		}
-
-		// ToPorts
-		if toPorts, found, _ := unstructured.NestedSlice(ruleMap, "toPorts"); found {
-			protoRule.ToPorts = convertCiliumPortRules(toPorts)
-		}
-
-		// ICMPs
-		if icmps, found, _ := unstructured.NestedSlice(ruleMap, "icmps"); found {
-			protoRule.Icmps = convertCiliumICMPRules(icmps)
-		}
-
-		// Authentication
-		if auth, found, _ := unstructured.NestedMap(ruleMap, "authentication"); found {
-			protoRule.Authentication = convertCiliumAuthentication(auth)
-		}
-
-		result = append(result, protoRule)
+		pbRule := convertIngressCommonFields(rule.IngressCommonRule)
+		pbRule.ToPorts = convertPortRules(rule.ToPorts)
+		pbRule.Icmps = convertICMPRules(rule.ICMPs)
+		pbRule.Authentication = convertAuthentication(rule.Authentication)
+		result = append(result, pbRule)
 	}
 
 	return result
 }
 
-// convertCiliumEgressRules converts Cilium egress rules from unstructured to proto.
-func convertCiliumEgressRules(rules []any) []*pb.CiliumPolicyEgressRule {
+func convertIngressDenyRules(rules []ciliumPolicy.IngressDenyRule) []*pb.CiliumPolicyIngressRule {
+	result := make([]*pb.CiliumPolicyIngressRule, 0, len(rules))
+	for _, rule := range rules {
+		pbRule := convertIngressCommonFields(rule.IngressCommonRule)
+		pbRule.ToPorts = convertPortDenyRules(rule.ToPorts)
+		pbRule.Icmps = convertICMPRules(rule.ICMPs)
+		result = append(result, pbRule)
+	}
+
+	return result
+}
+
+func convertIngressCommonFields(common ciliumPolicy.IngressCommonRule) *pb.CiliumPolicyIngressRule {
+	pbRule := &pb.CiliumPolicyIngressRule{}
+
+	if len(common.FromEndpoints) > 0 {
+		pbRule.FromEndpoints = &pb.LabelSelectorList{Items: convertEndpointSelectors(common.FromEndpoints)}
+	}
+
+	if len(common.FromCIDR) > 0 {
+		pbRule.FromCidr = cidrSliceToStrings(common.FromCIDR)
+	}
+
+	if len(common.FromCIDRSet) > 0 {
+		pbRule.FromCidrSet = convertCIDRRules(common.FromCIDRSet)
+	}
+
+	if len(common.FromEntities) > 0 {
+		pbRule.FromEntities = entitySliceToStrings(common.FromEntities)
+	}
+
+	if len(common.FromGroups) > 0 {
+		pbRule.FromGroups = convertGroups(common.FromGroups)
+	}
+
+	if len(common.FromNodes) > 0 {
+		pbRule.FromNodes = convertEndpointSelectors(common.FromNodes)
+	}
+
+	return pbRule
+}
+
+func convertEgressRules(rules []ciliumPolicy.EgressRule) []*pb.CiliumPolicyEgressRule {
+	result := make([]*pb.CiliumPolicyEgressRule, 0, len(rules))
+	for _, rule := range rules {
+		pbRule := convertEgressCommonFields(rule.EgressCommonRule)
+		pbRule.ToPorts = convertPortRules(rule.ToPorts)
+		pbRule.ToFqdns = convertFQDNSelectors(rule.ToFQDNs)
+		pbRule.Icmps = convertICMPRules(rule.ICMPs)
+		pbRule.Authentication = convertAuthentication(rule.Authentication)
+		result = append(result, pbRule)
+	}
+
+	return result
+}
+
+func convertEgressDenyRules(rules []ciliumPolicy.EgressDenyRule) []*pb.CiliumPolicyEgressRule {
+	result := make([]*pb.CiliumPolicyEgressRule, 0, len(rules))
+	for _, rule := range rules {
+		pbRule := convertEgressCommonFields(rule.EgressCommonRule)
+		pbRule.ToPorts = convertPortDenyRules(rule.ToPorts)
+		pbRule.Icmps = convertICMPRules(rule.ICMPs)
+		result = append(result, pbRule)
+	}
+
+	return result
+}
+
+func convertEgressCommonFields(common ciliumPolicy.EgressCommonRule) *pb.CiliumPolicyEgressRule {
+	pbRule := &pb.CiliumPolicyEgressRule{}
+
+	if len(common.ToEndpoints) > 0 {
+		pbRule.ToEndpoints = &pb.LabelSelectorList{Items: convertEndpointSelectors(common.ToEndpoints)}
+	}
+
+	if len(common.ToCIDR) > 0 {
+		pbRule.ToCidr = cidrSliceToStrings(common.ToCIDR)
+	}
+
+	if len(common.ToCIDRSet) > 0 {
+		pbRule.ToCidrSet = convertCIDRRules(common.ToCIDRSet)
+	}
+
+	if len(common.ToEntities) > 0 {
+		pbRule.ToEntities = entitySliceToStrings(common.ToEntities)
+	}
+
+	if len(common.ToServices) > 0 {
+		pbRule.ToServices = convertServices(common.ToServices)
+	}
+
+	if len(common.ToGroups) > 0 {
+		pbRule.ToGroups = convertGroups(common.ToGroups)
+	}
+
+	if len(common.ToNodes) > 0 {
+		pbRule.ToNodes = convertEndpointSelectors(common.ToNodes)
+	}
+
+	return pbRule
+}
+
+// --- Port rules ---
+
+// L7 fields (Rules, TerminatingTLS, OriginatingTLS, ServerNames, Listener) are intentionally
+// not converted — our proto only models L3/L4 policy data.
+func convertPortRules(rules ciliumPolicy.PortRules) []*pb.CiliumPolicyPortRule {
 	if len(rules) == 0 {
 		return nil
 	}
 
-	result := make([]*pb.CiliumPolicyEgressRule, 0, len(rules))
-
+	result := make([]*pb.CiliumPolicyPortRule, 0, len(rules))
 	for _, rule := range rules {
-		ruleMap, ok := rule.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		protoRule := &pb.CiliumPolicyEgressRule{}
-
-		// ToEndpoints
-		if toEndpoints, found, _ := unstructured.NestedSlice(ruleMap, "toEndpoints"); found {
-			protoRule.ToEndpoints = &pb.LabelSelectorList{Items: convertCiliumLabelSelectors(toEndpoints)}
-		}
-
-		// ToCIDR
-		if toCIDR, found, _ := unstructured.NestedStringSlice(ruleMap, "toCIDR"); found {
-			protoRule.ToCidr = toCIDR
-		}
-
-		// ToCIDRSet
-		if toCIDRSet, found, _ := unstructured.NestedSlice(ruleMap, "toCIDRSet"); found {
-			protoRule.ToCidrSet = convertCiliumCIDRSets(toCIDRSet)
-		}
-
-		// ToEntities
-		if toEntities, found, _ := unstructured.NestedStringSlice(ruleMap, "toEntities"); found {
-			protoRule.ToEntities = toEntities
-		}
-
-		// ToFQDNs (DNS-based selectors)
-		if toFQDNs, found, _ := unstructured.NestedSlice(ruleMap, "toFQDNs"); found {
-			protoRule.ToFqdns = convertCiliumFQDNSelectors(toFQDNs)
-		}
-
-		// ToServices (K8s service selectors)
-		if toServices, found, _ := unstructured.NestedSlice(ruleMap, "toServices"); found {
-			protoRule.ToServices = convertCiliumServices(toServices)
-		}
-
-		// ToGroups (cloud provider security groups)
-		if toGroups, found, _ := unstructured.NestedSlice(ruleMap, "toGroups"); found {
-			protoRule.ToGroups = convertCiliumGroups(toGroups)
-		}
-
-		// ToNodes (for host policies)
-		if toNodes, found, _ := unstructured.NestedSlice(ruleMap, "toNodes"); found {
-			protoRule.ToNodes = convertCiliumLabelSelectors(toNodes)
-		}
-
-		// ToPorts
-		if toPorts, found, _ := unstructured.NestedSlice(ruleMap, "toPorts"); found {
-			protoRule.ToPorts = convertCiliumPortRules(toPorts)
-		}
-
-		// ICMPs
-		if icmps, found, _ := unstructured.NestedSlice(ruleMap, "icmps"); found {
-			protoRule.Icmps = convertCiliumICMPRules(icmps)
-		}
-
-		// Authentication
-		if auth, found, _ := unstructured.NestedMap(ruleMap, "authentication"); found {
-			protoRule.Authentication = convertCiliumAuthentication(auth)
-		}
-
-		result = append(result, protoRule)
+		result = append(result, &pb.CiliumPolicyPortRule{
+			Ports: convertPortProtocols(rule.Ports),
+		})
 	}
 
 	return result
 }
 
-// convertCiliumLabelSelectors converts a slice of label selectors from unstructured to proto.
-func convertCiliumLabelSelectors(selectors []any) []*pb.LabelSelector {
-	if len(selectors) == 0 {
+func convertPortDenyRules(rules ciliumPolicy.PortDenyRules) []*pb.CiliumPolicyPortRule {
+	if len(rules) == 0 {
 		return nil
 	}
 
-	result := make([]*pb.LabelSelector, 0, len(selectors))
-
-	for _, selector := range selectors {
-		selectorMap, ok := selector.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		result = append(result, convertCiliumLabelSelector(selectorMap))
+	result := make([]*pb.CiliumPolicyPortRule, 0, len(rules))
+	for _, rule := range rules {
+		result = append(result, &pb.CiliumPolicyPortRule{
+			Ports: convertPortProtocols(rule.Ports),
+		})
 	}
 
 	return result
 }
 
-// convertCiliumCIDRSets converts CIDR sets from unstructured to proto.
-func convertCiliumCIDRSets(cidrSets []any) []*pb.CiliumPolicyCIDRSet {
-	if len(cidrSets) == 0 {
-		return nil
-	}
-
-	result := make([]*pb.CiliumPolicyCIDRSet, 0, len(cidrSets))
-
-	for _, cidrSet := range cidrSets {
-		cidrSetMap, ok := cidrSet.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		protoSet := &pb.CiliumPolicyCIDRSet{}
-
-		if cidr, found, _ := unstructured.NestedString(cidrSetMap, "cidr"); found {
-			protoSet.Cidr = &cidr
-		}
-
-		if cidrGroupRef, found, _ := unstructured.NestedString(cidrSetMap, "cidrGroupRef"); found {
-			protoSet.CidrGroupRef = &cidrGroupRef
-		}
-
-		if cidrGroupSelector, found, _ := unstructured.NestedMap(cidrSetMap, "cidrGroupSelector"); found {
-			protoSet.CidrGroupSelector = convertCiliumLabelSelector(cidrGroupSelector)
-		}
-
-		if except, found, _ := unstructured.NestedStringSlice(cidrSetMap, "except"); found {
-			protoSet.Except = except
-		}
-
-		result = append(result, protoSet)
-	}
-
-	return result
-}
-
-// convertCiliumGroups converts cloud provider security groups from unstructured to proto.
-func convertCiliumGroups(groups []any) []*pb.CiliumPolicyGroup {
-	if len(groups) == 0 {
-		return nil
-	}
-
-	result := make([]*pb.CiliumPolicyGroup, 0, len(groups))
-
-	for _, group := range groups {
-		groupMap, ok := group.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		protoGroup := &pb.CiliumPolicyGroup{}
-
-		// Check for AWS group
-		if aws, found, _ := unstructured.NestedMap(groupMap, "aws"); found {
-			protoGroup.CloudProvider = &pb.CiliumPolicyGroup_Aws{
-				Aws: convertCiliumAWSGroup(aws),
-			}
-		}
-
-		result = append(result, protoGroup)
-	}
-
-	return result
-}
-
-// convertCiliumAWSGroup converts AWS security group selector from unstructured to proto.
-func convertCiliumAWSGroup(aws map[string]any) *pb.CiliumPolicyAWSGroup {
-	if aws == nil {
-		return nil
-	}
-
-	result := &pb.CiliumPolicyAWSGroup{}
-
-	if labels, found, _ := unstructured.NestedStringMap(aws, "labels"); found {
-		result.Labels = labels
-	}
-
-	if securityGroupsIds, found, _ := unstructured.NestedStringSlice(aws, "securityGroupsIds"); found {
-		result.SecurityGroupIds = securityGroupsIds
-	}
-
-	if securityGroupsNames, found, _ := unstructured.NestedStringSlice(aws, "securityGroupsNames"); found {
-		result.SecurityGroupNames = securityGroupsNames
-	}
-
-	if region, found, _ := unstructured.NestedString(aws, "region"); found {
-		result.Region = &region
-	}
-
-	return result
-}
-
-// convertCiliumICMPRules converts ICMP rules from unstructured to proto.
-func convertCiliumICMPRules(icmps []any) []*pb.CiliumPolicyICMPRule {
-	if len(icmps) == 0 {
-		return nil
-	}
-
-	result := make([]*pb.CiliumPolicyICMPRule, 0, len(icmps))
-
-	for _, icmp := range icmps {
-		icmpMap, ok := icmp.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		protoICMP := &pb.CiliumPolicyICMPRule{}
-
-		if fields, found, _ := unstructured.NestedSlice(icmpMap, "fields"); found {
-			protoICMP.Fields = convertCiliumICMPFields(fields)
-		}
-
-		result = append(result, protoICMP)
-	}
-
-	return result
-}
-
-// convertCiliumICMPFields converts ICMP fields from unstructured to proto.
-func convertCiliumICMPFields(fields []any) []*pb.CiliumPolicyICMPField {
-	if len(fields) == 0 {
-		return nil
-	}
-
-	result := make([]*pb.CiliumPolicyICMPField, 0, len(fields))
-
-	for _, field := range fields {
-		fieldMap, ok := field.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		protoField := &pb.CiliumPolicyICMPField{}
-
-		if family, found, _ := unstructured.NestedString(fieldMap, "family"); found {
-			protoField.Family = &family
-		}
-
-		// Type can be either int or string in Cilium CRD
-		// ICMP type values are 0-255 (fits in uint8)
-		if typeVal, found, _ := unstructured.NestedFieldNoCopy(fieldMap, "type"); found {
-			switch v := typeVal.(type) {
-			case int64:
-				if v >= 0 && v <= 255 {
-					protoField.Type = &pb.CiliumPolicyICMPField_TypeInt{TypeInt: uint32(v)}
-				}
-			case float64:
-				if v >= 0 && v <= 255 {
-					protoField.Type = &pb.CiliumPolicyICMPField_TypeInt{TypeInt: uint32(v)}
-				}
-			case string:
-				if intVal, err := strconv.ParseUint(v, 10, 32); err == nil && intVal <= 255 {
-					protoField.Type = &pb.CiliumPolicyICMPField_TypeInt{TypeInt: uint32(intVal)}
-				} else {
-					protoField.Type = &pb.CiliumPolicyICMPField_TypeString{TypeString: v}
-				}
-			}
-		}
-
-		result = append(result, protoField)
-	}
-
-	return result
-}
-
-// convertCiliumAuthentication converts authentication requirements from unstructured to proto.
-func convertCiliumAuthentication(auth map[string]any) *pb.CiliumPolicyAuthentication {
-	if auth == nil {
-		return nil
-	}
-
-	result := &pb.CiliumPolicyAuthentication{}
-
-	if mode, found, _ := unstructured.NestedString(auth, "mode"); found {
-		result.Mode = mode
-	}
-
-	return result
-}
-
-// convertCiliumFQDNSelectors converts FQDN selectors from unstructured to proto.
-func convertCiliumFQDNSelectors(fqdns []any) []*pb.CiliumPolicyFQDNSelector {
-	if len(fqdns) == 0 {
-		return nil
-	}
-
-	result := make([]*pb.CiliumPolicyFQDNSelector, 0, len(fqdns))
-
-	for _, fqdn := range fqdns {
-		fqdnMap, ok := fqdn.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		protoFQDN := &pb.CiliumPolicyFQDNSelector{}
-
-		if matchName, found, _ := unstructured.NestedString(fqdnMap, "matchName"); found {
-			protoFQDN.MatchName = &matchName
-		}
-
-		if matchPattern, found, _ := unstructured.NestedString(fqdnMap, "matchPattern"); found {
-			protoFQDN.MatchPattern = &matchPattern
-		}
-
-		result = append(result, protoFQDN)
-	}
-
-	return result
-}
-
-// convertCiliumServices converts K8s service selectors from unstructured to proto.
-func convertCiliumServices(services []any) []*pb.CiliumPolicyService {
-	if len(services) == 0 {
-		return nil
-	}
-
-	result := make([]*pb.CiliumPolicyService, 0, len(services))
-
-	for _, service := range services {
-		serviceMap, ok := service.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		protoService := &pb.CiliumPolicyService{}
-
-		// K8sServiceSelector - select services by label
-		if k8sServiceSelector, found, _ := unstructured.NestedMap(serviceMap, "k8sServiceSelector"); found {
-			protoService.K8SServiceSelector = convertCiliumK8sServiceSelector(k8sServiceSelector)
-		}
-
-		// K8sService - select service by name
-		if k8sService, found, _ := unstructured.NestedMap(serviceMap, "k8sService"); found {
-			protoService.K8SService = convertCiliumK8sService(k8sService)
-		}
-
-		result = append(result, protoService)
-	}
-
-	return result
-}
-
-// convertCiliumK8sServiceSelector converts K8s service selector from unstructured to proto.
-func convertCiliumK8sServiceSelector(selector map[string]any) *pb.CiliumPolicyK8SServiceSelector {
-	if selector == nil {
-		return nil
-	}
-
-	result := &pb.CiliumPolicyK8SServiceSelector{}
-
-	if selectorMap, found, _ := unstructured.NestedMap(selector, "selector"); found {
-		result.Selector = convertCiliumLabelSelector(selectorMap)
-	}
-
-	if namespace, found, _ := unstructured.NestedString(selector, "namespace"); found {
-		result.Namespace = &namespace
-	}
-
-	return result
-}
-
-// convertCiliumK8sService converts K8s service reference from unstructured to proto.
-func convertCiliumK8sService(service map[string]any) *pb.CiliumPolicyK8SService {
-	if service == nil {
-		return nil
-	}
-
-	result := &pb.CiliumPolicyK8SService{}
-
-	if serviceName, found, _ := unstructured.NestedString(service, "serviceName"); found {
-		result.ServiceName = &serviceName
-	}
-
-	if namespace, found, _ := unstructured.NestedString(service, "namespace"); found {
-		result.Namespace = &namespace
-	}
-
-	return result
-}
-
-// convertCiliumPortRules converts port rules from unstructured to proto.
-func convertCiliumPortRules(portRules []any) []*pb.CiliumPolicyPortRule {
-	if len(portRules) == 0 {
-		return nil
-	}
-
-	result := make([]*pb.CiliumPolicyPortRule, 0, len(portRules))
-
-	for _, portRule := range portRules {
-		portRuleMap, ok := portRule.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		protoRule := &pb.CiliumPolicyPortRule{}
-
-		if ports, found, _ := unstructured.NestedSlice(portRuleMap, "ports"); found {
-			protoRule.Ports = convertCiliumPorts(ports)
-		}
-
-		result = append(result, protoRule)
-	}
-
-	return result
-}
-
-// convertCiliumPorts converts ports from unstructured to proto.
-func convertCiliumPorts(ports []any) []*pb.CiliumPolicyPort {
+func convertPortProtocols(ports []ciliumPolicy.PortProtocol) []*pb.CiliumPolicyPort {
 	if len(ports) == 0 {
 		return nil
 	}
 
 	result := make([]*pb.CiliumPolicyPort, 0, len(ports))
-
-	for _, port := range ports {
-		portMap, ok := port.(map[string]any)
-		if !ok {
-			continue
+	for _, p := range ports {
+		pbPort := &pb.CiliumPolicyPort{
+			Port: p.Port,
 		}
 
-		protoPort := &pb.CiliumPolicyPort{}
-
-		if portVal, found, _ := unstructured.NestedString(portMap, "port"); found {
-			protoPort.Port = portVal
+		if p.EndPort != 0 {
+			ep := p.EndPort
+			pbPort.EndPort = &ep
 		}
 
-		// endPort for port ranges (valid port numbers: 0-65535)
-		if endPort, found, _ := unstructured.NestedFieldNoCopy(portMap, "endPort"); found {
-			switch v := endPort.(type) {
-			case int64:
-				if v >= 0 && v <= 65535 {
-					ep := int32(v)
-					protoPort.EndPort = &ep
-				}
-			case float64:
-				if v >= 0 && v <= 65535 {
-					ep := int32(v)
-					protoPort.EndPort = &ep
-				}
-			}
+		if p.Protocol != "" {
+			proto := string(p.Protocol)
+			pbPort.Protocol = &proto
 		}
 
-		if protocol, found, _ := unstructured.NestedString(portMap, "protocol"); found {
-			protoPort.Protocol = &protocol
-		}
-
-		result = append(result, protoPort)
+		result = append(result, pbPort)
 	}
 
 	return result
 }
 
-// convertCiliumCIDRGroupData converts an unstructured CiliumCIDRGroup to its proto representation.
-func convertCiliumCIDRGroupData(obj *unstructured.Unstructured) *pb.KubernetesCiliumCIDRGroupData {
-	var externalCIDRs []string
-	if cidrs, found, _ := unstructured.NestedStringSlice(obj.Object, "spec", "externalCIDRs"); found {
-		externalCIDRs = cidrs
+// --- CIDR rules ---
+
+func convertCIDRRules(rules ciliumPolicy.CIDRRuleSlice) []*pb.CiliumPolicyCIDRSet {
+	if len(rules) == 0 {
+		return nil
 	}
 
+	result := make([]*pb.CiliumPolicyCIDRSet, 0, len(rules))
+	for _, rule := range rules {
+		pbSet := &pb.CiliumPolicyCIDRSet{}
+
+		if rule.Cidr != "" {
+			cidr := string(rule.Cidr)
+			pbSet.Cidr = &cidr
+		}
+
+		if rule.CIDRGroupRef != "" {
+			ref := string(rule.CIDRGroupRef)
+			pbSet.CidrGroupRef = &ref
+		}
+
+		if rule.CIDRGroupSelector.LabelSelector != nil {
+			pbSet.CidrGroupSelector = convertEndpointSelector(rule.CIDRGroupSelector)
+		}
+
+		if len(rule.ExceptCIDRs) > 0 {
+			pbSet.Except = cidrSliceToStrings(ciliumPolicy.CIDRSlice(rule.ExceptCIDRs))
+		}
+
+		result = append(result, pbSet)
+	}
+
+	return result
+}
+
+// --- ICMP rules ---
+
+func convertICMPRules(rules ciliumPolicy.ICMPRules) []*pb.CiliumPolicyICMPRule {
+	if len(rules) == 0 {
+		return nil
+	}
+
+	result := make([]*pb.CiliumPolicyICMPRule, 0, len(rules))
+	for _, rule := range rules {
+		result = append(result, &pb.CiliumPolicyICMPRule{
+			Fields: convertICMPFields(rule.Fields),
+		})
+	}
+
+	return result
+}
+
+func convertICMPFields(fields []ciliumPolicy.ICMPField) []*pb.CiliumPolicyICMPField {
+	if len(fields) == 0 {
+		return nil
+	}
+
+	result := make([]*pb.CiliumPolicyICMPField, 0, len(fields))
+	for _, f := range fields {
+		pbField := &pb.CiliumPolicyICMPField{}
+
+		if f.Family != "" {
+			pbField.Family = &f.Family
+		}
+
+		if f.Type != nil {
+			switch f.Type.Type {
+			case k8sIntstr.Int:
+				v := f.Type.IntValue()
+				if v >= 0 && v <= 255 {
+					pbField.Type = &pb.CiliumPolicyICMPField_TypeInt{TypeInt: uint32(v)}
+				}
+			case k8sIntstr.String:
+				s := f.Type.StrVal
+				if intVal, err := strconv.ParseUint(s, 10, 32); err == nil && intVal <= 255 {
+					pbField.Type = &pb.CiliumPolicyICMPField_TypeInt{TypeInt: uint32(intVal)}
+				} else {
+					pbField.Type = &pb.CiliumPolicyICMPField_TypeString{TypeString: s}
+				}
+			}
+		}
+
+		result = append(result, pbField)
+	}
+
+	return result
+}
+
+// --- FQDN selectors ---
+
+func convertFQDNSelectors(fqdns ciliumPolicy.FQDNSelectorSlice) []*pb.CiliumPolicyFQDNSelector {
+	if len(fqdns) == 0 {
+		return nil
+	}
+
+	result := make([]*pb.CiliumPolicyFQDNSelector, 0, len(fqdns))
+	for _, f := range fqdns {
+		pbFQDN := &pb.CiliumPolicyFQDNSelector{}
+
+		if f.MatchName != "" {
+			pbFQDN.MatchName = &f.MatchName
+		}
+
+		if f.MatchPattern != "" {
+			pbFQDN.MatchPattern = &f.MatchPattern
+		}
+
+		result = append(result, pbFQDN)
+	}
+
+	return result
+}
+
+// --- Service selectors ---
+
+func convertServices(services []ciliumPolicy.Service) []*pb.CiliumPolicyService {
+	if len(services) == 0 {
+		return nil
+	}
+
+	result := make([]*pb.CiliumPolicyService, 0, len(services))
+	for _, svc := range services {
+		pbSvc := &pb.CiliumPolicyService{}
+
+		if svc.K8sServiceSelector != nil {
+			pbSvc.K8SServiceSelector = &pb.CiliumPolicyK8SServiceSelector{
+				Selector: convertSlimLabelSelector(svc.K8sServiceSelector.Selector.LabelSelector),
+			}
+			if svc.K8sServiceSelector.Namespace != "" {
+				pbSvc.K8SServiceSelector.Namespace = &svc.K8sServiceSelector.Namespace
+			}
+		}
+
+		if svc.K8sService != nil {
+			pbSvc.K8SService = &pb.CiliumPolicyK8SService{}
+
+			if svc.K8sService.ServiceName != "" {
+				pbSvc.K8SService.ServiceName = &svc.K8sService.ServiceName
+			}
+
+			if svc.K8sService.Namespace != "" {
+				pbSvc.K8SService.Namespace = &svc.K8sService.Namespace
+			}
+		}
+
+		result = append(result, pbSvc)
+	}
+
+	return result
+}
+
+// --- Cloud provider groups ---
+
+func convertGroups(groups []ciliumPolicy.Groups) []*pb.CiliumPolicyGroup {
+	if len(groups) == 0 {
+		return nil
+	}
+
+	result := make([]*pb.CiliumPolicyGroup, 0, len(groups))
+	for _, g := range groups {
+		pbGroup := &pb.CiliumPolicyGroup{}
+
+		if g.AWS != nil {
+			awsGroup := &pb.CiliumPolicyAWSGroup{
+				Labels:             g.AWS.Labels,
+				SecurityGroupIds:   g.AWS.SecurityGroupsIds,
+				SecurityGroupNames: g.AWS.SecurityGroupsNames,
+			}
+
+			if g.AWS.Region != "" {
+				awsGroup.Region = &g.AWS.Region
+			}
+
+			pbGroup.CloudProvider = &pb.CiliumPolicyGroup_Aws{Aws: awsGroup}
+		}
+
+		result = append(result, pbGroup)
+	}
+
+	return result
+}
+
+// --- Authentication ---
+
+func convertAuthentication(auth *ciliumPolicy.Authentication) *pb.CiliumPolicyAuthentication {
+	if auth == nil {
+		return nil
+	}
+
+	return &pb.CiliumPolicyAuthentication{
+		Mode: string(auth.Mode),
+	}
+}
+
+// --- Default deny ---
+
+func convertDefaultDeny(config ciliumPolicy.DefaultDenyConfig) *pb.CiliumPolicyDefaultDeny {
+	if config.Ingress == nil && config.Egress == nil {
+		return nil
+	}
+
+	return &pb.CiliumPolicyDefaultDeny{
+		Ingress: config.Ingress,
+		Egress:  config.Egress,
+	}
+}
+
+// --- Label array ---
+
+func convertLabelArray(arr ciliumLabels.LabelArray) map[string]string {
+	if len(arr) == 0 {
+		return nil
+	}
+
+	result := make(map[string]string, len(arr))
+	for _, l := range arr {
+		if l.Key != "" {
+			result[l.Key] = l.Value
+		}
+	}
+
+	return result
+}
+
+// --- Type conversion helpers ---
+
+func cidrSliceToStrings(cidrs ciliumPolicy.CIDRSlice) []string {
+	result := make([]string, len(cidrs))
+	for i, c := range cidrs {
+		result[i] = string(c)
+	}
+
+	return result
+}
+
+func entitySliceToStrings(entities ciliumPolicy.EntitySlice) []string {
+	result := make([]string, len(entities))
+	for i, e := range entities {
+		result[i] = string(e)
+	}
+
+	return result
+}
+
+// --- CIDRGroup conversion ---
+
+func convertCiliumCIDRGroupData(ccg *ciliumv2.CiliumCIDRGroup) *pb.KubernetesCiliumCIDRGroupData {
 	return &pb.KubernetesCiliumCIDRGroupData{
 		Spec: &pb.CiliumCIDRGroup{
-			ExternalCidrs: externalCIDRs,
+			ExternalCidrs: cidrSliceToStrings(ciliumPolicy.CIDRSlice(ccg.Spec.ExternalCIDRs)),
 		},
 	}
 }

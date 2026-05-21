@@ -1144,7 +1144,7 @@ func TestProcessMutation_ConverterError(t *testing.T) {
 	}
 }
 
-func TestDynamicListResources_ConverterError(t *testing.T) {
+func TestDynamicListResources_ConverterError_SkipsResource(t *testing.T) {
 	logger := zap.NewNop()
 	scheme := runtime.NewScheme()
 
@@ -1160,23 +1160,28 @@ func TestDynamicListResources_ConverterError(t *testing.T) {
 		return nil, errors.New("conversion failed")
 	}
 
+	sender := &mockResourceStreamSender{}
 	rm := &Watcher{
 		resourceName:    "pods",
 		apiGroup:        "",
 		apiVersion:      "v1",
 		dynamicClient:   dyn,
 		logger:          logger,
-		resourcesClient: &mockResourceStreamSender{},
+		resourcesClient: sender,
 		converter:       failingConverter,
 	}
 
-	_, err := rm.DynamicListResources(context.Background(), logger)
-	if err == nil {
-		t.Fatal("expected error from failing converter, got nil")
+	rv, err := rm.DynamicListResources(context.Background(), logger)
+	if err != nil {
+		t.Fatalf("expected converter errors to be skipped during list, got: %v", err)
 	}
 
-	if !strings.Contains(err.Error(), "failed to convert") {
-		t.Errorf("expected 'failed to convert' error, got: %v", err)
+	if rv == "" {
+		t.Error("expected non-empty resource version")
+	}
+
+	if len(sender.sentObjects) != 0 {
+		t.Errorf("expected 0 objects sent (skipped), got %d", len(sender.sentObjects))
 	}
 }
 
