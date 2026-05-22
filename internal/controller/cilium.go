@@ -3,39 +3,21 @@
 package controller
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 	"strconv"
 
-	ciliumv2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2"
 	ciliumSlimMetav1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1"
 	ciliumLabels "github.com/cilium/cilium/pkg/labels"
 	ciliumPolicy "github.com/cilium/cilium/pkg/policy/api"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	k8sUnstructured "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
-	k8sSchema "k8s.io/apimachinery/pkg/runtime/schema"
-	k8sSerializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	k8sIntstr "k8s.io/apimachinery/pkg/util/intstr"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
-
-var ciliumScheme = k8sRuntime.NewScheme()
-var ciliumDecoder k8sRuntime.Decoder
-
-func init() {
-	if err := ciliumv2.AddToScheme(ciliumScheme); err != nil {
-		panic(fmt.Sprintf("failed to register Cilium types in scheme: %v", err))
-	}
-	// CIDRGroup was promoted from v2alpha1 to v2 in Cilium 1.16; handle both.
-	ciliumScheme.AddKnownTypeWithName(
-		k8sSchema.GroupVersionKind{Group: "cilium.io", Version: "v2alpha1", Kind: "CiliumCIDRGroup"},
-		&ciliumv2.CiliumCIDRGroup{},
-	)
-	ciliumDecoder = k8sSerializer.NewCodecFactory(ciliumScheme).UniversalDeserializer()
-}
 
 // IsCiliumResource returns true if the input identifies a Cilium resource.
 // Accepts both Kind (PascalCase) and resource name (lowercase plural).
@@ -83,8 +65,8 @@ func ConvertUnstructuredToCiliumResource(obj *k8sUnstructured.Unstructured) (*pb
 
 	switch gvk.Kind {
 	case "CiliumNetworkPolicy":
-		var cnp ciliumv2.CiliumNetworkPolicy
-		if err := decodeCiliumJSON(jsonBytes, &cnp); err != nil {
+		var cnp ciliumNetworkPolicy
+		if err := json.Unmarshal(jsonBytes, &cnp); err != nil {
 			return nil, fmt.Errorf("deserializing %s: %w", gvk.Kind, err)
 		}
 
@@ -94,8 +76,8 @@ func ConvertUnstructuredToCiliumResource(obj *k8sUnstructured.Unstructured) (*pb
 			},
 		}
 	case "CiliumClusterwideNetworkPolicy":
-		var ccnp ciliumv2.CiliumClusterwideNetworkPolicy
-		if err := decodeCiliumJSON(jsonBytes, &ccnp); err != nil {
+		var ccnp ciliumClusterwideNetworkPolicy
+		if err := json.Unmarshal(jsonBytes, &ccnp); err != nil {
 			return nil, fmt.Errorf("deserializing %s: %w", gvk.Kind, err)
 		}
 
@@ -105,8 +87,8 @@ func ConvertUnstructuredToCiliumResource(obj *k8sUnstructured.Unstructured) (*pb
 			},
 		}
 	case "CiliumCIDRGroup":
-		var ccg ciliumv2.CiliumCIDRGroup
-		if err := decodeCiliumJSON(jsonBytes, &ccg); err != nil {
+		var ccg ciliumCIDRGroup
+		if err := json.Unmarshal(jsonBytes, &ccg); err != nil {
 			return nil, fmt.Errorf("deserializing %s: %w", gvk.Kind, err)
 		}
 
@@ -118,12 +100,6 @@ func ConvertUnstructuredToCiliumResource(obj *k8sUnstructured.Unstructured) (*pb
 	}
 
 	return objMetadata, nil
-}
-
-func decodeCiliumJSON(data []byte, into k8sRuntime.Object) error {
-	_, _, err := ciliumDecoder.Decode(data, nil, into)
-
-	return err
 }
 
 func convertCiliumSpecs(spec *ciliumPolicy.Rule, specs ciliumPolicy.Rules) []*pb.CiliumPolicyRule {
@@ -643,10 +619,10 @@ func entitySliceToStrings(entities ciliumPolicy.EntitySlice) []string {
 
 // --- CIDRGroup conversion ---
 
-func convertCiliumCIDRGroupData(ccg *ciliumv2.CiliumCIDRGroup) *pb.KubernetesCiliumCIDRGroupData {
+func convertCiliumCIDRGroupData(ccg *ciliumCIDRGroup) *pb.KubernetesCiliumCIDRGroupData {
 	return &pb.KubernetesCiliumCIDRGroupData{
 		Spec: &pb.CiliumCIDRGroup{
-			ExternalCidrs: cidrSliceToStrings(ciliumPolicy.CIDRSlice(ccg.Spec.ExternalCIDRs)),
+			ExternalCidrs: ccg.Spec.ExternalCIDRs,
 		},
 	}
 }
