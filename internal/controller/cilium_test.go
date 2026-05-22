@@ -1890,7 +1890,7 @@ func TestConvertUnstructuredToCiliumResource_ICMPNegativeIntegerString(t *testin
 	require.Len(t, fields, 1)
 
 	assert.Equal(t, "IPv4", fields[0].GetFamily())
-	assert.Equal(t, "-1", fields[0].GetTypeString(), "negative integer string should fall through to TypeString")
+	assert.Nil(t, fields[0].GetType(), "negative integer string should be dropped, consistent with negative int behavior")
 }
 
 func TestConvertUnstructuredToCiliumResource_EgressDenyWithICMP(t *testing.T) {

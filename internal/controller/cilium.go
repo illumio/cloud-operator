@@ -449,6 +449,9 @@ func convertICMPFields(fields []ciliumPolicy.ICMPField) []*pb.CiliumPolicyICMPFi
 				s := f.Type.StrVal
 				if intVal, err := strconv.ParseUint(s, 10, 32); err == nil && intVal <= 255 {
 					pbField.Type = &pb.CiliumPolicyICMPField_TypeInt{TypeInt: uint32(intVal)}
+				} else if _, err := strconv.ParseInt(s, 10, 64); err == nil {
+					// Negative numeric string (e.g. "-1"): drop it, consistent with
+					// the integer case where negative values are silently ignored.
 				} else {
 					pbField.Type = &pb.CiliumPolicyICMPField_TypeString{TypeString: s}
 				}
@@ -533,23 +536,23 @@ func convertGroups(groups []ciliumPolicy.Groups) []*pb.CiliumPolicyGroup {
 
 	result := make([]*pb.CiliumPolicyGroup, 0, len(groups))
 	for _, g := range groups {
-		pbGroup := &pb.CiliumPolicyGroup{}
-
-		if g.AWS != nil {
-			awsGroup := &pb.CiliumPolicyAWSGroup{
-				Labels:             g.AWS.Labels,
-				SecurityGroupIds:   g.AWS.SecurityGroupsIds,
-				SecurityGroupNames: g.AWS.SecurityGroupsNames,
-			}
-
-			if g.AWS.Region != "" {
-				awsGroup.Region = &g.AWS.Region
-			}
-
-			pbGroup.CloudProvider = &pb.CiliumPolicyGroup_Aws{Aws: awsGroup}
+		if g.AWS == nil {
+			continue
 		}
 
-		result = append(result, pbGroup)
+		awsGroup := &pb.CiliumPolicyAWSGroup{
+			Labels:             g.AWS.Labels,
+			SecurityGroupIds:   g.AWS.SecurityGroupsIds,
+			SecurityGroupNames: g.AWS.SecurityGroupsNames,
+		}
+
+		if g.AWS.Region != "" {
+			awsGroup.Region = &g.AWS.Region
+		}
+
+		result = append(result, &pb.CiliumPolicyGroup{
+			CloudProvider: &pb.CiliumPolicyGroup_Aws{Aws: awsGroup},
+		})
 	}
 
 	return result

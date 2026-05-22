@@ -378,7 +378,7 @@ func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutati
 
 	metadataObj, err := r.converter(ctx, unstructuredObj)
 	if err != nil {
-		return "", fmt.Errorf("failed to convert resource: %w", err)
+		return "", fmt.Errorf("failed to convert %s %s/%s: %w", unstructuredObj.GetKind(), unstructuredObj.GetNamespace(), unstructuredObj.GetName(), err)
 	}
 
 	mutation := r.resourcesClient.CreateMutationObject(metadataObj, event.Type)
