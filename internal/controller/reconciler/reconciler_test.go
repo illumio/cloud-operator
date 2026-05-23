@@ -98,6 +98,104 @@ func TestNewReconciler(t *testing.T) {
 	assert.Equal(t, runtimeCache, r.runtimeCache)
 }
 
+func TestFilterAnnotationsByDesired(t *testing.T) {
+	tests := map[string]struct {
+		runtime  map[string]string
+		desired  map[string]string
+		expected map[string]string
+	}{
+		"extra runtime annotations are stripped": {
+			runtime:  map[string]string{"note": "ours", "kubectl.kubernetes.io/restartedAt": "2026-01-01"},
+			desired:  map[string]string{"note": "ours"},
+			expected: map[string]string{"note": "ours"},
+		},
+		"no desired annotations returns nil": {
+			runtime:  map[string]string{"kubectl.kubernetes.io/restartedAt": "2026-01-01"},
+			desired:  nil,
+			expected: nil,
+		},
+		"no runtime annotations returns nil": {
+			runtime:  nil,
+			desired:  map[string]string{"note": "ours"},
+			expected: nil,
+		},
+		"both empty returns nil": {
+			runtime:  map[string]string{},
+			desired:  map[string]string{},
+			expected: nil,
+		},
+		"matching annotations are kept": {
+			runtime:  map[string]string{"note": "ours", "team": "platform"},
+			desired:  map[string]string{"note": "ours", "team": "platform"},
+			expected: map[string]string{"note": "ours", "team": "platform"},
+		},
+		"no overlap returns nil": {
+			runtime:  map[string]string{"added-by-other": "controller"},
+			desired:  map[string]string{"note": "ours"},
+			expected: nil,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := filterAnnotationsByDesired(tt.runtime, tt.desired)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestObjectsMatch_IgnoresExtraRuntimeAnnotations(t *testing.T) {
+	logger := zap.NewNop()
+	client := newMockClient()
+	configCache := cache.NewConfiguredObjectCache()
+	runtimeCache := cache.NewConfiguredObjectCache()
+	r := NewReconciler(logger, client, configCache, runtimeCache)
+
+	configObj := &pb.ConfiguredKubernetesObjectData{
+		Id:          "cnp-1",
+		Name:        "test-policy",
+		Annotations: map[string]string{"note": "from-cloudsecure"},
+	}
+
+	runtimeObj := &pb.ConfiguredKubernetesObjectData{
+		Id:          "cnp-1",
+		Name:        "test-policy",
+		Annotations: map[string]string{"note": "from-cloudsecure", "kubectl.kubernetes.io/restartedAt": "2026-01-01"},
+	}
+
+	// Should match despite extra runtime annotation
+	assert.True(t, r.objectsMatch(configObj, runtimeObj))
+
+	// Runtime annotations should be restored after comparison
+	assert.Equal(t, map[string]string{
+		"note": "from-cloudsecure",
+		"kubectl.kubernetes.io/restartedAt": "2026-01-01",
+	}, runtimeObj.Annotations)
+}
+
+func TestObjectsMatch_DetectsDiff(t *testing.T) {
+	logger := zap.NewNop()
+	client := newMockClient()
+	configCache := cache.NewConfiguredObjectCache()
+	runtimeCache := cache.NewConfiguredObjectCache()
+	r := NewReconciler(logger, client, configCache, runtimeCache)
+
+	configObj := &pb.ConfiguredKubernetesObjectData{
+		Id:          "cnp-1",
+		Name:        "test-policy",
+		Annotations: map[string]string{"note": "updated-value"},
+	}
+
+	runtimeObj := &pb.ConfiguredKubernetesObjectData{
+		Id:          "cnp-1",
+		Name:        "test-policy",
+		Annotations: map[string]string{"note": "old-value"},
+	}
+
+	// Should NOT match — the annotation CloudSecure owns has a different value
+	assert.False(t, r.objectsMatch(configObj, runtimeObj))
+}
+
 func TestReconcile_EmptyCaches(t *testing.T) {
 	logger := zap.NewNop()
 	client := newMockClient()

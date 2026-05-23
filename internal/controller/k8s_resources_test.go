@@ -1398,3 +1398,337 @@ func TestConvertNetworkPolicyToProto_Comprehensive(t *testing.T) {
 		})
 	}
 }
+
+func TestConvertToApplyObject_CiliumNetworkPolicy(t *testing.T) {
+	boolTrue := true
+	desc := "allow ingress"
+
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:          "cnp-1",
+		Name:        "test-policy",
+		Namespace:   strPtr("default"),
+		Labels:      map[string]string{"env": "prod"},
+		Annotations: map[string]string{"note": "test"},
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{
+						Description: &desc,
+						EndpointSelector: &pb.LabelSelector{
+							MatchLabels: map[string]string{"app": "web"},
+						},
+						EnableDefaultDeny: &pb.CiliumPolicyDefaultDeny{
+							Ingress: &boolTrue,
+						},
+						Ingress: []*pb.CiliumPolicyIngressRule{
+							{FromCidr: []string{"10.0.0.0/8"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj, resourceName, err := ConvertToApplyObject(data, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	assert.Equal(t, "ciliumnetworkpolicies", resourceName)
+	assert.Equal(t, "CiliumNetworkPolicy", obj.GetKind())
+	assert.Equal(t, "cilium.io/v2", obj.GetAPIVersion())
+	assert.Equal(t, "test-policy", obj.GetName())
+	assert.Equal(t, "default", obj.GetNamespace())
+
+	metadata := obj.Object["metadata"].(map[string]any)
+	labels := metadata["labels"].(map[string]string)
+	assert.Equal(t, "prod", labels["env"])
+	assert.Equal(t, "cnp-1", labels[CloudSecureIDLabel])
+	assert.Equal(t, "cloud-operator", labels[ManagedByLabel])
+
+	annotations := metadata["annotations"].(map[string]string)
+	assert.Equal(t, "test", annotations["note"])
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok, "expected spec to be a map")
+	assert.Contains(t, spec, "endpointSelector")
+	assert.Contains(t, spec, "enableDefaultDeny")
+	assert.Contains(t, spec, "ingress")
+	assert.Equal(t, "allow ingress", spec["description"])
+}
+
+func TestConvertToApplyObject_MultipleSpecs(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:   "cnp-multi",
+		Name: "multi-spec-policy",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{EndpointSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "web"}}},
+					{EndpointSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "api"}}},
+				},
+			},
+		},
+	}
+
+	obj, _, err := ConvertToApplyObject(data, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	_, hasSpec := obj.Object["spec"]
+	assert.False(t, hasSpec)
+
+	specs, hasSpecs := obj.Object["specs"]
+	assert.True(t, hasSpecs)
+
+	specsList, ok := specs.([]any)
+	require.True(t, ok)
+	assert.Len(t, specsList, 2)
+}
+
+func TestConvertToApplyObject_EmptySpecs(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:   "cnp-empty",
+		Name: "empty-spec-policy",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{Specs: []*pb.CiliumPolicyRule{}},
+		},
+	}
+
+	obj, _, err := ConvertToApplyObject(data, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	_, hasSpec := obj.Object["spec"]
+	_, hasSpecs := obj.Object["specs"]
+	assert.False(t, hasSpec)
+	assert.False(t, hasSpecs)
+}
+
+func TestConvertToApplyObject_CiliumClusterwideNetworkPolicy(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:   "ccnp-1",
+		Name: "clusterwide-policy",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+			CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{NodeSelector: &pb.LabelSelector{MatchLabels: map[string]string{"role": "worker"}}},
+				},
+			},
+		},
+	}
+
+	obj, resourceName, err := ConvertToApplyObject(data, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	assert.Equal(t, "ciliumclusterwidenetworkpolicies", resourceName)
+	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
+	assert.Empty(t, obj.GetNamespace())
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, spec, "nodeSelector")
+}
+
+func TestConvertToApplyObject_CiliumCIDRGroup(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:   "cidr-1",
+		Name: "test-cidr-group",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
+			CiliumCidrGroup: &pb.KubernetesCiliumCIDRGroupData{
+				Spec: &pb.CiliumCIDRGroup{ExternalCidrs: []string{"10.0.0.0/8", "172.16.0.0/12"}},
+			},
+		},
+	}
+
+	obj, resourceName, err := ConvertToApplyObject(data, "cilium.io", "v2alpha1")
+	require.NoError(t, err)
+
+	assert.Equal(t, "ciliumcidrgroups", resourceName)
+	assert.Equal(t, "CiliumCIDRGroup", obj.GetKind())
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+
+	cidrs, ok := spec["externalCidrs"].([]any)
+	require.True(t, ok)
+	assert.Equal(t, "10.0.0.0/8", cidrs[0])
+	assert.Equal(t, "172.16.0.0/12", cidrs[1])
+}
+
+func TestConvertToApplyObject_NilData(t *testing.T) {
+	_, _, err := ConvertToApplyObject(nil, "cilium.io", "v2")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "nil")
+}
+
+func TestConvertToApplyObject_UnsupportedKindSpecific(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{Id: "unknown-1", Name: "unknown-kind"}
+	_, _, err := ConvertToApplyObject(data, "example.io", "v1")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported")
+}
+
+func TestConvertToApplyObject_APIVersionFormats(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:   "cnp-api",
+		Name: "api-test",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
+		},
+	}
+
+	tests := map[string]struct {
+		apiGroup, apiVersion, expectedAPIVer string
+	}{
+		"with group":          {"cilium.io", "v2", "cilium.io/v2"},
+		"core group (empty)":  {"", "v1", "v1"},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			obj, _, err := ConvertToApplyObject(data, tt.apiGroup, tt.apiVersion)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedAPIVer, obj.GetAPIVersion())
+		})
+	}
+}
+
+func TestConvertToApplyObject_LabelsIncludeManagementLabels(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:     "cnp-labels",
+		Name:   "label-test",
+		Labels: map[string]string{"custom": "value"},
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
+		},
+	}
+
+	obj, _, err := ConvertToApplyObject(data, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	metadata := obj.Object["metadata"].(map[string]any)
+	labels := metadata["labels"].(map[string]string)
+	assert.Equal(t, "value", labels["custom"])
+	assert.Equal(t, "cnp-labels", labels[CloudSecureIDLabel])
+	assert.Equal(t, "cloud-operator", labels[ManagedByLabel])
+	assert.Len(t, labels, 3)
+}
+
+func TestConvertToApplyObject_EmptyNamespace(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:   "ccnp-no-ns",
+		Name: "cluster-scoped",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+			CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{},
+		},
+	}
+
+	obj, _, err := ConvertToApplyObject(data, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	metadata, ok := obj.Object["metadata"].(map[string]any)
+	require.True(t, ok)
+	_, hasNS := metadata["namespace"]
+	assert.False(t, hasNS)
+}
+
+func TestConvertToApplyObject_CamelCaseFieldNames(t *testing.T) {
+	boolTrue := true
+	boolFalse := false
+
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:   "cnp-camel",
+		Name: "camel-test",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{
+						EndpointSelector: &pb.LabelSelector{
+							MatchLabels:      map[string]string{"app": "web"},
+							MatchExpressions: []*pb.LabelSelectorRequirement{{Key: "tier", Operator: "In", Values: []string{"frontend"}}},
+						},
+						EnableDefaultDeny: &pb.CiliumPolicyDefaultDeny{Ingress: &boolTrue, Egress: &boolFalse},
+						Ingress:           []*pb.CiliumPolicyIngressRule{{FromCidr: []string{"10.0.0.0/8"}, FromCidrSet: []*pb.CiliumPolicyCIDRSet{{Cidr: strPtr("192.168.0.0/16")}}}},
+						Egress:            []*pb.CiliumPolicyEgressRule{{ToCidr: []string{"0.0.0.0/0"}}},
+					},
+				},
+			},
+		},
+	}
+
+	obj, _, err := ConvertToApplyObject(data, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, spec, "endpointSelector")
+	assert.Contains(t, spec, "enableDefaultDeny")
+	assert.Contains(t, spec, "ingress")
+	assert.Contains(t, spec, "egress")
+}
+
+func TestConvertToApplyObject_EmitUnpopulatedFalse(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:   "cnp-sparse",
+		Name: "sparse-policy",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{EndpointSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "minimal"}}},
+				},
+			},
+		},
+	}
+
+	obj, _, err := ConvertToApplyObject(data, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, spec, "endpointSelector")
+	assert.NotContains(t, spec, "description")
+	assert.NotContains(t, spec, "nodeSelector")
+	assert.NotContains(t, spec, "enableDefaultDeny")
+	assert.NotContains(t, spec, "ingress")
+	assert.NotContains(t, spec, "egress")
+}
+
+func TestCopyLabels(t *testing.T) {
+	tests := map[string]struct {
+		labels   map[string]string
+		id       string
+		expected map[string]string
+	}{
+		"with existing labels": {
+			labels: map[string]string{"env": "prod", "team": "platform"},
+			id:     "obj-1",
+			expected: map[string]string{
+				"env": "prod", "team": "platform",
+				CloudSecureIDLabel: "obj-1", ManagedByLabel: ManagedByValue,
+			},
+		},
+		"nil labels": {
+			labels:   nil,
+			id:       "obj-2",
+			expected: map[string]string{CloudSecureIDLabel: "obj-2", ManagedByLabel: ManagedByValue},
+		},
+		"empty labels": {
+			labels:   map[string]string{},
+			id:       "obj-3",
+			expected: map[string]string{CloudSecureIDLabel: "obj-3", ManagedByLabel: ManagedByValue},
+		},
+		"conflicting management labels are overwritten": {
+			labels:   map[string]string{CloudSecureIDLabel: "attacker", ManagedByLabel: "someone-else"},
+			id:       "obj-4",
+			expected: map[string]string{CloudSecureIDLabel: "obj-4", ManagedByLabel: ManagedByValue},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := copyLabels(tt.labels, tt.id)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func strPtr(s string) *string {
+	return &s
+}

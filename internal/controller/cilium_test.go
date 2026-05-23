@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 func TestIsCiliumResource(t *testing.T) {
@@ -1963,4 +1965,87 @@ func TestConvertUnstructuredToCiliumResource_EgressDenyWithICMP(t *testing.T) {
 	assert.Equal(t, uint32(8), egressDeny.GetIcmps()[0].GetFields()[0].GetTypeInt())
 	assert.Equal(t, "IPv6", egressDeny.GetIcmps()[0].GetFields()[1].GetFamily())
 	assert.Equal(t, "EchoReply", egressDeny.GetIcmps()[0].GetFields()[1].GetTypeString())
+}
+
+func TestProtoToMap_NilMessage(t *testing.T) {
+	// protojson marshals nil proto message to "{}" which unmarshals to empty map
+	result, err := protoToMap(nil)
+	require.NoError(t, err)
+	assert.Empty(t, result)
+}
+
+func TestProtoToMap_EmptyMessage(t *testing.T) {
+	msg := &pb.CiliumPolicyRule{}
+	result, err := protoToMap(msg)
+	require.NoError(t, err)
+
+	// Empty message should produce empty map (EmitUnpopulated=false)
+	assert.Empty(t, result)
+}
+
+func TestProtoToMap_PreservesTypes(t *testing.T) {
+	boolTrue := true
+
+	msg := &pb.CiliumPolicyDefaultDeny{
+		Ingress: &boolTrue,
+	}
+
+	result, err := protoToMap(msg)
+	require.NoError(t, err)
+
+	// Boolean should stay boolean, not become string
+	ingress, ok := result["ingress"]
+	require.True(t, ok)
+	assert.IsType(t, true, ingress, "boolean should be preserved as bool, not string")
+}
+
+func TestMarshalPolicySpecs_SingleSpec(t *testing.T) {
+	specs := []*pb.CiliumPolicyRule{
+		{
+			EndpointSelector: &pb.LabelSelector{
+				MatchLabels: map[string]string{"app": "web"},
+			},
+		},
+	}
+
+	result, err := marshalPolicySpecs(specs)
+	require.NoError(t, err)
+
+	// Single spec should produce "spec" key, not "specs"
+	_, hasSpec := result["spec"]
+	_, hasSpecs := result["specs"]
+	assert.True(t, hasSpec, "single spec should use 'spec' key")
+	assert.False(t, hasSpecs, "single spec should not use 'specs' key")
+}
+
+func TestMarshalPolicySpecs_MultipleSpecs(t *testing.T) {
+	specs := []*pb.CiliumPolicyRule{
+		{EndpointSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "a"}}},
+		{EndpointSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "b"}}},
+	}
+
+	result, err := marshalPolicySpecs(specs)
+	require.NoError(t, err)
+
+	// Multiple specs should produce "specs" key, not "spec"
+	_, hasSpec := result["spec"]
+	_, hasSpecs := result["specs"]
+	assert.False(t, hasSpec, "multiple specs should not use 'spec' key")
+	assert.True(t, hasSpecs, "multiple specs should use 'specs' key")
+
+	specsList, ok := result["specs"].([]any)
+	require.True(t, ok)
+	assert.Len(t, specsList, 2)
+}
+
+func TestMarshalPolicySpecs_Empty(t *testing.T) {
+	result, err := marshalPolicySpecs([]*pb.CiliumPolicyRule{})
+	require.NoError(t, err)
+	assert.Empty(t, result)
+}
+
+func TestMarshalPolicySpecs_Nil(t *testing.T) {
+	result, err := marshalPolicySpecs(nil)
+	require.NoError(t, err)
+	assert.Empty(t, result)
 }
