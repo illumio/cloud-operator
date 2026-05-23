@@ -134,6 +134,11 @@ func TestFilterAnnotationsByDesired(t *testing.T) {
 			desired:  map[string]string{"note": "ours"},
 			expected: nil,
 		},
+		"keeps runtime value when key matches but value differs": {
+			runtime:  map[string]string{"note": "v1"},
+			desired:  map[string]string{"note": "v2"},
+			expected: map[string]string{"note": "v1"},
+		},
 	}
 
 	for name, tt := range tests {
@@ -196,21 +201,65 @@ func TestObjectsMatch_DetectsDiff(t *testing.T) {
 	assert.False(t, r.objectsMatch(configObj, runtimeObj))
 }
 
+func TestObjectsMatch_DriftedAnnotationTriggersUpdate(t *testing.T) {
+	logger := zap.NewNop()
+	client := newMockClient()
+	configCache := cache.NewConfiguredObjectCache()
+	runtimeCache := cache.NewConfiguredObjectCache()
+	r := NewReconciler(logger, client, configCache, runtimeCache)
+
+	configObj := &pb.ConfiguredKubernetesObjectData{
+		Id:          "cnp-1",
+		Name:        "test-policy",
+		Annotations: map[string]string{"note": "v2"},
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{EndpointSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "web"}}},
+				},
+			},
+		},
+	}
+
+	runtimeObj := &pb.ConfiguredKubernetesObjectData{
+		Id:          "cnp-1",
+		Name:        "test-policy",
+		Annotations: map[string]string{"note": "v1", "kubectl.kubernetes.io/restartedAt": "2026-01-01"},
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{EndpointSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "web"}}},
+				},
+			},
+		},
+	}
+
+	// Objects are identical except annotation "note" drifted from "v2" to "v1".
+	// The extra runtime annotation should be ignored, but the value diff should be detected.
+	assert.False(t, r.objectsMatch(configObj, runtimeObj), "drifted annotation value should trigger update")
+
+	// Runtime annotations should be restored after comparison
+	assert.Equal(t, map[string]string{
+		"note": "v1",
+		"kubectl.kubernetes.io/restartedAt": "2026-01-01",
+	}, runtimeObj.Annotations, "runtime annotations should be restored")
+
+	// Fix the drift — now they should match
+	runtimeObj.Annotations = map[string]string{"note": "v2", "kubectl.kubernetes.io/restartedAt": "2026-01-01"}
+	assert.True(t, r.objectsMatch(configObj, runtimeObj), "should match after drift is corrected")
+}
+
 func TestReconcile_EmptyCaches(t *testing.T) {
 	logger := zap.NewNop()
 	client := newMockClient()
 	configCache := cache.NewConfiguredObjectCache()
 	runtimeCache := cache.NewConfiguredObjectCache()
 
-	// Drain channels so ReplaceAll doesn't block
-	go func() {
-		<-configCache.ResourceChanged()
-		<-runtimeCache.ResourceChanged()
-	}()
-
 	// Mark caches as ready with empty data
-	configCache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
-	runtimeCache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
+	go configCache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
+	<-configCache.ResourceChanged()
+	go runtimeCache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
+	<-runtimeCache.ResourceChanged()
 
 	r := NewReconciler(logger, client, configCache, runtimeCache)
 	// Set resourceInfo for test (normally done in Start())

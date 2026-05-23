@@ -80,11 +80,7 @@ func (s *ConfigClientTestSuite) SetupTest() {
 	}
 }
 
-func (s *ConfigClientTestSuite) TearDownTest() {
-	s.cache.Close()
-}
-
-// runClient starts the client and drains the ResourceChanged channel asynchronously.
+// runClient starts the client and reads the ResourceChanged channel asynchronously.
 // It returns a channel that yields the execution error when the client finally stops.
 func (s *ConfigClientTestSuite) runClient(ctx context.Context) <-chan error {
 	errCh := make(chan error, 1)
@@ -109,7 +105,7 @@ func (s *ConfigClientTestSuite) runClient(ctx context.Context) <-chan error {
 	return errCh
 }
 
-// populateCache calls ReplaceAll in a goroutine and reads from ResourceChanged
+// populateCache runs ReplaceAll in a goroutine and reads from ResourceChanged
 // to unblock the send, simulating pre-existing cache state from a previous stream.
 func (s *ConfigClientTestSuite) populateCache(objects map[string]*pb.ConfiguredKubernetesObjectData) {
 	go s.cache.ReplaceAll(objects)
