@@ -3,6 +3,7 @@
 package resources
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,6 +13,7 @@ import (
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 
+	"github.com/illumio/cloud-operator/internal/controller"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
 
@@ -134,6 +136,28 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 		assert.Equal(t, "apps", result["statefulsets"].Group)
 		assert.Equal(t, "v1", result["statefulsets"].Version)
 	})
+}
+
+func TestResourceListCiliumDispatchConsistency(t *testing.T) {
+	expectedCilium := map[string]bool{
+		"ciliumcidrgroups":                 true,
+		"ciliumclusterwidenetworkpolicies": true,
+		"ciliumnetworkpolicies":            true,
+	}
+
+	for _, resource := range resourceList {
+		isCilium := controller.IsCiliumResource(resource)
+
+		if expectedCilium[resource] {
+			assert.True(t, isCilium, "resource %q should be recognized as Cilium by IsCiliumResource", resource)
+		} else {
+			assert.False(t, isCilium, "resource %q should NOT be recognized as Cilium by IsCiliumResource", resource)
+		}
+	}
+
+	for name := range expectedCilium {
+		assert.True(t, slices.Contains(resourceList, name), "expected Cilium resource %q must be in resourceList", name)
+	}
 }
 
 func TestSetProcessingResources_Integration(t *testing.T) {

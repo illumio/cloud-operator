@@ -12,9 +12,11 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/watch"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller"
 	"github.com/illumio/cloud-operator/internal/controller/auth"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
@@ -68,6 +70,11 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		return err
 	}
 
+	coreConverter := controller.NewCoreResourceConverter(clientset, c.logger)
+	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+		return controller.ConvertUnstructuredToCiliumResource(obj)
+	}
+
 	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
 	sharedLimiter := rate.NewLimiter(1, 5)
 	resourceManagers := make(map[string]*Watcher)
@@ -81,22 +88,33 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		default:
 		}
 
+		converter := coreConverter
+		if controller.IsCiliumResource(resource) {
+			converter = ciliumConverter
+		}
+
 		resourceManager := NewWatcher(WatcherConfig{
 			ResourceName:    resource,
 			ApiGroup:        resourceInfo.Group,
 			ApiVersion:      resourceInfo.Version,
-			Clientset:       clientset,
 			BaseLogger:      c.logger,
 			DynamicClient:   dynamicClient,
 			ResourcesClient: c,
 			Limiter:         sharedLimiter,
+			Converter:       converter,
 		})
 		resourceManagers[resource] = resourceManager
 
 		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger)
 		if err != nil {
-			if apierrors.IsForbidden(err) {
-				c.logger.Warn("Access forbidden for resource", zap.String("kind", resource), zap.String("api_group", resourceInfo.Group), zap.String("api_version", resourceInfo.Version), zap.Error(err))
+			// Skip resources that are unavailable due to RBAC or missing CRDs.
+			// NotFound can occur when a CRD is deleted after discovery but before listing.
+			if apierrors.IsForbidden(err) || apierrors.IsNotFound(err) {
+				c.logger.Warn("Skipping unavailable resource",
+					zap.String("kind", resource),
+					zap.String("api_group", resourceInfo.Group),
+					zap.String("reason", string(apierrors.ReasonForError(err))),
+					zap.Error(err))
 
 				continue
 			}

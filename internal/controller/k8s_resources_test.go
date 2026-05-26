@@ -18,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
@@ -53,6 +54,60 @@ func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
 	if got.GetName() != want.Name || got.GetNamespace() != want.Namespace || got.GetUid() != string(want.UID) || got.GetResourceVersion() != want.ResourceVersion {
 		suite.T().Errorf("convertObjectToMetadata() = %#v, want %#v", got, want)
 	}
+}
+
+func TestNewCoreResourceConverter_HappyPath(t *testing.T) {
+	clientset := k8sfake.NewSimpleClientset()
+	logger := zap.NewNop()
+
+	converter := NewCoreResourceConverter(clientset, logger)
+
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "apps/v1",
+			"kind":       "Deployment",
+			"metadata": map[string]any{
+				"name":            "my-deploy",
+				"namespace":       "prod",
+				"uid":             "deploy-uid-123",
+				"resourceVersion": "999",
+				"labels": map[string]any{
+					"app": "web",
+				},
+			},
+		},
+	}
+
+	result, err := converter(context.Background(), obj)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assert.Equal(t, "my-deploy", result.GetName())
+	assert.Equal(t, "prod", result.GetNamespace())
+	assert.Equal(t, "deploy-uid-123", result.GetUid())
+	assert.Equal(t, "999", result.GetResourceVersion())
+	assert.Equal(t, "Deployment", result.GetKind())
+	assert.Equal(t, "apps", result.GetApiGroup())
+	assert.Equal(t, "v1", result.GetApiVersion())
+	assert.Equal(t, "web", result.GetLabels()["app"])
+}
+
+func TestNewCoreResourceConverter_MissingMetadata(t *testing.T) {
+	clientset := k8sfake.NewSimpleClientset()
+	logger := zap.NewNop()
+
+	converter := NewCoreResourceConverter(clientset, logger)
+
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+		},
+	}
+
+	_, err := converter(context.Background(), obj)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot get metadata from resource")
 }
 
 func TestGetObjectMetadataFromRuntimeObject(t *testing.T) {
