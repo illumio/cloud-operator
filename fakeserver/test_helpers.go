@@ -1,6 +1,6 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package main
+package fakeserver
 
 import (
 	"fmt"
@@ -10,6 +10,8 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 // TestConfig holds configuration for integration tests.
@@ -91,13 +93,7 @@ func NewTestHarness(t *testing.T, config TestConfig) *FakeServerTestHarness {
 	token := CreateTestToken("192.168.49.1:50051")
 	enhancedState := NewServerState()
 
-	server := &FakeServer{
-		address:     config.GRPCAddress,
-		httpAddress: config.HTTPAddress,
-		token:       token,
-		logger:      logger,
-		state:       &ServerState{}, // Legacy state
-	}
+	server := NewFakeServer(config.GRPCAddress, config.HTTPAddress, token, logger)
 
 	return &FakeServerTestHarness{
 		Server:        server,
@@ -107,14 +103,31 @@ func NewTestHarness(t *testing.T, config TestConfig) *FakeServerTestHarness {
 	}
 }
 
-// Start starts the fake server.
+// Start starts the fake server and sends the default config handshake messages
+// (UpdateConfiguration + empty ResourceSnapshotComplete) so that connected
+// clients complete the initial snapshot, matching the original hardcoded behavior.
 func (h *FakeServerTestHarness) Start() error {
 	h.T.Log("Starting FakeServer...")
 
-	err := h.Server.start()
+	err := h.Server.Start()
 	if err != nil {
 		return fmt.Errorf("failed to start FakeServer: %w", err)
 	}
+
+	// Send the default config handshake that the original hardcoded
+	// GetConfigurationUpdates used to send automatically.
+	h.Server.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	h.Server.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
 
 	h.T.Logf("FakeServer started on gRPC=%s, HTTP=%s", h.Config.GRPCAddress, h.Config.HTTPAddress)
 
@@ -124,7 +137,7 @@ func (h *FakeServerTestHarness) Start() error {
 // Stop stops the fake server.
 func (h *FakeServerTestHarness) Stop() {
 	h.T.Log("Stopping FakeServer...")
-	h.Server.stop()
+	h.Server.Stop()
 	h.T.Log("FakeServer stopped")
 }
 

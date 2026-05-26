@@ -1,6 +1,6 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package main
+package fakeserver
 
 import (
 	"testing"
