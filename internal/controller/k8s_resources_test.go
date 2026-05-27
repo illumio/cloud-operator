@@ -1629,24 +1629,275 @@ func TestConvertToApplyObject_EmptyNamespace(t *testing.T) {
 	assert.False(t, hasNS)
 }
 
-func TestConvertToApplyObject_CamelCaseFieldNames(t *testing.T) {
-	boolTrue := true
-	boolFalse := false
-
+// From cilium/examples/policies/kubernetes/clusterwide/clusterscope-policy.yaml
+// Selective ingress: only pods with name=luke can reach pods with name=leia
+func TestConvertToApplyObject_ClusterwideSelectiveIngress(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:   "cnp-camel",
-		Name: "camel-test",
+		Id:   "ccnp-selective-ingress",
+		Name: "selective-ingress",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+			CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{
+						EndpointSelector: &pb.LabelSelector{
+							MatchLabels: map[string]string{"name": "leia"},
+						},
+						Ingress: []*pb.CiliumPolicyIngressRule{
+							{
+								FromEndpoints: &pb.LabelSelectorList{
+									Items: []*pb.LabelSelector{
+										{MatchLabels: map[string]string{"name": "luke"}},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj, resourceName, err := ConvertToApplyObject(data, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	assert.Equal(t, "cilium.io/v2", obj.Object["apiVersion"])
+	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.Object["kind"])
+	assert.Equal(t, "ciliumclusterwidenetworkpolicies", resourceName)
+
+	metadata, ok := obj.Object["metadata"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "selective-ingress", metadata["name"])
+	_, hasNS := metadata["namespace"]
+	assert.False(t, hasNS, "clusterwide policy should have no namespace")
+
+	labels, ok := metadata["labels"].(map[string]string)
+	require.True(t, ok)
+	assert.Equal(t, "ccnp-selective-ingress", labels[CloudSecureIDLabel])
+	assert.Equal(t, ManagedByValue, labels[ManagedByLabel])
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+
+	// endpointSelector matches name=leia
+	es, ok := spec["endpointSelector"].(map[string]any)
+	require.True(t, ok)
+	ml, ok := es["matchLabels"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "leia", ml["name"])
+
+	// ingress fromEndpoints matches name=luke
+	ingress, ok := spec["ingress"].([]any)
+	require.True(t, ok)
+	require.Len(t, ingress, 1)
+	rule, ok := ingress[0].(map[string]any)
+	require.True(t, ok)
+
+	fromEpsWrapper, ok := rule["fromEndpoints"].(map[string]any)
+	require.True(t, ok)
+	fromEps, ok := fromEpsWrapper["items"].([]any)
+	require.True(t, ok)
+	require.Len(t, fromEps, 1)
+	ep, ok := fromEps[0].(map[string]any)
+	require.True(t, ok)
+	epLabels, ok := ep["matchLabels"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "luke", epLabels["name"])
+}
+
+// From cilium/examples/policies/kubernetes/health.yaml
+// Health check policy: reserved:health endpoints with ingress/egress remote-node
+func TestConvertToApplyObject_CiliumHealthChecks(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:        "cnp-health",
+		Name:      "health",
+		Namespace: strPtr("default"),
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
 				Specs: []*pb.CiliumPolicyRule{
 					{
 						EndpointSelector: &pb.LabelSelector{
-							MatchLabels:      map[string]string{"app": "web"},
-							MatchExpressions: []*pb.LabelSelectorRequirement{{Key: "tier", Operator: "In", Values: []string{"frontend"}}},
+							MatchLabels: map[string]string{"reserved:health": ""},
 						},
-						EnableDefaultDeny: &pb.CiliumPolicyDefaultDeny{Ingress: &boolTrue, Egress: &boolFalse},
-						Ingress:           []*pb.CiliumPolicyIngressRule{{FromCidr: []string{"10.0.0.0/8"}, FromCidrSet: []*pb.CiliumPolicyCIDRSet{{Cidr: strPtr("192.168.0.0/16")}}}},
-						Egress:            []*pb.CiliumPolicyEgressRule{{ToCidr: []string{"0.0.0.0/0"}}},
+						Ingress: []*pb.CiliumPolicyIngressRule{
+							{
+								FromEntities: []string{"remote-node"},
+							},
+						},
+						Egress: []*pb.CiliumPolicyEgressRule{
+							{
+								ToEntities: []string{"remote-node"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj, resourceName, err := ConvertToApplyObject(data, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	assert.Equal(t, "cilium.io/v2", obj.Object["apiVersion"])
+	assert.Equal(t, "CiliumNetworkPolicy", obj.Object["kind"])
+	assert.Equal(t, "ciliumnetworkpolicies", resourceName)
+
+	metadata, ok := obj.Object["metadata"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "health", metadata["name"])
+	assert.Equal(t, "default", metadata["namespace"])
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+
+	// endpointSelector matches reserved:health=""
+	es, ok := spec["endpointSelector"].(map[string]any)
+	require.True(t, ok)
+	ml, ok := es["matchLabels"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "", ml["reserved:health"])
+
+	// ingress fromEntities: remote-node
+	ingress, ok := spec["ingress"].([]any)
+	require.True(t, ok)
+	require.Len(t, ingress, 1)
+	ingressRule, ok := ingress[0].(map[string]any)
+	require.True(t, ok)
+	fromEntities, ok := ingressRule["fromEntities"].([]any)
+	require.True(t, ok)
+	assert.Equal(t, []any{"remote-node"}, fromEntities)
+
+	// egress toEntities: remote-node
+	egress, ok := spec["egress"].([]any)
+	require.True(t, ok)
+	require.Len(t, egress, 1)
+	egressRule, ok := egress[0].(map[string]any)
+	require.True(t, ok)
+	toEntities, ok := egressRule["toEntities"].([]any)
+	require.True(t, ok)
+	assert.Equal(t, []any{"remote-node"}, toEntities)
+}
+
+// From cilium/examples/policies/kubernetes/wildcard/wildcard-from-endpoints.yaml
+// DNS ingress: kube-dns selector, empty fromEndpoints (wildcard), toPorts UDP 53
+func TestConvertToApplyObject_WildcardDNSIngress(t *testing.T) {
+	udpProto := "UDP"
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:        "cnp-wildcard-dns",
+		Name:      "wildcard-dns",
+		Namespace: strPtr("kube-system"),
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{
+						EndpointSelector: &pb.LabelSelector{
+							MatchLabels: map[string]string{
+								"k8s:io.kubernetes.pod.namespace": "kube-system",
+								"k8s-app":                         "kube-dns",
+							},
+						},
+						Ingress: []*pb.CiliumPolicyIngressRule{
+							{
+								FromEndpoints: &pb.LabelSelectorList{
+									Items: []*pb.LabelSelector{
+										{}, // empty selector = wildcard
+									},
+								},
+								ToPorts: []*pb.CiliumPolicyPortRule{
+									{
+										Ports: []*pb.CiliumPolicyPort{
+											{Port: "53", Protocol: &udpProto},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj, resourceName, err := ConvertToApplyObject(data, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	assert.Equal(t, "CiliumNetworkPolicy", obj.Object["kind"])
+	assert.Equal(t, "ciliumnetworkpolicies", resourceName)
+
+	metadata, ok := obj.Object["metadata"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "wildcard-dns", metadata["name"])
+	assert.Equal(t, "kube-system", metadata["namespace"])
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+
+	es, ok := spec["endpointSelector"].(map[string]any)
+	require.True(t, ok)
+	ml, ok := es["matchLabels"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "kube-system", ml["k8s:io.kubernetes.pod.namespace"])
+	assert.Equal(t, "kube-dns", ml["k8s-app"])
+
+	ingress, ok := spec["ingress"].([]any)
+	require.True(t, ok)
+	require.Len(t, ingress, 1)
+	rule, ok := ingress[0].(map[string]any)
+	require.True(t, ok)
+
+	// fromEndpoints with empty selector (wildcard)
+	fromEpsWrapper, ok := rule["fromEndpoints"].(map[string]any)
+	require.True(t, ok)
+	fromEps, ok := fromEpsWrapper["items"].([]any)
+	require.True(t, ok)
+	require.Len(t, fromEps, 1)
+	// empty selector should be an empty map
+	ep, ok := fromEps[0].(map[string]any)
+	require.True(t, ok)
+	assert.Empty(t, ep, "wildcard selector should be empty")
+
+	// toPorts UDP 53
+	toPorts, ok := rule["toPorts"].([]any)
+	require.True(t, ok)
+	require.Len(t, toPorts, 1)
+	portRule, ok := toPorts[0].(map[string]any)
+	require.True(t, ok)
+	ports, ok := portRule["ports"].([]any)
+	require.True(t, ok)
+	require.Len(t, ports, 1)
+	p, ok := ports[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "53", p["port"])
+	assert.Equal(t, "UDP", p["protocol"])
+}
+
+// From cilium/examples/policies/kubernetes/namespace-labels/namespace-labels-policy.yaml
+// Namespace label selectors: faction=alliance
+func TestConvertToApplyObject_NamespaceLabelSelectors(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:        "cnp-ns-labels",
+		Name:      "ns-labels-policy",
+		Namespace: strPtr("default"),
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{
+						EndpointSelector: &pb.LabelSelector{
+							MatchLabels: map[string]string{"name": "leia"},
+						},
+						Ingress: []*pb.CiliumPolicyIngressRule{
+							{
+								FromEndpoints: &pb.LabelSelectorList{
+									Items: []*pb.LabelSelector{
+										{
+											MatchLabels: map[string]string{
+												"name":                                      "luke",
+												"k8s:io.cilium.k8s.namespace.labels.faction": "alliance",
+											},
+										},
+									},
+								},
+							},
+						},
 					},
 				},
 			},
@@ -1658,10 +1909,229 @@ func TestConvertToApplyObject_CamelCaseFieldNames(t *testing.T) {
 
 	spec, ok := obj.Object["spec"].(map[string]any)
 	require.True(t, ok)
-	assert.Contains(t, spec, "endpointSelector")
-	assert.Contains(t, spec, "enableDefaultDeny")
-	assert.Contains(t, spec, "ingress")
-	assert.Contains(t, spec, "egress")
+
+	es, ok := spec["endpointSelector"].(map[string]any)
+	require.True(t, ok)
+	ml, ok := es["matchLabels"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "leia", ml["name"])
+
+	ingress, ok := spec["ingress"].([]any)
+	require.True(t, ok)
+	require.Len(t, ingress, 1)
+	rule, ok := ingress[0].(map[string]any)
+	require.True(t, ok)
+
+	fromEpsWrapper, ok := rule["fromEndpoints"].(map[string]any)
+	require.True(t, ok)
+	fromEps, ok := fromEpsWrapper["items"].([]any)
+	require.True(t, ok)
+	require.Len(t, fromEps, 1)
+	ep, ok := fromEps[0].(map[string]any)
+	require.True(t, ok)
+	epLabels, ok := ep["matchLabels"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "luke", epLabels["name"])
+	assert.Equal(t, "alliance", epLabels["k8s:io.cilium.k8s.namespace.labels.faction"])
+}
+
+// From cilium/examples/policies/kubernetes/kubedns-policy.yaml
+// Egress to kube-dns: UDP 53
+func TestConvertToApplyObject_EgressToKubeDNS(t *testing.T) {
+	udpProto := "UDP"
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:        "cnp-kubedns",
+		Name:      "kubedns-policy",
+		Namespace: strPtr("default"),
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{
+						EndpointSelector: &pb.LabelSelector{},
+						Egress: []*pb.CiliumPolicyEgressRule{
+							{
+								ToEndpoints: &pb.LabelSelectorList{
+									Items: []*pb.LabelSelector{
+										{
+											MatchLabels: map[string]string{
+												"k8s:io.kubernetes.pod.namespace": "kube-system",
+												"k8s-app":                         "kube-dns",
+											},
+										},
+									},
+								},
+								ToPorts: []*pb.CiliumPolicyPortRule{
+									{
+										Ports: []*pb.CiliumPolicyPort{
+											{Port: "53", Protocol: &udpProto},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj, _, err := ConvertToApplyObject(data, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+
+	// endpointSelector should be empty (selects all pods in namespace)
+	es, ok := spec["endpointSelector"].(map[string]any)
+	require.True(t, ok)
+	assert.Empty(t, es, "empty selector should select all pods")
+
+	egress, ok := spec["egress"].([]any)
+	require.True(t, ok)
+	require.Len(t, egress, 1)
+	rule, ok := egress[0].(map[string]any)
+	require.True(t, ok)
+
+	// toEndpoints targeting kube-dns
+	toEpsWrapper, ok := rule["toEndpoints"].(map[string]any)
+	require.True(t, ok)
+	toEps, ok := toEpsWrapper["items"].([]any)
+	require.True(t, ok)
+	require.Len(t, toEps, 1)
+	ep, ok := toEps[0].(map[string]any)
+	require.True(t, ok)
+	epLabels, ok := ep["matchLabels"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "kube-system", epLabels["k8s:io.kubernetes.pod.namespace"])
+	assert.Equal(t, "kube-dns", epLabels["k8s-app"])
+
+	// toPorts UDP 53
+	toPorts, ok := rule["toPorts"].([]any)
+	require.True(t, ok)
+	require.Len(t, toPorts, 1)
+	portRule, ok := toPorts[0].(map[string]any)
+	require.True(t, ok)
+	ports, ok := portRule["ports"].([]any)
+	require.True(t, ok)
+	require.Len(t, ports, 1)
+	p, ok := ports[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "53", p["port"])
+	assert.Equal(t, "UDP", p["protocol"])
+}
+
+// From cilium/examples/policies/kubernetes/isolate-namespaces.yaml
+// Namespace isolation: empty selectors restrict to same-namespace traffic
+func TestConvertToApplyObject_NamespaceIsolation(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:        "cnp-isolate-ns",
+		Name:      "isolate-ns",
+		Namespace: strPtr("default"),
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{
+						EndpointSelector: &pb.LabelSelector{},
+						Ingress: []*pb.CiliumPolicyIngressRule{
+							{
+								FromEndpoints: &pb.LabelSelectorList{
+									Items: []*pb.LabelSelector{
+										{}, // empty = same namespace
+									},
+								},
+							},
+						},
+						Egress: []*pb.CiliumPolicyEgressRule{
+							{
+								ToEndpoints: &pb.LabelSelectorList{
+									Items: []*pb.LabelSelector{
+										{}, // empty = same namespace
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj, resourceName, err := ConvertToApplyObject(data, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	assert.Equal(t, "CiliumNetworkPolicy", obj.Object["kind"])
+	assert.Equal(t, "ciliumnetworkpolicies", resourceName)
+
+	metadata, ok := obj.Object["metadata"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "isolate-ns", metadata["name"])
+	assert.Equal(t, "default", metadata["namespace"])
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+
+	// empty endpointSelector = all pods in namespace
+	es, ok := spec["endpointSelector"].(map[string]any)
+	require.True(t, ok)
+	assert.Empty(t, es)
+
+	// ingress: fromEndpoints with empty selector
+	ingress, ok := spec["ingress"].([]any)
+	require.True(t, ok)
+	require.Len(t, ingress, 1)
+	ingressRule, ok := ingress[0].(map[string]any)
+	require.True(t, ok)
+	fromEpsWrapper, ok := ingressRule["fromEndpoints"].(map[string]any)
+	require.True(t, ok)
+	fromEps, ok := fromEpsWrapper["items"].([]any)
+	require.True(t, ok)
+	require.Len(t, fromEps, 1)
+	fromEp, ok := fromEps[0].(map[string]any)
+	require.True(t, ok)
+	assert.Empty(t, fromEp, "empty selector = same namespace")
+
+	// egress: toEndpoints with empty selector
+	egress, ok := spec["egress"].([]any)
+	require.True(t, ok)
+	require.Len(t, egress, 1)
+	egressRule, ok := egress[0].(map[string]any)
+	require.True(t, ok)
+	toEpsWrapper, ok := egressRule["toEndpoints"].(map[string]any)
+	require.True(t, ok)
+	toEps, ok := toEpsWrapper["items"].([]any)
+	require.True(t, ok)
+	require.Len(t, toEps, 1)
+	toEp, ok := toEps[0].(map[string]any)
+	require.True(t, ok)
+	assert.Empty(t, toEp, "empty selector = same namespace")
+}
+
+// Verify that nil annotations marshal as "annotations":null in the JSON sent to the API server,
+// so SSA reclaims ownership and clears any annotations not set by CloudSecure.
+func TestConvertToApplyObject_NilAnnotationsMarshalAsNull(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:   "cnp-no-annotations",
+		Name: "no-annotations",
+		// Annotations intentionally not set (nil)
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{EndpointSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "test"}}},
+				},
+			},
+		},
+	}
+
+	obj, _, err := ConvertToApplyObject(data, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	metadata, ok := obj.Object["metadata"].(map[string]any)
+	require.True(t, ok)
+
+	// annotations key must be present in the map (not omitted)
+	val, exists := metadata["annotations"]
+	assert.True(t, exists, "annotations key must be present so SSA claims ownership")
+	assert.Nil(t, val, "nil annotations should remain nil, not an empty map")
 }
 
 func TestConvertToApplyObject_EmitUnpopulatedFalse(t *testing.T) {
@@ -1689,7 +2159,6 @@ func TestConvertToApplyObject_EmitUnpopulatedFalse(t *testing.T) {
 	assert.NotContains(t, spec, "ingress")
 	assert.NotContains(t, spec, "egress")
 }
-
 func TestCopyLabels(t *testing.T) {
 	tests := map[string]struct {
 		labels   map[string]string
@@ -1729,6 +2198,3 @@ func TestCopyLabels(t *testing.T) {
 	}
 }
 
-func strPtr(s string) *string {
-	return &s
-}
