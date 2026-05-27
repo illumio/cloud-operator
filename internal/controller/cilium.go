@@ -753,7 +753,9 @@ func normalizeProtojsonForCilium(specMap map[string]any) {
 				continue
 			}
 
-			// Unwrap LabelSelectorList wrappers
+			// Unwrap LabelSelectorList wrappers:
+			//   {"items": [...]}  → [...]     (normal case)
+			//   {} (empty wrapper) → []       (empty LabelSelectorList, items omitted by protojson)
 			for _, endpointField := range []string{"fromEndpoints", "toEndpoints"} {
 				wrapper, ok := ruleMap[endpointField].(map[string]any)
 				if !ok {
@@ -762,6 +764,8 @@ func normalizeProtojsonForCilium(specMap map[string]any) {
 
 				if items, exists := wrapper["items"]; exists {
 					ruleMap[endpointField] = items
+				} else {
+					ruleMap[endpointField] = []any{}
 				}
 			}
 

@@ -2590,6 +2590,35 @@ func TestNormalizeProtojsonForCilium_NoEndpoints(t *testing.T) {
 	assert.Nil(t, rule["fromEndpoints"], "should not add fromEndpoints when absent")
 }
 
+func TestNormalizeProtojsonForCilium_EmptyEndpointsWrapper(t *testing.T) {
+	// When LabelSelectorList exists but items is empty/nil, protojson emits
+	// {"fromEndpoints": {}} — an empty map. Cilium expects an empty array [].
+	specMap := map[string]any{
+		"ingress": []any{
+			map[string]any{
+				"fromEndpoints": map[string]any{},
+			},
+		},
+		"egress": []any{
+			map[string]any{
+				"toEndpoints": map[string]any{},
+			},
+		},
+	}
+
+	normalizeProtojsonForCilium(specMap)
+
+	ingressRule := specMap["ingress"].([]any)[0].(map[string]any)
+	fromEps, ok := ingressRule["fromEndpoints"].([]any)
+	require.True(t, ok, "empty wrapper should become empty array, not remain a map")
+	assert.Empty(t, fromEps)
+
+	egressRule := specMap["egress"].([]any)[0].(map[string]any)
+	toEps, ok := egressRule["toEndpoints"].([]any)
+	require.True(t, ok, "empty wrapper should become empty array, not remain a map")
+	assert.Empty(t, toEps)
+}
+
 func TestNormalizeProtojsonForCilium_ICMPTypeInt(t *testing.T) {
 	specMap := map[string]any{
 		"ingress": []any{
@@ -2694,4 +2723,126 @@ func TestNormalizeProtojsonForCilium_EndToEnd(t *testing.T) {
 	require.True(t, ok, "toEndpoints should be a flat array, not a wrapper object")
 	require.Len(t, toEps, 1)
 	assert.Equal(t, "dns", toEps[0].(map[string]any)["matchLabels"].(map[string]any)["app"])
+}
+
+// TestMarshalPolicySpecs_EndpointSemantics validates the critical distinction between
+// [], [{}], and nil for fromEndpoints/toEndpoints through the full marshalPolicySpecs path.
+//
+// In Cilium:
+//   - fromEndpoints: []   → "allow nobody" (empty whitelist)
+//   - fromEndpoints: [{}] → "allow everybody" (wildcard, all pods in namespace)
+//   - fromEndpoints: nil  → implicit wildcard (when toPorts is set)
+//
+// Confusing [] and [{}] reverses the security posture entirely.
+func TestMarshalPolicySpecs_EndpointSemantics(t *testing.T) {
+	t.Run("empty list means allow nobody", func(t *testing.T) {
+		specs := []*pb.CiliumPolicyRule{
+			{
+				EndpointSelector: &pb.LabelSelector{},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{
+						FromEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{},
+						},
+					},
+				},
+				Egress: []*pb.CiliumPolicyEgressRule{
+					{
+						ToEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{},
+						},
+					},
+				},
+			},
+		}
+
+		result, err := marshalPolicySpecs(specs)
+		require.NoError(t, err)
+
+		spec := result["spec"].(map[string]any)
+
+		// fromEndpoints must be [] (empty array), NOT [{}]
+		ingressRule := spec["ingress"].([]any)[0].(map[string]any)
+		fromEps, ok := ingressRule["fromEndpoints"].([]any)
+		require.True(t, ok, "fromEndpoints should be an array")
+		assert.Empty(t, fromEps, "fromEndpoints: [] means allow nobody — must be empty array")
+
+		// toEndpoints must be [] (empty array), NOT [{}]
+		egressRule := spec["egress"].([]any)[0].(map[string]any)
+		toEps, ok := egressRule["toEndpoints"].([]any)
+		require.True(t, ok, "toEndpoints should be an array")
+		assert.Empty(t, toEps, "toEndpoints: [] means allow nobody — must be empty array")
+	})
+
+	t.Run("single empty selector means allow everybody", func(t *testing.T) {
+		specs := []*pb.CiliumPolicyRule{
+			{
+				EndpointSelector: &pb.LabelSelector{},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{
+						FromEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{{}},
+						},
+					},
+				},
+				Egress: []*pb.CiliumPolicyEgressRule{
+					{
+						ToEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{{}},
+						},
+					},
+				},
+			},
+		}
+
+		result, err := marshalPolicySpecs(specs)
+		require.NoError(t, err)
+
+		spec := result["spec"].(map[string]any)
+
+		// fromEndpoints must be [{}] (one empty selector), NOT []
+		ingressRule := spec["ingress"].([]any)[0].(map[string]any)
+		fromEps, ok := ingressRule["fromEndpoints"].([]any)
+		require.True(t, ok, "fromEndpoints should be an array")
+		require.Len(t, fromEps, 1, "fromEndpoints: [{}] means allow everybody — must have one element")
+		ep, ok := fromEps[0].(map[string]any)
+		require.True(t, ok)
+		assert.Empty(t, ep, "the single selector should be empty (wildcard)")
+
+		// toEndpoints must be [{}] (one empty selector), NOT []
+		egressRule := spec["egress"].([]any)[0].(map[string]any)
+		toEps, ok := egressRule["toEndpoints"].([]any)
+		require.True(t, ok, "toEndpoints should be an array")
+		require.Len(t, toEps, 1, "toEndpoints: [{}] means allow everybody — must have one element")
+		toEp, ok := toEps[0].(map[string]any)
+		require.True(t, ok)
+		assert.Empty(t, toEp, "the single selector should be empty (wildcard)")
+	})
+
+	t.Run("nil endpoints omitted for implicit wildcard", func(t *testing.T) {
+		udpProto := "UDP"
+		specs := []*pb.CiliumPolicyRule{
+			{
+				EndpointSelector: &pb.LabelSelector{},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{
+						FromEndpoints: nil,
+						ToPorts: []*pb.CiliumPolicyPortRule{
+							{Ports: []*pb.CiliumPolicyPort{{Port: "53", Protocol: &udpProto}}},
+						},
+					},
+				},
+			},
+		}
+
+		result, err := marshalPolicySpecs(specs)
+		require.NoError(t, err)
+
+		spec := result["spec"].(map[string]any)
+		ingressRule := spec["ingress"].([]any)[0].(map[string]any)
+
+		_, exists := ingressRule["fromEndpoints"]
+		assert.False(t, exists, "nil fromEndpoints should be omitted entirely (implicit wildcard)")
+		assert.Contains(t, ingressRule, "toPorts", "toPorts should still be present")
+	})
 }
