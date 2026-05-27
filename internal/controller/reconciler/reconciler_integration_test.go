@@ -1141,3 +1141,193 @@ func TestReconciler_UpdatePreservesMetadata(t *testing.T) {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-meta-preserve")
 	})
 }
+
+func TestReconciler_CIDRGroupSnapshot(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+
+	// Push config + CIDRGroup + snapshot complete
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "cidr-e2e-1",
+				Name: "e2e-cidr-group",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
+					CiliumCidrGroup: &pb.KubernetesCiliumCIDRGroupData{
+						Spec: &pb.CiliumCIDRGroup{
+							ExternalCidrs: []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	// Wait for the CIDRGroup to appear in envtest
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, cidrGroupGVR, "", "e2e-cidr-group")
+		return err == nil && obj != nil
+	}, 10*time.Second, 100*time.Millisecond, "CIDRGroup should be applied to K8s")
+
+	obj, err := testClient.GetResource(ctx, cidrGroupGVR, "", "e2e-cidr-group")
+	require.NoError(t, err)
+	assert.Equal(t, "CiliumCIDRGroup", obj.GetKind())
+	assert.Equal(t, "e2e-cidr-group", obj.GetName())
+	assert.Equal(t, controller.ManagedByValue, obj.GetLabels()[controller.ManagedByLabel])
+	assert.Equal(t, "cidr-e2e-1", obj.GetLabels()[controller.CloudSecureIDLabel])
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+
+	cidrs, ok := spec["externalCidrs"].([]any)
+	require.True(t, ok)
+	require.Len(t, cidrs, 3)
+	assert.Equal(t, "10.0.0.0/8", cidrs[0])
+	assert.Equal(t, "172.16.0.0/12", cidrs[1])
+	assert.Equal(t, "192.168.0.0/16", cidrs[2])
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, cidrGroupGVR, "", "e2e-cidr-group")
+	})
+}
+
+func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+
+	// Start with empty snapshot
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Create a CIDRGroup via mutation
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
+			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
+					CreateObject: &pb.ConfiguredKubernetesObjectData{
+						Id:     "cidr-mut-1",
+						Name:   "e2e-cidr-mut",
+						Labels: map[string]string{"env": "test"},
+						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
+							CiliumCidrGroup: &pb.KubernetesCiliumCIDRGroupData{
+								Spec: &pb.CiliumCIDRGroup{
+									ExternalCidrs: []string{"10.0.0.0/8"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	// Wait for CIDRGroup to appear
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, cidrGroupGVR, "", "e2e-cidr-mut")
+		return err == nil && obj != nil
+	}, 10*time.Second, 100*time.Millisecond, "CIDRGroup should be created via mutation")
+
+	obj, err := testClient.GetResource(ctx, cidrGroupGVR, "", "e2e-cidr-mut")
+	require.NoError(t, err)
+	assert.Equal(t, "CiliumCIDRGroup", obj.GetKind())
+	assert.Equal(t, "test", obj.GetLabels()["env"])
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+	cidrs, ok := spec["externalCidrs"].([]any)
+	require.True(t, ok)
+	require.Len(t, cidrs, 1)
+	assert.Equal(t, "10.0.0.0/8", cidrs[0])
+
+	// Update: add more CIDRs
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
+			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
+					UpdateObject: &pb.ConfiguredKubernetesObjectData{
+						Id:     "cidr-mut-1",
+						Name:   "e2e-cidr-mut",
+						Labels: map[string]string{"env": "production"},
+						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
+							CiliumCidrGroup: &pb.KubernetesCiliumCIDRGroupData{
+								Spec: &pb.CiliumCIDRGroup{
+									ExternalCidrs: []string{"10.0.0.0/8", "172.16.0.0/12"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	// Verify the CIDRGroup was updated
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, cidrGroupGVR, "", "e2e-cidr-mut")
+		if err != nil || obj == nil {
+			return false
+		}
+		spec, ok := obj.Object["spec"].(map[string]any)
+		if !ok {
+			return false
+		}
+		cidrs, ok := spec["externalCidrs"].([]any)
+		if !ok {
+			return false
+		}
+		return len(cidrs) == 2
+	}, 10*time.Second, 100*time.Millisecond, "CIDRGroup should be updated with additional CIDRs")
+
+	obj, err = testClient.GetResource(ctx, cidrGroupGVR, "", "e2e-cidr-mut")
+	require.NoError(t, err)
+	assert.Equal(t, "production", obj.GetLabels()["env"])
+
+	// Delete the CIDRGroup
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
+			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
+					DeleteObject: &pb.DeleteConfiguredKubernetesObject{
+						Id: "cidr-mut-1",
+					},
+				},
+			},
+		},
+	})
+
+	// Verify the CIDRGroup was deleted
+	require.Eventually(t, func() bool {
+		_, err := testClient.GetResource(ctx, cidrGroupGVR, "", "e2e-cidr-mut")
+		return err != nil
+	}, 20*time.Second, 100*time.Millisecond, "CIDRGroup should be deleted from K8s")
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, cidrGroupGVR, "", "e2e-cidr-mut")
+	})
+}

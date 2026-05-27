@@ -9,7 +9,7 @@ spec:
     listKind: CiliumCIDRGroupList
     plural: ciliumcidrgroups
     singular: ciliumcidrgroup
-  scope: Namespaced
+  scope: Cluster
   versions:
     - name: v2alpha1
       served: true
