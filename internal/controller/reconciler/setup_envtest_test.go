@@ -39,6 +39,7 @@ var (
 
 var cnpGVR = schema.GroupVersionResource{Group: "cilium.io", Version: "v2", Resource: "ciliumnetworkpolicies"}
 var ccnpGVR = schema.GroupVersionResource{Group: "cilium.io", Version: "v2", Resource: "ciliumclusterwidenetworkpolicies"}
+var cidrGroupGVR = schema.GroupVersionResource{Group: "cilium.io", Version: "v2alpha1", Resource: "ciliumcidrgroups"}
 
 func TestMain(m *testing.M) {
 	// Set KUBEBUILDER_ASSETS if not already set, so tests work from IDEs
@@ -149,7 +150,7 @@ func setupSuite(t *testing.T) *fakeserver.FakeServer {
 	resourcesClient, err := resourcesFactory.NewStreamClient(ctx, conn)
 	require.NoError(t, err)
 
-	go resourcesClient.Run(ctx) //nolint:errcheck
+	go resourcesClient.Run(ctx)
 
 	// Start config stream client (fakeserver → config cache)
 	configFactory := &config.Factory{
@@ -161,7 +162,7 @@ func setupSuite(t *testing.T) *fakeserver.FakeServer {
 	configClient, err := configFactory.NewStreamClient(ctx, conn)
 	require.NoError(t, err)
 
-	go configClient.Run(ctx) //nolint:errcheck
+	go configClient.Run(ctx)
 
 	// Start reconciler (config cache + runtime cache → K8s API)
 	r := NewReconciler(zap.NewNop(), testClient, configCache, runtimeCache)
