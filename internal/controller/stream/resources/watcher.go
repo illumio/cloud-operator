@@ -167,7 +167,14 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 		if r.runtimeCache != nil && r.isManagedByOperator(item) {
 			id := item.GetLabels()[controller.CloudSecureIDLabel]
 			if id != "" {
-				configured := controller.BuildConfiguredFromMetadata(id, metadataObj)
+				configured, err := controller.BuildConfiguredFromMetadata(id, metadataObj)
+				if err != nil {
+					r.logger.Warn("Skipping unhandled resource type in runtime cache",
+						zap.String("id", id), zap.Error(err))
+
+					continue
+				}
+
 				runtimeObjects[id] = configured
 			}
 		}
@@ -363,15 +370,19 @@ func (r *Watcher) handleWatchEvent(
 			if r.isManagedByOperator(obj) {
 				id := obj.GetLabels()[controller.CloudSecureIDLabel]
 				if id != "" {
-					configured := controller.BuildConfiguredFromMetadata(id, metadataObj)
-
-					switch event.Type {
-					case watch.Added, watch.Modified:
-						r.runtimeCache.Insert(configured.GetId(), configured)
-					case watch.Deleted:
-						r.runtimeCache.Delete(configured.GetId())
-					case watch.Bookmark, watch.Error:
-						// Unreachable: outer switch already handles these types.
+					configured, err := controller.BuildConfiguredFromMetadata(id, metadataObj)
+					if err != nil {
+						r.logger.Warn("Skipping unhandled resource type in runtime cache",
+							zap.String("id", id), zap.Error(err))
+					} else {
+						switch event.Type {
+						case watch.Added, watch.Modified:
+							r.runtimeCache.Insert(configured.GetId(), configured)
+						case watch.Deleted:
+							r.runtimeCache.Delete(configured.GetId())
+						case watch.Bookmark, watch.Error:
+							// Unreachable: outer switch already handles these types.
+						}
 					}
 				}
 			}

@@ -717,6 +717,8 @@ func marshalPolicySpecs(specs []*pb.CiliumPolicyRule) (map[string]any, error) {
 			return nil, fmt.Errorf("failed to marshal policy spec: %w", err)
 		}
 
+		normalizeProtojsonForCilium(specMap)
+
 		return map[string]any{"spec": specMap}, nil
 	}
 
@@ -727,10 +729,82 @@ func marshalPolicySpecs(specs []*pb.CiliumPolicyRule) (map[string]any, error) {
 			return nil, fmt.Errorf("failed to marshal policy spec: %w", err)
 		}
 
+		normalizeProtojsonForCilium(specMap)
 		specsList = append(specsList, specMap)
 	}
 
 	return map[string]any{"specs": specsList}, nil
+}
+
+// normalizeProtojsonForCilium post-processes a policy rule map so that
+// protojson output conforms to Cilium's CRD schema:
+//   - fromEndpoints/toEndpoints: unwrap LabelSelectorList {"items": [...]} → [...]
+//   - ICMP type: rename oneof field "typeInt"/"typeString" → "type"
+func normalizeProtojsonForCilium(specMap map[string]any) {
+	for _, ruleField := range []string{"ingress", "ingressDeny", "egress", "egressDeny"} {
+		rules, ok := specMap[ruleField].([]any)
+		if !ok {
+			continue
+		}
+
+		for _, rule := range rules {
+			ruleMap, ok := rule.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			// Unwrap LabelSelectorList wrappers
+			for _, endpointField := range []string{"fromEndpoints", "toEndpoints"} {
+				wrapper, ok := ruleMap[endpointField].(map[string]any)
+				if !ok {
+					continue
+				}
+
+				if items, exists := wrapper["items"]; exists {
+					ruleMap[endpointField] = items
+				}
+			}
+
+			// Fix ICMP type oneof fields
+			normalizeICMPTypeFields(ruleMap)
+		}
+	}
+}
+
+// normalizeICMPTypeFields renames "typeInt"/"typeString" to "type" in ICMP field entries.
+// protojson serializes oneof fields by their variant name, but Cilium expects "type".
+func normalizeICMPTypeFields(ruleMap map[string]any) {
+	icmps, ok := ruleMap["icmps"].([]any)
+	if !ok {
+		return
+	}
+
+	for _, icmp := range icmps {
+		icmpMap, ok := icmp.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		fields, ok := icmpMap["fields"].([]any)
+		if !ok {
+			continue
+		}
+
+		for _, field := range fields {
+			fieldMap, ok := field.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			if v, ok := fieldMap["typeInt"]; ok {
+				fieldMap["type"] = v
+				delete(fieldMap, "typeInt")
+			} else if v, ok := fieldMap["typeString"]; ok {
+				fieldMap["type"] = v
+				delete(fieldMap, "typeString")
+			}
+		}
+	}
 }
 
 // protoToMap marshals a proto message to JSON via protojson, then unmarshals

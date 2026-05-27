@@ -1081,7 +1081,7 @@ func (x *KubernetesCiliumCIDRGroupData) GetSpec() *CiliumCIDRGroup {
 type CiliumCIDRGroup struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ExternalCIDRs is a list of CIDRs selecting peers outside the clusters.
-	ExternalCidrs []string `protobuf:"bytes,1,rep,name=external_cidrs,json=externalCidrs,proto3" json:"external_cidrs,omitempty"`
+	ExternalCidrs []string `protobuf:"bytes,1,rep,name=external_cidrs,json=externalCIDRs,proto3" json:"external_cidrs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1720,8 +1720,8 @@ type CiliumPolicyAWSGroup struct {
 	// AWS security groups tags.
 	Labels map[string]string `protobuf:"bytes,1,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Security group IDs (Cilium supports multiple per group selector)
-	SecurityGroupIds   []string `protobuf:"bytes,2,rep,name=security_group_ids,json=securityGroupIds,proto3" json:"security_group_ids,omitempty"`
-	SecurityGroupNames []string `protobuf:"bytes,3,rep,name=security_group_names,json=securityGroupNames,proto3" json:"security_group_names,omitempty"`
+	SecurityGroupIds   []string `protobuf:"bytes,2,rep,name=security_group_ids,json=securityGroupsIds,proto3" json:"security_group_ids,omitempty"`
+	SecurityGroupNames []string `protobuf:"bytes,3,rep,name=security_group_names,json=securityGroupsNames,proto3" json:"security_group_names,omitempty"`
 	Region             *string  `protobuf:"bytes,4,opt,name=region,proto3,oneof" json:"region,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
@@ -5432,7 +5432,7 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x1dKubernetesCiliumCIDRGroupData\x12D\n" +
 	"\x04spec\x18\x01 \x01(\v20.illumio.cloud.k8sclustersync.v1.CiliumCIDRGroupR\x04spec\"8\n" +
 	"\x0fCiliumCIDRGroup\x12%\n" +
-	"\x0eexternal_cidrs\x18\x01 \x03(\tR\rexternalCidrs\"\xa2\a\n" +
+	"\x0eexternal_cidrs\x18\x01 \x03(\tR\rexternalCIDRs\"\xa2\a\n" +
 	"\x10CiliumPolicyRule\x12`\n" +
 	"\x11endpoint_selector\x18\x01 \x01(\v2..illumio.cloud.k8sclustersync.v1.LabelSelectorH\x00R\x10endpointSelector\x88\x01\x01\x12X\n" +
 	"\rnode_selector\x18\x02 \x01(\v2..illumio.cloud.k8sclustersync.v1.LabelSelectorH\x01R\fnodeSelector\x88\x01\x01\x12%\n" +
@@ -5498,11 +5498,11 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x14_cidr_group_selector\"p\n" +
 	"\x11CiliumPolicyGroup\x12I\n" +
 	"\x03aws\x18\x01 \x01(\v25.illumio.cloud.k8sclustersync.v1.CiliumPolicyAWSGroupH\x00R\x03awsB\x10\n" +
-	"\x0ecloud_provider\"\xb4\x02\n" +
+	"\x0ecloud_provider\"\xb6\x02\n" +
 	"\x14CiliumPolicyAWSGroup\x12Y\n" +
-	"\x06labels\x18\x01 \x03(\v2A.illumio.cloud.k8sclustersync.v1.CiliumPolicyAWSGroup.LabelsEntryR\x06labels\x12,\n" +
-	"\x12security_group_ids\x18\x02 \x03(\tR\x10securityGroupIds\x120\n" +
-	"\x14security_group_names\x18\x03 \x03(\tR\x12securityGroupNames\x12\x1b\n" +
+	"\x06labels\x18\x01 \x03(\v2A.illumio.cloud.k8sclustersync.v1.CiliumPolicyAWSGroup.LabelsEntryR\x06labels\x12-\n" +
+	"\x12security_group_ids\x18\x02 \x03(\tR\x11securityGroupsIds\x121\n" +
+	"\x14security_group_names\x18\x03 \x03(\tR\x13securityGroupsNames\x12\x1b\n" +
 	"\x06region\x18\x04 \x01(\tH\x00R\x06region\x88\x01\x01\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +

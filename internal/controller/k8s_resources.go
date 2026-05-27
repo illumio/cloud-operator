@@ -595,7 +595,7 @@ const (
 // already-converted KubernetesObjectData for the runtime cache. Operator-added
 // labels (cloudsecure-id, managed-by) are stripped so the runtime snapshot
 // matches the shape of the config cache.
-func BuildConfiguredFromMetadata(id string, metadata *pb.KubernetesObjectData) *pb.ConfiguredKubernetesObjectData {
+func BuildConfiguredFromMetadata(id string, metadata *pb.KubernetesObjectData) (*pb.ConfiguredKubernetesObjectData, error) {
 	filteredLabels := make(map[string]string, len(metadata.GetLabels()))
 	for k, v := range metadata.GetLabels() {
 		if k != CloudSecureIDLabel && k != ManagedByLabel {
@@ -611,16 +611,18 @@ func BuildConfiguredFromMetadata(id string, metadata *pb.KubernetesObjectData) *
 		Labels:      filteredLabels,
 	}
 
-	setConfiguredKindSpecific(configured, metadata)
+	if err := setConfiguredKindSpecific(configured, metadata); err != nil {
+		return nil, err
+	}
 
-	return configured
+	return configured, nil
 }
 
 // setConfiguredKindSpecific sets the KindSpecific field on a ConfiguredKubernetesObjectData
 // from a KubernetesObjectData source. Both use the same inner types, just different oneof wrappers.
-func setConfiguredKindSpecific(configured *pb.ConfiguredKubernetesObjectData, source *pb.KubernetesObjectData) {
+func setConfiguredKindSpecific(configured *pb.ConfiguredKubernetesObjectData, source *pb.KubernetesObjectData) error {
 	if source.GetKindSpecific() == nil {
-		return
+		return nil
 	}
 
 	if policy := source.GetCiliumNetworkPolicy(); policy != nil {
@@ -629,7 +631,11 @@ func setConfiguredKindSpecific(configured *pb.ConfiguredKubernetesObjectData, so
 		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{CiliumClusterwideNetworkPolicy: ccnp}
 	} else if cidr := source.GetCiliumCidrGroup(); cidr != nil {
 		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{CiliumCidrGroup: cidr}
+	} else {
+		return fmt.Errorf("unhandled KindSpecific type: %T", source.GetKindSpecific())
 	}
+
+	return nil
 }
 
 // ConvertToApplyObject converts ConfiguredKubernetesObjectData to an *unstructured.Unstructured

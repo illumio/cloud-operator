@@ -2499,3 +2499,199 @@ func TestMarshalUnmarshalRoundTrip_ViaMap(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeProtojsonForCilium_UnwrapsFromEndpoints(t *testing.T) {
+	specMap := map[string]any{
+		"ingress": []any{
+			map[string]any{
+				"fromEndpoints": map[string]any{
+					"items": []any{
+						map[string]any{"matchLabels": map[string]any{"name": "luke"}},
+					},
+				},
+			},
+		},
+	}
+
+	normalizeProtojsonForCilium(specMap)
+
+	rule := specMap["ingress"].([]any)[0].(map[string]any)
+	fromEps, ok := rule["fromEndpoints"].([]any)
+	require.True(t, ok, "fromEndpoints should be a flat array after normalization")
+	require.Len(t, fromEps, 1)
+	ep := fromEps[0].(map[string]any)
+	assert.Equal(t, "luke", ep["matchLabels"].(map[string]any)["name"])
+}
+
+func TestNormalizeProtojsonForCilium_UnwrapsToEndpoints(t *testing.T) {
+	specMap := map[string]any{
+		"egress": []any{
+			map[string]any{
+				"toEndpoints": map[string]any{
+					"items": []any{
+						map[string]any{"matchLabels": map[string]any{"app": "dns"}},
+					},
+				},
+			},
+		},
+	}
+
+	normalizeProtojsonForCilium(specMap)
+
+	rule := specMap["egress"].([]any)[0].(map[string]any)
+	toEps, ok := rule["toEndpoints"].([]any)
+	require.True(t, ok, "toEndpoints should be a flat array after normalization")
+	require.Len(t, toEps, 1)
+	ep := toEps[0].(map[string]any)
+	assert.Equal(t, "dns", ep["matchLabels"].(map[string]any)["app"])
+}
+
+func TestNormalizeProtojsonForCilium_UnwrapsDenyRules(t *testing.T) {
+	specMap := map[string]any{
+		"ingressDeny": []any{
+			map[string]any{
+				"fromEndpoints": map[string]any{
+					"items": []any{map[string]any{}},
+				},
+			},
+		},
+		"egressDeny": []any{
+			map[string]any{
+				"toEndpoints": map[string]any{
+					"items": []any{map[string]any{}},
+				},
+			},
+		},
+	}
+
+	normalizeProtojsonForCilium(specMap)
+
+	ingressRule := specMap["ingressDeny"].([]any)[0].(map[string]any)
+	_, ok := ingressRule["fromEndpoints"].([]any)
+	require.True(t, ok, "fromEndpoints in ingressDeny should be unwrapped")
+
+	egressRule := specMap["egressDeny"].([]any)[0].(map[string]any)
+	_, ok = egressRule["toEndpoints"].([]any)
+	require.True(t, ok, "toEndpoints in egressDeny should be unwrapped")
+}
+
+func TestNormalizeProtojsonForCilium_NoEndpoints(t *testing.T) {
+	specMap := map[string]any{
+		"ingress": []any{
+			map[string]any{
+				"toPorts": []any{map[string]any{"port": "80"}},
+			},
+		},
+	}
+
+	normalizeProtojsonForCilium(specMap)
+
+	rule := specMap["ingress"].([]any)[0].(map[string]any)
+	assert.Nil(t, rule["fromEndpoints"], "should not add fromEndpoints when absent")
+}
+
+func TestNormalizeProtojsonForCilium_ICMPTypeInt(t *testing.T) {
+	specMap := map[string]any{
+		"ingress": []any{
+			map[string]any{
+				"icmps": []any{
+					map[string]any{
+						"fields": []any{
+							map[string]any{"family": "IPv4", "typeInt": float64(8)},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	normalizeProtojsonForCilium(specMap)
+
+	rule := specMap["ingress"].([]any)[0].(map[string]any)
+	icmps := rule["icmps"].([]any)
+	fields := icmps[0].(map[string]any)["fields"].([]any)
+	field := fields[0].(map[string]any)
+
+	assert.Equal(t, float64(8), field["type"], "typeInt should be renamed to type")
+	assert.Nil(t, field["typeInt"], "typeInt should be removed")
+}
+
+func TestNormalizeProtojsonForCilium_ICMPTypeString(t *testing.T) {
+	specMap := map[string]any{
+		"egress": []any{
+			map[string]any{
+				"icmps": []any{
+					map[string]any{
+						"fields": []any{
+							map[string]any{"family": "IPv4", "typeString": "EchoReply"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	normalizeProtojsonForCilium(specMap)
+
+	rule := specMap["egress"].([]any)[0].(map[string]any)
+	icmps := rule["icmps"].([]any)
+	fields := icmps[0].(map[string]any)["fields"].([]any)
+	field := fields[0].(map[string]any)
+
+	assert.Equal(t, "EchoReply", field["type"], "typeString should be renamed to type")
+	assert.Nil(t, field["typeString"], "typeString should be removed")
+}
+
+func TestNormalizeProtojsonForCilium_EndToEnd(t *testing.T) {
+	// Verify normalization through the full marshalPolicySpecs path
+	udpProto := "UDP"
+	specs := []*pb.CiliumPolicyRule{
+		{
+			EndpointSelector: &pb.LabelSelector{
+				MatchLabels: map[string]string{"app": "web"},
+			},
+			Ingress: []*pb.CiliumPolicyIngressRule{
+				{
+					FromEndpoints: &pb.LabelSelectorList{
+						Items: []*pb.LabelSelector{
+							{MatchLabels: map[string]string{"app": "frontend"}},
+						},
+					},
+					ToPorts: []*pb.CiliumPolicyPortRule{
+						{Ports: []*pb.CiliumPolicyPort{{Port: "53", Protocol: &udpProto}}},
+					},
+				},
+			},
+			Egress: []*pb.CiliumPolicyEgressRule{
+				{
+					ToEndpoints: &pb.LabelSelectorList{
+						Items: []*pb.LabelSelector{
+							{MatchLabels: map[string]string{"app": "dns"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := marshalPolicySpecs(specs)
+	require.NoError(t, err)
+
+	spec := result["spec"].(map[string]any)
+
+	// fromEndpoints must be a flat array
+	ingress := spec["ingress"].([]any)
+	ingressRule := ingress[0].(map[string]any)
+	fromEps, ok := ingressRule["fromEndpoints"].([]any)
+	require.True(t, ok, "fromEndpoints should be a flat array, not a wrapper object")
+	require.Len(t, fromEps, 1)
+	assert.Equal(t, "frontend", fromEps[0].(map[string]any)["matchLabels"].(map[string]any)["app"])
+
+	// toEndpoints must be a flat array
+	egress := spec["egress"].([]any)
+	egressRule := egress[0].(map[string]any)
+	toEps, ok := egressRule["toEndpoints"].([]any)
+	require.True(t, ok, "toEndpoints should be a flat array, not a wrapper object")
+	require.Len(t, toEps, 1)
+	assert.Equal(t, "dns", toEps[0].(map[string]any)["matchLabels"].(map[string]any)["app"])
+}
