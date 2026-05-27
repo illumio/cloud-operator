@@ -87,6 +87,7 @@ func NewWatcher(config WatcherConfig) *Watcher {
 // isManagedByOperator checks if the object has the managed-by label set by cloud-operator.
 func (r *Watcher) isManagedByOperator(obj *unstructured.Unstructured) bool {
 	labels := obj.GetLabels()
+
 	return labels[controller.ManagedByLabel] == controller.ManagedByValue
 }
 
@@ -354,7 +355,10 @@ func (r *Watcher) handleWatchEvent(
 
 		// Additionally update the runtime cache for operator-managed resources.
 		if r.runtimeCache != nil {
-			obj := event.Object.(*unstructured.Unstructured)
+			obj, ok := event.Object.(*unstructured.Unstructured)
+			if !ok {
+				return "", false, fmt.Errorf("unexpected event object type: %T", event.Object)
+			}
 
 			if r.isManagedByOperator(obj) {
 				id := obj.GetLabels()[controller.CloudSecureIDLabel]
@@ -363,9 +367,11 @@ func (r *Watcher) handleWatchEvent(
 
 					switch event.Type {
 					case watch.Added, watch.Modified:
-						r.runtimeCache.Insert(configured.Id, configured)
+						r.runtimeCache.Insert(configured.GetId(), configured)
 					case watch.Deleted:
-						r.runtimeCache.Delete(configured.Id)
+						r.runtimeCache.Delete(configured.GetId())
+					case watch.Bookmark, watch.Error:
+						// Unreachable: outer switch already handles these types.
 					}
 				}
 			}

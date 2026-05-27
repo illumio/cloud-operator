@@ -40,8 +40,8 @@ type resourcesClient struct {
 	k8sClient     k8sclient.Client
 	stats         *stream.Stats
 	flowCollector pb.FlowCollector
-	clusterName  string // Optional: cluster name for self-managed clusters
-	runtimeCache *cache.ConfiguredObjectCache
+	clusterName   string // Optional: cluster name for self-managed clusters
+	runtimeCache  *cache.ConfiguredObjectCache
 
 	mutex  sync.RWMutex
 	closed bool
@@ -92,6 +92,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		}
 
 		converter := coreConverter
+
 		var runtimeCache *cache.ConfiguredObjectCache
 
 		if controller.IsCiliumResource(resource) {

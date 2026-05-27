@@ -23,7 +23,7 @@ import (
 
 // protoJSONMarshaler is configured for Kubernetes Server-Side Apply:
 // - UseProtoNames=false: converts snake_case proto fields to camelCase for K8s CRD compatibility
-// - EmitUnpopulated=false: omits empty/default fields so SSA doesn't claim ownership of unset fields
+// - EmitUnpopulated=false: omits empty/default fields so SSA doesn't claim ownership of unset fields.
 var protoJSONMarshaler = protojson.MarshalOptions{
 	UseProtoNames:   false,
 	EmitUnpopulated: false,
@@ -664,8 +664,10 @@ func marshalConfiguredObjectSpecs(data *pb.ConfiguredKubernetesObjectData) (stri
 		return "", "", nil, err
 	}
 
-	var kind string
-	var specFields map[string]any
+	var (
+		kind       string
+		specFields map[string]any
+	)
 
 	switch ks := data.GetKindSpecific().(type) {
 	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
@@ -678,12 +680,14 @@ func marshalConfiguredObjectSpecs(data *pb.ConfiguredKubernetesObjectData) (stri
 
 	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
 		kind = "CiliumCIDRGroup"
+
 		spec := ks.CiliumCidrGroup.GetSpec()
 		if spec == nil {
 			return kind, resourceName, map[string]any{}, nil
 		}
 
 		var specMap map[string]any
+
 		specMap, err = protoToMap(spec)
 		if err == nil {
 			specFields = map[string]any{"spec": specMap}

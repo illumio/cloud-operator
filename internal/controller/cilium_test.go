@@ -2017,6 +2017,7 @@ func TestMarshalPolicySpecs_SingleSpec(t *testing.T) {
 	// Single spec should produce "spec" key, not "specs"
 	_, hasSpec := result["spec"]
 	_, hasSpecs := result["specs"]
+
 	assert.True(t, hasSpec, "single spec should use 'spec' key")
 	assert.False(t, hasSpecs, "single spec should not use 'specs' key")
 }
@@ -2033,6 +2034,7 @@ func TestMarshalPolicySpecs_MultipleSpecs(t *testing.T) {
 	// Multiple specs should produce "specs" key, not "spec"
 	_, hasSpec := result["spec"]
 	_, hasSpecs := result["specs"]
+
 	assert.False(t, hasSpec, "multiple specs should not use 'spec' key")
 	assert.True(t, hasSpecs, "multiple specs should use 'specs' key")
 
@@ -2053,10 +2055,6 @@ func TestMarshalPolicySpecs_Nil(t *testing.T) {
 	assert.Empty(t, result)
 }
 
-func strPtr(s string) *string {
-	return &s
-}
-
 // TestMarshalUnmarshalRoundTrip_ProtoEqual verifies that marshaling a proto to JSON
 // and unmarshaling it back produces an identical proto message.
 // Uses the same marshaler config as production (camelCase, omit empty).
@@ -2072,7 +2070,7 @@ func TestMarshalUnmarshalRoundTrip_ProtoEqual(t *testing.T) {
 		// Selective ingress: only pods with name=luke can reach pods with name=leia
 		"clusterwide selective ingress (clusterscope-policy.yaml)": {
 			input: &pb.CiliumPolicyRule{
-				Description: strPtr("Policy for selective ingress allow to a pod from only a pod with given label"),
+				Description: new("Policy for selective ingress allow to a pod from only a pod with given label"),
 				EndpointSelector: &pb.LabelSelector{
 					MatchLabels: map[string]string{"name": "leia"},
 				},
@@ -2106,7 +2104,7 @@ func TestMarshalUnmarshalRoundTrip_ProtoEqual(t *testing.T) {
 		// Allow DNS from all managed endpoints to kube-dns
 		"wildcard DNS ingress (wildcard-from-endpoints.yaml)": {
 			input: &pb.CiliumPolicyRule{
-				Description: strPtr("Policy for ingress allow to kube-dns from all Cilium managed endpoints in the cluster"),
+				Description: new("Policy for ingress allow to kube-dns from all Cilium managed endpoints in the cluster"),
 				EndpointSelector: &pb.LabelSelector{
 					MatchLabels: map[string]string{
 						"k8s:io.kubernetes.pod.namespace": "kube-system",
@@ -2252,7 +2250,7 @@ func TestMarshalUnmarshalRoundTrip_ProtoEqual(t *testing.T) {
 			input: &pb.CiliumPolicyRule{
 				EndpointSelector:  &pb.LabelSelector{},
 				EnableDefaultDeny: &pb.CiliumPolicyDefaultDeny{},
-				Description:       strPtr(""),
+				Description:       new(""),
 			},
 		},
 		// Empty items inside populated slices
@@ -2303,7 +2301,11 @@ func TestMarshalUnmarshalRoundTrip_ProtoEqual(t *testing.T) {
 			assert.True(t, proto.Equal(tt.input, roundTripped),
 				"proto not equal after round-trip.\nOriginal JSON:     %s\nRound-tripped: %s",
 				jsonBytes,
-				func() []byte { b, _ := marshaler.Marshal(roundTripped); return b }(),
+				func() []byte {
+					b, _ := marshaler.Marshal(roundTripped)
+
+					return b
+				}(),
 			)
 		})
 	}
@@ -2318,7 +2320,7 @@ func TestMarshalProducesCamelCase(t *testing.T) {
 
 	// From cilium/examples/policies/kubernetes/clusterwide/wildcard-from-endpoints.yaml
 	rule := &pb.CiliumPolicyRule{
-		Description: strPtr("Policy for ingress allow to kube-dns from all Cilium managed endpoints in the cluster"),
+		Description: new("Policy for ingress allow to kube-dns from all Cilium managed endpoints in the cluster"),
 		EndpointSelector: &pb.LabelSelector{
 			MatchLabels: map[string]string{
 				"k8s:io.kubernetes.pod.namespace": "kube-system",
@@ -2342,6 +2344,7 @@ func TestMarshalProducesCamelCase(t *testing.T) {
 	// Production marshaler (camelCase)
 	camelJSON, err := protoJSONMarshaler.Marshal(rule)
 	require.NoError(t, err)
+
 	camelStr := string(camelJSON)
 
 	// Verify camelCase keys are present
@@ -2359,6 +2362,7 @@ func TestMarshalProducesCamelCase(t *testing.T) {
 	// Show what would happen with snake_case: same data, wrong key names
 	snakeJSON, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(rule)
 	require.NoError(t, err)
+
 	snakeStr := string(snakeJSON)
 
 	// Snake_case produces keys that Cilium wouldn't recognize
@@ -2385,7 +2389,7 @@ func TestMarshalUnmarshalRoundTrip_ViaMap(t *testing.T) {
 		// From cilium/examples/policies/kubernetes/clusterwide/clusterscope-policy.yaml
 		"clusterwide selective ingress via map": {
 			input: &pb.CiliumPolicyRule{
-				Description: strPtr("Policy for selective ingress allow to a pod from only a pod with given label"),
+				Description: new("Policy for selective ingress allow to a pod from only a pod with given label"),
 				EndpointSelector: &pb.LabelSelector{
 					MatchLabels: map[string]string{"name": "leia"},
 				},
@@ -2473,6 +2477,7 @@ func TestMarshalUnmarshalRoundTrip_ViaMap(t *testing.T) {
 
 			// Step 2: JSON → map[string]any (what ConvertToApplyObject does internally)
 			var intermediate map[string]any
+
 			err = json.Unmarshal(jsonBytes, &intermediate)
 			require.NoError(t, err)
 

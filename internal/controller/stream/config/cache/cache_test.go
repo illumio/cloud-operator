@@ -42,6 +42,7 @@ func TestInsert(t *testing.T) {
 	}
 
 	go cache.Insert("test-id", obj)
+
 	<-cache.ResourceChanged()
 
 	assert.Equal(t, 1, cache.Len())
@@ -63,9 +64,11 @@ func TestInsertOverwritesExisting(t *testing.T) {
 	}
 
 	go cache.Insert("test-id", obj1)
+
 	<-cache.ResourceChanged()
 
 	go cache.Insert("test-id", obj2)
+
 	<-cache.ResourceChanged()
 
 	assert.Equal(t, 1, cache.Len())
@@ -83,10 +86,12 @@ func TestDelete(t *testing.T) {
 	}
 
 	go cache.Insert("test-id", obj)
+
 	<-cache.ResourceChanged()
 	assert.Equal(t, 1, cache.Len())
 
 	go cache.Delete("test-id")
+
 	<-cache.ResourceChanged()
 
 	assert.Equal(t, 0, cache.Len())
@@ -97,6 +102,7 @@ func TestDeleteNonExistent(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	go cache.Delete("non-existent-id")
+
 	<-cache.ResourceChanged()
 
 	assert.Equal(t, 0, cache.Len())
@@ -114,10 +120,13 @@ func TestValuesSortedByID(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	go cache.Insert("id-3", &pb.ConfiguredKubernetesObjectData{Id: "id-3", Name: "policy-3"})
+
 	<-cache.ResourceChanged()
 	go cache.Insert("id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1", Name: "policy-1"})
+
 	<-cache.ResourceChanged()
 	go cache.Insert("id-2", &pb.ConfiguredKubernetesObjectData{Id: "id-2", Name: "policy-2"})
+
 	<-cache.ResourceChanged()
 
 	list := cache.Values()
@@ -147,6 +156,7 @@ func TestReplaceAll(t *testing.T) {
 	}
 
 	go cache.ReplaceAll(snapshot)
+
 	<-cache.ResourceChanged()
 
 	assert.True(t, isReady(cache))
@@ -159,6 +169,7 @@ func TestReplaceAllWithEmptyMap(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	go cache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
+
 	<-cache.ResourceChanged()
 
 	assert.True(t, isReady(cache))
@@ -171,6 +182,7 @@ func TestReplaceAllReplacesExisting(t *testing.T) {
 	go cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
 		"id-1": {Id: "id-1", Name: "v1"},
 	})
+
 	<-cache.ResourceChanged()
 
 	assert.Equal(t, 1, cache.Len())
@@ -180,6 +192,7 @@ func TestReplaceAllReplacesExisting(t *testing.T) {
 		"id-1": {Id: "id-1", Name: "v2"},
 		"id-2": {Id: "id-2", Name: "new"},
 	})
+
 	<-cache.ResourceChanged()
 
 	assert.Equal(t, 2, cache.Len())
@@ -197,6 +210,7 @@ func TestReadyChannel(t *testing.T) {
 	}
 
 	go cache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
+
 	<-cache.ResourceChanged()
 
 	select {
@@ -212,12 +226,14 @@ func TestReplaceAllIdempotentReady(t *testing.T) {
 	go cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
 		"id-1": {Id: "id-1"},
 	})
+
 	<-cache.ResourceChanged()
 	assert.True(t, isReady(cache))
 
 	go cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
 		"id-2": {Id: "id-2"},
 	})
+
 	<-cache.ResourceChanged()
 	assert.True(t, isReady(cache))
 	assert.Equal(t, 1, cache.Len())
@@ -240,6 +256,7 @@ func TestReadyChannelBlocksUntilSnapshotComplete(t *testing.T) {
 	}
 
 	go cache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
+
 	<-cache.ResourceChanged()
 
 	<-done
@@ -256,22 +273,26 @@ func TestSnapshotThenMutationFlow(t *testing.T) {
 	}
 
 	go cache.ReplaceAll(snapshot)
+
 	<-cache.ResourceChanged()
 
 	assert.True(t, isReady(cache))
 	assert.Equal(t, 2, cache.Len())
 
 	go cache.Insert("policy-3", &pb.ConfiguredKubernetesObjectData{Id: "policy-3", Name: "new-policy"})
+
 	<-cache.ResourceChanged()
 	assert.Equal(t, 3, cache.Len())
 
 	go cache.Insert("policy-1", &pb.ConfiguredKubernetesObjectData{Id: "policy-1", Name: "updated-allow-web"})
+
 	<-cache.ResourceChanged()
 	obj := cache.Get("policy-1")
 	require.NotNil(t, obj)
 	assert.Equal(t, "updated-allow-web", obj.GetName())
 
 	go cache.Delete("policy-2")
+
 	<-cache.ResourceChanged()
 	assert.Equal(t, 2, cache.Len())
 	assert.Nil(t, cache.Get("policy-2"))
@@ -281,13 +302,16 @@ func TestConcurrentMutationsAfterSnapshot(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	go cache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
+
 	<-cache.ResourceChanged()
 
 	// Start a reader that consumes all channel sends from concurrent operations
 	readerDone := make(chan struct{})
+
 	go func() {
 		for range cache.ResourceChanged() {
 		}
+
 		close(readerDone)
 	}()
 
@@ -297,6 +321,7 @@ func TestConcurrentMutationsAfterSnapshot(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+
 			cache.Insert(
 				string(rune('a'+i%26)),
 				&pb.ConfiguredKubernetesObjectData{Id: string(rune('a' + i%26)), Name: "policy"},
@@ -316,6 +341,7 @@ func TestConcurrentMutationsAfterSnapshot(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+
 			cache.Delete(string(rune('a' + i%26)))
 		}(i)
 	}
@@ -333,6 +359,7 @@ func TestMultipleSnapshots(t *testing.T) {
 	go cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
 		"id-1": {Id: "id-1", Name: "v1"},
 	})
+
 	<-cache.ResourceChanged()
 
 	assert.Equal(t, 1, cache.Len())
@@ -342,6 +369,7 @@ func TestMultipleSnapshots(t *testing.T) {
 		"id-1": {Id: "id-1", Name: "v2"},
 		"id-2": {Id: "id-2", Name: "new"},
 	})
+
 	<-cache.ResourceChanged()
 
 	assert.Equal(t, 2, cache.Len())
@@ -357,13 +385,16 @@ func TestConcurrentReplaceAllAndReads(t *testing.T) {
 	go cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
 		"id-1": {Id: "id-1", Name: "initial"},
 	})
+
 	<-cache.ResourceChanged()
 
 	// Start a reader for concurrent ReplaceAll sends
 	readerDone := make(chan struct{})
+
 	go func() {
 		for range cache.ResourceChanged() {
 		}
+
 		close(readerDone)
 	}()
 
@@ -373,6 +404,7 @@ func TestConcurrentReplaceAllAndReads(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+
 			cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
 				"id-1": {Id: "id-1", Name: "version-" + strconv.Itoa(i)},
 			})
@@ -410,13 +442,16 @@ func TestAtomicSwap_ReadersNeverSeePartialData(t *testing.T) {
 	}
 
 	go cache.ReplaceAll(snapshotA)
+
 	<-cache.ResourceChanged()
 
 	// Reader for concurrent ReplaceAll sends
 	readerDone := make(chan struct{})
+
 	go func() {
 		for range cache.ResourceChanged() {
 		}
+
 		close(readerDone)
 	}()
 
@@ -467,15 +502,18 @@ func TestAtomicSwap_ReadersNeverBlockForever(t *testing.T) {
 	go cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
 		"id-1": {Id: "id-1", Name: "initial"},
 	})
+
 	<-cache.ResourceChanged()
 
 	done := make(chan struct{})
 
 	// Reader for concurrent ReplaceAll sends
 	readerDone := make(chan struct{})
+
 	go func() {
 		for range cache.ResourceChanged() {
 		}
+
 		close(readerDone)
 	}()
 

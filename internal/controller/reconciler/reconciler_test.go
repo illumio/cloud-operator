@@ -173,9 +173,9 @@ func TestObjectsMatch_IgnoresExtraRuntimeAnnotations(t *testing.T) {
 
 	// Runtime annotations should be restored after comparison
 	assert.Equal(t, map[string]string{
-		"note": "from-cloudsecure",
+		"note":                              "from-cloudsecure",
 		"kubectl.kubernetes.io/restartedAt": "2026-01-01",
-	}, runtimeObj.Annotations)
+	}, runtimeObj.GetAnnotations())
 }
 
 func TestObjectsMatch_DetectsDiff(t *testing.T) {
@@ -240,9 +240,9 @@ func TestObjectsMatch_DriftedAnnotationTriggersUpdate(t *testing.T) {
 
 	// Runtime annotations should be restored after comparison
 	assert.Equal(t, map[string]string{
-		"note": "v1",
+		"note":                              "v1",
 		"kubectl.kubernetes.io/restartedAt": "2026-01-01",
-	}, runtimeObj.Annotations, "runtime annotations should be restored")
+	}, runtimeObj.GetAnnotations(), "runtime annotations should be restored")
 
 	// Fix the drift — now they should match
 	runtimeObj.Annotations = map[string]string{"note": "v2", "kubectl.kubernetes.io/restartedAt": "2026-01-01"}
@@ -257,8 +257,11 @@ func TestReconcile_EmptyCaches(t *testing.T) {
 
 	// Mark caches as ready with empty data
 	go configCache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
+
 	<-configCache.ResourceChanged()
+
 	go runtimeCache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
+
 	<-runtimeCache.ResourceChanged()
 
 	r := NewReconciler(logger, client, configCache, runtimeCache)

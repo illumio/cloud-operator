@@ -160,7 +160,6 @@ func TestResourceListCiliumDispatchConsistency(t *testing.T) {
 	}
 }
 
-
 func TestSetProcessingResources_Integration(t *testing.T) {
 	// Reset state
 	stream.SetProcessingResources(false)

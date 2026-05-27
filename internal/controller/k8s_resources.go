@@ -652,18 +652,20 @@ func ConvertToApplyObject(data *pb.ConfiguredKubernetesObjectData, apiGroup, api
 	}
 
 	// Build the K8s object as a map
-	obj := map[string]any{
-		"apiVersion": fullAPIVersion,
-		"kind":       kind,
-		"metadata": map[string]any{
-			"name":        data.GetName(),
-			"labels":      copyLabels(data.GetLabels(), data.GetId()),
-			"annotations": data.GetAnnotations(),
-		},
+	metadata := map[string]any{
+		"name":        data.GetName(),
+		"labels":      copyLabels(data.GetLabels(), data.GetId()),
+		"annotations": data.GetAnnotations(),
 	}
 
 	if ns := data.GetNamespace(); ns != "" {
-		obj["metadata"].(map[string]any)["namespace"] = ns
+		metadata["namespace"] = ns
+	}
+
+	obj := map[string]any{
+		"apiVersion": fullAPIVersion,
+		"kind":       kind,
+		"metadata":   metadata,
 	}
 
 	// Merge spec fields (e.g., "spec", "specs") into the top-level object

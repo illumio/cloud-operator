@@ -109,6 +109,7 @@ func (s *ConfigClientTestSuite) runClient(ctx context.Context) <-chan error {
 // to unblock the send, simulating pre-existing cache state from a previous stream.
 func (s *ConfigClientTestSuite) populateCache(objects map[string]*pb.ConfiguredKubernetesObjectData) {
 	go s.cache.ReplaceAll(objects)
+
 	<-s.cache.ResourceChanged()
 }
 

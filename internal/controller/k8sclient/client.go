@@ -22,7 +22,7 @@ import (
 )
 
 // Client abstracts Kubernetes API operations.
-type Client interface {
+type Client interface { //nolint:interfacebloat
 	// GetClientset returns the underlying kubernetes.Interface.
 	GetClientset() kubernetes.Interface
 

@@ -65,32 +65,13 @@ func (r *Reconciler) Start(ctx context.Context) {
 
 	r.resourceInfo = resourceInfo
 
-	// Wait for both caches to be ready before reconciling
-	r.logger.Info("Waiting for config and runtime caches to be ready for reconciliation loop")
-
-	configCacheIsReady := r.configCache.IsReady()
-	runtimeCacheIsReady := r.runtimeCache.IsReady()
-
-	for configCacheIsReady != nil || runtimeCacheIsReady != nil {
-		select {
-		case <-ctx.Done():
-			r.logger.Info("Context cancelled while waiting for caches")
-
-			return
-		case <-configCacheIsReady:
-			r.logger.Debug("Config cache is ready")
-
-			configCacheIsReady = nil
-		case <-runtimeCacheIsReady:
-			r.logger.Debug("Runtime cache is ready")
-
-			runtimeCacheIsReady = nil
-		}
+	if !r.waitForCaches(ctx) {
+		return
 	}
 
 	r.logger.Info("Both caches are ready, starting reconciliation loop")
 
-	// Do an initial full reconciliation before processing incremental changes.
+	// Do a full initial reconciliation before processing incremental changes
 	if err := r.reconcileAll(ctx); err != nil {
 		r.logger.Error("Full reconciliation failed", zap.Error(err))
 	}
@@ -110,29 +91,53 @@ func (r *Reconciler) Start(ctx context.Context) {
 
 			reconcileTimer.Reset(FullReconcileInterval)
 		case id := <-r.configCache.ResourceChanged():
-			if id == cache.SnapshotReplaced {
-				if err := r.reconcileAll(ctx); err != nil {
-					r.logger.Error("Full reconciliation failed", zap.Error(err))
-				}
-
-				reconcileTimer.Reset(FullReconcileInterval)
-			} else {
-				if err := r.reconcileObject(ctx, id); err != nil {
-					r.logger.Error("Object reconciliation failed", zap.String("id", id), zap.Error(err))
-				}
-			}
+			r.processResourceChange(ctx, id, reconcileTimer)
 		case id := <-r.runtimeCache.ResourceChanged():
-			if id == cache.SnapshotReplaced {
-				if err := r.reconcileAll(ctx); err != nil {
-					r.logger.Error("Full reconciliation failed", zap.Error(err))
-				}
+			r.processResourceChange(ctx, id, reconcileTimer)
+		}
+	}
+}
 
-				reconcileTimer.Reset(FullReconcileInterval)
-			} else {
-				if err := r.reconcileObject(ctx, id); err != nil {
-					r.logger.Error("Object reconciliation failed", zap.String("id", id), zap.Error(err))
-				}
-			}
+// waitForCaches blocks until both config and runtime caches have received their
+// first snapshot. Returns false if the context is cancelled before both are ready.
+func (r *Reconciler) waitForCaches(ctx context.Context) bool {
+	r.logger.Info("Waiting for config and runtime caches to be ready for reconciliation loop")
+
+	configReady := r.configCache.IsReady()
+	runtimeReady := r.runtimeCache.IsReady()
+
+	for configReady != nil || runtimeReady != nil {
+		select {
+		case <-ctx.Done():
+			r.logger.Info("Context cancelled while waiting for caches")
+
+			return false
+		case <-configReady:
+			r.logger.Debug("Config cache is ready")
+
+			configReady = nil
+		case <-runtimeReady:
+			r.logger.Debug("Runtime cache is ready")
+
+			runtimeReady = nil
+		}
+	}
+
+	return true
+}
+
+// processResourceChange handles a single resource change by reconciling the
+// affected object, or performing a full reconciliation if the entire snapshot was replaced.
+func (r *Reconciler) processResourceChange(ctx context.Context, id string, reconcileTimer *time.Timer) {
+	if id == cache.SnapshotReplaced {
+		if err := r.reconcileAll(ctx); err != nil {
+			r.logger.Error("Full reconciliation failed", zap.Error(err))
+		}
+
+		reconcileTimer.Reset(FullReconcileInterval)
+	} else {
+		if err := r.reconcileObject(ctx, id); err != nil {
+			r.logger.Error("Object reconciliation failed", zap.String("id", id), zap.Error(err))
 		}
 	}
 }
@@ -167,7 +172,7 @@ func (r *Reconciler) reconcileObject(ctx context.Context, id string) error {
 func (r *Reconciler) objectsMatch(configObj, runtimeObj *pb.ConfiguredKubernetesObjectData) bool {
 	// If config has no annotations, runtime shouldn't either for comparison purposes.
 	// Temporarily set runtime annotations to the intersection before comparing.
-	savedAnnotations := runtimeObj.Annotations
+	savedAnnotations := runtimeObj.GetAnnotations()
 	runtimeObj.Annotations = filterAnnotationsByDesired(runtimeObj.GetAnnotations(), configObj.GetAnnotations())
 
 	match := proto.Equal(configObj, runtimeObj)

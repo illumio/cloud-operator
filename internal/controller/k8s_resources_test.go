@@ -1406,7 +1406,7 @@ func TestConvertToApplyObject_CiliumNetworkPolicy(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
 		Id:          "cnp-1",
 		Name:        "test-policy",
-		Namespace:   strPtr("default"),
+		Namespace:   new("default"),
 		Labels:      map[string]string{"env": "prod"},
 		Annotations: map[string]string{"note": "test"},
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -1438,13 +1438,16 @@ func TestConvertToApplyObject_CiliumNetworkPolicy(t *testing.T) {
 	assert.Equal(t, "test-policy", obj.GetName())
 	assert.Equal(t, "default", obj.GetNamespace())
 
-	metadata := obj.Object["metadata"].(map[string]any)
-	labels := metadata["labels"].(map[string]string)
+	metadata, ok := obj.Object["metadata"].(map[string]any)
+	require.True(t, ok)
+	labels, ok := metadata["labels"].(map[string]string)
+	require.True(t, ok)
 	assert.Equal(t, "prod", labels["env"])
 	assert.Equal(t, "cnp-1", labels[CloudSecureIDLabel])
 	assert.Equal(t, "cloud-operator", labels[ManagedByLabel])
 
-	annotations := metadata["annotations"].(map[string]string)
+	annotations, ok := metadata["annotations"].(map[string]string)
+	require.True(t, ok)
 	assert.Equal(t, "test", annotations["note"])
 
 	spec, ok := obj.Object["spec"].(map[string]any)
@@ -1497,6 +1500,7 @@ func TestConvertToApplyObject_EmptySpecs(t *testing.T) {
 
 	_, hasSpec := obj.Object["spec"]
 	_, hasSpecs := obj.Object["specs"]
+
 	assert.False(t, hasSpec)
 	assert.False(t, hasSpecs)
 }
@@ -1554,14 +1558,14 @@ func TestConvertToApplyObject_CiliumCIDRGroup(t *testing.T) {
 
 func TestConvertToApplyObject_NilData(t *testing.T) {
 	_, _, err := ConvertToApplyObject(nil, "cilium.io", "v2")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nil")
 }
 
 func TestConvertToApplyObject_UnsupportedKindSpecific(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{Id: "unknown-1", Name: "unknown-kind"}
 	_, _, err := ConvertToApplyObject(data, "example.io", "v1")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported")
 }
 
@@ -1577,8 +1581,8 @@ func TestConvertToApplyObject_APIVersionFormats(t *testing.T) {
 	tests := map[string]struct {
 		apiGroup, apiVersion, expectedAPIVer string
 	}{
-		"with group":          {"cilium.io", "v2", "cilium.io/v2"},
-		"core group (empty)":  {"", "v1", "v1"},
+		"with group":         {"cilium.io", "v2", "cilium.io/v2"},
+		"core group (empty)": {"", "v1", "v1"},
 	}
 
 	for name, tt := range tests {
@@ -1603,8 +1607,10 @@ func TestConvertToApplyObject_LabelsIncludeManagementLabels(t *testing.T) {
 	obj, _, err := ConvertToApplyObject(data, "cilium.io", "v2")
 	require.NoError(t, err)
 
-	metadata := obj.Object["metadata"].(map[string]any)
-	labels := metadata["labels"].(map[string]string)
+	metadata, ok := obj.Object["metadata"].(map[string]any)
+	require.True(t, ok)
+	labels, ok := metadata["labels"].(map[string]string)
+	require.True(t, ok)
 	assert.Equal(t, "value", labels["custom"])
 	assert.Equal(t, "cnp-labels", labels[CloudSecureIDLabel])
 	assert.Equal(t, "cloud-operator", labels[ManagedByLabel])
@@ -1625,12 +1631,13 @@ func TestConvertToApplyObject_EmptyNamespace(t *testing.T) {
 
 	metadata, ok := obj.Object["metadata"].(map[string]any)
 	require.True(t, ok)
+
 	_, hasNS := metadata["namespace"]
 	assert.False(t, hasNS)
 }
 
 // From cilium/examples/policies/kubernetes/clusterwide/clusterscope-policy.yaml
-// Selective ingress: only pods with name=luke can reach pods with name=leia
+// Selective ingress: only pods with name=luke can reach pods with name=leia.
 func TestConvertToApplyObject_ClusterwideSelectiveIngress(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
 		Id:   "ccnp-selective-ingress",
@@ -1705,12 +1712,12 @@ func TestConvertToApplyObject_ClusterwideSelectiveIngress(t *testing.T) {
 }
 
 // From cilium/examples/policies/kubernetes/health.yaml
-// Health check policy: reserved:health endpoints with ingress/egress remote-node
+// Health check policy: reserved:health endpoints with ingress/egress remote-node.
 func TestConvertToApplyObject_CiliumHealthChecks(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
 		Id:        "cnp-health",
 		Name:      "health",
-		Namespace: strPtr("default"),
+		Namespace: new("default"),
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
 				Specs: []*pb.CiliumPolicyRule{
@@ -1754,7 +1761,7 @@ func TestConvertToApplyObject_CiliumHealthChecks(t *testing.T) {
 	require.True(t, ok)
 	ml, ok := es["matchLabels"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "", ml["reserved:health"])
+	assert.Empty(t, ml["reserved:health"])
 
 	// ingress fromEntities: remote-node
 	ingress, ok := spec["ingress"].([]any)
@@ -1778,13 +1785,13 @@ func TestConvertToApplyObject_CiliumHealthChecks(t *testing.T) {
 }
 
 // From cilium/examples/policies/kubernetes/wildcard/wildcard-from-endpoints.yaml
-// DNS ingress: kube-dns selector, empty fromEndpoints (wildcard), toPorts UDP 53
+// DNS ingress: kube-dns selector, empty fromEndpoints (wildcard), toPorts UDP 53.
 func TestConvertToApplyObject_WildcardDNSIngress(t *testing.T) {
 	udpProto := "UDP"
 	data := &pb.ConfiguredKubernetesObjectData{
 		Id:        "cnp-wildcard-dns",
 		Name:      "wildcard-dns",
-		Namespace: strPtr("kube-system"),
+		Namespace: new("kube-system"),
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
 				Specs: []*pb.CiliumPolicyRule{
@@ -1871,12 +1878,12 @@ func TestConvertToApplyObject_WildcardDNSIngress(t *testing.T) {
 }
 
 // From cilium/examples/policies/kubernetes/namespace-labels/namespace-labels-policy.yaml
-// Namespace label selectors: faction=alliance
+// Namespace label selectors: faction=alliance.
 func TestConvertToApplyObject_NamespaceLabelSelectors(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
 		Id:        "cnp-ns-labels",
 		Name:      "ns-labels-policy",
-		Namespace: strPtr("default"),
+		Namespace: new("default"),
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
 				Specs: []*pb.CiliumPolicyRule{
@@ -1890,7 +1897,7 @@ func TestConvertToApplyObject_NamespaceLabelSelectors(t *testing.T) {
 									Items: []*pb.LabelSelector{
 										{
 											MatchLabels: map[string]string{
-												"name":                                      "luke",
+												"name": "luke",
 												"k8s:io.cilium.k8s.namespace.labels.faction": "alliance",
 											},
 										},
@@ -1936,13 +1943,13 @@ func TestConvertToApplyObject_NamespaceLabelSelectors(t *testing.T) {
 }
 
 // From cilium/examples/policies/kubernetes/kubedns-policy.yaml
-// Egress to kube-dns: UDP 53
+// Egress to kube-dns: UDP 53.
 func TestConvertToApplyObject_EgressToKubeDNS(t *testing.T) {
 	udpProto := "UDP"
 	data := &pb.ConfiguredKubernetesObjectData{
 		Id:        "cnp-kubedns",
 		Name:      "kubedns-policy",
-		Namespace: strPtr("default"),
+		Namespace: new("default"),
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
 				Specs: []*pb.CiliumPolicyRule{
@@ -2021,12 +2028,12 @@ func TestConvertToApplyObject_EgressToKubeDNS(t *testing.T) {
 }
 
 // From cilium/examples/policies/kubernetes/isolate-namespaces.yaml
-// Namespace isolation: empty selectors restrict to same-namespace traffic
+// Namespace isolation: empty selectors restrict to same-namespace traffic.
 func TestConvertToApplyObject_NamespaceIsolation(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
 		Id:        "cnp-isolate-ns",
 		Name:      "isolate-ns",
-		Namespace: strPtr("default"),
+		Namespace: new("default"),
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
 				Specs: []*pb.CiliumPolicyRule{
@@ -2197,4 +2204,3 @@ func TestCopyLabels(t *testing.T) {
 		})
 	}
 }
-
