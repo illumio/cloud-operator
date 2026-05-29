@@ -1,0 +1,14 @@
+{
+  "specs":  [
+    {
+      "endpointSelector":  {
+        "matchLabels":  {
+          "role":  "restricted"
+        }
+      },
+      "egress":  [
+        {}
+      ]
+    }
+  ]
+}
