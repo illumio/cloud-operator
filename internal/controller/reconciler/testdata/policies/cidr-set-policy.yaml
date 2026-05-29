@@ -1,0 +1,19 @@
+# CIDR-based egress: allow specific IP via toCIDR, allow subnet with exceptions via toCIDRSet.
+# Adapted from Cilium CIDR-based policy documentation:
+# https://docs.cilium.io/en/latest/security/policy/language/#cidr-based
+# Source: examples/policies/l3/cidr/cidr.yaml
+apiVersion: "cilium.io/v2"
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: cidr-set-policy
+spec:
+  endpointSelector:
+    matchLabels:
+      app: myService
+  egress:
+  - toCIDR:
+    - 20.1.1.1/32
+  - toCIDRSet:
+    - cidr: 10.0.0.0/8
+      except:
+      - 10.96.0.0/12

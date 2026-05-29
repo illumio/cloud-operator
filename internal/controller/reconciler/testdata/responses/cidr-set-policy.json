@@ -1,0 +1,28 @@
+{
+  "specs":  [
+    {
+      "endpointSelector":  {
+        "matchLabels":  {
+          "app":  "database-proxy"
+        }
+      },
+      "egress":  [
+        {
+          "toCIDRSet":  [
+            {
+              "cidr":  "10.0.0.0/8",
+              "except":  [
+                "10.96.0.0/12"
+              ]
+            }
+          ]
+        },
+        {
+          "toCIDR":  [
+            "192.168.1.0/24"
+          ]
+        }
+      ]
+    }
+  ]
+}

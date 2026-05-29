@@ -1,0 +1,20 @@
+# Allow ingress from frontend namespace to backend pods on port 8080/TCP.
+# Uses k8s:io.kubernetes.pod.namespace label to select by namespace.
+# https://docs.cilium.io/en/latest/security/policy/kubernetes/#namespace
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: clusterwide-ns-selector
+spec:
+  description: "Allow ingress from frontend namespace to backend pods"
+  endpointSelector:
+    matchLabels:
+      app: backend
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: frontend
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
