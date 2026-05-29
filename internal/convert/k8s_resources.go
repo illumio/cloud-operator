@@ -1,13 +1,12 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package controller
+package convert
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -575,119 +574,4 @@ func convertPodIPsToStrings(podIPs []v1.PodIP) []string {
 // convertToProtoTimestamp converts a Kubernetes metav1.Time into a Protobuf Timestamp.
 func convertToProtoTimestamp(k8sTime metav1.Time) *timestamppb.Timestamp {
 	return timestamppb.New(k8sTime.Time)
-}
-
-const (
-	// CloudSecureIDLabel is the label key used to store the CloudSecure object ID.
-	// This ID is the unique key in the desired state (config) cache. It is set as a label on
-	// Kubernetes objects during apply so the watcher can extract it and use it as the runtime
-	// cache key, allowing the reconciler to match desired vs actual state by the same ID.
-	CloudSecureIDLabel = "cloud.illum.io/resource-id"
-
-	// ManagedByLabel is the standard Kubernetes label for identifying the managing component.
-	// https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/
-	ManagedByLabel = "app.kubernetes.io/managed-by"
-
-	// ManagedByValue is the value used for the managed-by label.
-	ManagedByValue = "cloud-operator"
-)
-
-// BuildConfiguredFromMetadata builds a ConfiguredKubernetesObjectData from the
-// already-converted KubernetesObjectData for the runtime cache. Operator-added
-// labels (cloudsecure-id, managed-by) are stripped so the runtime snapshot
-// matches the shape of the config cache. Annotations are passed through as-is
-// because the operator doesn't add any — SSA handles annotation ownership.
-func BuildConfiguredFromMetadata(id string, metadata *pb.KubernetesObjectData) (*pb.ConfiguredKubernetesObjectData, error) {
-	filteredLabels := make(map[string]string, len(metadata.GetLabels()))
-	for k, v := range metadata.GetLabels() {
-		if k != CloudSecureIDLabel && k != ManagedByLabel {
-			filteredLabels[k] = v
-		}
-	}
-
-	configured := &pb.ConfiguredKubernetesObjectData{
-		Id:          id,
-		Name:        metadata.GetName(),
-		Namespace:   metadata.Namespace,
-		Annotations: metadata.GetAnnotations(),
-		Labels:      filteredLabels,
-	}
-
-	if err := setConfiguredKindSpecific(configured, metadata); err != nil {
-		return nil, err
-	}
-
-	return configured, nil
-}
-
-// setConfiguredKindSpecific sets the KindSpecific field on a ConfiguredKubernetesObjectData
-// from a KubernetesObjectData source. Both use the same inner types, just different oneof wrappers.
-func setConfiguredKindSpecific(configured *pb.ConfiguredKubernetesObjectData, source *pb.KubernetesObjectData) error {
-	switch ks := source.GetKindSpecific().(type) {
-	case *pb.KubernetesObjectData_CiliumNetworkPolicy:
-		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{CiliumNetworkPolicy: ks.CiliumNetworkPolicy}
-	case *pb.KubernetesObjectData_CiliumClusterwideNetworkPolicy:
-		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{CiliumClusterwideNetworkPolicy: ks.CiliumClusterwideNetworkPolicy}
-	case *pb.KubernetesObjectData_CiliumCidrGroup:
-		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{CiliumCidrGroup: ks.CiliumCidrGroup}
-	case nil:
-		return nil
-	default:
-		return fmt.Errorf("unhandled KindSpecific type: %T", source.GetKindSpecific())
-	}
-
-	return nil
-}
-
-// ConvertToApplyObject converts ConfiguredKubernetesObjectData to an *unstructured.Unstructured
-// suitable for Server-Side Apply. Proto specs are marshaled via protojson to preserve strict typing
-// and produce camelCase field names that match Cilium's CRD schema.
-func ConvertToApplyObject(data *pb.ConfiguredKubernetesObjectData, apiGroup, apiVersion string) (*unstructured.Unstructured, string, error) {
-	if data == nil {
-		return nil, "", errors.New("configured object data is nil")
-	}
-
-	fullAPIVersion := apiVersion
-	if apiGroup != "" {
-		fullAPIVersion = apiGroup + "/" + apiVersion
-	}
-
-	// Determine kind, resource name, and marshal specs via protojson
-	kind, resourceName, specFields, err := marshalConfiguredObjectSpecs(data)
-	if err != nil {
-		return nil, "", err
-	}
-
-	// Build the K8s object as a map
-	metadata := map[string]any{
-		"name":        data.GetName(),
-		"labels":      copyLabels(data.GetLabels(), data.GetId()),
-		"annotations": data.GetAnnotations(),
-	}
-
-	if ns := data.GetNamespace(); ns != "" {
-		metadata["namespace"] = ns
-	}
-
-	obj := map[string]any{
-		"apiVersion": fullAPIVersion,
-		"kind":       kind,
-		"metadata":   metadata,
-	}
-
-	// Merge spec fields (e.g., "spec", "specs") into the top-level object
-	maps.Copy(obj, specFields)
-
-	return &unstructured.Unstructured{Object: obj}, resourceName, nil
-}
-
-// copyLabels copies labels and adds the CloudSecure ID and managed-by labels.
-func copyLabels(labels map[string]string, id string) map[string]string {
-	result := make(map[string]string, len(labels)+2)
-	maps.Copy(result, labels)
-
-	result[CloudSecureIDLabel] = id
-	result[ManagedByLabel] = ManagedByValue
-
-	return result
 }

@@ -20,7 +20,7 @@ import (
 	clientgotesting "k8s.io/client-go/testing"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/controller"
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 // mockResourceStreamSender is a mock implementation of ResourceStreamSender for testing.
@@ -413,7 +413,7 @@ func TestProcessMutation_NilObject(t *testing.T) {
 func TestProcessMutation_CiliumPolicy(t *testing.T) {
 	logger := zap.NewNop()
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return controller.ConvertUnstructuredToCiliumResource(obj)
+		return convert.ConvertUnstructuredToCiliumResource(obj)
 	}
 	rm := &Watcher{
 		resourceName:    "ciliumnetworkpolicies",
@@ -976,7 +976,7 @@ func TestDynamicListResources_CiliumResources(t *testing.T) {
 
 	sender := &mockResourceStreamSender{}
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return controller.ConvertUnstructuredToCiliumResource(obj)
+		return convert.ConvertUnstructuredToCiliumResource(obj)
 	}
 
 	rm := &Watcher{
@@ -1269,7 +1269,7 @@ func TestDynamicListResources_MultipleItems(t *testing.T) {
 func TestProcessMutation_CiliumClusterwidePolicy(t *testing.T) {
 	logger := zap.NewNop()
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return controller.ConvertUnstructuredToCiliumResource(obj)
+		return convert.ConvertUnstructuredToCiliumResource(obj)
 	}
 	rm := &Watcher{
 		resourceName:    "ciliumclusterwidenetworkpolicies",

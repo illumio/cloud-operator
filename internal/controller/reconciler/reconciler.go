@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/controller"
+	"github.com/illumio/cloud-operator/internal/convert"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 	"github.com/illumio/cloud-operator/internal/controller/stream/resources"
@@ -185,7 +186,7 @@ func (r *Reconciler) reconcileObject(ctx context.Context, id string) error {
 // It reconciles every ID from both caches, applying new/changed objects and deleting
 // objects no longer in the config.
 func (r *Reconciler) reconcileAll(ctx context.Context) error {
-	allIDs := make(map[string]struct{})
+	allIDs := make(map[string]struct{}, max(r.configCache.Len(), r.runtimeCache.Len()))
 
 	for _, obj := range r.configCache.Values() {
 		allIDs[obj.GetId()] = struct{}{}
@@ -210,7 +211,7 @@ func (r *Reconciler) reconcileAll(ctx context.Context) error {
 // SSA field ownership ensures that annotations managed by cloud-operator are authoritative:
 // omitted annotations are removed, and annotations owned by other field managers are preserved.
 func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKubernetesObjectData) error {
-	resourceName, err := controller.ExtractResourceName(configObj)
+	resourceName, err := convert.ExtractResourceName(configObj)
 	if err != nil {
 		return err
 	}
@@ -221,7 +222,7 @@ func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKu
 	}
 
 	// Convert to unstructured to be able to apply
-	desired, _, err := controller.ConvertToApplyObject(configObj, info.Group, info.Version)
+	desired, _, err := convert.ConvertToApplyObject(configObj, info.Group, info.Version)
 	if err != nil {
 		return fmt.Errorf("failed to create unstructured object: %w", err)
 	}
@@ -245,7 +246,7 @@ func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKu
 
 // deleteObject deletes an object from Kubernetes by deriving the GVR from the configured object.
 func (r *Reconciler) deleteObject(ctx context.Context, obj *pb.ConfiguredKubernetesObjectData) error {
-	resourceName, err := controller.ExtractResourceName(obj)
+	resourceName, err := convert.ExtractResourceName(obj)
 	if err != nil {
 		return err
 	}
@@ -259,10 +260,14 @@ func (r *Reconciler) deleteObject(ctx context.Context, obj *pb.ConfiguredKuberne
 	namespace := obj.GetNamespace()
 
 	if err := r.client.DeleteResource(ctx, gvr, namespace, obj.GetName()); err != nil {
+		if apierrors.IsNotFound(err) {
+			r.logger.Debug("Object already deleted", zap.String("name", obj.GetName()))
+			return nil
+		}
 		return fmt.Errorf("failed to delete: %w", err)
 	}
 
-	r.logger.Info("Deleted object no longer in configuration",
+	r.logger.Debug("Deleted object no longer in configuration",
 		zap.String("id", obj.GetId()),
 		zap.String("name", obj.GetName()),
 		zap.String("namespace", namespace),

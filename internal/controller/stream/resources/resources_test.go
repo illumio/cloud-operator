@@ -13,7 +13,7 @@ import (
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 
-	"github.com/illumio/cloud-operator/internal/controller"
+	"github.com/illumio/cloud-operator/internal/convert"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
 
@@ -146,7 +146,7 @@ func TestResourceListCiliumDispatchConsistency(t *testing.T) {
 	}
 
 	for _, resource := range resourceList {
-		isCilium := controller.IsCiliumResource(resource)
+		isCilium := convert.IsCiliumResource(resource)
 
 		if expectedCilium[resource] {
 			assert.True(t, isCilium, "resource %q should be recognized as Cilium by IsCiliumResource", resource)

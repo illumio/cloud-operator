@@ -1,6 +1,6 @@
 // Copyright 2025 Illumio, Inc. All Rights Reserved.
 
-package controller
+package convert
 
 import (
 	"context"
@@ -20,18 +20,18 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/testhelper"
 )
 
-type ControllerTestSuite struct {
+type ConvertTestSuite struct {
 	suite.Suite
 
 	clientset kubernetes.Interface
 	logger    *zap.Logger
 }
 
-func TestGenerateTestSuite(t *testing.T) {
-	suite.Run(t, new(ControllerTestSuite))
+func TestConvertTestSuite(t *testing.T) {
+	suite.Run(t, new(ConvertTestSuite))
 }
 
-func (suite *ControllerTestSuite) SetupSuite() {
+func (suite *ConvertTestSuite) SetupSuite() {
 	suite.logger = newCustomLogger(suite.T())
 
 	var err error
@@ -49,7 +49,7 @@ func (suite *ControllerTestSuite) SetupSuite() {
 	suite.clientset = k8sClient.GetClientset()
 }
 
-func (suite *ControllerTestSuite) TearDownSuite() {
+func (suite *ConvertTestSuite) TearDownSuite() {
 	err := testhelper.TearDownTestCluster()
 	if err != nil {
 		suite.T().Log("Failed to delete test cluster on first attempt: " + err.Error())
@@ -74,7 +74,7 @@ func (suite *ControllerTestSuite) TearDownSuite() {
 	}
 }
 
-func (suite *ControllerTestSuite) SetupTest() {
+func (suite *ConvertTestSuite) SetupTest() {
 	// Delete the illumio-cloud namespace if it exists
 	var gracePeriod int64 = 0
 

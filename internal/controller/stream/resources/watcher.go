@@ -19,7 +19,7 @@ import (
 	"k8s.io/client-go/dynamic"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/controller"
+	"github.com/illumio/cloud-operator/internal/convert"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 )
 
@@ -158,10 +158,10 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 
 		// Add operator-managed objects to the runtime snapshot for reconciliation.
 		labels := metadataObj.GetLabels()
-		if r.runtimeCache != nil && labels[controller.ManagedByLabel] == controller.ManagedByValue {
-			id := labels[controller.CloudSecureIDLabel]
+		if r.runtimeCache != nil && labels[convert.ManagedByLabel] == convert.ManagedByValue {
+			id := labels[convert.CloudSecureIDLabel]
 			if id != "" {
-				configured, err := controller.BuildConfiguredFromMetadata(id, metadataObj)
+				configured, err := convert.BuildConfiguredFromMetadata(id, metadataObj)
 				if err != nil {
 					r.logger.Warn("Skipping unhandled resource type in runtime cache",
 						zap.String("id", id), zap.Error(err))
@@ -356,10 +356,10 @@ func (r *Watcher) handleWatchEvent(
 
 		if r.runtimeCache != nil {
 			labels := metadataObj.GetLabels()
-			if labels[controller.ManagedByLabel] == controller.ManagedByValue {
-				id := labels[controller.CloudSecureIDLabel]
+			if labels[convert.ManagedByLabel] == convert.ManagedByValue {
+				id := labels[convert.CloudSecureIDLabel]
 				if id != "" {
-					configured, err := controller.BuildConfiguredFromMetadata(id, metadataObj)
+					configured, err := convert.BuildConfiguredFromMetadata(id, metadataObj)
 					if err != nil {
 						r.logger.Warn("Skipping unhandled resource type in runtime cache",
 							zap.String("id", id), zap.Error(err))

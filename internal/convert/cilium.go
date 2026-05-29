@@ -1,47 +1,22 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package controller
+package convert
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"strconv"
 
 	ciliumSlimMetav1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1"
 	ciliumLabels "github.com/cilium/cilium/pkg/labels"
 	ciliumPolicy "github.com/cilium/cilium/pkg/policy/api"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	k8sUnstructured "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	k8sIntstr "k8s.io/apimachinery/pkg/util/intstr"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
-
-// protoJSONMarshaler is configured for Kubernetes Server-Side Apply:
-// - UseProtoNames=false: converts snake_case proto fields to camelCase for K8s CRD compatibility
-// - EmitUnpopulated=false: omits empty/default fields so SSA doesn't claim ownership of unset fields.
-var protoJSONMarshaler = protojson.MarshalOptions{
-	UseProtoNames:   false,
-	EmitUnpopulated: false,
-}
-
-// ExtractResourceName returns the plural resource name for the given configured object's kind.
-func ExtractResourceName(data *pb.ConfiguredKubernetesObjectData) (string, error) {
-	switch data.GetKindSpecific().(type) {
-	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
-		return "ciliumnetworkpolicies", nil
-	case *pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy:
-		return "ciliumclusterwidenetworkpolicies", nil
-	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
-		return "ciliumcidrgroups", nil
-	default:
-		return "", fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
-	}
-}
 
 // IsCiliumResource returns true if the input identifies a Cilium resource.
 // Accepts both Kind (PascalCase) and resource name (lowercase plural).
@@ -57,7 +32,7 @@ func IsCiliumResource(kindOrResource string) bool {
 
 // ConvertUnstructuredToCiliumResource converts an unstructured Cilium resource to a KubernetesObjectData proto.
 // This handles CiliumNetworkPolicy, CiliumClusterwideNetworkPolicy, and CiliumCIDRGroup.
-func ConvertUnstructuredToCiliumResource(obj *k8sUnstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+func ConvertUnstructuredToCiliumResource(obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 	if obj == nil {
 		return nil, errors.New("cannot convert nil object")
 	}
@@ -188,7 +163,9 @@ func convertSlimLabelSelector(sel *ciliumSlimMetav1.LabelSelector) *pb.LabelSele
 
 	if len(sel.MatchLabels) > 0 {
 		matchLabels := make(map[string]string, len(sel.MatchLabels))
-		maps.Copy(matchLabels, sel.MatchLabels)
+		for k, v := range sel.MatchLabels {
+			matchLabels[k] = v
+		}
 		pbSel.MatchLabels = matchLabels
 	}
 
@@ -652,178 +629,4 @@ func convertCiliumCIDRGroupData(ccg *ciliumCIDRGroup) *pb.KubernetesCiliumCIDRGr
 			ExternalCidrs: ccg.Spec.ExternalCIDRs,
 		},
 	}
-}
-
-// --- Configured object helpers (reconciler direction: proto → K8s) ---
-
-// marshalConfiguredObjectSpecs returns the K8s kind, plural resource name, and the spec fields as a map,
-// using protojson to marshal proto specs into clean JSON that preserves types.
-func marshalConfiguredObjectSpecs(data *pb.ConfiguredKubernetesObjectData) (string, string, map[string]any, error) {
-	resourceName, err := ExtractResourceName(data)
-	if err != nil {
-		return "", "", nil, err
-	}
-
-	var (
-		kind       string
-		specFields map[string]any
-	)
-
-	switch ks := data.GetKindSpecific().(type) {
-	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
-		kind = "CiliumNetworkPolicy"
-		specFields, err = marshalPolicySpecs(ks.CiliumNetworkPolicy.GetSpecs())
-
-	case *pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy:
-		kind = "CiliumClusterwideNetworkPolicy"
-		specFields, err = marshalPolicySpecs(ks.CiliumClusterwideNetworkPolicy.GetSpecs())
-
-	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
-		kind = "CiliumCIDRGroup"
-
-		spec := ks.CiliumCidrGroup.GetSpec()
-		if spec == nil {
-			return kind, resourceName, map[string]any{}, nil
-		}
-
-		var specMap map[string]any
-
-		specMap, err = protoToMap(spec)
-		if err == nil {
-			specFields = map[string]any{"spec": specMap}
-		}
-
-	default:
-		return "", "", nil, fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
-	}
-
-	if err != nil {
-		return "", "", nil, fmt.Errorf("failed to marshal %s specs: %w", kind, err)
-	}
-
-	return kind, resourceName, specFields, nil
-}
-
-// marshalPolicySpecs marshals Cilium policy rules into the "spec" or "specs" field.
-// Cilium CRDs accept either a single "spec" or an array "specs".
-func marshalPolicySpecs(specs []*pb.CiliumPolicyRule) (map[string]any, error) {
-	if len(specs) == 0 {
-		return map[string]any{}, nil
-	}
-
-	if len(specs) == 1 {
-		specMap, err := protoToMap(specs[0])
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal policy spec: %w", err)
-		}
-
-		normalizeProtojsonForCilium(specMap)
-
-		return map[string]any{"spec": specMap}, nil
-	}
-
-	specsList := make([]any, 0, len(specs))
-	for _, spec := range specs {
-		specMap, err := protoToMap(spec)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal policy spec: %w", err)
-		}
-
-		normalizeProtojsonForCilium(specMap)
-		specsList = append(specsList, specMap)
-	}
-
-	return map[string]any{"specs": specsList}, nil
-}
-
-// normalizeProtojsonForCilium post-processes a policy rule map so that
-// protojson output conforms to Cilium's CRD schema:
-//   - fromEndpoints/toEndpoints: unwrap LabelSelectorList {"items": [...]} → [...]
-//   - ICMP type: rename oneof field "typeInt"/"typeString" → "type"
-func normalizeProtojsonForCilium(specMap map[string]any) {
-	for _, ruleField := range []string{"ingress", "ingressDeny", "egress", "egressDeny"} {
-		rules, ok := specMap[ruleField].([]any)
-		if !ok {
-			continue
-		}
-
-		for _, rule := range rules {
-			ruleMap, ok := rule.(map[string]any)
-			if !ok {
-				continue
-			}
-
-			// Unwrap LabelSelectorList wrappers:
-			//   {"items": [...]}  → [...]     (normal case)
-			//   {} (empty wrapper) → []       (empty LabelSelectorList, items omitted by protojson)
-			for _, endpointField := range []string{"fromEndpoints", "toEndpoints"} {
-				wrapper, ok := ruleMap[endpointField].(map[string]any)
-				if !ok {
-					continue
-				}
-
-				if items, exists := wrapper["items"]; exists {
-					ruleMap[endpointField] = items
-				} else {
-					ruleMap[endpointField] = []any{}
-				}
-			}
-
-			// Fix ICMP type oneof fields
-			normalizeICMPTypeFields(ruleMap)
-		}
-	}
-}
-
-// normalizeICMPTypeFields renames "typeInt"/"typeString" to "type" in ICMP field entries.
-// protojson serializes oneof fields by their variant name, but Cilium expects "type".
-func normalizeICMPTypeFields(ruleMap map[string]any) {
-	icmps, ok := ruleMap["icmps"].([]any)
-	if !ok {
-		return
-	}
-
-	for _, icmp := range icmps {
-		icmpMap, ok := icmp.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		fields, ok := icmpMap["fields"].([]any)
-		if !ok {
-			continue
-		}
-
-		for _, field := range fields {
-			fieldMap, ok := field.(map[string]any)
-			if !ok {
-				continue
-			}
-
-			if v, ok := fieldMap["typeInt"]; ok {
-				fieldMap["type"] = v
-				delete(fieldMap, "typeInt")
-			} else if v, ok := fieldMap["typeString"]; ok {
-				fieldMap["type"] = v
-				delete(fieldMap, "typeString")
-			}
-		}
-	}
-}
-
-// protoToMap marshals a proto message to JSON via protojson, then unmarshals
-// into a map[string]any. This preserves strict typing (integers, booleans)
-// and produces camelCase field names matching Cilium's CRD schema.
-func protoToMap(msg proto.Message) (map[string]any, error) {
-	jsonBytes, err := protoJSONMarshaler.Marshal(msg)
-	if err != nil {
-		return nil, err
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal(jsonBytes, &result); err != nil {
-		return nil, err
-	}
-
-	return result, nil
 }

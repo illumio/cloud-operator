@@ -16,8 +16,8 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/controller"
 	"github.com/illumio/cloud-operator/internal/controller/auth"
+	"github.com/illumio/cloud-operator/internal/convert"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
@@ -72,9 +72,9 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		return err
 	}
 
-	coreConverter := controller.NewCoreResourceConverter(clientset, c.logger)
+	coreConverter := convert.NewCoreResourceConverter(clientset, c.logger)
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return controller.ConvertUnstructuredToCiliumResource(obj)
+		return convert.ConvertUnstructuredToCiliumResource(obj)
 	}
 
 	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
@@ -95,7 +95,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 		var runtimeCache *cache.ConfiguredObjectCache
 
-		if controller.IsCiliumResource(resource) {
+		if convert.IsCiliumResource(resource) {
 			converter = ciliumConverter
 			runtimeCache = c.runtimeCache
 		}
