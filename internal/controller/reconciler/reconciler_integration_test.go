@@ -56,10 +56,10 @@ func TestReconciler_PopulatedSnapshot(t *testing.T) {
 	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:        "cnp-e2e-1",
-				Name:      "e2e-snapshot-policy",
+				Id:   "cnp-e2e-1",
+				Name: "e2e-snapshot-policy",
 
-				Labels:    map[string]string{"env": "e2e"},
+				Labels: map[string]string{"env": "e2e"},
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
 						Specs: []*pb.CiliumPolicyRule{
@@ -148,9 +148,9 @@ func TestReconciler_EmptySnapshotThenMutation(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
 					CreateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:        "cnp-e2e-2",
-						Name:      "e2e-mutation-policy",
-		
+						Id:   "cnp-e2e-2",
+						Name: "e2e-mutation-policy",
+
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 							CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
 								Specs: []*pb.CiliumPolicyRule{
@@ -201,8 +201,8 @@ func TestReconciler_MutationDelete(t *testing.T) {
 	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:        "cnp-e2e-3",
-				Name:      "e2e-delete-policy",
+				Id:   "cnp-e2e-3",
+				Name: "e2e-delete-policy",
 
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -267,8 +267,8 @@ func TestReconciler_SSAFieldManagerOwnership(t *testing.T) {
 	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:        "cnp-ssa",
-				Name:      "e2e-ssa-policy",
+				Id:   "cnp-ssa",
+				Name: "e2e-ssa-policy",
 
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -558,9 +558,9 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
 					CreateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:        "cnp-multi-a",
-						Name:      "e2e-multi-a",
-		
+						Id:   "cnp-multi-a",
+						Name: "e2e-multi-a",
+
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 							CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
 								Specs: []*pb.CiliumPolicyRule{
@@ -585,8 +585,8 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
 					CreateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:        "cnp-multi-b",
-						Name:      "e2e-multi-b",
+						Id:   "cnp-multi-b",
+						Name: "e2e-multi-b",
 
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 							CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -619,9 +619,9 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
 					UpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:        "cnp-multi-a",
-						Name:      "e2e-multi-a",
-		
+						Id:   "cnp-multi-a",
+						Name: "e2e-multi-a",
+
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 							CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
 								Specs: []*pb.CiliumPolicyRule{
@@ -703,10 +703,10 @@ func TestReconciler_UpdateChangesSpec(t *testing.T) {
 	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:        "cnp-update-spec",
-				Name:      "e2e-update-spec",
+				Id:   "cnp-update-spec",
+				Name: "e2e-update-spec",
 
-				Labels:    map[string]string{"env": "staging"},
+				Labels: map[string]string{"env": "staging"},
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
 						Specs: []*pb.CiliumPolicyRule{
@@ -756,10 +756,10 @@ func TestReconciler_UpdateChangesSpec(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
 					UpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:        "cnp-update-spec",
-						Name:      "e2e-update-spec",
-		
-						Labels:    map[string]string{"env": "production"},
+						Id:   "cnp-update-spec",
+						Name: "e2e-update-spec",
+
+						Labels: map[string]string{"env": "production"},
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 							CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
 								Specs: []*pb.CiliumPolicyRule{
@@ -829,8 +829,8 @@ func TestReconciler_DeleteOnlyRemovesTargetPolicy(t *testing.T) {
 	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:        "cnp-del-keep",
-				Name:      "e2e-del-keep",
+				Id:   "cnp-del-keep",
+				Name: "e2e-del-keep",
 
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -850,8 +850,8 @@ func TestReconciler_DeleteOnlyRemovesTargetPolicy(t *testing.T) {
 	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:        "cnp-del-remove",
-				Name:      "e2e-del-remove",
+				Id:   "cnp-del-remove",
+				Name: "e2e-del-remove",
 
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -1027,10 +1027,10 @@ func TestReconciler_UpdatePreservesMetadata(t *testing.T) {
 	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:        "cnp-meta-preserve",
-				Name:      "e2e-meta-preserve",
+				Id:   "cnp-meta-preserve",
+				Name: "e2e-meta-preserve",
 
-				Labels:    map[string]string{"version": "v1"},
+				Labels: map[string]string{"version": "v1"},
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
 						Specs: []*pb.CiliumPolicyRule{
@@ -1063,10 +1063,10 @@ func TestReconciler_UpdatePreservesMetadata(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
 					UpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:        "cnp-meta-preserve",
-						Name:      "e2e-meta-preserve",
-		
-						Labels:    map[string]string{"version": "v2"},
+						Id:   "cnp-meta-preserve",
+						Name: "e2e-meta-preserve",
+
+						Labels: map[string]string{"version": "v2"},
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 							CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
 								Specs: []*pb.CiliumPolicyRule{
@@ -1308,28 +1308,6 @@ func TestReconciler_ICMPPolicy(t *testing.T) {
 	fs := setupSuite(t)
 
 	ctx := context.Background()
-
-	// CiliumClusterwideNetworkPolicy with ICMP rules, modeled after:
-	//   apiVersion: "cilium.io/v2"
-	//   kind: CiliumClusterwideNetworkPolicy
-	//   metadata:
-	//     name: "demo-host-policy"
-	//   spec:
-	//     nodeSelector:
-	//       matchLabels:
-	//         node-access: ssh
-	//     ingress:
-	//       - toPorts:
-	//           - ports:
-	//               - port: "22"
-	//                 protocol: TCP
-	//         icmps:
-	//           - fields:
-	//               - type: 8
-	//                 family: IPv4
-	//               - type: EchoRequest
-	//                 family: IPv4
-	tcpProto := "TCP"
 	ipv4Family := "IPv4"
 
 	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
@@ -1785,27 +1763,6 @@ func TestReconciler_FQDNEgressWithDNSProxy(t *testing.T) {
 // TestReconciler_HostFirewallWithEntitiesAndDeny verifies a host firewall policy
 // combining fromEntities, ingressDeny, and nodeSelector.
 // Based on: https://docs.cilium.io/en/latest/security/host-firewall/
-//
-//	spec:
-//	  nodeSelector:
-//	    matchLabels:
-//	      node-access: locked
-//	  ingress:
-//	    - fromEntities:
-//	        - cluster
-//	    - fromCIDR:
-//	        - 10.0.0.0/8
-//	      toPorts:
-//	        - ports:
-//	            - port: "22"
-//	              protocol: TCP
-//	  ingressDeny:
-//	    - fromCIDR:
-//	        - 192.168.0.0/16
-//	      toPorts:
-//	        - ports:
-//	            - port: "23"
-//	              protocol: TCP
 func TestReconciler_HostFirewallWithEntitiesAndDeny(t *testing.T) {
 	fs := setupSuite(t)
 

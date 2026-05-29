@@ -39,7 +39,7 @@ var (
 
 var cnpGVR = schema.GroupVersionResource{Group: "cilium.io", Version: "v2", Resource: "ciliumnetworkpolicies"}
 var ccnpGVR = schema.GroupVersionResource{Group: "cilium.io", Version: "v2", Resource: "ciliumclusterwidenetworkpolicies"}
-var cidrGroupGVR = schema.GroupVersionResource{Group: "cilium.io", Version: "v2alpha1", Resource: "ciliumcidrgroups"}
+var cidrGroupGVR = schema.GroupVersionResource{Group: "cilium.io", Version: "v2", Resource: "ciliumcidrgroups"}
 
 func TestMain(m *testing.M) {
 	// Set KUBEBUILDER_ASSETS if not already set, so tests work from IDEs
