@@ -334,6 +334,11 @@ func (fs *FakeServer) Token() string {
 	return fs.token
 }
 
+// StopChan returns the channel that is closed when the server stops.
+func (fs *FakeServer) StopChan() <-chan struct{} {
+	return fs.stopChan
+}
+
 func (fs *FakeServer) Start() error {
 	logger = fs.logger
 	logger.Info("Starting FakeServer", zap.String("address", fs.address), zap.String("httpAddress", fs.httpAddress), zap.String("token", fs.token))
