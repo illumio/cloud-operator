@@ -96,6 +96,14 @@ func newFakeServer(t *testing.T) *fakeserver.FakeServer {
 	return fs
 }
 
+type tokenAuth struct{ token string }
+
+func (t tokenAuth) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
+	return map[string]string{"authorization": "Bearer " + t.token}, nil
+}
+
+func (t tokenAuth) RequireTransportSecurity() bool { return true }
+
 // dialFakeServer creates a gRPC client connection to the fakeserver.
 func dialFakeServer(t *testing.T, fs *fakeserver.FakeServer) *grpc.ClientConn {
 	t.Helper()
@@ -107,7 +115,7 @@ func dialFakeServer(t *testing.T, fs *fakeserver.FakeServer) *grpc.ClientConn {
 	conn, err := grpc.NewClient(
 		fs.GRPCAddress(),
 		grpc.WithTransportCredentials(tlsCreds),
-		grpc.WithPerRPCCredentials(fakeserver.TokenAuth{Token: fs.Token()}),
+		grpc.WithPerRPCCredentials(tokenAuth{token: fs.Token()}),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { conn.Close() })
