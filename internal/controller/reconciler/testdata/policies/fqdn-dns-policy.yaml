@@ -1,0 +1,27 @@
+# FQDN-based egress: DNS proxy to kube-dns, then HTTPS to specific domains.
+# toFQDNs rules cannot contain other L3 rules — they need their own egress block.
+# https://docs.cilium.io/en/latest/security/policy/language/#dns-based
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: fqdn-dns-policy
+spec:
+  endpointSelector:
+    matchLabels:
+      app: external-client
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+    - toFQDNs:
+        - matchName: "my-remote-service.com"
+        - matchPattern: "*.api.example.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

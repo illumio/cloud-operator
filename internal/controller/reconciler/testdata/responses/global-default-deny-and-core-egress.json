@@ -1,0 +1,37 @@
+{
+  "specs":  [
+    {
+      "endpointSelector":  {},
+      "description":  "Enforce zero-trust egress cluster-wide while maintaining core DNS and API access.",
+      "egress":  [
+        {
+          "toEndpoints":  {
+            "items":  [
+              {
+                "matchLabels":  {
+                  "k8s-app":  "kube-dns",
+                  "k8s:io.kubernetes.pod.namespace":  "kube-system"
+                }
+              }
+            ]
+          },
+          "toPorts":  [
+            {
+              "ports":  [
+                {
+                  "port":  "53",
+                  "protocol":  "UDP"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "toEntities":  [
+            "kube-apiserver"
+          ]
+        }
+      ]
+    }
+  ]
+}

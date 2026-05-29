@@ -166,7 +166,7 @@ func setupSuite(t *testing.T) *fakeserver.FakeServer {
 
 	// Start reconciler (config cache + runtime cache → K8s API)
 	r := NewReconciler(zap.NewNop(), testClient, configCache, runtimeCache)
-	go r.Start(ctx)
+	go r.Run(ctx)
 
 	return fs
 }
