@@ -1310,6 +1310,7 @@ func TestReconciler_ICMPPolicy(t *testing.T) {
 	fs := setupSuite(t)
 
 	ctx := context.Background()
+	tcpProto := "TCP"
 	ipv4Family := "IPv4"
 
 	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
