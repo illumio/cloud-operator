@@ -120,9 +120,15 @@ func ConvertToApplyObject(data *pb.ConfiguredKubernetesObjectData, apiGroup, api
 
 	// Build the K8s object as a map
 	metadata := map[string]any{
-		"name":        data.GetName(),
-		"labels":      copyLabels(data.GetLabels(), data.GetId()),
-		"annotations": data.GetAnnotations(),
+		"name":   data.GetName(),
+		"labels": copyLabels(data.GetLabels(), data.GetId()),
+	}
+
+	// Only include annotations when explicitly set. Omitting the field lets SSA
+	// release ownership of previously-owned keys without wiping annotations from
+	// other field managers. Sending null would claim the entire field and clear all keys.
+	if annotations := data.GetAnnotations(); annotations != nil {
+		metadata["annotations"] = annotations
 	}
 
 	if ns := data.GetNamespace(); ns != "" {

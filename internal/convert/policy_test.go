@@ -713,9 +713,9 @@ func TestConvertToApplyObject_NamespaceIsolation(t *testing.T) {
 	assert.Empty(t, toEp, "empty selector = same namespace")
 }
 
-// Verify that nil annotations marshal as "annotations":null in the JSON sent to the API server,
-// so SSA reclaims ownership and clears any annotations not set by CloudSecure.
-func TestConvertToApplyObject_NilAnnotationsMarshalAsNull(t *testing.T) {
+// Verify that nil annotations are omitted from the apply object so SSA releases
+// ownership of previously-owned annotation keys without wiping other managers' annotations.
+func TestConvertToApplyObject_NilAnnotationsOmitted(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
 		Id:   "cnp-no-annotations",
 		Name: "no-annotations",
@@ -735,10 +735,84 @@ func TestConvertToApplyObject_NilAnnotationsMarshalAsNull(t *testing.T) {
 	metadata, ok := obj.Object["metadata"].(map[string]any)
 	require.True(t, ok)
 
-	// annotations key must be present in the map (not omitted)
-	val, exists := metadata["annotations"]
-	assert.True(t, exists, "annotations key must be present so SSA claims ownership")
-	assert.Nil(t, val, "nil annotations should remain nil, not an empty map")
+	_, exists := metadata["annotations"]
+	assert.False(t, exists, "nil annotations should be omitted, not included as null")
+}
+
+func TestConvertToApplyObject_WithAnnotations(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:          "cnp-with-annotations",
+		Name:        "with-annotations",
+		Annotations: map[string]string{"note": "test", "env": "prod"},
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{EndpointSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "test"}}},
+				},
+			},
+		},
+	}
+
+	obj, _, err := ConvertToApplyObject(data, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	metadata, ok := obj.Object["metadata"].(map[string]any)
+	require.True(t, ok)
+
+	annotations, ok := metadata["annotations"].(map[string]string)
+	require.True(t, ok, "annotations should be present when set")
+	assert.Equal(t, "test", annotations["note"])
+	assert.Equal(t, "prod", annotations["env"])
+	assert.Len(t, annotations, 2, "only cloud-operator's annotation keys should be present")
+}
+
+// Verify that annotations from one apply don't leak into another — each call
+// only includes the keys explicitly set by CloudSecure, so SSA never touches
+// keys owned by other field managers.
+func TestConvertToApplyObject_AnnotationsDoNotLeakBetweenApplies(t *testing.T) {
+	// First apply: has annotations
+	withAnnotations := &pb.ConfiguredKubernetesObjectData{
+		Id:          "cnp-1",
+		Name:        "policy-1",
+		Annotations: map[string]string{"owner": "team-a"},
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{EndpointSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "a"}}},
+				},
+			},
+		},
+	}
+
+	obj1, _, err := ConvertToApplyObject(withAnnotations, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	meta1, ok := obj1.Object["metadata"].(map[string]any)
+	require.True(t, ok)
+	ann1, ok := meta1["annotations"].(map[string]string)
+	require.True(t, ok)
+	assert.Equal(t, "team-a", ann1["owner"])
+
+	// Second apply: no annotations
+	withoutAnnotations := &pb.ConfiguredKubernetesObjectData{
+		Id:   "cnp-2",
+		Name: "policy-2",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
+				Specs: []*pb.CiliumPolicyRule{
+					{EndpointSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "b"}}},
+				},
+			},
+		},
+	}
+
+	obj2, _, err := ConvertToApplyObject(withoutAnnotations, "cilium.io", "v2")
+	require.NoError(t, err)
+
+	meta2, ok := obj2.Object["metadata"].(map[string]any)
+	require.True(t, ok)
+	_, exists := meta2["annotations"]
+	assert.False(t, exists, "annotations from a previous apply must not leak into a subsequent one")
 }
 
 func TestConvertToApplyObject_EmitUnpopulatedFalse(t *testing.T) {
