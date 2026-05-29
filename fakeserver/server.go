@@ -53,18 +53,18 @@ var kasp = keepalive.ServerParameters{
 
 type FakeServer struct {
 	pb.UnimplementedKubernetesInfoServiceServer
-	address         string
-	httpAddress     string
+	Address         string
+	HTTPAddress     string
 	server          *grpc.Server
 	httpServer      *http.Server
 	listener        net.Listener
 	httpListener    net.Listener
-	state           *ServerState
-	stopChan        chan struct{}
-	token           string
-	logger          *zap.Logger
+	State           *ServerState
+	StopChan        chan struct{}
+	Token           string
+	Logger          *zap.Logger
 	authService     *AuthService // OAuth2 AuthService to handle the /authenticate and /onboard endpoints
-	configResponses chan *pb.GetConfigurationUpdatesResponse
+	ConfigResponses chan *pb.GetConfigurationUpdatesResponse
 }
 
 // RecordCiliumFlow increments the Cilium flow counter.
@@ -245,7 +245,7 @@ func (fs *FakeServer) GetConfigurationUpdates(stream pb.KubernetesInfoService_Ge
 	}()
 
 	// Send responses from the channel. The test (or default setup) controls what gets sent.
-	for resp := range fs.configResponses {
+	for resp := range fs.ConfigResponses {
 		if err := stream.Send(resp); err != nil {
 			logger.Error("Failed to send config response", zap.Error(err))
 
@@ -301,22 +301,9 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 	}
 }
 
-// NewFakeServer creates a new FakeServer instance.
-func NewFakeServer(address, httpAddress, token string, logger *zap.Logger) *FakeServer {
-	return &FakeServer{
-		address:         address,
-		httpAddress:     httpAddress,
-		stopChan:        make(chan struct{}),
-		token:           token,
-		logger:          logger,
-		state:           &ServerState{},
-		configResponses: make(chan *pb.GetConfigurationUpdatesResponse, 10),
-	}
-}
-
 // SendConfigResponse sends a configuration response to the connected config stream client.
 func (fs *FakeServer) SendConfigResponse(resp *pb.GetConfigurationUpdatesResponse) {
-	fs.configResponses <- resp
+	fs.ConfigResponses <- resp
 }
 
 // GRPCAddress returns the actual address the gRPC server is listening on.
@@ -326,31 +313,21 @@ func (fs *FakeServer) GRPCAddress() string {
 		return fs.listener.Addr().String()
 	}
 
-	return fs.address
-}
-
-// Token returns the server's auth token for constructing client connections.
-func (fs *FakeServer) Token() string {
-	return fs.token
-}
-
-// StopChan returns the channel that is closed when the server stops.
-func (fs *FakeServer) StopChan() <-chan struct{} {
-	return fs.stopChan
+	return fs.Address
 }
 
 func (fs *FakeServer) Start() error {
-	logger = fs.logger
-	logger.Info("Starting FakeServer", zap.String("address", fs.address), zap.String("httpAddress", fs.httpAddress), zap.String("token", fs.token))
+	logger = fs.Logger
+	logger.Info("Starting FakeServer", zap.String("address", fs.Address), zap.String("httpAddress", fs.HTTPAddress), zap.String("token", fs.Token))
 
 	// Start gRPC server
 	var err error
 
 	var listenerConfig net.ListenConfig
 
-	fs.listener, err = listenerConfig.Listen(context.Background(), "tcp", fs.address)
+	fs.listener, err = listenerConfig.Listen(context.Background(), "tcp", fs.Address)
 	if err != nil {
-		logger.Error("Failed to start gRPC listener", zap.String("address", fs.address), zap.Error(err))
+		logger.Error("Failed to start gRPC listener", zap.String("address", fs.Address), zap.Error(err))
 
 		return err
 	}
@@ -369,33 +346,33 @@ func (fs *FakeServer) Start() error {
 			Certificates: []tls.Certificate{creds},
 			MinVersion:   tls.VersionTLS12,
 		})
-	serverState = fs.state
-	fs.server = grpc.NewServer(grpc.Creds(credsTLS), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor(fs.token)))
+	serverState = fs.State
+	fs.server = grpc.NewServer(grpc.Creds(credsTLS), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor(fs.Token)))
 	pb.RegisterKubernetesInfoServiceServer(fs.server, fs)
 
 	// Handle termination signals for graceful shutdown
 	go fs.handleSignals()
 
 	go func() {
-		logger.Info("Starting gRPC server", zap.String("address", fs.address))
+		logger.Info("Starting gRPC server", zap.String("address", fs.Address))
 
 		if err := fs.server.Serve(fs.listener); err != nil {
-			fs.logger.Fatal("Failed to start gRPC server", zap.Error(err))
+			fs.Logger.Fatal("Failed to start gRPC server", zap.Error(err))
 		}
 	}()
 
 	// Create and initialize the AuthService (OAuth2)
 	fs.authService = &AuthService{
-		logger:       fs.logger,
+		logger:       fs.Logger,
 		clientID:     DefaultClientID,
 		clientSecret: DefaultClientSecret,
-		token:        fs.token,
+		token:        fs.Token,
 	}
 
 	// Start the OAuth2 HTTP server
-	fs.httpServer = startHTTPServer(fs.httpAddress, creds, fs.authService)
+	fs.httpServer = startHTTPServer(fs.HTTPAddress, creds, fs.authService)
 
-	logger.Info("HTTP server started", zap.String("httpAddress", fs.httpAddress))
+	logger.Info("HTTP server started", zap.String("httpAddress", fs.HTTPAddress))
 
 	return nil
 }
@@ -455,9 +432,9 @@ func (fs *FakeServer) Stop() {
 	// Reset HTTP handlers before restarting the server
 	http.DefaultServeMux = http.NewServeMux()
 
-	if fs.stopChan != nil {
+	if fs.StopChan != nil {
 		logger.Info("Closing stop channel")
-		close(fs.stopChan)
+		close(fs.StopChan)
 	} else {
 		logger.Warn("Stop channel was nil during shutdown")
 	}

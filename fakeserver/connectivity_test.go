@@ -116,7 +116,7 @@ func TestOperatorSendsResources(t *testing.T) {
 	require.NoError(t, err, "Operator failed to connect")
 
 	// Verify resources were actually received
-	state := harness.Server.state
+	state := harness.Server.State
 	require.True(t, state.ResourceSnapshotComplete, "Resource snapshot should be complete")
 	require.Positive(t, state.ResourcesReceived, "Should have received at least one resource")
 

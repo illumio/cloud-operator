@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/fakeserver"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
@@ -89,7 +90,15 @@ func strPtr(s string) *string {
 func newFakeServer(t *testing.T) *fakeserver.FakeServer {
 	t.Helper()
 
-	fs := fakeserver.NewFakeServer("127.0.0.1:0", "127.0.0.1:0", "test-token", zap.NewNop())
+	fs := &fakeserver.FakeServer{
+		Address:         "127.0.0.1:0",
+		HTTPAddress:     "127.0.0.1:0",
+		StopChan:        make(chan struct{}),
+		Token:           "test-token",
+		Logger:          zap.NewNop(),
+		State:           &fakeserver.ServerState{},
+		ConfigResponses: make(chan *pb.GetConfigurationUpdatesResponse, 10),
+	}
 	require.NoError(t, fs.Start())
 	t.Cleanup(fs.Stop)
 
@@ -115,7 +124,7 @@ func dialFakeServer(t *testing.T, fs *fakeserver.FakeServer) *grpc.ClientConn {
 	conn, err := grpc.NewClient(
 		fs.GRPCAddress(),
 		grpc.WithTransportCredentials(tlsCreds),
-		grpc.WithPerRPCCredentials(tokenAuth{token: fs.Token()}),
+		grpc.WithPerRPCCredentials(tokenAuth{token: fs.Token}),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { conn.Close() })

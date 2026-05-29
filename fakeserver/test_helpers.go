@@ -93,7 +93,15 @@ func NewTestHarness(t *testing.T, config TestConfig) *FakeServerTestHarness {
 	token := CreateTestToken("192.168.49.1:50051")
 	enhancedState := NewServerState()
 
-	server := NewFakeServer(config.GRPCAddress, config.HTTPAddress, token, logger)
+	server := &FakeServer{
+		Address:         config.GRPCAddress,
+		HTTPAddress:     config.HTTPAddress,
+		StopChan:        make(chan struct{}),
+		Token:           token,
+		Logger:          logger,
+		State:           enhancedState,
+		ConfigResponses: make(chan *pb.GetConfigurationUpdatesResponse, 10),
+	}
 
 	return &FakeServerTestHarness{
 		Server:        server,
@@ -185,29 +193,29 @@ func (h *FakeServerTestHarness) WaitForCondition(condition func() bool, descript
 // WaitForConnection waits for the operator to connect and complete resource snapshot.
 func (h *FakeServerTestHarness) WaitForConnection() error {
 	return h.WaitForCondition(
-		func() bool { return h.Server.state.ConnectionSuccessful },
+		func() bool { return h.Server.State.ConnectionSuccessful },
 		"operator connection successful (resource snapshot complete)",
 	)
 }
 
 // LogCurrentState logs the current server state for debugging.
 func (h *FakeServerTestHarness) LogCurrentState() {
-	state := h.Server.state
+	state := h.Server.State
 	h.T.Logf("Current state: ConnectionSuccessful=%v, BadInitialCommit=%v, ResourcesReceived=%d, ResourceSnapshotComplete=%v",
 		state.ConnectionSuccessful, state.BadIntialCommit, state.ResourcesReceived, state.ResourceSnapshotComplete)
 }
 
 // ResetState resets the server state for a new test phase.
 func (h *FakeServerTestHarness) ResetState() {
-	h.Server.state.ConnectionSuccessful = false
-	h.Server.state.BadIntialCommit = false
-	h.Server.state.ResourcesReceived = 0
-	h.Server.state.ResourceSnapshotComplete = false
+	h.Server.State.ConnectionSuccessful = false
+	h.Server.State.BadIntialCommit = false
+	h.Server.State.ResourcesReceived = 0
+	h.Server.State.ResourceSnapshotComplete = false
 	h.T.Log("Server state reset")
 }
 
 // SetBadInitialCommit configures the server to fail the initial commit.
 func (h *FakeServerTestHarness) SetBadInitialCommit(bad bool) {
-	h.Server.state.BadIntialCommit = bad
+	h.Server.State.BadIntialCommit = bad
 	h.T.Logf("BadInitialCommit set to: %v", bad)
 }
