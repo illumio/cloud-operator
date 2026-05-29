@@ -104,8 +104,6 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 			zap.Int("object_count", objectCount),
 		)
 
-		// Reconciliation triggered via resourceChanged channel
-
 	case *pb.GetConfigurationUpdatesResponse_ResourceMutation:
 		if !*snapshotComplete {
 			// Return an error to restart the stream, since we are out of sync with server
@@ -117,8 +115,6 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 		}
 
 		c.stats.IncrementConfiguredObjectMutations()
-
-		// Reconciliation triggered via resourceChanged channel
 
 	default:
 		return errors.New("server sent unknown configuration update type")

@@ -3,6 +3,8 @@
 package resources
 
 import (
+	"slices"
+
 	"go.uber.org/zap"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
@@ -15,7 +17,7 @@ var ConfiguredResourceKinds = []string{
 	"ciliumnetworkpolicies",
 }
 
-var resourceList = append(ConfiguredResourceKinds,
+var resourceList = slices.Concat(ConfiguredResourceKinds, []string{
 	"cronjobs",
 	"customresourcedefinitions",
 	"daemonsets",
@@ -36,7 +38,7 @@ var resourceList = append(ConfiguredResourceKinds,
 	"serviceaccounts",
 	"services",
 	"statefulsets",
-)
+})
 
 // ResourceInfo holds the API group and preferred version for a resource.
 type ResourceInfo struct {

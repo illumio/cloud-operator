@@ -245,7 +245,7 @@ func main() {
 		runtimeCache,
 	)
 
-	go policyReconciler.Start(ctx)
+	go policyReconciler.Run(ctx)
 
 	// Detect flow collector type at startup
 	flowCollectorType, flowCollectorName, flowCollectorFactory := flows.DetectFlowCollector(ctx, flows.CollectorConfig{

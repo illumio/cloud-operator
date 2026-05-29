@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/proto"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -52,20 +51,35 @@ func NewReconciler(
 	}
 }
 
-// Start discovers API resources, waits for the config cache to be ready, and starts the reconciliation loop.
+// Run discovers API resources, waits for the config cache to be ready, and runs the reconciliation loop.
 // It blocks until the context is cancelled.
-func (r *Reconciler) Start(ctx context.Context) {
-	// Discover API groups for Cilium resources
-	resourceInfo, err := resources.BuildResourceAPIGroupMap(resources.ConfiguredResourceKinds, r.client.GetClientset(), r.logger)
-	if err != nil {
-		r.logger.Warn("Failed to build resource API group map for Cilium resources", zap.Error(err))
-		// Continue with empty map - reconciler will log errors for unknown resources
-		resourceInfo = make(map[string]resources.ResourceInfo)
+func (r *Reconciler) Run(ctx context.Context) {
+	var resourceInfo map[string]resources.ResourceInfo
+	for attempt := range 5 {
+		var err error
+		resourceInfo, err = resources.BuildResourceAPIGroupMap(resources.ConfiguredResourceKinds, r.client.GetClientset(), r.logger)
+		if err == nil {
+			break
+		}
+		r.logger.Warn("Failed to discover Cilium API groups, retrying",
+			zap.Int("attempt", attempt+1),
+			zap.Error(err),
+		)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Duration(attempt+1) * time.Second):
+		}
+	}
+	if resourceInfo == nil {
+		r.logger.Error("Unable to discover Cilium API groups after retries, reconciler will not start")
+		return
 	}
 
 	r.resourceInfo = resourceInfo
 
-	if !r.waitForCaches(ctx) {
+	if err := r.waitForCaches(ctx); err != nil {
+		r.logger.Error("Cache sync failed, reconciler will not start", zap.Error(err))
 		return
 	}
 
@@ -99,31 +113,30 @@ func (r *Reconciler) Start(ctx context.Context) {
 }
 
 // waitForCaches blocks until both config and runtime caches have received their
-// first snapshot. Returns false if the context is cancelled before both are ready.
-func (r *Reconciler) waitForCaches(ctx context.Context) bool {
+// first snapshot. Returns an error if the context is cancelled before both are ready.
+func (r *Reconciler) waitForCaches(ctx context.Context) error {
 	r.logger.Info("Waiting for config and runtime caches to be ready for reconciliation loop")
 
-	configReady := r.configCache.IsReady()
-	runtimeReady := r.runtimeCache.IsReady()
+	configCacheIsReady := r.configCache.IsReady()
+	runtimeCacheIsReady := r.runtimeCache.IsReady()
 
-	for configReady != nil || runtimeReady != nil {
+	for configCacheIsReady != nil || runtimeCacheIsReady != nil {
 		select {
 		case <-ctx.Done():
 			r.logger.Info("Context cancelled while waiting for caches")
-
-			return false
-		case <-configReady:
+			return ctx.Err()
+		case <-configCacheIsReady:
 			r.logger.Debug("Config cache is ready")
 
-			configReady = nil
-		case <-runtimeReady:
+			configCacheIsReady = nil
+		case <-runtimeCacheIsReady:
 			r.logger.Debug("Runtime cache is ready")
 
-			runtimeReady = nil
+			runtimeCacheIsReady = nil
 		}
 	}
 
-	return true
+	return nil
 }
 
 // processResourceChange handles a single resource change by reconciling the
@@ -143,69 +156,29 @@ func (r *Reconciler) processResourceChange(ctx context.Context, id string, recon
 }
 
 // reconcileObject reconciles a single object by ID.
-// It compares the config cache (desired) with the runtime cache (actual) for that ID
-// and applies or deletes as needed.
+// If the object exists in the config cache, it is applied via SSA — even if the runtime
+// cache already has a matching copy. SSA is idempotent and handles field ownership natively,
+// which avoids the need for local diffing logic that could mask annotation deletions.
+// If the object exists only in the runtime cache, it is deleted.
 func (r *Reconciler) reconcileObject(ctx context.Context, id string) error {
 	configObj := r.configCache.Get(id)
 	runtimeObj := r.runtimeCache.Get(id)
 
 	switch {
-	// In config, not in runtime or different → apply
-	case configObj != nil && (runtimeObj == nil || !r.objectsMatch(configObj, runtimeObj)):
+	// In config → always apply; SSA handles ownership and is idempotent
+	case configObj != nil:
 		if err := r.applyObject(ctx, configObj); err != nil {
 			return fmt.Errorf("apply %s: %w", id, err)
 		}
 
 	// In runtime, not in config → delete
-	case configObj == nil && runtimeObj != nil:
+	case runtimeObj != nil:
 		if err := r.deleteObject(ctx, runtimeObj); err != nil {
 			return fmt.Errorf("delete %s: %w", id, err)
 		}
 	}
 
 	return nil
-}
-
-// objectsMatch compares a config object with a runtime object, filtering
-// runtime annotations to only include keys that CloudSecure explicitly set.
-// This prevents additional controllers modifying annotations causing false diffs.
-func (r *Reconciler) objectsMatch(configObj, runtimeObj *pb.ConfiguredKubernetesObjectData) bool {
-	// If config has no annotations, runtime shouldn't either for comparison purposes.
-	// Temporarily set runtime annotations to the intersection before comparing.
-	savedAnnotations := runtimeObj.GetAnnotations()
-	runtimeObj.Annotations = filterAnnotationsByDesired(runtimeObj.GetAnnotations(), configObj.GetAnnotations())
-
-	match := proto.Equal(configObj, runtimeObj)
-
-	runtimeObj.Annotations = savedAnnotations
-
-	return match
-}
-
-// filterAnnotationsByDesired returns only runtime annotations whose keys
-// exist in the desired (config) annotations.
-func filterAnnotationsByDesired(runtimeAnnotations, desiredAnnotations map[string]string) map[string]string {
-	if len(desiredAnnotations) == 0 {
-		return nil
-	}
-
-	if len(runtimeAnnotations) == 0 {
-		return nil
-	}
-
-	filtered := make(map[string]string, len(desiredAnnotations))
-
-	for key, value := range runtimeAnnotations {
-		if _, expected := desiredAnnotations[key]; expected {
-			filtered[key] = value
-		}
-	}
-
-	if len(filtered) == 0 {
-		return nil
-	}
-
-	return filtered
 }
 
 // reconcileAll synchronizes all configured objects from CloudSecure to Kubernetes.
@@ -234,6 +207,8 @@ func (r *Reconciler) reconcileAll(ctx context.Context) error {
 }
 
 // applyObject applies a single configured object to Kubernetes using Server-Side Apply.
+// SSA field ownership ensures that annotations managed by cloud-operator are authoritative:
+// omitted annotations are removed, and annotations owned by other field managers are preserved.
 func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKubernetesObjectData) error {
 	resourceName, err := controller.ExtractResourceName(configObj)
 	if err != nil {
