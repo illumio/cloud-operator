@@ -84,13 +84,6 @@ func NewWatcher(config WatcherConfig) *Watcher {
 	}
 }
 
-// isManagedByOperator checks if the object has the managed-by label set by cloud-operator.
-func (r *Watcher) isManagedByOperator(obj *unstructured.Unstructured) bool {
-	labels := obj.GetLabels()
-
-	return labels[controller.ManagedByLabel] == controller.ManagedByValue
-}
-
 // gvr returns the GroupVersionResource for this watcher.
 func (r *Watcher) gvr() schema.GroupVersionResource {
 	return schema.GroupVersionResource{
@@ -164,8 +157,9 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 		}
 
 		// Add operator-managed objects to the runtime snapshot for reconciliation.
-		if r.runtimeCache != nil && r.isManagedByOperator(item) {
-			id := item.GetLabels()[controller.CloudSecureIDLabel]
+		labels := metadataObj.GetLabels()
+		if r.runtimeCache != nil && labels[controller.ManagedByLabel] == controller.ManagedByValue {
+			id := labels[controller.CloudSecureIDLabel]
 			if id != "" {
 				configured, err := controller.BuildConfiguredFromMetadata(id, metadataObj)
 				if err != nil {
@@ -360,15 +354,10 @@ func (r *Watcher) handleWatchEvent(
 			return "", false, err
 		}
 
-		// Additionally update the runtime cache for operator-managed resources.
 		if r.runtimeCache != nil {
-			obj, ok := event.Object.(*unstructured.Unstructured)
-			if !ok {
-				return "", false, fmt.Errorf("unexpected event object type: %T", event.Object)
-			}
-
-			if r.isManagedByOperator(obj) {
-				id := obj.GetLabels()[controller.CloudSecureIDLabel]
+			labels := metadataObj.GetLabels()
+			if labels[controller.ManagedByLabel] == controller.ManagedByValue {
+				id := labels[controller.CloudSecureIDLabel]
 				if id != "" {
 					configured, err := controller.BuildConfiguredFromMetadata(id, metadataObj)
 					if err != nil {

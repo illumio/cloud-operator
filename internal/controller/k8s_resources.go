@@ -582,9 +582,10 @@ const (
 	// This ID is the unique key in the desired state (config) cache. It is set as a label on
 	// Kubernetes objects during apply so the watcher can extract it and use it as the runtime
 	// cache key, allowing the reconciler to match desired vs actual state by the same ID.
-	CloudSecureIDLabel = "app.kubernetes.io/cloudsecure-id"
+	CloudSecureIDLabel = "cloud.illum.io/resource-id"
 
 	// ManagedByLabel is the standard Kubernetes label for identifying the managing component.
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/
 	ManagedByLabel = "app.kubernetes.io/managed-by"
 
 	// ManagedByValue is the value used for the managed-by label.
@@ -594,7 +595,8 @@ const (
 // BuildConfiguredFromMetadata builds a ConfiguredKubernetesObjectData from the
 // already-converted KubernetesObjectData for the runtime cache. Operator-added
 // labels (cloudsecure-id, managed-by) are stripped so the runtime snapshot
-// matches the shape of the config cache.
+// matches the shape of the config cache. Annotations are passed through as-is
+// because the operator doesn't add any — SSA handles annotation ownership.
 func BuildConfiguredFromMetadata(id string, metadata *pb.KubernetesObjectData) (*pb.ConfiguredKubernetesObjectData, error) {
 	filteredLabels := make(map[string]string, len(metadata.GetLabels()))
 	for k, v := range metadata.GetLabels() {
@@ -621,17 +623,16 @@ func BuildConfiguredFromMetadata(id string, metadata *pb.KubernetesObjectData) (
 // setConfiguredKindSpecific sets the KindSpecific field on a ConfiguredKubernetesObjectData
 // from a KubernetesObjectData source. Both use the same inner types, just different oneof wrappers.
 func setConfiguredKindSpecific(configured *pb.ConfiguredKubernetesObjectData, source *pb.KubernetesObjectData) error {
-	if source.GetKindSpecific() == nil {
+	switch ks := source.GetKindSpecific().(type) {
+	case *pb.KubernetesObjectData_CiliumNetworkPolicy:
+		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{CiliumNetworkPolicy: ks.CiliumNetworkPolicy}
+	case *pb.KubernetesObjectData_CiliumClusterwideNetworkPolicy:
+		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{CiliumClusterwideNetworkPolicy: ks.CiliumClusterwideNetworkPolicy}
+	case *pb.KubernetesObjectData_CiliumCidrGroup:
+		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{CiliumCidrGroup: ks.CiliumCidrGroup}
+	case nil:
 		return nil
-	}
-
-	if policy := source.GetCiliumNetworkPolicy(); policy != nil {
-		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{CiliumNetworkPolicy: policy}
-	} else if ccnp := source.GetCiliumClusterwideNetworkPolicy(); ccnp != nil {
-		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{CiliumClusterwideNetworkPolicy: ccnp}
-	} else if cidr := source.GetCiliumCidrGroup(); cidr != nil {
-		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{CiliumCidrGroup: cidr}
-	} else {
+	default:
 		return fmt.Errorf("unhandled KindSpecific type: %T", source.GetKindSpecific())
 	}
 
