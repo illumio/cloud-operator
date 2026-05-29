@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/controller"
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 // loadExpectedPolicy reads a Cilium policy YAML from testdata/policies/ and returns
@@ -36,31 +36,7 @@ func loadExpectedPolicy(t *testing.T, filename string) map[string]any {
 	var parsed map[string]any
 	require.NoError(t, kjson.Unmarshal(jsonData, &parsed))
 
-	// protojson omits empty maps, so the reconciler produces
-	// endpointSelector: {} rather than endpointSelector: {matchLabels: {}}.
-	removeEmptyMatchLabels(parsed)
-
 	return parsed
-}
-
-// removeEmptyMatchLabels recursively removes matchLabels keys whose value is
-// an empty map, matching protojson's behavior of omitting empty maps.
-func removeEmptyMatchLabels(v any) {
-	switch val := v.(type) {
-	case map[string]any:
-		for _, v := range val {
-			removeEmptyMatchLabels(v)
-		}
-		if ml, ok := val["matchLabels"]; ok {
-			if m, ok := ml.(map[string]any); ok && len(m) == 0 {
-				delete(val, "matchLabels")
-			}
-		}
-	case []any:
-		for _, item := range val {
-			removeEmptyMatchLabels(item)
-		}
-	}
 }
 
 func TestReconciler_PopulatedSnapshot(t *testing.T) {
@@ -94,6 +70,7 @@ func TestReconciler_PopulatedSnapshot(t *testing.T) {
 								EnableDefaultDeny: &pb.CiliumPolicyDefaultDeny{
 									Ingress: &boolTrue,
 								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
 							},
 						},
 					},
@@ -118,8 +95,8 @@ func TestReconciler_PopulatedSnapshot(t *testing.T) {
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
 	assert.Equal(t, "e2e-snapshot-policy", obj.GetName())
 	assert.Equal(t, "e2e", obj.GetLabels()["env"])
-	assert.Equal(t, controller.ManagedByValue, obj.GetLabels()[controller.ManagedByLabel])
-	assert.Equal(t, "cnp-e2e-1", obj.GetLabels()[controller.CloudSecureIDLabel])
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-e2e-1", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	spec, ok := obj.Object["spec"].(map[string]any)
 	require.True(t, ok)
@@ -181,6 +158,7 @@ func TestReconciler_EmptySnapshotThenMutation(t *testing.T) {
 										EndpointSelector: &pb.LabelSelector{
 											MatchLabels: map[string]string{"app": "api"},
 										},
+										Ingress: []*pb.CiliumPolicyIngressRule{{}},
 									},
 								},
 							},
@@ -200,7 +178,7 @@ func TestReconciler_EmptySnapshotThenMutation(t *testing.T) {
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-mutation-policy")
 	require.NoError(t, err)
 	assert.Equal(t, "e2e-mutation-policy", obj.GetName())
-	assert.Equal(t, "cnp-e2e-2", obj.GetLabels()[controller.CloudSecureIDLabel])
+	assert.Equal(t, "cnp-e2e-2", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-mutation-policy")
@@ -233,6 +211,7 @@ func TestReconciler_MutationDelete(t *testing.T) {
 								EndpointSelector: &pb.LabelSelector{
 									MatchLabels: map[string]string{"app": "temp"},
 								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
 							},
 						},
 					},
@@ -298,6 +277,7 @@ func TestReconciler_SSAFieldManagerOwnership(t *testing.T) {
 								EndpointSelector: &pb.LabelSelector{
 									MatchLabels: map[string]string{"app": "ssa"},
 								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
 							},
 						},
 					},
@@ -408,7 +388,7 @@ func TestReconciler_ClusterwideIngressWithPorts(t *testing.T) {
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "wildcard-from-endpoints")
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
-	assert.Equal(t, controller.ManagedByValue, obj.GetLabels()[controller.ManagedByLabel])
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
 
 	expected := loadExpectedPolicy(t, "wildcard-from-endpoints.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
@@ -465,7 +445,7 @@ func TestReconciler_DenyAllEgress(t *testing.T) {
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "deny-all-egress")
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
-	assert.Equal(t, controller.ManagedByValue, obj.GetLabels()[controller.ManagedByLabel])
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
 
 	expected := loadExpectedPolicy(t, "deny-all-egress.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
@@ -588,6 +568,7 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 										EndpointSelector: &pb.LabelSelector{
 											MatchLabels: map[string]string{"app": "a"},
 										},
+										Ingress: []*pb.CiliumPolicyIngressRule{{}},
 									},
 								},
 							},
@@ -606,7 +587,7 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 					CreateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:        "cnp-multi-b",
 						Name:      "e2e-multi-b",
-		
+
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 							CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
 								Specs: []*pb.CiliumPolicyRule{
@@ -614,6 +595,7 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 										EndpointSelector: &pb.LabelSelector{
 											MatchLabels: map[string]string{"app": "b"},
 										},
+										Ingress: []*pb.CiliumPolicyIngressRule{{}},
 									},
 								},
 							},
@@ -647,6 +629,7 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 										EndpointSelector: &pb.LabelSelector{
 											MatchLabels: map[string]string{"app": "a-updated"},
 										},
+										Ingress: []*pb.CiliumPolicyIngressRule{{}},
 									},
 								},
 							},
@@ -734,6 +717,7 @@ func TestReconciler_UpdateChangesSpec(t *testing.T) {
 								EnableDefaultDeny: &pb.CiliumPolicyDefaultDeny{
 									Ingress: &boolTrue,
 								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
 							},
 						},
 					},
@@ -786,6 +770,7 @@ func TestReconciler_UpdateChangesSpec(t *testing.T) {
 										EnableDefaultDeny: &pb.CiliumPolicyDefaultDeny{
 											Egress: &boolEgress,
 										},
+										Egress: []*pb.CiliumPolicyEgressRule{{}},
 									},
 								},
 							},
@@ -820,8 +805,8 @@ func TestReconciler_UpdateChangesSpec(t *testing.T) {
 	obj, err = testClient.GetResource(ctx, ccnpGVR, "", "e2e-update-spec")
 	require.NoError(t, err)
 	assert.Equal(t, "production", obj.GetLabels()["env"])
-	assert.Equal(t, controller.ManagedByValue, obj.GetLabels()[controller.ManagedByLabel])
-	assert.Equal(t, "cnp-update-spec", obj.GetLabels()[controller.CloudSecureIDLabel])
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-update-spec", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-update-spec")
@@ -854,6 +839,7 @@ func TestReconciler_DeleteOnlyRemovesTargetPolicy(t *testing.T) {
 								EndpointSelector: &pb.LabelSelector{
 									MatchLabels: map[string]string{"app": "keep"},
 								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
 							},
 						},
 					},
@@ -874,6 +860,7 @@ func TestReconciler_DeleteOnlyRemovesTargetPolicy(t *testing.T) {
 								EndpointSelector: &pb.LabelSelector{
 									MatchLabels: map[string]string{"app": "remove"},
 								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
 							},
 						},
 					},
@@ -917,8 +904,8 @@ func TestReconciler_DeleteOnlyRemovesTargetPolicy(t *testing.T) {
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-del-keep")
 	require.NoError(t, err)
 	assert.Equal(t, "e2e-del-keep", obj.GetName())
-	assert.Equal(t, controller.ManagedByValue, obj.GetLabels()[controller.ManagedByLabel])
-	assert.Equal(t, "cnp-del-keep", obj.GetLabels()[controller.CloudSecureIDLabel])
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-del-keep", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	spec, ok := obj.Object["spec"].(map[string]any)
 	require.True(t, ok)
@@ -1012,8 +999,8 @@ func TestReconciler_CreateVerifiesSpecContent(t *testing.T) {
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
 	assert.Equal(t, "platform", obj.GetLabels()["team"])
 	assert.Equal(t, "infra", obj.GetLabels()["tier"])
-	assert.Equal(t, controller.ManagedByValue, obj.GetLabels()[controller.ManagedByLabel])
-	assert.Equal(t, "ccnp-spec-verify", obj.GetLabels()[controller.CloudSecureIDLabel])
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "ccnp-spec-verify", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	// Verify spec matches expected YAML
 	expected := loadExpectedPolicy(t, "e2e-spec-verify.yaml")
@@ -1051,6 +1038,7 @@ func TestReconciler_UpdatePreservesMetadata(t *testing.T) {
 								EndpointSelector: &pb.LabelSelector{
 									MatchLabels: map[string]string{"app": "svc"},
 								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
 							},
 						},
 					},
@@ -1086,6 +1074,7 @@ func TestReconciler_UpdatePreservesMetadata(t *testing.T) {
 										EndpointSelector: &pb.LabelSelector{
 											MatchLabels: map[string]string{"app": "svc-updated"},
 										},
+										Ingress: []*pb.CiliumPolicyIngressRule{{}},
 									},
 								},
 							},
@@ -1120,8 +1109,8 @@ func TestReconciler_UpdatePreservesMetadata(t *testing.T) {
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-meta-preserve")
 	require.NoError(t, err)
 	assert.Equal(t, "v2", obj.GetLabels()["version"])
-	assert.Equal(t, controller.ManagedByValue, obj.GetLabels()[controller.ManagedByLabel])
-	assert.Equal(t, "cnp-meta-preserve", obj.GetLabels()[controller.CloudSecureIDLabel])
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-meta-preserve", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-meta-preserve")
@@ -1172,8 +1161,8 @@ func TestReconciler_CIDRGroupSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumCIDRGroup", obj.GetKind())
 	assert.Equal(t, "e2e-cidr-group", obj.GetName())
-	assert.Equal(t, controller.ManagedByValue, obj.GetLabels()[controller.ManagedByLabel])
-	assert.Equal(t, "cidr-e2e-1", obj.GetLabels()[controller.CloudSecureIDLabel])
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cidr-e2e-1", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	expected := loadExpectedPolicy(t, "e2e-cidr-group.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
