@@ -9,6 +9,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"go.uber.org/zap"
 
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/fakeserver"
 )
 
@@ -37,12 +38,15 @@ func main() {
 		logger.Error("Token could not be signed with fake secret key")
 	}
 
-	fs := fakeserver.NewFakeServer(
-		"0.0.0.0:50051",
-		"0.0.0.0:50053",
-		signedToken,
-		logger,
-	)
+	fs := &fakeserver.FakeServer{
+		Address:         "0.0.0.0:50051",
+		HTTPAddress:     "0.0.0.0:50053",
+		StopChan:        make(chan struct{}),
+		Token:           signedToken,
+		Logger:          logger,
+		State:           &fakeserver.ServerState{},
+		ConfigResponses: make(chan *pb.GetConfigurationUpdatesResponse, 10),
+	}
 
 	// Start the server
 	if err := fs.Start(); err != nil {
@@ -73,5 +77,5 @@ func main() {
 
 	// Wait for server stop signal
 	logger.Info("Server started")
-	<-fs.StopChan()
+	<-fs.StopChan
 }
