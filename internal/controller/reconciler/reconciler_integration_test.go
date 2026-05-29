@@ -522,6 +522,8 @@ func TestReconciler_ClusterwideWithNamespaceSelector(t *testing.T) {
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "clusterwide-ns-selector")
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "ccnp-ns-selector", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	expected := loadExpectedPolicy(t, "clusterwide-ns-selector.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
@@ -1374,6 +1376,8 @@ func TestReconciler_ICMPPolicy(t *testing.T) {
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "demo-host-policy")
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-icmp-1", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	expected := loadExpectedPolicy(t, "demo-host-policy.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
@@ -1462,6 +1466,8 @@ func TestReconciler_SingleSpecSerializesAsSpec(t *testing.T) {
 	_, hasSpecs := obj.Object["specs"]
 	assert.True(t, hasSpec, "single rule should be stored under 'spec'")
 	assert.False(t, hasSpecs, "single rule should not use 'specs'")
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-single-spec", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	expected := loadExpectedPolicy(t, "global-default-deny-and-core-egress.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
@@ -1561,6 +1567,8 @@ func TestReconciler_MultipleSpecsSerializesAsSpecs(t *testing.T) {
 	_, hasSpecs := obj.Object["specs"]
 	assert.False(t, hasSpec, "multiple rules should not use 'spec'")
 	assert.True(t, hasSpecs, "multiple rules should be stored under 'specs'")
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-multi-specs", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	expected := loadExpectedPolicy(t, "multi-rule-policy.yaml")
 	assert.Equal(t, expected["specs"], obj.Object["specs"])
@@ -1572,14 +1580,6 @@ func TestReconciler_MultipleSpecsSerializesAsSpecs(t *testing.T) {
 
 // TestReconciler_CIDRSetWithExceptions verifies toCIDRSet with except ranges.
 // Based on: https://docs.cilium.io/en/latest/security/policy/language/#cidr-based
-//
-//	egress:
-//	  - toCIDRSet:
-//	      - cidr: 10.0.0.0/8
-//	        except:
-//	          - 10.96.0.0/12
-//	  - toCIDR:
-//	      - 192.168.1.0/24
 func TestReconciler_CIDRSetWithExceptions(t *testing.T) {
 	fs := setupSuite(t)
 
@@ -1638,6 +1638,9 @@ func TestReconciler_CIDRSetWithExceptions(t *testing.T) {
 
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "cidr-set-policy")
 	require.NoError(t, err)
+	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-cidr-set", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	expected := loadExpectedPolicy(t, "cidr-set-policy.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
@@ -1751,6 +1754,9 @@ func TestReconciler_FQDNEgressWithDNSProxy(t *testing.T) {
 
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "fqdn-dns-policy")
 	require.NoError(t, err)
+	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-fqdn-dns", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	expected := loadExpectedPolicy(t, "fqdn-dns-policy.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
@@ -1835,6 +1841,9 @@ func TestReconciler_HostFirewallWithEntitiesAndDeny(t *testing.T) {
 
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "host-firewall-locked")
 	require.NoError(t, err)
+	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-host-fw", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	expected := loadExpectedPolicy(t, "host-firewall-locked.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
