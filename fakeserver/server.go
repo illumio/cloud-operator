@@ -52,6 +52,7 @@ var kasp = keepalive.ServerParameters{
 }
 
 type FakeServer struct {
+	pb.UnimplementedKubernetesInfoServiceServer
 	address         string
 	httpAddress     string
 	server          *grpc.Server
@@ -116,12 +117,7 @@ func (l LogEntry) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
-type server struct {
-	pb.UnimplementedKubernetesInfoServiceServer
-	configResponses chan *pb.GetConfigurationUpdatesResponse
-}
-
-func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKubernetesResourcesServer) error {
+func (fs *FakeServer) SendKubernetesResources(stream pb.KubernetesInfoService_SendKubernetesResourcesServer) error {
 	for {
 		req, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -168,7 +164,7 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 	}
 }
 
-func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error {
+func (fs *FakeServer) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error {
 	for {
 		req, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -228,7 +224,7 @@ func logReceivedLogEntry(log *pb.LogEntry, logger *zap.Logger) error {
 	return nil
 }
 
-func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConfigurationUpdatesServer) error {
+func (fs *FakeServer) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConfigurationUpdatesServer) error {
 	logger.Info("GetConfigurationUpdates stream started")
 
 	// Read keepalives in the background so the stream stays alive.
@@ -249,7 +245,7 @@ func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConf
 	}()
 
 	// Send responses from the channel. The test (or default setup) controls what gets sent.
-	for resp := range s.configResponses {
+	for resp := range fs.configResponses {
 		if err := stream.Send(resp); err != nil {
 			logger.Error("Failed to send config response", zap.Error(err))
 
@@ -260,7 +256,7 @@ func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConf
 	return nil
 }
 
-func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
+func (fs *FakeServer) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
 	logger.Info("SendKubernetesNetworkFlows stream started")
 
 	for {
@@ -314,7 +310,7 @@ func NewFakeServer(address, httpAddress, token string, logger *zap.Logger) *Fake
 		token:           token,
 		logger:          logger,
 		state:           &ServerState{},
-		configResponses: make(chan *pb.GetConfigurationUpdatesResponse, 100),
+		configResponses: make(chan *pb.GetConfigurationUpdatesResponse, 10),
 	}
 }
 
@@ -336,24 +332,6 @@ func (fs *FakeServer) GRPCAddress() string {
 // Token returns the server's auth token for constructing client connections.
 func (fs *FakeServer) Token() string {
 	return fs.token
-}
-
-// TokenAuth implements grpc.PerRPCCredentials for bearer-token authentication.
-type TokenAuth struct {
-	Token string
-}
-
-func (t TokenAuth) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
-	return map[string]string{AuthorizationHeader: "Bearer " + t.Token}, nil
-}
-
-func (t TokenAuth) RequireTransportSecurity() bool {
-	return true
-}
-
-// Wait blocks until the server is stopped.
-func (fs *FakeServer) Wait() {
-	<-fs.stopChan
 }
 
 func (fs *FakeServer) Start() error {
@@ -388,7 +366,7 @@ func (fs *FakeServer) Start() error {
 		})
 	serverState = fs.state
 	fs.server = grpc.NewServer(grpc.Creds(credsTLS), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor(fs.token)))
-	pb.RegisterKubernetesInfoServiceServer(fs.server, &server{configResponses: fs.configResponses})
+	pb.RegisterKubernetesInfoServiceServer(fs.server, fs)
 
 	// Handle termination signals for graceful shutdown
 	go fs.handleSignals()

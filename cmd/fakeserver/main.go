@@ -71,7 +71,7 @@ func main() {
 	// Keep the compiler happy about proxyServer usage
 	_ = proxyServer
 
-	// Wait indefinitely for server stop signal
+	// Block until terminated
 	logger.Info("Server started")
-	fs.Wait()
+	select {}
 }
