@@ -6,16 +6,62 @@ package reconciler
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kjson "k8s.io/apimachinery/pkg/util/json"
+	"sigs.k8s.io/yaml"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller"
 )
+
+// loadExpectedPolicy reads a Cilium policy YAML from testdata/policies/ and returns
+// the parsed top-level map for comparison with K8s unstructured objects.
+// Uses K8s's JSON unmarshaler (k8s.io/apimachinery/pkg/util/json) which decodes
+// integers as int64 — matching how K8s unstructured objects store numbers.
+func loadExpectedPolicy(t *testing.T, filename string) map[string]any {
+	t.Helper()
+
+	data, err := os.ReadFile("testdata/policies/" + filename)
+	require.NoError(t, err)
+
+	jsonData, err := yaml.YAMLToJSON(data)
+	require.NoError(t, err)
+
+	var parsed map[string]any
+	require.NoError(t, kjson.Unmarshal(jsonData, &parsed))
+
+	// protojson omits empty maps, so the reconciler produces
+	// endpointSelector: {} rather than endpointSelector: {matchLabels: {}}.
+	removeEmptyMatchLabels(parsed)
+
+	return parsed
+}
+
+// removeEmptyMatchLabels recursively removes matchLabels keys whose value is
+// an empty map, matching protojson's behavior of omitting empty maps.
+func removeEmptyMatchLabels(v any) {
+	switch val := v.(type) {
+	case map[string]any:
+		for _, v := range val {
+			removeEmptyMatchLabels(v)
+		}
+		if ml, ok := val["matchLabels"]; ok {
+			if m, ok := ml.(map[string]any); ok && len(m) == 0 {
+				delete(val, "matchLabels")
+			}
+		}
+	case []any:
+		for _, item := range val {
+			removeEmptyMatchLabels(item)
+		}
+	}
+}
 
 func TestReconciler_PopulatedSnapshot(t *testing.T) {
 	fs := setupSuite(t)
@@ -298,6 +344,7 @@ func TestReconciler_ClusterwideIngressWithPorts(t *testing.T) {
 	fs := setupSuite(t)
 
 	ctx := context.Background()
+
 	udpProto := "UDP"
 
 	// CiliumClusterwideNetworkPolicy: allow ingress to kube-dns from all endpoints on port 53/UDP
@@ -363,17 +410,8 @@ func TestReconciler_ClusterwideIngressWithPorts(t *testing.T) {
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
 	assert.Equal(t, controller.ManagedByValue, obj.GetLabels()[controller.ManagedByLabel])
 
-	spec, ok := obj.Object["spec"].(map[string]any)
-	require.True(t, ok)
-
-	ingress, ok := spec["ingress"].([]any)
-	require.True(t, ok, "spec should have ingress rules")
-	require.Len(t, ingress, 1)
-
-	ingressRule, ok := ingress[0].(map[string]any)
-	require.True(t, ok)
-	assert.Contains(t, ingressRule, "fromEndpoints")
-	assert.Contains(t, ingressRule, "toPorts")
+	expected := loadExpectedPolicy(t, "wildcard-from-endpoints.yaml")
+	assert.Equal(t, expected["spec"], obj.Object["spec"])
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "wildcard-from-endpoints")
@@ -396,9 +434,8 @@ func TestReconciler_DenyAllEgress(t *testing.T) {
 	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:        "cnp-deny-egress",
-				Name:      "deny-all-egress",
-
+				Id:   "cnp-deny-egress",
+				Name: "deny-all-egress",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
 						Specs: []*pb.CiliumPolicyRule{
@@ -430,10 +467,8 @@ func TestReconciler_DenyAllEgress(t *testing.T) {
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
 	assert.Equal(t, controller.ManagedByValue, obj.GetLabels()[controller.ManagedByLabel])
 
-	spec, ok := obj.Object["spec"].(map[string]any)
-	require.True(t, ok)
-	assert.Contains(t, spec, "endpointSelector")
-	assert.Contains(t, spec, "egress")
+	expected := loadExpectedPolicy(t, "deny-all-egress.yaml")
+	assert.Equal(t, expected["spec"], obj.Object["spec"])
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "deny-all-egress")
@@ -444,6 +479,7 @@ func TestReconciler_ClusterwideWithNamespaceSelector(t *testing.T) {
 	fs := setupSuite(t)
 
 	ctx := context.Background()
+
 	tcpProto := "TCP"
 
 	// CiliumClusterwideNetworkPolicy: allow ingress from frontend namespace to backend pods
@@ -507,17 +543,8 @@ func TestReconciler_ClusterwideWithNamespaceSelector(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
 
-	spec, ok := obj.Object["spec"].(map[string]any)
-	require.True(t, ok)
-
-	ingress, ok := spec["ingress"].([]any)
-	require.True(t, ok, "spec should have ingress rules")
-	require.Len(t, ingress, 1)
-
-	ingressRule, ok := ingress[0].(map[string]any)
-	require.True(t, ok)
-	assert.Contains(t, ingressRule, "fromEndpoints")
-	assert.Contains(t, ingressRule, "toPorts")
+	expected := loadExpectedPolicy(t, "clusterwide-ns-selector.yaml")
+	assert.Equal(t, expected["spec"], obj.Object["spec"])
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "clusterwide-ns-selector")
@@ -911,8 +938,6 @@ func TestReconciler_CreateVerifiesSpecContent(t *testing.T) {
 	fs := setupSuite(t)
 
 	ctx := context.Background()
-	boolTrue := true
-	tcpProto := "TCP"
 
 	// Create a policy with rich spec: ingress rules, egress rules, labels, description
 	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
@@ -929,38 +954,42 @@ func TestReconciler_CreateVerifiesSpecContent(t *testing.T) {
 				Name:   "e2e-spec-verify",
 				Labels: map[string]string{"team": "platform", "tier": "infra"},
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
-					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
-						Specs: []*pb.CiliumPolicyRule{
-							{
-								Description: strPtr("Allow HTTP ingress from frontend, deny all egress"),
-								EndpointSelector: &pb.LabelSelector{
-									MatchLabels: map[string]string{"app": "backend"},
-								},
-								EnableDefaultDeny: &pb.CiliumPolicyDefaultDeny{
-									Ingress: &boolTrue,
-									Egress:  &boolTrue,
-								},
-								Ingress: []*pb.CiliumPolicyIngressRule{
-									{
-										FromEndpoints: &pb.LabelSelectorList{
-											Items: []*pb.LabelSelector{
-												{MatchLabels: map[string]string{"app": "frontend"}},
+					CiliumClusterwideNetworkPolicy: func() *pb.KubernetesCiliumClusterwideNetworkPolicyData {
+						boolTrue := true
+						tcpProto := "TCP"
+						return &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+							Specs: []*pb.CiliumPolicyRule{
+								{
+									Description: strPtr("Allow HTTP ingress from frontend, deny all egress"),
+									EndpointSelector: &pb.LabelSelector{
+										MatchLabels: map[string]string{"app": "backend"},
+									},
+									EnableDefaultDeny: &pb.CiliumPolicyDefaultDeny{
+										Ingress: &boolTrue,
+										Egress:  &boolTrue,
+									},
+									Ingress: []*pb.CiliumPolicyIngressRule{
+										{
+											FromEndpoints: &pb.LabelSelectorList{
+												Items: []*pb.LabelSelector{
+													{MatchLabels: map[string]string{"app": "frontend"}},
+												},
 											},
-										},
-										ToPorts: []*pb.CiliumPolicyPortRule{
-											{
-												Ports: []*pb.CiliumPolicyPort{
-													{Port: "80", Protocol: &tcpProto},
-													{Port: "443", Protocol: &tcpProto},
+											ToPorts: []*pb.CiliumPolicyPortRule{
+												{
+													Ports: []*pb.CiliumPolicyPort{
+														{Port: "80", Protocol: &tcpProto},
+														{Port: "443", Protocol: &tcpProto},
+													},
 												},
 											},
 										},
 									},
+									Egress: []*pb.CiliumPolicyEgressRule{{}},
 								},
-								Egress: []*pb.CiliumPolicyEgressRule{{}},
 							},
-						},
-					},
+						}
+					}(),
 				},
 			},
 		},
@@ -986,52 +1015,9 @@ func TestReconciler_CreateVerifiesSpecContent(t *testing.T) {
 	assert.Equal(t, controller.ManagedByValue, obj.GetLabels()[controller.ManagedByLabel])
 	assert.Equal(t, "ccnp-spec-verify", obj.GetLabels()[controller.CloudSecureIDLabel])
 
-	// Verify spec structure
-	spec, ok := obj.Object["spec"].(map[string]any)
-	require.True(t, ok)
-
-	assert.Equal(t, "Allow HTTP ingress from frontend, deny all egress", spec["description"])
-
-	// Verify endpointSelector
-	es, ok := spec["endpointSelector"].(map[string]any)
-	require.True(t, ok)
-	ml, ok := es["matchLabels"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "backend", ml["app"])
-
-	// Verify ingress rules
-	ingress, ok := spec["ingress"].([]any)
-	require.True(t, ok)
-	require.Len(t, ingress, 1)
-	ingressRule, ok := ingress[0].(map[string]any)
-	require.True(t, ok)
-	assert.Contains(t, ingressRule, "fromEndpoints")
-	assert.Contains(t, ingressRule, "toPorts")
-
-	// Verify toPorts has correct port values
-	toPorts, ok := ingressRule["toPorts"].([]any)
-	require.True(t, ok)
-	require.Len(t, toPorts, 1)
-	portRule, ok := toPorts[0].(map[string]any)
-	require.True(t, ok)
-	ports, ok := portRule["ports"].([]any)
-	require.True(t, ok)
-	require.Len(t, ports, 2)
-
-	port0, ok := ports[0].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "80", port0["port"])
-	assert.Equal(t, "TCP", port0["protocol"])
-
-	port1, ok := ports[1].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "443", port1["port"])
-	assert.Equal(t, "TCP", port1["protocol"])
-
-	// Verify egress rules
-	egress, ok := spec["egress"].([]any)
-	require.True(t, ok)
-	require.Len(t, egress, 1)
+	// Verify spec matches expected YAML
+	expected := loadExpectedPolicy(t, "e2e-spec-verify.yaml")
+	assert.Equal(t, expected["spec"], obj.Object["spec"])
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-spec-verify")
@@ -1189,15 +1175,8 @@ func TestReconciler_CIDRGroupSnapshot(t *testing.T) {
 	assert.Equal(t, controller.ManagedByValue, obj.GetLabels()[controller.ManagedByLabel])
 	assert.Equal(t, "cidr-e2e-1", obj.GetLabels()[controller.CloudSecureIDLabel])
 
-	spec, ok := obj.Object["spec"].(map[string]any)
-	require.True(t, ok)
-
-	cidrs, ok := spec["externalCidrs"].([]any)
-	require.True(t, ok)
-	require.Len(t, cidrs, 3)
-	assert.Equal(t, "10.0.0.0/8", cidrs[0])
-	assert.Equal(t, "172.16.0.0/12", cidrs[1])
-	assert.Equal(t, "192.168.0.0/16", cidrs[2])
+	expected := loadExpectedPolicy(t, "e2e-cidr-group.yaml")
+	assert.Equal(t, expected["spec"], obj.Object["spec"])
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, cidrGroupGVR, "", "e2e-cidr-group")
@@ -1260,7 +1239,7 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 
 	spec, ok := obj.Object["spec"].(map[string]any)
 	require.True(t, ok)
-	cidrs, ok := spec["externalCidrs"].([]any)
+	cidrs, ok := spec["externalCIDRs"].([]any)
 	require.True(t, ok)
 	require.Len(t, cidrs, 1)
 	assert.Equal(t, "10.0.0.0/8", cidrs[0])
@@ -1297,7 +1276,7 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 		if !ok {
 			return false
 		}
-		cidrs, ok := spec["externalCidrs"].([]any)
+		cidrs, ok := spec["externalCIDRs"].([]any)
 		if !ok {
 			return false
 		}
@@ -1329,5 +1308,592 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, cidrGroupGVR, "", "e2e-cidr-mut")
+	})
+}
+
+// TestReconciler_ICMPPolicy tests that ICMP type fields are serialized correctly.
+// Based on the Cilium host firewall example from:
+// https://docs.cilium.io/en/latest/security/host-firewall/
+// Cilium expects {"type": 8} or {"type": "EchoRequest"}, not {"typeInt": 8} or {"typeString": "EchoRequest"}.
+func TestReconciler_ICMPPolicy(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+
+	// CiliumClusterwideNetworkPolicy with ICMP rules, modeled after:
+	//   apiVersion: "cilium.io/v2"
+	//   kind: CiliumClusterwideNetworkPolicy
+	//   metadata:
+	//     name: "demo-host-policy"
+	//   spec:
+	//     nodeSelector:
+	//       matchLabels:
+	//         node-access: ssh
+	//     ingress:
+	//       - toPorts:
+	//           - ports:
+	//               - port: "22"
+	//                 protocol: TCP
+	//         icmps:
+	//           - fields:
+	//               - type: 8
+	//                 family: IPv4
+	//               - type: EchoRequest
+	//                 family: IPv4
+	tcpProto := "TCP"
+	ipv4Family := "IPv4"
+
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "cnp-icmp-1",
+				Name: "demo-host-policy",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								NodeSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"node-access": "ssh"},
+								},
+								Ingress: []*pb.CiliumPolicyIngressRule{
+									{
+										FromEntities: []string{"cluster"},
+									},
+									{
+										ToPorts: []*pb.CiliumPolicyPortRule{
+											{
+												Ports: []*pb.CiliumPolicyPort{
+													{Port: "22", Protocol: &tcpProto},
+												},
+											},
+										},
+									},
+									{
+										Icmps: []*pb.CiliumPolicyICMPRule{
+											{
+												Fields: []*pb.CiliumPolicyICMPField{
+													{Family: &ipv4Family, Type: &pb.CiliumPolicyICMPField_TypeInt{TypeInt: 8}},
+													{Family: &ipv4Family, Type: &pb.CiliumPolicyICMPField_TypeString{TypeString: "EchoRequest"}},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "demo-host-policy")
+		return err == nil && obj != nil
+	}, 10*time.Second, 100*time.Millisecond, "ICMP policy should be applied to K8s")
+
+	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "demo-host-policy")
+	require.NoError(t, err)
+	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
+
+	expected := loadExpectedPolicy(t, "demo-host-policy.yaml")
+	assert.Equal(t, expected["spec"], obj.Object["spec"])
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "demo-host-policy")
+	})
+}
+
+// TestReconciler_SingleSpecSerializesAsSpec verifies that a policy with one rule
+// serializes as "spec" (singular), matching what users write by hand.
+// Based on: https://docs.cilium.io/en/latest/security/policy/language/#dns-based
+func TestReconciler_SingleSpecSerializesAsSpec(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+	udpProto := "UDP"
+
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "cnp-single-spec",
+				Name: "global-default-deny-and-core-egress",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								Description: strPtr("Enforce zero-trust egress cluster-wide while maintaining core DNS and API access."),
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{},
+								},
+								Egress: []*pb.CiliumPolicyEgressRule{
+									{
+										ToEndpoints: &pb.LabelSelectorList{
+											Items: []*pb.LabelSelector{
+												{
+													MatchLabels: map[string]string{
+														"k8s:io.kubernetes.pod.namespace": "kube-system",
+														"k8s-app":                         "kube-dns",
+													},
+												},
+											},
+										},
+										ToPorts: []*pb.CiliumPolicyPortRule{
+											{
+												Ports: []*pb.CiliumPolicyPort{
+													{Port: "53", Protocol: &udpProto},
+												},
+											},
+										},
+									},
+									{
+										ToEntities: []string{"kube-apiserver"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "global-default-deny-and-core-egress")
+		return err == nil && obj != nil
+	}, 10*time.Second, 100*time.Millisecond, "single-spec policy should be applied to K8s")
+
+	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "global-default-deny-and-core-egress")
+	require.NoError(t, err)
+
+	// Single rule should serialize as "spec", not "specs"
+	_, hasSpec := obj.Object["spec"]
+	_, hasSpecs := obj.Object["specs"]
+	assert.True(t, hasSpec, "single rule should be stored under 'spec'")
+	assert.False(t, hasSpecs, "single rule should not use 'specs'")
+
+	expected := loadExpectedPolicy(t, "global-default-deny-and-core-egress.yaml")
+	assert.Equal(t, expected["spec"], obj.Object["spec"])
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "global-default-deny-and-core-egress")
+	})
+}
+
+// TestReconciler_MultipleSpecsSerializesAsSpecs verifies that a policy with multiple
+// rules serializes as "specs" (plural array), not "spec".
+func TestReconciler_MultipleSpecsSerializesAsSpecs(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+	tcpProto := "TCP"
+
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "cnp-multi-specs",
+				Name: "multi-rule-policy",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "web"},
+								},
+								Ingress: []*pb.CiliumPolicyIngressRule{
+									{
+										FromEndpoints: &pb.LabelSelectorList{
+											Items: []*pb.LabelSelector{
+												{MatchLabels: map[string]string{"app": "frontend"}},
+											},
+										},
+										ToPorts: []*pb.CiliumPolicyPortRule{
+											{
+												Ports: []*pb.CiliumPolicyPort{
+													{Port: "80", Protocol: &tcpProto},
+												},
+											},
+										},
+									},
+								},
+							},
+							{
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "api"},
+								},
+								Egress: []*pb.CiliumPolicyEgressRule{
+									{
+										ToEndpoints: &pb.LabelSelectorList{
+											Items: []*pb.LabelSelector{
+												{MatchLabels: map[string]string{"app": "database"}},
+											},
+										},
+										ToPorts: []*pb.CiliumPolicyPortRule{
+											{
+												Ports: []*pb.CiliumPolicyPort{
+													{Port: "5432", Protocol: &tcpProto},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "multi-rule-policy")
+		return err == nil && obj != nil
+	}, 10*time.Second, 100*time.Millisecond, "multi-specs policy should be applied to K8s")
+
+	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "multi-rule-policy")
+	require.NoError(t, err)
+
+	// Multiple rules should serialize as "specs", not "spec"
+	_, hasSpec := obj.Object["spec"]
+	_, hasSpecs := obj.Object["specs"]
+	assert.False(t, hasSpec, "multiple rules should not use 'spec'")
+	assert.True(t, hasSpecs, "multiple rules should be stored under 'specs'")
+
+	expected := loadExpectedPolicy(t, "multi-rule-policy.yaml")
+	assert.Equal(t, expected["specs"], obj.Object["specs"])
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "multi-rule-policy")
+	})
+}
+
+// TestReconciler_CIDRSetWithExceptions verifies toCIDRSet with except ranges.
+// Based on: https://docs.cilium.io/en/latest/security/policy/language/#cidr-based
+//
+//	egress:
+//	  - toCIDRSet:
+//	      - cidr: 10.0.0.0/8
+//	        except:
+//	          - 10.96.0.0/12
+//	  - toCIDR:
+//	      - 192.168.1.0/24
+func TestReconciler_CIDRSetWithExceptions(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+	cidr := "10.0.0.0/8"
+
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "cnp-cidr-set",
+				Name: "cidr-set-policy",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "myService"},
+								},
+								Egress: []*pb.CiliumPolicyEgressRule{
+									{
+										ToCidr: []string{"20.1.1.1/32"},
+									},
+									{
+										ToCidrSet: []*pb.CiliumPolicyCIDRSet{
+											{
+												Cidr:   &cidr,
+												Except: []string{"10.96.0.0/12"},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "cidr-set-policy")
+		return err == nil && obj != nil
+	}, 10*time.Second, 100*time.Millisecond, "CIDR set policy should be applied")
+
+	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "cidr-set-policy")
+	require.NoError(t, err)
+
+	expected := loadExpectedPolicy(t, "cidr-set-policy.yaml")
+	assert.Equal(t, expected["spec"], obj.Object["spec"])
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "cidr-set-policy")
+	})
+}
+
+// TestReconciler_FQDNEgressWithDNSProxy verifies toFQDNs and DNS L7 rules.
+// Based on: https://docs.cilium.io/en/latest/security/policy/language/#dns-based
+//
+//	egress:
+//	  - toEndpoints:
+//	      - matchLabels:
+//	          "k8s:io.kubernetes.pod.namespace": kube-system
+//	          k8s-app: kube-dns
+//	    toPorts:
+//	      - ports:
+//	          - port: "53"
+//	            protocol: UDP
+//	        rules:
+//	          dns:
+//	            - matchPattern: "*"
+//	  - toFQDNs:
+//	      - matchName: "my-remote-service.com"
+//	      - matchPattern: "*.api.example.com"
+//	    toPorts:
+//	      - ports:
+//	          - port: "443"
+//	            protocol: TCP
+func TestReconciler_FQDNEgressWithDNSProxy(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+	udpProto := "UDP"
+	tcpProto := "TCP"
+	matchName := "my-remote-service.com"
+	matchPattern := "*.api.example.com"
+
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "cnp-fqdn-dns",
+				Name: "fqdn-dns-policy",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "external-client"},
+								},
+								Egress: []*pb.CiliumPolicyEgressRule{
+									{
+										ToEndpoints: &pb.LabelSelectorList{
+											Items: []*pb.LabelSelector{
+												{
+													MatchLabels: map[string]string{
+														"k8s:io.kubernetes.pod.namespace": "kube-system",
+														"k8s-app":                         "kube-dns",
+													},
+												},
+											},
+										},
+										ToPorts: []*pb.CiliumPolicyPortRule{
+											{
+												Ports: []*pb.CiliumPolicyPort{
+													{Port: "53", Protocol: &udpProto},
+												},
+											},
+										},
+									},
+									{
+										ToFqdns: []*pb.CiliumPolicyFQDNSelector{
+											{MatchName: &matchName},
+											{MatchPattern: &matchPattern},
+										},
+										ToPorts: []*pb.CiliumPolicyPortRule{
+											{
+												Ports: []*pb.CiliumPolicyPort{
+													{Port: "443", Protocol: &tcpProto},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "fqdn-dns-policy")
+		return err == nil && obj != nil
+	}, 10*time.Second, 100*time.Millisecond, "FQDN policy should be applied")
+
+	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "fqdn-dns-policy")
+	require.NoError(t, err)
+
+	expected := loadExpectedPolicy(t, "fqdn-dns-policy.yaml")
+	assert.Equal(t, expected["spec"], obj.Object["spec"])
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "fqdn-dns-policy")
+	})
+}
+
+// TestReconciler_HostFirewallWithEntitiesAndDeny verifies a host firewall policy
+// combining fromEntities, ingressDeny, and nodeSelector.
+// Based on: https://docs.cilium.io/en/latest/security/host-firewall/
+//
+//	spec:
+//	  nodeSelector:
+//	    matchLabels:
+//	      node-access: locked
+//	  ingress:
+//	    - fromEntities:
+//	        - cluster
+//	    - fromCIDR:
+//	        - 10.0.0.0/8
+//	      toPorts:
+//	        - ports:
+//	            - port: "22"
+//	              protocol: TCP
+//	  ingressDeny:
+//	    - fromCIDR:
+//	        - 192.168.0.0/16
+//	      toPorts:
+//	        - ports:
+//	            - port: "23"
+//	              protocol: TCP
+func TestReconciler_HostFirewallWithEntitiesAndDeny(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+	tcpProto := "TCP"
+
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "cnp-host-fw",
+				Name: "host-firewall-locked",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								NodeSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"node-access": "locked"},
+								},
+								Ingress: []*pb.CiliumPolicyIngressRule{
+									{
+										FromEntities: []string{"cluster"},
+									},
+									{
+										FromCidr: []string{"10.0.0.0/8"},
+										ToPorts: []*pb.CiliumPolicyPortRule{
+											{
+												Ports: []*pb.CiliumPolicyPort{
+													{Port: "22", Protocol: &tcpProto},
+												},
+											},
+										},
+									},
+								},
+								IngressDeny: []*pb.CiliumPolicyIngressRule{
+									{
+										FromCidr: []string{"192.168.0.0/16"},
+										ToPorts: []*pb.CiliumPolicyPortRule{
+											{
+												Ports: []*pb.CiliumPolicyPort{
+													{Port: "23", Protocol: &tcpProto},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "host-firewall-locked")
+		return err == nil && obj != nil
+	}, 10*time.Second, 100*time.Millisecond, "host firewall policy should be applied")
+
+	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "host-firewall-locked")
+	require.NoError(t, err)
+
+	expected := loadExpectedPolicy(t, "host-firewall-locked.yaml")
+	assert.Equal(t, expected["spec"], obj.Object["spec"])
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "host-firewall-locked")
 	})
 }

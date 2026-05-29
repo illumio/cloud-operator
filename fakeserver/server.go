@@ -338,6 +338,19 @@ func (fs *FakeServer) Token() string {
 	return fs.token
 }
 
+// TokenAuth implements grpc.PerRPCCredentials for bearer-token authentication.
+type TokenAuth struct {
+	Token string
+}
+
+func (t TokenAuth) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
+	return map[string]string{AuthorizationHeader: "Bearer " + t.Token}, nil
+}
+
+func (t TokenAuth) RequireTransportSecurity() bool {
+	return true
+}
+
 // Wait blocks until the server is stopped.
 func (fs *FakeServer) Wait() {
 	<-fs.stopChan
