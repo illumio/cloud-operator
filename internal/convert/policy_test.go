@@ -3,10 +3,13 @@
 package convert
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
@@ -878,4 +881,881 @@ func TestCopyLabels(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestProtoToMap_NilMessage(t *testing.T) {
+	// protojson marshals nil proto message to "{}" which unmarshals to empty map
+	result, err := protoToMap(nil)
+	require.NoError(t, err)
+	assert.Empty(t, result)
+}
+
+func TestProtoToMap_EmptyMessage(t *testing.T) {
+	msg := &pb.CiliumPolicyRule{}
+	result, err := protoToMap(msg)
+	require.NoError(t, err)
+
+	// Empty message should produce empty map (EmitUnpopulated=false)
+	assert.Empty(t, result)
+}
+
+func TestProtoToMap_PreservesTypes(t *testing.T) {
+	boolTrue := true
+
+	msg := &pb.CiliumPolicyDefaultDeny{
+		Ingress: &boolTrue,
+	}
+
+	result, err := protoToMap(msg)
+	require.NoError(t, err)
+
+	// Boolean should stay boolean, not become string
+	ingress, ok := result["ingress"]
+	require.True(t, ok)
+	assert.IsType(t, true, ingress, "boolean should be preserved as bool, not string")
+}
+
+func TestMarshalPolicySpecs_SingleSpec(t *testing.T) {
+	specs := []*pb.CiliumPolicyRule{
+		{
+			EndpointSelector: &pb.LabelSelector{
+				MatchLabels: map[string]string{"app": "web"},
+			},
+		},
+	}
+
+	result, err := marshalPolicySpecs(specs)
+	require.NoError(t, err)
+
+	// Single spec should produce "spec" key, not "specs"
+	_, hasSpec := result["spec"]
+	_, hasSpecs := result["specs"]
+
+	assert.True(t, hasSpec, "single spec should use 'spec' key")
+	assert.False(t, hasSpecs, "single spec should not use 'specs' key")
+}
+
+func TestMarshalPolicySpecs_MultipleSpecs(t *testing.T) {
+	specs := []*pb.CiliumPolicyRule{
+		{EndpointSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "a"}}},
+		{EndpointSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "b"}}},
+	}
+
+	result, err := marshalPolicySpecs(specs)
+	require.NoError(t, err)
+
+	// Multiple specs should produce "specs" key, not "spec"
+	_, hasSpec := result["spec"]
+	_, hasSpecs := result["specs"]
+
+	assert.False(t, hasSpec, "multiple specs should not use 'spec' key")
+	assert.True(t, hasSpecs, "multiple specs should use 'specs' key")
+
+	specsList, ok := result["specs"].([]any)
+	require.True(t, ok)
+	assert.Len(t, specsList, 2)
+}
+
+func TestMarshalPolicySpecs_Empty(t *testing.T) {
+	result, err := marshalPolicySpecs([]*pb.CiliumPolicyRule{})
+	require.NoError(t, err)
+	assert.Empty(t, result)
+}
+
+func TestMarshalPolicySpecs_Nil(t *testing.T) {
+	result, err := marshalPolicySpecs(nil)
+	require.NoError(t, err)
+	assert.Empty(t, result)
+}
+
+// TestMarshalUnmarshalRoundTrip_ProtoEqual verifies that marshaling a proto to JSON
+// and unmarshaling it back produces an identical proto message.
+// Uses the same marshaler config as production (camelCase, omit empty).
+// Test cases are based on real Cilium example policies from:
+// https://github.com/cilium/cilium/tree/main/examples/policies/kubernetes
+func TestMarshalUnmarshalRoundTrip_ProtoEqual(t *testing.T) {
+	udpProto := "UDP"
+
+	tests := map[string]struct {
+		input *pb.CiliumPolicyRule
+	}{
+		// From cilium/examples/policies/kubernetes/clusterwide/clusterscope-policy.yaml
+		// Selective ingress: only pods with name=luke can reach pods with name=leia
+		"clusterwide selective ingress (clusterscope-policy.yaml)": {
+			input: &pb.CiliumPolicyRule{
+				Description: new("Policy for selective ingress allow to a pod from only a pod with given label"),
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{"name": "leia"},
+				},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{
+						FromEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{
+								{MatchLabels: map[string]string{"name": "luke"}},
+							},
+						},
+					},
+				},
+			},
+		},
+		// From cilium/examples/policies/kubernetes/clusterwide/health.yaml
+		// Cilium health checks: allow ingress/egress from/to remote-node for reserved:health endpoints
+		"cilium health checks (health.yaml)": {
+			input: &pb.CiliumPolicyRule{
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{"reserved:health": ""},
+				},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{FromEntities: []string{"remote-node"}},
+				},
+				Egress: []*pb.CiliumPolicyEgressRule{
+					{ToEntities: []string{"remote-node"}},
+				},
+			},
+		},
+		// From cilium/examples/policies/kubernetes/clusterwide/wildcard-from-endpoints.yaml
+		// Allow DNS from all managed endpoints to kube-dns
+		"wildcard DNS ingress (wildcard-from-endpoints.yaml)": {
+			input: &pb.CiliumPolicyRule{
+				Description: new("Policy for ingress allow to kube-dns from all Cilium managed endpoints in the cluster"),
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{
+						"k8s:io.kubernetes.pod.namespace": "kube-system",
+						"k8s-app":                         "kube-dns",
+					},
+				},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{
+						FromEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{
+								{MatchLabels: map[string]string{}},
+							},
+						},
+						ToPorts: []*pb.CiliumPolicyPortRule{
+							{Ports: []*pb.CiliumPolicyPort{{Port: "53", Protocol: &udpProto}}},
+						},
+					},
+				},
+			},
+		},
+		// From cilium/examples/policies/kubernetes/namespace/namespace-policy.yaml
+		// Cross-namespace ingress: allow from ns2/luke to ns1/leia
+		"cross-namespace ingress (namespace-policy.yaml)": {
+			input: &pb.CiliumPolicyRule{
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{"name": "leia"},
+				},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{
+						FromEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{
+								{MatchLabels: map[string]string{
+									"k8s:io.kubernetes.pod.namespace": "ns2",
+									"name":                            "luke",
+								}},
+							},
+						},
+					},
+				},
+			},
+		},
+		// From cilium/examples/policies/kubernetes/namespace/namespace-labels-policy.yaml
+		// Namespace label selectors: allow ingress/egress only from faction=alliance namespaces
+		"namespace label selectors (namespace-labels-policy.yaml)": {
+			input: &pb.CiliumPolicyRule{
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{"name": "rebel-base"},
+				},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{
+						FromEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{
+								{MatchLabels: map[string]string{"io.cilium.k8s.namespace.labels.faction": "alliance"}},
+							},
+						},
+					},
+				},
+				Egress: []*pb.CiliumPolicyEgressRule{
+					{
+						ToEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{
+								{MatchLabels: map[string]string{"io.cilium.k8s.namespace.labels.faction": "alliance"}},
+							},
+						},
+					},
+				},
+			},
+		},
+		// From cilium/examples/policies/kubernetes/namespace/kubedns-policy.yaml
+		// Egress to kube-dns on UDP 53 from all pods in namespace
+		"egress to kube-dns (kubedns-policy.yaml)": {
+			input: &pb.CiliumPolicyRule{
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{},
+				},
+				Egress: []*pb.CiliumPolicyEgressRule{
+					{
+						ToEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{
+								{MatchLabels: map[string]string{
+									"k8s:io.kubernetes.pod.namespace": "kube-system",
+									"k8s-app":                         "kube-dns",
+								}},
+							},
+						},
+						ToPorts: []*pb.CiliumPolicyPortRule{
+							{Ports: []*pb.CiliumPolicyPort{{Port: "53", Protocol: &udpProto}}},
+						},
+					},
+				},
+			},
+		},
+		// From cilium/examples/policies/kubernetes/namespace/isolate-namespaces.yaml
+		// Namespace isolation: only allow ingress from within the same namespace (empty selector = same namespace)
+		"namespace isolation (isolate-namespaces.yaml)": {
+			input: &pb.CiliumPolicyRule{
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{},
+				},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{
+						FromEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{
+								{MatchLabels: map[string]string{}},
+							},
+						},
+					},
+				},
+			},
+		},
+		// Empty rule: only endpointSelector, all optional fields nil
+		"nil optional fields": {
+			input: &pb.CiliumPolicyRule{
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{"app": "minimal"},
+				},
+			},
+		},
+		// Empty slices: present but zero-length (ingress: [], egress: [])
+		"empty slices": {
+			input: &pb.CiliumPolicyRule{
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{"app": "empty-slices"},
+				},
+				Ingress:     []*pb.CiliumPolicyIngressRule{},
+				Egress:      []*pb.CiliumPolicyEgressRule{},
+				IngressDeny: []*pb.CiliumPolicyIngressRule{},
+				EgressDeny:  []*pb.CiliumPolicyEgressRule{},
+			},
+		},
+		// Empty maps: present but zero-length
+		"empty maps": {
+			input: &pb.CiliumPolicyRule{
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels:      map[string]string{},
+					MatchExpressions: []*pb.LabelSelectorRequirement{},
+				},
+				Labels: map[string]string{},
+			},
+		},
+		// Empty nested messages: structs present but all their fields are zero/nil
+		"empty nested messages": {
+			input: &pb.CiliumPolicyRule{
+				EndpointSelector:  &pb.LabelSelector{},
+				EnableDefaultDeny: &pb.CiliumPolicyDefaultDeny{},
+				Description:       new(""),
+			},
+		},
+		// Empty items inside populated slices
+		"empty items in slices": {
+			input: &pb.CiliumPolicyRule{
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{"app": "empty-items"},
+				},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{
+						FromEndpoints: &pb.LabelSelectorList{Items: []*pb.LabelSelector{}},
+						FromCidr:      []string{},
+						FromCidrSet:   []*pb.CiliumPolicyCIDRSet{},
+						FromEntities:  []string{},
+						ToPorts:       []*pb.CiliumPolicyPortRule{},
+					},
+				},
+				Egress: []*pb.CiliumPolicyEgressRule{
+					{
+						ToEndpoints: &pb.LabelSelectorList{Items: []*pb.LabelSelector{}},
+						ToCidr:      []string{},
+						ToCidrSet:   []*pb.CiliumPolicyCIDRSet{},
+						ToEntities:  []string{},
+						ToFqdns:     []*pb.CiliumPolicyFQDNSelector{},
+						ToServices:  []*pb.CiliumPolicyService{},
+						ToPorts:     []*pb.CiliumPolicyPortRule{},
+					},
+				},
+			},
+		},
+	}
+
+	// Same config as protoJSONMarshaler in cilium.go
+	marshaler := protojson.MarshalOptions{UseProtoNames: false, EmitUnpopulated: false}
+
+	for testName, tt := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Marshal proto → JSON
+			jsonBytes, err := marshaler.Marshal(tt.input)
+			require.NoError(t, err)
+
+			// Unmarshal JSON → proto
+			roundTripped := &pb.CiliumPolicyRule{}
+			err = protojson.Unmarshal(jsonBytes, roundTripped)
+			require.NoError(t, err)
+
+			// Compare: original and round-tripped should be identical
+			assert.True(t, proto.Equal(tt.input, roundTripped),
+				"proto not equal after round-trip.\nOriginal JSON:     %s\nRound-tripped: %s",
+				jsonBytes,
+				func() []byte {
+					b, _ := marshaler.Marshal(roundTripped)
+
+					return b
+				}(),
+			)
+		})
+	}
+}
+
+// TestMarshalProducesCamelCase verifies the production marshaler outputs camelCase keys.
+// If UseProtoNames were accidentally set to true, the output would have snake_case keys
+// (e.g. "from_endpoints" instead of "fromEndpoints"), which Cilium's CRDs would silently
+// ignore — leaving those fields empty in the applied policy.
+func TestMarshalProducesCamelCase(t *testing.T) {
+	udpProto := "UDP"
+
+	// From cilium/examples/policies/kubernetes/clusterwide/wildcard-from-endpoints.yaml
+	rule := &pb.CiliumPolicyRule{
+		Description: new("Policy for ingress allow to kube-dns from all Cilium managed endpoints in the cluster"),
+		EndpointSelector: &pb.LabelSelector{
+			MatchLabels: map[string]string{
+				"k8s:io.kubernetes.pod.namespace": "kube-system",
+				"k8s-app":                         "kube-dns",
+			},
+		},
+		Ingress: []*pb.CiliumPolicyIngressRule{
+			{
+				FromEndpoints: &pb.LabelSelectorList{
+					Items: []*pb.LabelSelector{
+						{MatchLabels: map[string]string{}},
+					},
+				},
+				ToPorts: []*pb.CiliumPolicyPortRule{
+					{Ports: []*pb.CiliumPolicyPort{{Port: "53", Protocol: &udpProto}}},
+				},
+			},
+		},
+	}
+
+	// Production marshaler (camelCase)
+	camelJSON, err := protoJSONMarshaler.Marshal(rule)
+	require.NoError(t, err)
+
+	camelStr := string(camelJSON)
+
+	// Verify camelCase keys are present
+	assert.Contains(t, camelStr, "endpointSelector")
+	assert.Contains(t, camelStr, "fromEndpoints")
+	assert.Contains(t, camelStr, "toPorts")
+	assert.Contains(t, camelStr, "matchLabels")
+
+	// Verify snake_case keys are NOT present — if they were, Cilium would silently drop them
+	assert.NotContains(t, camelStr, "endpoint_selector")
+	assert.NotContains(t, camelStr, "from_endpoints")
+	assert.NotContains(t, camelStr, "to_ports")
+	assert.NotContains(t, camelStr, "match_labels")
+
+	// Show what would happen with snake_case: same data, wrong key names
+	snakeJSON, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(rule)
+	require.NoError(t, err)
+
+	snakeStr := string(snakeJSON)
+
+	// Snake_case produces keys that Cilium wouldn't recognize
+	assert.Contains(t, snakeStr, "endpoint_selector")
+	assert.Contains(t, snakeStr, "from_endpoints")
+	assert.Contains(t, snakeStr, "to_ports")
+	assert.Contains(t, snakeStr, "match_labels")
+	assert.NotContains(t, snakeStr, "endpointSelector")
+	assert.NotContains(t, snakeStr, "fromEndpoints")
+	assert.NotContains(t, snakeStr, "toPorts")
+}
+
+// TestMarshalUnmarshalRoundTrip_ViaMap verifies the full ConvertToApplyObject path:
+// proto → protojson → json.Unmarshal(map[string]any) → json.Marshal → protojson.Unmarshal → proto.
+// This is the actual code path used in reconciliation (proto → map for SSA apply).
+// Test cases are based on real Cilium example policies from:
+// https://github.com/cilium/cilium/tree/main/examples/policies/kubernetes
+func TestMarshalUnmarshalRoundTrip_ViaMap(t *testing.T) {
+	udpProto := "UDP"
+
+	tests := map[string]struct {
+		input *pb.CiliumPolicyRule
+	}{
+		// From cilium/examples/policies/kubernetes/clusterwide/clusterscope-policy.yaml
+		"clusterwide selective ingress via map": {
+			input: &pb.CiliumPolicyRule{
+				Description: new("Policy for selective ingress allow to a pod from only a pod with given label"),
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{"name": "leia"},
+				},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{
+						FromEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{
+								{MatchLabels: map[string]string{"name": "luke"}},
+							},
+						},
+					},
+				},
+			},
+		},
+		// From cilium/examples/policies/kubernetes/clusterwide/health.yaml
+		"cilium health checks via map": {
+			input: &pb.CiliumPolicyRule{
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{"reserved:health": ""},
+				},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{FromEntities: []string{"remote-node"}},
+				},
+				Egress: []*pb.CiliumPolicyEgressRule{
+					{ToEntities: []string{"remote-node"}},
+				},
+			},
+		},
+		// From cilium/examples/policies/kubernetes/namespace/kubedns-policy.yaml
+		"egress to kube-dns via map": {
+			input: &pb.CiliumPolicyRule{
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{},
+				},
+				Egress: []*pb.CiliumPolicyEgressRule{
+					{
+						ToEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{
+								{MatchLabels: map[string]string{
+									"k8s:io.kubernetes.pod.namespace": "kube-system",
+									"k8s-app":                         "kube-dns",
+								}},
+							},
+						},
+						ToPorts: []*pb.CiliumPolicyPortRule{
+							{Ports: []*pb.CiliumPolicyPort{{Port: "53", Protocol: &udpProto}}},
+						},
+					},
+				},
+			},
+		},
+		// From cilium/examples/policies/kubernetes/namespace/isolate-namespaces.yaml
+		"namespace isolation via map": {
+			input: &pb.CiliumPolicyRule{
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{},
+				},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{
+						FromEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{
+								{MatchLabels: map[string]string{}},
+							},
+						},
+					},
+				},
+			},
+		},
+		// Empty rule
+		"empty rule via map": {
+			input: &pb.CiliumPolicyRule{
+				EndpointSelector: &pb.LabelSelector{
+					MatchLabels: map[string]string{"app": "empty"},
+				},
+			},
+		},
+	}
+
+	for testName, tt := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Step 1: proto → JSON (camelCase, same as protoJSONMarshaler)
+			marshaler := protojson.MarshalOptions{UseProtoNames: false, EmitUnpopulated: false}
+			jsonBytes, err := marshaler.Marshal(tt.input)
+			require.NoError(t, err)
+
+			// Step 2: JSON → map[string]any (what ConvertToApplyObject does internally)
+			var intermediate map[string]any
+
+			err = json.Unmarshal(jsonBytes, &intermediate)
+			require.NoError(t, err)
+
+			// Step 3: map[string]any → JSON (re-serialize the map)
+			reserializedJSON, err := json.Marshal(intermediate)
+			require.NoError(t, err)
+
+			// Step 4: JSON → proto (unmarshal back)
+			roundTripped := &pb.CiliumPolicyRule{}
+			err = protojson.Unmarshal(reserializedJSON, roundTripped)
+			require.NoError(t, err)
+
+			// The round-tripped proto should equal the original
+			assert.True(t, proto.Equal(tt.input, roundTripped),
+				"proto not equal after map round-trip.\nOriginal JSON:      %s\nReserialized JSON:  %s",
+				string(jsonBytes),
+				string(reserializedJSON),
+			)
+		})
+	}
+}
+
+func TestNormalizeProtojsonForCilium_UnwrapsFromEndpoints(t *testing.T) {
+	specMap := map[string]any{
+		"ingress": []any{
+			map[string]any{
+				"fromEndpoints": map[string]any{
+					"items": []any{
+						map[string]any{"matchLabels": map[string]any{"name": "luke"}},
+					},
+				},
+			},
+		},
+	}
+
+	normalizeProtojsonForCilium(specMap)
+
+	rule := specMap["ingress"].([]any)[0].(map[string]any)
+	fromEps, ok := rule["fromEndpoints"].([]any)
+	require.True(t, ok, "fromEndpoints should be a flat array after normalization")
+	require.Len(t, fromEps, 1)
+	ep := fromEps[0].(map[string]any)
+	assert.Equal(t, "luke", ep["matchLabels"].(map[string]any)["name"])
+}
+
+func TestNormalizeProtojsonForCilium_UnwrapsToEndpoints(t *testing.T) {
+	specMap := map[string]any{
+		"egress": []any{
+			map[string]any{
+				"toEndpoints": map[string]any{
+					"items": []any{
+						map[string]any{"matchLabels": map[string]any{"app": "dns"}},
+					},
+				},
+			},
+		},
+	}
+
+	normalizeProtojsonForCilium(specMap)
+
+	rule := specMap["egress"].([]any)[0].(map[string]any)
+	toEps, ok := rule["toEndpoints"].([]any)
+	require.True(t, ok, "toEndpoints should be a flat array after normalization")
+	require.Len(t, toEps, 1)
+	ep := toEps[0].(map[string]any)
+	assert.Equal(t, "dns", ep["matchLabels"].(map[string]any)["app"])
+}
+
+func TestNormalizeProtojsonForCilium_UnwrapsDenyRules(t *testing.T) {
+	specMap := map[string]any{
+		"ingressDeny": []any{
+			map[string]any{
+				"fromEndpoints": map[string]any{
+					"items": []any{map[string]any{}},
+				},
+			},
+		},
+		"egressDeny": []any{
+			map[string]any{
+				"toEndpoints": map[string]any{
+					"items": []any{map[string]any{}},
+				},
+			},
+		},
+	}
+
+	normalizeProtojsonForCilium(specMap)
+
+	ingressRule := specMap["ingressDeny"].([]any)[0].(map[string]any)
+	_, ok := ingressRule["fromEndpoints"].([]any)
+	require.True(t, ok, "fromEndpoints in ingressDeny should be unwrapped")
+
+	egressRule := specMap["egressDeny"].([]any)[0].(map[string]any)
+	_, ok = egressRule["toEndpoints"].([]any)
+	require.True(t, ok, "toEndpoints in egressDeny should be unwrapped")
+}
+
+func TestNormalizeProtojsonForCilium_NoEndpoints(t *testing.T) {
+	specMap := map[string]any{
+		"ingress": []any{
+			map[string]any{
+				"toPorts": []any{map[string]any{"port": "80"}},
+			},
+		},
+	}
+
+	normalizeProtojsonForCilium(specMap)
+
+	rule := specMap["ingress"].([]any)[0].(map[string]any)
+	assert.Nil(t, rule["fromEndpoints"], "should not add fromEndpoints when absent")
+}
+
+func TestNormalizeProtojsonForCilium_EmptyEndpointsWrapper(t *testing.T) {
+	// When LabelSelectorList exists but items is empty/nil, protojson emits
+	// {"fromEndpoints": {}} — an empty map. Cilium expects an empty array [].
+	specMap := map[string]any{
+		"ingress": []any{
+			map[string]any{
+				"fromEndpoints": map[string]any{},
+			},
+		},
+		"egress": []any{
+			map[string]any{
+				"toEndpoints": map[string]any{},
+			},
+		},
+	}
+
+	normalizeProtojsonForCilium(specMap)
+
+	ingressRule := specMap["ingress"].([]any)[0].(map[string]any)
+	fromEps, ok := ingressRule["fromEndpoints"].([]any)
+	require.True(t, ok, "empty wrapper should become empty array, not remain a map")
+	assert.Empty(t, fromEps)
+
+	egressRule := specMap["egress"].([]any)[0].(map[string]any)
+	toEps, ok := egressRule["toEndpoints"].([]any)
+	require.True(t, ok, "empty wrapper should become empty array, not remain a map")
+	assert.Empty(t, toEps)
+}
+
+func TestNormalizeProtojsonForCilium_ICMPTypeInt(t *testing.T) {
+	specMap := map[string]any{
+		"ingress": []any{
+			map[string]any{
+				"icmps": []any{
+					map[string]any{
+						"fields": []any{
+							map[string]any{"family": "IPv4", "typeInt": float64(8)},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	normalizeProtojsonForCilium(specMap)
+
+	rule := specMap["ingress"].([]any)[0].(map[string]any)
+	icmps := rule["icmps"].([]any)
+	fields := icmps[0].(map[string]any)["fields"].([]any)
+	field := fields[0].(map[string]any)
+
+	assert.Equal(t, float64(8), field["type"], "typeInt should be renamed to type")
+	assert.Nil(t, field["typeInt"], "typeInt should be removed")
+}
+
+func TestNormalizeProtojsonForCilium_ICMPTypeString(t *testing.T) {
+	specMap := map[string]any{
+		"egress": []any{
+			map[string]any{
+				"icmps": []any{
+					map[string]any{
+						"fields": []any{
+							map[string]any{"family": "IPv4", "typeString": "EchoReply"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	normalizeProtojsonForCilium(specMap)
+
+	rule := specMap["egress"].([]any)[0].(map[string]any)
+	icmps := rule["icmps"].([]any)
+	fields := icmps[0].(map[string]any)["fields"].([]any)
+	field := fields[0].(map[string]any)
+
+	assert.Equal(t, "EchoReply", field["type"], "typeString should be renamed to type")
+	assert.Nil(t, field["typeString"], "typeString should be removed")
+}
+
+func TestNormalizeProtojsonForCilium_EndToEnd(t *testing.T) {
+	// Verify normalization through the full marshalPolicySpecs path
+	udpProto := "UDP"
+	specs := []*pb.CiliumPolicyRule{
+		{
+			EndpointSelector: &pb.LabelSelector{
+				MatchLabels: map[string]string{"app": "web"},
+			},
+			Ingress: []*pb.CiliumPolicyIngressRule{
+				{
+					FromEndpoints: &pb.LabelSelectorList{
+						Items: []*pb.LabelSelector{
+							{MatchLabels: map[string]string{"app": "frontend"}},
+						},
+					},
+					ToPorts: []*pb.CiliumPolicyPortRule{
+						{Ports: []*pb.CiliumPolicyPort{{Port: "53", Protocol: &udpProto}}},
+					},
+				},
+			},
+			Egress: []*pb.CiliumPolicyEgressRule{
+				{
+					ToEndpoints: &pb.LabelSelectorList{
+						Items: []*pb.LabelSelector{
+							{MatchLabels: map[string]string{"app": "dns"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := marshalPolicySpecs(specs)
+	require.NoError(t, err)
+
+	spec := result["spec"].(map[string]any)
+
+	// fromEndpoints must be a flat array
+	ingress := spec["ingress"].([]any)
+	ingressRule := ingress[0].(map[string]any)
+	fromEps, ok := ingressRule["fromEndpoints"].([]any)
+	require.True(t, ok, "fromEndpoints should be a flat array, not a wrapper object")
+	require.Len(t, fromEps, 1)
+	assert.Equal(t, "frontend", fromEps[0].(map[string]any)["matchLabels"].(map[string]any)["app"])
+
+	// toEndpoints must be a flat array
+	egress := spec["egress"].([]any)
+	egressRule := egress[0].(map[string]any)
+	toEps, ok := egressRule["toEndpoints"].([]any)
+	require.True(t, ok, "toEndpoints should be a flat array, not a wrapper object")
+	require.Len(t, toEps, 1)
+	assert.Equal(t, "dns", toEps[0].(map[string]any)["matchLabels"].(map[string]any)["app"])
+}
+
+// TestMarshalPolicySpecs_EndpointSemantics validates the critical distinction between
+// [], [{}], and nil for fromEndpoints/toEndpoints through the full marshalPolicySpecs path.
+//
+// In Cilium:
+//   - fromEndpoints: []   → "allow nobody" (empty whitelist)
+//   - fromEndpoints: [{}] → "allow everybody" (wildcard, all pods in namespace)
+//   - fromEndpoints: nil  → implicit wildcard (when toPorts is set)
+//
+// Confusing [] and [{}] reverses the security posture entirely.
+func TestMarshalPolicySpecs_EndpointSemantics(t *testing.T) {
+	t.Run("empty list means allow nobody", func(t *testing.T) {
+		specs := []*pb.CiliumPolicyRule{
+			{
+				EndpointSelector: &pb.LabelSelector{},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{
+						FromEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{},
+						},
+					},
+				},
+				Egress: []*pb.CiliumPolicyEgressRule{
+					{
+						ToEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{},
+						},
+					},
+				},
+			},
+		}
+
+		result, err := marshalPolicySpecs(specs)
+		require.NoError(t, err)
+
+		spec := result["spec"].(map[string]any)
+
+		// fromEndpoints must be [] (empty array), NOT [{}]
+		ingressRule := spec["ingress"].([]any)[0].(map[string]any)
+		fromEps, ok := ingressRule["fromEndpoints"].([]any)
+		require.True(t, ok, "fromEndpoints should be an array")
+		assert.Empty(t, fromEps, "fromEndpoints: [] means allow nobody — must be empty array")
+
+		// toEndpoints must be [] (empty array), NOT [{}]
+		egressRule := spec["egress"].([]any)[0].(map[string]any)
+		toEps, ok := egressRule["toEndpoints"].([]any)
+		require.True(t, ok, "toEndpoints should be an array")
+		assert.Empty(t, toEps, "toEndpoints: [] means allow nobody — must be empty array")
+	})
+
+	t.Run("single empty selector means allow everybody", func(t *testing.T) {
+		specs := []*pb.CiliumPolicyRule{
+			{
+				EndpointSelector: &pb.LabelSelector{},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{
+						FromEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{{}},
+						},
+					},
+				},
+				Egress: []*pb.CiliumPolicyEgressRule{
+					{
+						ToEndpoints: &pb.LabelSelectorList{
+							Items: []*pb.LabelSelector{{}},
+						},
+					},
+				},
+			},
+		}
+
+		result, err := marshalPolicySpecs(specs)
+		require.NoError(t, err)
+
+		spec := result["spec"].(map[string]any)
+
+		// fromEndpoints must be [{}] (one empty selector), NOT []
+		ingressRule := spec["ingress"].([]any)[0].(map[string]any)
+		fromEps, ok := ingressRule["fromEndpoints"].([]any)
+		require.True(t, ok, "fromEndpoints should be an array")
+		require.Len(t, fromEps, 1, "fromEndpoints: [{}] means allow everybody — must have one element")
+		ep, ok := fromEps[0].(map[string]any)
+		require.True(t, ok)
+		assert.Empty(t, ep, "the single selector should be empty (wildcard)")
+
+		// toEndpoints must be [{}] (one empty selector), NOT []
+		egressRule := spec["egress"].([]any)[0].(map[string]any)
+		toEps, ok := egressRule["toEndpoints"].([]any)
+		require.True(t, ok, "toEndpoints should be an array")
+		require.Len(t, toEps, 1, "toEndpoints: [{}] means allow everybody — must have one element")
+		toEp, ok := toEps[0].(map[string]any)
+		require.True(t, ok)
+		assert.Empty(t, toEp, "the single selector should be empty (wildcard)")
+	})
+
+	t.Run("nil endpoints omitted for implicit wildcard", func(t *testing.T) {
+		udpProto := "UDP"
+		specs := []*pb.CiliumPolicyRule{
+			{
+				EndpointSelector: &pb.LabelSelector{},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{
+						FromEndpoints: nil,
+						ToPorts: []*pb.CiliumPolicyPortRule{
+							{Ports: []*pb.CiliumPolicyPort{{Port: "53", Protocol: &udpProto}}},
+						},
+					},
+				},
+			},
+		}
+
+		result, err := marshalPolicySpecs(specs)
+		require.NoError(t, err)
+
+		spec := result["spec"].(map[string]any)
+		ingressRule := spec["ingress"].([]any)[0].(map[string]any)
+
+		_, exists := ingressRule["fromEndpoints"]
+		assert.False(t, exists, "nil fromEndpoints should be omitted entirely (implicit wildcard)")
+		assert.Contains(t, ingressRule, "toPorts", "toPorts should still be present")
+	})
 }
