@@ -71,7 +71,7 @@ func main() {
 	// Keep the compiler happy about proxyServer usage
 	_ = proxyServer
 
-	// Block until terminated
+	// Wait for server stop signal
 	logger.Info("Server started")
-	select {}
+	<-fs.StopChan()
 }
