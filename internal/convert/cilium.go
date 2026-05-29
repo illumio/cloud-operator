@@ -6,13 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strconv"
 
 	ciliumSlimMetav1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1"
 	ciliumLabels "github.com/cilium/cilium/pkg/labels"
 	ciliumPolicy "github.com/cilium/cilium/pkg/policy/api"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	k8sUnstructured "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	k8sIntstr "k8s.io/apimachinery/pkg/util/intstr"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -32,7 +33,7 @@ func IsCiliumResource(kindOrResource string) bool {
 
 // ConvertUnstructuredToCiliumResource converts an unstructured Cilium resource to a KubernetesObjectData proto.
 // This handles CiliumNetworkPolicy, CiliumClusterwideNetworkPolicy, and CiliumCIDRGroup.
-func ConvertUnstructuredToCiliumResource(obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+func ConvertUnstructuredToCiliumResource(obj *k8sUnstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 	if obj == nil {
 		return nil, errors.New("cannot convert nil object")
 	}
@@ -163,9 +164,7 @@ func convertSlimLabelSelector(sel *ciliumSlimMetav1.LabelSelector) *pb.LabelSele
 
 	if len(sel.MatchLabels) > 0 {
 		matchLabels := make(map[string]string, len(sel.MatchLabels))
-		for k, v := range sel.MatchLabels {
-			matchLabels[k] = v
-		}
+		maps.Copy(matchLabels, sel.MatchLabels)
 		pbSel.MatchLabels = matchLabels
 	}
 

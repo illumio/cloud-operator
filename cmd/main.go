@@ -237,7 +237,7 @@ func main() {
 	runtimeCache := configcache.NewConfiguredObjectCache()
 
 	// Create and start the reconciler
-	// Start() discovers resources, waits for both desired and runtime caches, then runs the reconciliation loop
+	// Run() discovers resources, waits for both desired and runtime caches, then runs the reconciliation loop
 	policyReconciler := reconciler.NewReconciler(
 		logger,
 		k8sClient,
