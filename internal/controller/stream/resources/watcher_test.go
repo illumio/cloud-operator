@@ -25,7 +25,7 @@ import (
 
 // mockResourceStreamSender is a mock implementation of ResourceStreamSender for testing.
 type mockResourceStreamSender struct {
-	sentObjects []*pb.KubernetesObje∏ctData
+	sentObjects []*pb.KubernetesObjectData
 }
 
 func (m *mockResourceStreamSender) SendObjectData(_ *zap.Logger, data *pb.KubernetesObjectData) error {

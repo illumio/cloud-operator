@@ -158,19 +158,15 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 
 		// Add operator-managed objects to the runtime snapshot for reconciliation.
 		labels := metadataObj.GetLabels()
-		if r.runtimeCache != nil && labels[convert.ManagedByLabel] == convert.ManagedByValue {
-			id := labels[convert.CloudSecureIDLabel]
-			if id != "" {
-				configured, err := convert.BuildConfiguredFromMetadata(id, metadataObj)
-				if err != nil {
-					r.logger.Warn("Skipping unhandled resource type in runtime cache",
-						zap.String("id", id), zap.Error(err))
-
-					continue
-				}
-
-				runtimeObjects[id] = configured
-			}
+		if r.runtimeCache == nil || labels[convert.ManagedByLabel] != convert.ManagedByValue {
+			// not a cloud-operator managed resource or no runtime cache
+		} else if id := labels[convert.CloudSecureIDLabel]; id == "" {
+			// no CloudSecure ID
+		} else if configured, err := convert.BuildConfiguredFromMetadata(id, metadataObj); err != nil {
+			r.logger.Warn("Skipping unhandled resource type in runtime cache",
+				zap.String("id", id), zap.Error(err))
+		} else {
+			runtimeObjects[id] = configured
 		}
 	}
 
@@ -354,26 +350,20 @@ func (r *Watcher) handleWatchEvent(
 			return "", false, err
 		}
 
-		if r.runtimeCache != nil {
-			labels := metadataObj.GetLabels()
-			if labels[convert.ManagedByLabel] == convert.ManagedByValue {
-				id := labels[convert.CloudSecureIDLabel]
-				if id != "" {
-					configured, err := convert.BuildConfiguredFromMetadata(id, metadataObj)
-					if err != nil {
-						r.logger.Warn("Skipping unhandled resource type in runtime cache",
-							zap.String("id", id), zap.Error(err))
-					} else {
-						switch event.Type {
-						case watch.Added, watch.Modified:
-							r.runtimeCache.Insert(configured.GetId(), configured)
-						case watch.Deleted:
-							r.runtimeCache.Delete(configured.GetId())
-						case watch.Bookmark, watch.Error:
-							// Unreachable: outer switch already handles these types.
-						}
-					}
-				}
+		labels := metadataObj.GetLabels()
+		if r.runtimeCache == nil || labels[convert.ManagedByLabel] != convert.ManagedByValue {
+			// not a cloud-operator managed resource or no runtime cache
+		} else if id := labels[convert.CloudSecureIDLabel]; id == "" {
+			// no CloudSecure ID
+		} else if configured, err := convert.BuildConfiguredFromMetadata(id, metadataObj); err != nil {
+			r.logger.Warn("Skipping unhandled resource type in runtime cache",
+				zap.String("id", id), zap.Error(err))
+		} else {
+			switch event.Type {
+			case watch.Added, watch.Modified:
+				r.runtimeCache.Insert(configured.GetId(), configured)
+			case watch.Deleted:
+				r.runtimeCache.Delete(configured.GetId())
 			}
 		}
 
