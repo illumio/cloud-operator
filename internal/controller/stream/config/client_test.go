@@ -80,6 +80,11 @@ func (s *ConfigClientTestSuite) SetupTest() {
 	}
 }
 
+func (s *ConfigClientTestSuite) TearDownTest() {
+	// Close the cache channel so any goroutine blocked on ResourceChanged() send is unblocked.
+	s.cache.Close()
+}
+
 // runClient starts the client and reads the ResourceChanged channel asynchronously.
 // It returns a channel that yields the execution error when the client finally stops.
 func (s *ConfigClientTestSuite) runClient(ctx context.Context) <-chan error {

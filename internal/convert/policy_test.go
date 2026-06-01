@@ -1834,3 +1834,145 @@ func TestMarshalPolicySpecs_EndpointSemantics(t *testing.T) {
 		assert.Contains(t, ingressRule, "toPorts", "toPorts should still be present")
 	})
 }
+
+// TestMarshalPolicySpecs_JSONNameOverrides verifies that proto fields with json_name overrides
+// produce the exact casing Cilium's CRD expects. Without these overrides, protojson would emit
+// camelCase (e.g. "fromCidr") instead of the required form (e.g. "fromCIDR"), and Cilium would
+// silently ignore the field.
+func TestMarshalPolicySpecs_JSONNameOverrides(t *testing.T) {
+	t.Run("ingress CIDR fields", func(t *testing.T) {
+		cidr := "10.0.0.0/8"
+		specs := []*pb.CiliumPolicyRule{
+			{
+				EndpointSelector: &pb.LabelSelector{},
+				Ingress: []*pb.CiliumPolicyIngressRule{
+					{
+						FromCidr: []string{"10.0.0.0/8"},
+						FromCidrSet: []*pb.CiliumPolicyCIDRSet{
+							{Cidr: &cidr, Except: []string{"10.96.0.0/12"}},
+						},
+					},
+				},
+			},
+		}
+
+		result, err := marshalPolicySpecs(specs)
+		require.NoError(t, err)
+
+		spec, ok := result["spec"].(map[string]any)
+		require.True(t, ok)
+		ingress, ok := spec["ingress"].([]any)
+		require.True(t, ok)
+		rule, ok := ingress[0].(map[string]any)
+		require.True(t, ok)
+
+		assert.Contains(t, rule, "fromCIDR", "json_name override: fromCIDR, not fromCidr")
+		assert.NotContains(t, rule, "fromCidr")
+		assert.Contains(t, rule, "fromCIDRSet", "json_name override: fromCIDRSet, not fromCidrSet")
+		assert.NotContains(t, rule, "fromCidrSet")
+	})
+
+	t.Run("egress CIDR and FQDN fields", func(t *testing.T) {
+		cidr := "10.0.0.0/8"
+		specs := []*pb.CiliumPolicyRule{
+			{
+				EndpointSelector: &pb.LabelSelector{},
+				Egress: []*pb.CiliumPolicyEgressRule{
+					{
+						ToCidr: []string{"10.0.0.0/8"},
+						ToCidrSet: []*pb.CiliumPolicyCIDRSet{
+							{Cidr: &cidr},
+						},
+						ToFqdns: []*pb.CiliumPolicyFQDNSelector{
+							{MatchName: new("example.com")},
+						},
+					},
+				},
+			},
+		}
+
+		result, err := marshalPolicySpecs(specs)
+		require.NoError(t, err)
+
+		spec, ok := result["spec"].(map[string]any)
+		require.True(t, ok)
+		egress, ok := spec["egress"].([]any)
+		require.True(t, ok)
+		rule, ok := egress[0].(map[string]any)
+		require.True(t, ok)
+
+		assert.Contains(t, rule, "toCIDR", "json_name override: toCIDR, not toCidr")
+		assert.NotContains(t, rule, "toCidr")
+		assert.Contains(t, rule, "toCIDRSet", "json_name override: toCIDRSet, not toCidrSet")
+		assert.NotContains(t, rule, "toCidrSet")
+		assert.Contains(t, rule, "toFQDNs", "json_name override: toFQDNs, not toFqdns")
+		assert.NotContains(t, rule, "toFqdns")
+	})
+
+	t.Run("CIDRGroup externalCIDRs", func(t *testing.T) {
+		data := &pb.ConfiguredKubernetesObjectData{
+			Id:   "cidr-json-name",
+			Name: "cidr-group-test",
+			KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
+				CiliumCidrGroup: &pb.KubernetesCiliumCIDRGroupData{
+					Spec: &pb.CiliumCIDRGroup{ExternalCidrs: []string{"10.0.0.0/8"}},
+				},
+			},
+		}
+
+		obj, _, err := ConvertToApplyObject(data, "cilium.io", "v2alpha1")
+		require.NoError(t, err)
+
+		spec, ok := obj.Object["spec"].(map[string]any)
+		require.True(t, ok)
+		assert.Contains(t, spec, "externalCIDRs", "json_name override: externalCIDRs, not externalCidrs")
+		assert.NotContains(t, spec, "externalCidrs")
+	})
+
+	t.Run("AWS security group fields", func(t *testing.T) {
+		specs := []*pb.CiliumPolicyRule{
+			{
+				EndpointSelector: &pb.LabelSelector{},
+				Egress: []*pb.CiliumPolicyEgressRule{
+					{
+						ToGroups: []*pb.CiliumPolicyGroup{
+							{
+								CloudProvider: &pb.CiliumPolicyGroup_Aws{
+									Aws: &pb.CiliumPolicyAWSGroup{
+										SecurityGroupIds:   []string{"sg-123"},
+										SecurityGroupNames: []string{"my-sg"},
+										Region:             new("us-east-1"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		result, err := marshalPolicySpecs(specs)
+		require.NoError(t, err)
+
+		spec, ok := result["spec"].(map[string]any)
+		require.True(t, ok)
+		egress, ok := spec["egress"].([]any)
+		require.True(t, ok)
+		rule, ok := egress[0].(map[string]any)
+		require.True(t, ok)
+		toGroups, ok := rule["toGroups"].([]any)
+		require.True(t, ok)
+		group, ok := toGroups[0].(map[string]any)
+		require.True(t, ok)
+		aws, ok := group["aws"].(map[string]any)
+		require.True(t, ok)
+
+		assert.Contains(t, aws, "securityGroupsIds", "json_name override: securityGroupsIds")
+		assert.NotContains(t, aws, "securityGroupIds")
+		assert.Contains(t, aws, "securityGroupsNames", "json_name override: securityGroupsNames")
+		assert.NotContains(t, aws, "securityGroupNames")
+	})
+}
+
+//go:fix inline
+func strPtr(s string) *string { return new(s) }
