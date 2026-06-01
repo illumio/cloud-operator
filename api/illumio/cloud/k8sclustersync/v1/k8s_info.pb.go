@@ -4783,7 +4783,7 @@ func (*GetConfigurationUpdatesRequest_Keepalive) isGetConfigurationUpdatesReques
 // Configured Kubernetes objects:
 //  1. (0+) resource_data, one message for each object in the initial snapshot.
 //  2. (1) resource_snapshot_complete, indicates the initial snapshot is complete.
-//  3. (0+) resource_mutation, one message for each object create/update/delete.
+//  3. (0+) resource_mutation, one message for each object create-or-update or delete.
 //
 // On stream reconnection, the server sends a new full snapshot of configured objects.
 type GetConfigurationUpdatesResponse struct {
@@ -5145,8 +5145,7 @@ type ConfiguredKubernetesObjectMutation struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Mutation:
 	//
-	//	*ConfiguredKubernetesObjectMutation_CreateObject
-	//	*ConfiguredKubernetesObjectMutation_UpdateObject
+	//	*ConfiguredKubernetesObjectMutation_CreateOrUpdateObject
 	//	*ConfiguredKubernetesObjectMutation_DeleteObject
 	Mutation      isConfiguredKubernetesObjectMutation_Mutation `protobuf_oneof:"mutation"`
 	unknownFields protoimpl.UnknownFields
@@ -5190,19 +5189,10 @@ func (x *ConfiguredKubernetesObjectMutation) GetMutation() isConfiguredKubernete
 	return nil
 }
 
-func (x *ConfiguredKubernetesObjectMutation) GetCreateObject() *ConfiguredKubernetesObjectData {
+func (x *ConfiguredKubernetesObjectMutation) GetCreateOrUpdateObject() *ConfiguredKubernetesObjectData {
 	if x != nil {
-		if x, ok := x.Mutation.(*ConfiguredKubernetesObjectMutation_CreateObject); ok {
-			return x.CreateObject
-		}
-	}
-	return nil
-}
-
-func (x *ConfiguredKubernetesObjectMutation) GetUpdateObject() *ConfiguredKubernetesObjectData {
-	if x != nil {
-		if x, ok := x.Mutation.(*ConfiguredKubernetesObjectMutation_UpdateObject); ok {
-			return x.UpdateObject
+		if x, ok := x.Mutation.(*ConfiguredKubernetesObjectMutation_CreateOrUpdateObject); ok {
+			return x.CreateOrUpdateObject
 		}
 	}
 	return nil
@@ -5221,14 +5211,9 @@ type isConfiguredKubernetesObjectMutation_Mutation interface {
 	isConfiguredKubernetesObjectMutation_Mutation()
 }
 
-type ConfiguredKubernetesObjectMutation_CreateObject struct {
-	// A new configured object to create in the cluster.
-	CreateObject *ConfiguredKubernetesObjectData `protobuf:"bytes,1,opt,name=create_object,json=createObject,proto3,oneof"`
-}
-
-type ConfiguredKubernetesObjectMutation_UpdateObject struct {
-	// An existing configured object to update in the cluster.
-	UpdateObject *ConfiguredKubernetesObjectData `protobuf:"bytes,2,opt,name=update_object,json=updateObject,proto3,oneof"`
+type ConfiguredKubernetesObjectMutation_CreateOrUpdateObject struct {
+	// A configured object to create or update in the cluster.
+	CreateOrUpdateObject *ConfiguredKubernetesObjectData `protobuf:"bytes,1,opt,name=create_or_update_object,json=createOrUpdateObject,proto3,oneof"`
 }
 
 type ConfiguredKubernetesObjectMutation_DeleteObject struct {
@@ -5236,10 +5221,7 @@ type ConfiguredKubernetesObjectMutation_DeleteObject struct {
 	DeleteObject *DeleteConfiguredKubernetesObject `protobuf:"bytes,3,opt,name=delete_object,json=deleteObject,proto3,oneof"`
 }
 
-func (*ConfiguredKubernetesObjectMutation_CreateObject) isConfiguredKubernetesObjectMutation_Mutation() {
-}
-
-func (*ConfiguredKubernetesObjectMutation_UpdateObject) isConfiguredKubernetesObjectMutation_Mutation() {
+func (*ConfiguredKubernetesObjectMutation_CreateOrUpdateObject) isConfiguredKubernetesObjectMutation_Mutation() {
 }
 
 func (*ConfiguredKubernetesObjectMutation_DeleteObject) isConfiguredKubernetesObjectMutation_Mutation() {
@@ -5751,13 +5733,12 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"_namespace\"2\n" +
 	" DeleteConfiguredKubernetesObject\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\",\n" +
-	"*ConfiguredKubernetesObjectSnapshotComplete\"\xea\x02\n" +
-	"\"ConfiguredKubernetesObjectMutation\x12f\n" +
-	"\rcreate_object\x18\x01 \x01(\v2?.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectDataH\x00R\fcreateObject\x12f\n" +
-	"\rupdate_object\x18\x02 \x01(\v2?.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectDataH\x00R\fupdateObject\x12h\n" +
+	"*ConfiguredKubernetesObjectSnapshotComplete\"\x9a\x02\n" +
+	"\"ConfiguredKubernetesObjectMutation\x12x\n" +
+	"\x17create_or_update_object\x18\x01 \x01(\v2?.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectDataH\x00R\x14createOrUpdateObject\x12h\n" +
 	"\rdelete_object\x18\x03 \x01(\v2A.illumio.cloud.k8sclustersync.v1.DeleteConfiguredKubernetesObjectH\x00R\fdeleteObjectB\n" +
 	"\n" +
-	"\bmutation*\x9a\x01\n" +
+	"\bmutationJ\x04\b\x02\x10\x03*\x9a\x01\n" +
 	"\rFlowCollector\x12\x1e\n" +
 	"\x1aFLOW_COLLECTOR_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17FLOW_COLLECTOR_DISABLED\x10\x01\x12\x19\n" +
@@ -6001,23 +5982,22 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	12,  // 105: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.cilium_network_policy:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesCiliumNetworkPolicyData
 	13,  // 106: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.cilium_clusterwide_network_policy:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesCiliumClusterwideNetworkPolicyData
 	14,  // 107: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.cilium_cidr_group:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesCiliumCIDRGroupData
-	67,  // 108: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation.create_object:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData
-	67,  // 109: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation.update_object:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData
-	68,  // 110: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation.delete_object:type_name -> illumio.cloud.k8sclustersync.v1.DeleteConfiguredKubernetesObject
-	4,   // 111: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration.log_level:type_name -> illumio.cloud.k8sclustersync.v1.LogLevel
-	42,  // 112: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest
-	60,  // 113: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest
-	63,  // 114: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:input_type -> illumio.cloud.k8sclustersync.v1.SendLogsRequest
-	65,  // 115: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.GetConfigurationUpdates:input_type -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesRequest
-	44,  // 116: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesResponse
-	61,  // 117: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsResponse
-	64,  // 118: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:output_type -> illumio.cloud.k8sclustersync.v1.SendLogsResponse
-	66,  // 119: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.GetConfigurationUpdates:output_type -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse
-	116, // [116:120] is the sub-list for method output_type
-	112, // [112:116] is the sub-list for method input_type
-	112, // [112:112] is the sub-list for extension type_name
-	112, // [112:112] is the sub-list for extension extendee
-	0,   // [0:112] is the sub-list for field type_name
+	67,  // 108: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation.create_or_update_object:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData
+	68,  // 109: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation.delete_object:type_name -> illumio.cloud.k8sclustersync.v1.DeleteConfiguredKubernetesObject
+	4,   // 110: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration.log_level:type_name -> illumio.cloud.k8sclustersync.v1.LogLevel
+	42,  // 111: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest
+	60,  // 112: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest
+	63,  // 113: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:input_type -> illumio.cloud.k8sclustersync.v1.SendLogsRequest
+	65,  // 114: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.GetConfigurationUpdates:input_type -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesRequest
+	44,  // 115: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesResponse
+	61,  // 116: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsResponse
+	64,  // 117: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:output_type -> illumio.cloud.k8sclustersync.v1.SendLogsResponse
+	66,  // 118: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.GetConfigurationUpdates:output_type -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse
+	115, // [115:119] is the sub-list for method output_type
+	111, // [111:115] is the sub-list for method input_type
+	111, // [111:111] is the sub-list for extension type_name
+	111, // [111:111] is the sub-list for extension extendee
+	0,   // [0:111] is the sub-list for field type_name
 }
 
 func init() { file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() }
@@ -6108,8 +6088,7 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() {
 		(*ConfiguredKubernetesObjectData_CiliumCidrGroup)(nil),
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[64].OneofWrappers = []any{
-		(*ConfiguredKubernetesObjectMutation_CreateObject)(nil),
-		(*ConfiguredKubernetesObjectMutation_UpdateObject)(nil),
+		(*ConfiguredKubernetesObjectMutation_CreateOrUpdateObject)(nil),
 		(*ConfiguredKubernetesObjectMutation_DeleteObject)(nil),
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[67].OneofWrappers = []any{}

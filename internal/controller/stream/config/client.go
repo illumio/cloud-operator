@@ -144,26 +144,15 @@ func (c *configClient) handleUpdateConfiguration(config *pb.GetConfigurationUpda
 // handleMutation processes a configured object mutation (create/update/delete).
 func (c *configClient) handleMutation(ctx context.Context, mutation *pb.ConfiguredKubernetesObjectMutation) error {
 	switch m := mutation.GetMutation().(type) {
-	case *pb.ConfiguredKubernetesObjectMutation_CreateObject:
-		err := c.cache.Insert(ctx, m.CreateObject.GetId(), m.CreateObject)
+	case *pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject:
+		err := c.cache.Insert(ctx, m.CreateOrUpdateObject.GetId(), m.CreateOrUpdateObject)
 		if err != nil {
 			return err
 		}
 
-		c.logger.Debug("Created configured object",
-			zap.String("id", m.CreateObject.GetId()),
-			zap.String("name", m.CreateObject.GetName()),
-		)
-
-	case *pb.ConfiguredKubernetesObjectMutation_UpdateObject:
-		err := c.cache.Insert(ctx, m.UpdateObject.GetId(), m.UpdateObject)
-		if err != nil {
-			return err
-		}
-
-		c.logger.Debug("Updated configured object",
-			zap.String("id", m.UpdateObject.GetId()),
-			zap.String("name", m.UpdateObject.GetName()),
+		c.logger.Debug("Created or updated configured object",
+			zap.String("id", m.CreateOrUpdateObject.GetId()),
+			zap.String("name", m.CreateOrUpdateObject.GetName()),
 		)
 
 	case *pb.ConfiguredKubernetesObjectMutation_DeleteObject:
