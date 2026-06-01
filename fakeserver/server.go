@@ -53,6 +53,7 @@ var kasp = keepalive.ServerParameters{
 
 type FakeServer struct {
 	pb.UnimplementedKubernetesInfoServiceServer
+
 	Address         string
 	HTTPAddress     string
 	server          *grpc.Server

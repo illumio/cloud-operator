@@ -1,0 +1,19 @@
+# From: https://github.com/cilium/cilium/blob/main/examples/policies/l4/init.yaml
+apiVersion: "cilium.io/v2"
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: init
+specs:
+  - endpointSelector:
+      matchLabels:
+        "reserved:init": ""
+    ingress:
+    - fromEntities:
+      - host
+    egress:
+    - toEntities:
+      - all
+      toPorts:
+      - ports:
+        - port: "53"
+          protocol: UDP
