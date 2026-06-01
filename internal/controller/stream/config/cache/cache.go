@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 // ObjectCache is a generic thread-safe cache for storing objects by ID.
@@ -27,7 +28,7 @@ import (
 // The cache notifies consumers of changes via an unbuffered resourceChanged channel.
 // Insert and Delete send the object ID; ReplaceAll sends SnapshotReplaced to indicate
 // a full snapshot.
-type ObjectCache[T any] struct {
+type ObjectCache[T proto.Message] struct {
 	mutex sync.RWMutex
 
 	// objects maps object ID to its value.
@@ -47,7 +48,7 @@ type ObjectCache[T any] struct {
 const SnapshotReplaced = "*"
 
 // NewObjectCache creates a new cache instance.
-func NewObjectCache[T any]() *ObjectCache[T] {
+func NewObjectCache[T proto.Message]() *ObjectCache[T] {
 	return &ObjectCache[T]{
 		objects:         make(map[string]T),
 		ready:           make(chan struct{}),
@@ -106,23 +107,29 @@ func (c *ObjectCache[T]) ReplaceAll(objects map[string]T) {
 }
 
 // Insert adds or updates an object in the cache.
-// Sends the object ID on the resourceChanged channel.
+// Sends the object ID on the resourceChanged channel only if the object changed.
 func (c *ObjectCache[T]) Insert(id string, obj T) {
 	c.mutex.Lock()
+	old, exists := c.objects[id]
 	c.objects[id] = obj
 	c.mutex.Unlock()
 
-	c.resourceChanged <- id
+	if !exists || !proto.Equal(old, obj) {
+		c.resourceChanged <- id
+	}
 }
 
 // Delete removes an object from the cache by ID.
-// Sends the object ID on the resourceChanged channel.
+// Sends the object ID on the resourceChanged channel only if the object existed.
 func (c *ObjectCache[T]) Delete(id string) {
 	c.mutex.Lock()
+	_, exists := c.objects[id]
 	delete(c.objects, id)
 	c.mutex.Unlock()
 
-	c.resourceChanged <- id
+	if exists {
+		c.resourceChanged <- id
+	}
 }
 
 // Get retrieves an object by ID. Returns the zero value if not found.

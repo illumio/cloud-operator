@@ -27,7 +27,7 @@ const (
 	ManagedByLabel = "app.kubernetes.io/managed-by"
 
 	// ManagedByValue is the value used for the managed-by label.
-	ManagedByValue = "cloud-operator"
+	ManagedByValue = "illumio-cloud-operator"
 )
 
 // protoJSONMarshaler is configured for Kubernetes Server-Side Apply:

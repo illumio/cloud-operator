@@ -98,14 +98,81 @@ func TestDelete(t *testing.T) {
 	assert.Nil(t, cache.Get("test-id"))
 }
 
-func TestDeleteNonExistent(t *testing.T) {
+func TestDeleteNonExistentSkipsNotification(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
-	go cache.Delete("non-existent-id")
+	// Pre-spawn collector to count all notifications.
+	var collected []string
+	collectorDone := make(chan struct{})
 
-	<-cache.ResourceChanged()
+	go func() {
+		for id := range cache.ResourceChanged() {
+			collected = append(collected, id)
+		}
+
+		close(collectorDone)
+	}()
+
+	// Insert an object, should notify.
+	cache.Insert("test-id", &pb.ConfiguredKubernetesObjectData{
+		Id:   "test-id",
+		Name: "test-policy",
+	})
+
+	// Delete it, should notify.
+	cache.Delete("test-id")
+
+	// Delete it again (non-existent), should NOT notify.
+	cache.Delete("test-id")
+
+	// Delete something that never existed, should NOT notify.
+	cache.Delete("never-existed")
+
+	cache.Close()
+	<-collectorDone
 
 	assert.Equal(t, 0, cache.Len())
+	assert.Equal(t, []string{"test-id", "test-id"}, collected, "Should notify exactly twice: insert and first delete, not the non-existent deletes")
+}
+
+func TestInsertIdenticalSkipsNotification(t *testing.T) {
+	cache := NewConfiguredObjectCache()
+
+	// Pre-spawn collector to count all notifications.
+	var collected []string
+	collectorDone := make(chan struct{})
+
+	go func() {
+		for id := range cache.ResourceChanged() {
+			collected = append(collected, id)
+		}
+
+		close(collectorDone)
+	}()
+
+	// First insert: new object, should notify.
+	cache.Insert("test-id", &pb.ConfiguredKubernetesObjectData{
+		Id:   "test-id",
+		Name: "test-policy",
+	})
+
+	// Second insert: identical object, should NOT notify.
+	cache.Insert("test-id", &pb.ConfiguredKubernetesObjectData{
+		Id:   "test-id",
+		Name: "test-policy",
+	})
+
+	// Third insert: changed object, should notify.
+	cache.Insert("test-id", &pb.ConfiguredKubernetesObjectData{
+		Id:   "test-id",
+		Name: "updated-policy",
+	})
+
+	cache.Close()
+	<-collectorDone
+
+	assert.Equal(t, 1, cache.Len())
+	assert.Equal(t, []string{"test-id", "test-id"}, collected, "Should notify exactly twice: first insert and update, not the identical insert")
 }
 
 func TestGetNotFound(t *testing.T) {

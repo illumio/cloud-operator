@@ -9,19 +9,20 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/convert"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 	"github.com/illumio/cloud-operator/internal/controller/stream/resources"
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 const (
 	// FieldManager identifies cloud-operator as the owner of fields in Server-Side Apply.
-	FieldManager = "cloud-operator"
+	FieldManager = "illumio-cloud-operator"
 
 	// FullReconcileInterval is the periodic safety net for full reconciliation,
 	// catching anything missed due to dropped events or transient failures.
@@ -157,23 +158,21 @@ func (r *Reconciler) processResourceChange(ctx context.Context, id string, recon
 }
 
 // reconcileObject reconciles a single object by ID.
-// If the object exists in the config cache, it is applied via SSA — even if the runtime
-// cache already has a matching copy. SSA is idempotent and handles field ownership natively,
-// which avoids the need for local diffing logic that could mask annotation deletions.
-// If the object exists only in the runtime cache, it is deleted.
+// If the object exists in the config cache and differs from the runtime cache, it is applied via SSA.
+// If the object exists only in the runtime cache (not in config), it is deleted.
 func (r *Reconciler) reconcileObject(ctx context.Context, id string) error {
 	configObj := r.configCache.Get(id)
 	runtimeObj := r.runtimeCache.Get(id)
 
 	switch {
-	// In config → always apply; SSA handles ownership and is idempotent
-	case configObj != nil:
+	// In config and differs from runtime (or not yet applied) → apply
+	case configObj != nil && !proto.Equal(configObj, runtimeObj):
 		if err := r.applyObject(ctx, configObj); err != nil {
 			return fmt.Errorf("apply %s: %w", id, err)
 		}
 
 	// In runtime, not in config → delete
-	case runtimeObj != nil:
+	case configObj == nil && runtimeObj != nil:
 		if err := r.deleteObject(ctx, runtimeObj); err != nil {
 			return fmt.Errorf("delete %s: %w", id, err)
 		}
