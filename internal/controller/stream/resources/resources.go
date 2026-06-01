@@ -10,14 +10,14 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// ConfiguredResourceKinds lists the kinds of resources managed by the reconciler.
-var ConfiguredResourceKinds = []string{
+// ManagedResourceNames lists the plural resource names managed by the reconciler.
+var ManagedResourceNames = []string{
 	"ciliumcidrgroups",
 	"ciliumclusterwidenetworkpolicies",
 	"ciliumnetworkpolicies",
 }
 
-var resourceList = slices.Concat(ConfiguredResourceKinds, []string{
+var resourceList = slices.Concat(ManagedResourceNames, []string{
 	"cronjobs",
 	"customresourcedefinitions",
 	"daemonsets",

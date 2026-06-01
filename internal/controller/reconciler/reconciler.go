@@ -61,7 +61,7 @@ func (r *Reconciler) Run(ctx context.Context) {
 	for attempt := range 5 {
 		var err error
 
-		resourceInfo, err = resources.BuildResourceAPIGroupMap(resources.ConfiguredResourceKinds, r.client.GetClientset(), r.logger)
+		resourceInfo, err = resources.BuildResourceAPIGroupMap(resources.ManagedResourceNames, r.client.GetClientset(), r.logger)
 		if err == nil {
 			break
 		}
@@ -193,6 +193,11 @@ func (r *Reconciler) reconcileObject(ctx context.Context, id string) error {
 // It reconciles every ID from both caches, applying new/changed objects and deleting
 // objects no longer in the config.
 func (r *Reconciler) reconcileAll(ctx context.Context) error {
+	if r.configCache.Len() == 0 && r.runtimeCache.Len() > 0 {
+		r.logger.Warn("Config cache is empty but runtime cache has objects — all managed resources will be deleted",
+			zap.Int("runtime_objects", r.runtimeCache.Len()))
+	}
+
 	allIDs := make(map[string]struct{}, max(r.configCache.Len(), r.runtimeCache.Len()))
 
 	for _, obj := range r.configCache.Values() {

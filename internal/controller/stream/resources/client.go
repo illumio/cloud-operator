@@ -5,6 +5,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"sync"
@@ -81,6 +82,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 	sharedLimiter := rate.NewLimiter(1, 5)
 	resourceManagers := make(map[string]*Watcher)
 	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
+	runtimeCacheHandler := c.newRuntimeCacheHandler(pendingSnapshot)
 
 	for _, resource := range slices.Sorted(maps.Keys(resourceAPIGroupMap)) {
 		resourceInfo := resourceAPIGroupMap[resource]
@@ -93,27 +95,27 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 		converter := coreConverter
 
-		var runtimeCache *cache.ConfiguredObjectCache
+		var handler RuntimeCacheHandler
 
 		if convert.IsCiliumResource(resource) {
 			converter = ciliumConverter
-			runtimeCache = c.runtimeCache
+			handler = runtimeCacheHandler
 		}
 
 		resourceManager := NewWatcher(WatcherConfig{
-			ResourceName:    resource,
-			ApiGroup:        resourceInfo.Group,
-			ApiVersion:      resourceInfo.Version,
-			BaseLogger:      c.logger,
-			DynamicClient:   dynamicClient,
-			ResourcesClient: c,
-			RuntimeCache:    runtimeCache,
-			Limiter:         sharedLimiter,
-			Converter:       converter,
+			ResourceName:        resource,
+			ApiGroup:            resourceInfo.Group,
+			ApiVersion:          resourceInfo.Version,
+			BaseLogger:          c.logger,
+			DynamicClient:       dynamicClient,
+			ResourcesClient:     c,
+			RuntimeCacheHandler: handler,
+			Limiter:             sharedLimiter,
+			Converter:           converter,
 		})
 		resourceManagers[resource] = resourceManager
 
-		resourceVersion, runtimeObjects, err := resourceManager.DynamicListResources(ctx, resourceManager.logger)
+		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger)
 		if err != nil {
 			// Skip resources that are unavailable due to RBAC or missing CRDs.
 			// NotFound can occur when a CRD is deleted after discovery but before listing.
@@ -129,8 +131,6 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 			return err
 		}
-
-		maps.Copy(pendingSnapshot, runtimeObjects)
 
 		allWatchInfos = append(allWatchInfos, watcherInfo{
 			resource:        resource,
@@ -294,6 +294,47 @@ func (c *resourcesClient) CreateMutationObject(metadata *pb.KubernetesObjectData
 	}
 
 	return mutation
+}
+
+// newRuntimeCacheHandler returns a RuntimeCacheHandler that filters for operator-managed
+// resources and updates the runtime cache accordingly.
+//
+// For watch events (eventType is Added/Modified/Deleted), the handler inserts or deletes
+// from the runtime cache directly.
+//
+// For list operations (eventType is empty), the handler accumulates the configured object
+// into pendingSnapshot for later ReplaceAll — the cache is not modified directly.
+func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.ConfiguredKubernetesObjectData) RuntimeCacheHandler {
+	return func(eventType watch.EventType, metadata *pb.KubernetesObjectData) error {
+		labels := metadata.GetLabels()
+		if labels[convert.ManagedByLabel] != convert.ManagedByValue {
+			return nil
+		}
+
+		id := labels[convert.CloudSecureIDLabel]
+		if id == "" {
+			return nil
+		}
+
+		configured, err := convert.BuildConfiguredFromMetadata(id, metadata)
+		if err != nil {
+			return fmt.Errorf("skipping unhandled resource type in runtime cache (id=%s): %w", id, err)
+		}
+
+		if eventType == "" {
+			pendingSnapshot[configured.GetId()] = configured
+		} else {
+			//nolint:exhaustive // only mutation events reach the handler; Bookmark/Error are handled by the watcher
+			switch eventType {
+			case watch.Added, watch.Modified:
+				c.runtimeCache.Insert(configured.GetId(), configured)
+			case watch.Deleted:
+				c.runtimeCache.Delete(configured.GetId())
+			}
+		}
+
+		return nil
+	}
 }
 
 // sendClusterMetadata sends cluster metadata to CloudSecure.

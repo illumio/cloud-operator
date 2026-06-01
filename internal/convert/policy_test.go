@@ -1973,6 +1973,3 @@ func TestMarshalPolicySpecs_JSONNameOverrides(t *testing.T) {
 		assert.NotContains(t, aws, "securityGroupNames")
 	})
 }
-
-//go:fix inline
-func strPtr(s string) *string { return new(s) }
