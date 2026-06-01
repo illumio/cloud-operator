@@ -3,6 +3,8 @@
 package fakeserver
 
 import (
+	"context"
+	"crypto/tls"
 	"fmt"
 	"testing"
 	"time"
@@ -10,6 +12,8 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
@@ -21,16 +25,22 @@ type TestConfig struct {
 	Timeout       time.Duration
 	PollInterval  time.Duration
 	EnableLogging bool
+	// AutoHandshake controls whether Start() sends the default config handshake
+	// (UpdateConfiguration + empty ResourceSnapshotComplete). Set to false when
+	// tests need to control the handshake sequence themselves.
+	AutoHandshake bool
 }
 
 // DefaultTestConfig returns sensible defaults for testing.
+// Uses fixed ports for tests that start the full operator binary (connectivity, flows).
 func DefaultTestConfig() TestConfig {
 	return TestConfig{
 		GRPCAddress:   "0.0.0.0:50051",
 		HTTPAddress:   "0.0.0.0:50053",
-		Timeout:       90 * time.Second, // Reduced from 120s
+		Timeout:       90 * time.Second,
 		PollInterval:  500 * time.Millisecond,
-		EnableLogging: true, // Enable logging by default for debugging
+		EnableLogging: true,
+		AutoHandshake: true,
 	}
 }
 
@@ -111,9 +121,9 @@ func NewTestHarness(t *testing.T, config TestConfig) *FakeServerTestHarness {
 	}
 }
 
-// Start starts the fake server and sends the default config handshake messages
-// (UpdateConfiguration + empty ResourceSnapshotComplete) so that connected
-// clients complete the initial snapshot, matching the original hardcoded behavior.
+// Start starts the fake server. If AutoHandshake is true (the default), it also
+// sends the default config handshake messages (UpdateConfiguration + empty
+// ResourceSnapshotComplete) so connected clients complete the initial snapshot.
 func (h *FakeServerTestHarness) Start() error {
 	h.T.Log("Starting FakeServer...")
 
@@ -122,25 +132,56 @@ func (h *FakeServerTestHarness) Start() error {
 		return fmt.Errorf("failed to start FakeServer: %w", err)
 	}
 
-	// Send the default config handshake that the original hardcoded
-	// GetConfigurationUpdates used to send automatically.
-	h.Server.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
-			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
-				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+	if h.Config.AutoHandshake {
+		h.Server.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+			Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+				UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+					LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+				},
 			},
-		},
-	})
-	h.Server.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
-			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
-		},
-	})
+		})
+		h.Server.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+			Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+				ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+			},
+		})
+	}
 
-	h.T.Logf("FakeServer started on gRPC=%s, HTTP=%s", h.Config.GRPCAddress, h.Config.HTTPAddress)
+	h.T.Logf("FakeServer started on gRPC=%s, HTTP=%s", h.Server.GRPCAddress(), h.Server.HTTPAddress)
 
 	return nil
 }
+
+// DialGRPC creates a gRPC client connection to the fake server with TLS and token auth.
+func (h *FakeServerTestHarness) DialGRPC(t *testing.T) *grpc.ClientConn {
+	t.Helper()
+
+	tlsCreds := credentials.NewTLS(&tls.Config{
+		InsecureSkipVerify: true, //nolint:gosec // test-only
+	})
+
+	conn, err := grpc.NewClient(
+		h.Server.GRPCAddress(),
+		grpc.WithTransportCredentials(tlsCreds),
+		grpc.WithPerRPCCredentials(tokenAuth{token: h.Server.Token}),
+	)
+	if err != nil {
+		t.Fatalf("failed to dial fakeserver: %v", err)
+	}
+
+	t.Cleanup(func() { _ = conn.Close() })
+
+	return conn
+}
+
+// tokenAuth implements grpc.PerRPCCredentials for Bearer token auth.
+type tokenAuth struct{ token string }
+
+func (t tokenAuth) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
+	return map[string]string{"authorization": "Bearer " + t.token}, nil
+}
+
+func (t tokenAuth) RequireTransportSecurity() bool { return true }
 
 // Stop stops the fake server.
 func (h *FakeServerTestHarness) Stop() {
