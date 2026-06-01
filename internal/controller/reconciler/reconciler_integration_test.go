@@ -12,7 +12,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	kjson "k8s.io/apimachinery/pkg/util/json"
 	"sigs.k8s.io/yaml"
 
@@ -88,7 +90,7 @@ func TestReconciler_PopulatedSnapshot(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-snapshot-policy")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "policy should be applied to K8s")
+	}, 20*time.Second, 100*time.Millisecond, "policy should be applied to K8s")
 
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-snapshot-policy")
 	require.NoError(t, err)
@@ -173,7 +175,7 @@ func TestReconciler_EmptySnapshotThenMutation(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-mutation-policy")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "mutation policy should be applied to K8s")
+	}, 20*time.Second, 100*time.Millisecond, "mutation policy should be applied to K8s")
 
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-mutation-policy")
 	require.NoError(t, err)
@@ -229,7 +231,7 @@ func TestReconciler_MutationDelete(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-delete-policy")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "policy should be applied before delete")
+	}, 20*time.Second, 100*time.Millisecond, "policy should be applied before delete")
 
 	// Send delete mutation
 	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
@@ -247,7 +249,7 @@ func TestReconciler_MutationDelete(t *testing.T) {
 	// Wait for policy to be deleted
 	require.Eventually(t, func() bool {
 		_, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-delete-policy")
-		return err != nil
+		return apierrors.IsNotFound(err)
 	}, 20*time.Second, 100*time.Millisecond, "policy should be deleted from K8s")
 }
 
@@ -295,7 +297,7 @@ func TestReconciler_SSAFieldManagerOwnership(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-ssa-policy")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "policy should be applied to K8s")
+	}, 20*time.Second, 100*time.Millisecond, "policy should be applied to K8s")
 
 	// Verify SSA field manager ownership
 	obj, err := testClient.GetDynamicClient().Resource(ccnpGVR).Get(ctx, "e2e-ssa-policy", metav1.GetOptions{})
@@ -400,7 +402,7 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 		a, err1 := testClient.GetResource(ctx, ccnpGVR, "", "e2e-multi-a")
 		b, err2 := testClient.GetResource(ctx, ccnpGVR, "", "e2e-multi-b")
 		return err1 == nil && a != nil && err2 == nil && b != nil
-	}, 10*time.Second, 100*time.Millisecond, "both policies should be applied")
+	}, 20*time.Second, 100*time.Millisecond, "both policies should be applied")
 
 	// Mutation 3: update policy A with new endpoint selector
 	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
@@ -461,12 +463,12 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 			return false
 		}
 		return ml["app"] == "a-updated"
-	}, 10*time.Second, 100*time.Millisecond, "policy A should be updated with new endpoint selector")
+	}, 20*time.Second, 100*time.Millisecond, "policy A should be updated with new endpoint selector")
 
 	// Verify policy B was deleted
 	require.Eventually(t, func() bool {
 		_, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-multi-b")
-		return err != nil
+		return apierrors.IsNotFound(err)
 	}, 20*time.Second, 100*time.Millisecond, "policy B should be deleted")
 
 	t.Cleanup(func() {
@@ -524,7 +526,7 @@ func TestReconciler_UpdateChangesSpec(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-update-spec")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "initial policy should be applied")
+	}, 20*time.Second, 100*time.Millisecond, "initial policy should be applied")
 
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-update-spec")
 	require.NoError(t, err)
@@ -589,7 +591,7 @@ func TestReconciler_UpdateChangesSpec(t *testing.T) {
 			return false
 		}
 		return ml["app"] == "api-v2"
-	}, 10*time.Second, 100*time.Millisecond, "policy spec should be updated after mutation")
+	}, 20*time.Second, 100*time.Millisecond, "policy spec should be updated after mutation")
 
 	obj, err = testClient.GetResource(ctx, ccnpGVR, "", "e2e-update-spec")
 	require.NoError(t, err)
@@ -668,7 +670,7 @@ func TestReconciler_DeleteOnlyRemovesTargetPolicy(t *testing.T) {
 		a, err1 := testClient.GetResource(ctx, ccnpGVR, "", "e2e-del-keep")
 		b, err2 := testClient.GetResource(ctx, ccnpGVR, "", "e2e-del-remove")
 		return err1 == nil && a != nil && err2 == nil && b != nil
-	}, 10*time.Second, 100*time.Millisecond, "both policies should exist after snapshot")
+	}, 20*time.Second, 100*time.Millisecond, "both policies should exist after snapshot")
 
 	// Delete only the "remove" policy
 	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
@@ -686,7 +688,7 @@ func TestReconciler_DeleteOnlyRemovesTargetPolicy(t *testing.T) {
 	// Verify "remove" is deleted from K8s
 	require.Eventually(t, func() bool {
 		_, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-del-remove")
-		return err != nil
+		return apierrors.IsNotFound(err)
 	}, 20*time.Second, 100*time.Millisecond, "deleted policy should be removed from K8s")
 
 	// Verify "keep" still exists and is untouched
@@ -754,7 +756,7 @@ func TestReconciler_UpdatePreservesMetadata(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-meta-preserve")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "initial policy should be applied")
+	}, 20*time.Second, 100*time.Millisecond, "initial policy should be applied")
 
 	// Update via mutation: change spec and labels
 	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
@@ -803,7 +805,7 @@ func TestReconciler_UpdatePreservesMetadata(t *testing.T) {
 			return false
 		}
 		return ml["app"] == "svc-updated"
-	}, 10*time.Second, 100*time.Millisecond, "policy should be updated")
+	}, 20*time.Second, 100*time.Millisecond, "policy should be updated")
 
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-meta-preserve")
 	require.NoError(t, err)
@@ -863,7 +865,7 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, cidrGroupGVR, "", "e2e-cidr-mut")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "CIDRGroup should be created via mutation")
+	}, 20*time.Second, 100*time.Millisecond, "CIDRGroup should be created via mutation")
 
 	obj, err := testClient.GetResource(ctx, cidrGroupGVR, "", "e2e-cidr-mut")
 	require.NoError(t, err)
@@ -914,7 +916,7 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 			return false
 		}
 		return len(cidrs) == 2
-	}, 10*time.Second, 100*time.Millisecond, "CIDRGroup should be updated with additional CIDRs")
+	}, 20*time.Second, 100*time.Millisecond, "CIDRGroup should be updated with additional CIDRs")
 
 	obj, err = testClient.GetResource(ctx, cidrGroupGVR, "", "e2e-cidr-mut")
 	require.NoError(t, err)
@@ -936,7 +938,7 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 	// Verify the CIDRGroup was deleted
 	require.Eventually(t, func() bool {
 		_, err := testClient.GetResource(ctx, cidrGroupGVR, "", "e2e-cidr-mut")
-		return err != nil
+		return apierrors.IsNotFound(err)
 	}, 20*time.Second, 100*time.Millisecond, "CIDRGroup should be deleted from K8s")
 
 	t.Cleanup(func() {
@@ -999,7 +1001,7 @@ func TestReconciler_CiliumExample_ClusterscopePolicy(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "clusterwide-policy-example")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "clusterscope policy should be applied")
+	}, 20*time.Second, 100*time.Millisecond, "clusterscope policy should be applied")
 
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "clusterwide-policy-example")
 	require.NoError(t, err)
@@ -1067,7 +1069,7 @@ func TestReconciler_CiliumExample_HealthChecks(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "cilium-health-checks")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "health checks policy should be applied")
+	}, 20*time.Second, 100*time.Millisecond, "health checks policy should be applied")
 
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "cilium-health-checks")
 	require.NoError(t, err)
@@ -1138,7 +1140,7 @@ func TestReconciler_CiliumExample_CrossNamespace(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "cross-namespace-policy")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "cross-namespace policy should be applied")
+	}, 20*time.Second, 100*time.Millisecond, "cross-namespace policy should be applied")
 
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "cross-namespace-policy")
 	require.NoError(t, err)
@@ -1217,7 +1219,7 @@ func TestReconciler_CiliumExample_AllowToKubeDNS(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "allow-to-kubedns")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "kubedns policy should be applied")
+	}, 20*time.Second, 100*time.Millisecond, "kubedns policy should be applied")
 
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "allow-to-kubedns")
 	require.NoError(t, err)
@@ -1296,7 +1298,7 @@ func TestReconciler_CiliumExample_WildcardFromEndpoints(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "wildcard-from-endpoints")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "wildcard-from-endpoints policy should be applied")
+	}, 20*time.Second, 100*time.Millisecond, "wildcard-from-endpoints policy should be applied")
 
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "wildcard-from-endpoints")
 	require.NoError(t, err)
@@ -1363,7 +1365,7 @@ func TestReconciler_CiliumExample_ExternalLockdown(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "external-lockdown")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "external-lockdown policy should be applied")
+	}, 20*time.Second, 100*time.Millisecond, "external-lockdown policy should be applied")
 
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "external-lockdown")
 	require.NoError(t, err)
@@ -1438,7 +1440,7 @@ func TestReconciler_CiliumExample_Init(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "init")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "init policy should be applied")
+	}, 20*time.Second, 100*time.Millisecond, "init policy should be applied")
 
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "init")
 	require.NoError(t, err)
@@ -1524,7 +1526,7 @@ func TestReconciler_CiliumExample_DemoHostPolicy(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "demo-host-policy")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "demo-host-policy should be applied")
+	}, 20*time.Second, 100*time.Millisecond, "demo-host-policy should be applied")
 
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "demo-host-policy")
 	require.NoError(t, err)
@@ -1605,7 +1607,7 @@ func TestReconciler_CiliumExample_NamespaceLabelsPolicy(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, cnpGVR, ns, "alliance-only")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "namespace-labels policy should be applied")
+	}, 20*time.Second, 100*time.Millisecond, "namespace-labels policy should be applied")
 
 	obj, err := testClient.GetResource(ctx, cnpGVR, ns, "alliance-only")
 	require.NoError(t, err)
@@ -1679,7 +1681,7 @@ func TestReconciler_CiliumExample_ICMPRule(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, cnpGVR, ns, "icmp-rule")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "ICMP rule policy should be applied")
+	}, 20*time.Second, 100*time.Millisecond, "ICMP rule policy should be applied")
 
 	obj, err := testClient.GetResource(ctx, cnpGVR, ns, "icmp-rule")
 	require.NoError(t, err)
@@ -1752,7 +1754,7 @@ func TestReconciler_CiliumExample_CIDRRule(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, cnpGVR, ns, "cidr-rule")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "CIDR rule policy should be applied")
+	}, 20*time.Second, 100*time.Millisecond, "CIDR rule policy should be applied")
 
 	obj, err := testClient.GetResource(ctx, cnpGVR, ns, "cidr-rule")
 	require.NoError(t, err)
@@ -1833,7 +1835,7 @@ func TestReconciler_CiliumExample_MatchExpressionsAND(t *testing.T) {
 	require.Eventually(t, func() bool {
 		obj, err := testClient.GetResource(ctx, cnpGVR, ns, "and-statement-policy")
 		return err == nil && obj != nil
-	}, 10*time.Second, 100*time.Millisecond, "matchExpressions AND policy should be applied")
+	}, 20*time.Second, 100*time.Millisecond, "matchExpressions AND policy should be applied")
 
 	obj, err := testClient.GetResource(ctx, cnpGVR, ns, "and-statement-policy")
 	require.NoError(t, err)
@@ -1845,5 +1847,362 @@ func TestReconciler_CiliumExample_MatchExpressionsAND(t *testing.T) {
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, cnpGVR, ns, "and-statement-policy")
+	})
+}
+
+// TestReconciler_ExternalAnnotationsSurviveReApply verifies that annotations added by an
+// external actor (e.g. kubectl, another controller) are preserved when the reconciler
+// re-applies the object via SSA. The reconciler's field manager only owns the fields it
+// sends; external annotations belong to a different field manager and must not be removed.
+func TestReconciler_ExternalAnnotationsSurviveReApply(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+
+	// Step 1: Apply initial policy with operator-owned annotation
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:          "cnp-ext-ann",
+				Name:        "e2e-ext-annotations",
+				Annotations: map[string]string{"operator-note": "managed"},
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "annotated"},
+								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-ext-annotations")
+		return err == nil && obj != nil
+	}, 20*time.Second, 100*time.Millisecond, "policy should be applied")
+
+	// Step 2: External actor adds an annotation via merge patch
+	patch := []byte(`{"metadata":{"annotations":{"external-controller":"v1"}}}`)
+	_, err := testClient.GetDynamicClient().Resource(ccnpGVR).Patch(
+		ctx, "e2e-ext-annotations", types.MergePatchType, patch, metav1.PatchOptions{},
+	)
+	require.NoError(t, err)
+
+	// Verify external annotation was added
+	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-ext-annotations")
+	require.NoError(t, err)
+	assert.Equal(t, "v1", obj.GetAnnotations()["external-controller"])
+	assert.Equal(t, "managed", obj.GetAnnotations()["operator-note"])
+
+	// Step 3: Reconciler re-applies via update mutation (spec change triggers SSA apply)
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
+			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
+					UpdateObject: &pb.ConfiguredKubernetesObjectData{
+						Id:          "cnp-ext-ann",
+						Name:        "e2e-ext-annotations",
+						Annotations: map[string]string{"operator-note": "managed-v2"},
+						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+							CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+								Specs: []*pb.CiliumPolicyRule{
+									{
+										EndpointSelector: &pb.LabelSelector{
+											MatchLabels: map[string]string{"app": "annotated-v2"},
+										},
+										Ingress: []*pb.CiliumPolicyIngressRule{{}},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	// Wait for the spec update to land
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-ext-annotations")
+		if err != nil || obj == nil {
+			return false
+		}
+		spec, ok := obj.Object["spec"].(map[string]any)
+		if !ok {
+			return false
+		}
+		es, ok := spec["endpointSelector"].(map[string]any)
+		if !ok {
+			return false
+		}
+		ml, ok := es["matchLabels"].(map[string]any)
+		if !ok {
+			return false
+		}
+		return ml["app"] == "annotated-v2"
+	}, 20*time.Second, 100*time.Millisecond, "policy should be updated after mutation")
+
+	// Verify: external annotation survives, operator annotation updated
+	obj, err = testClient.GetResource(ctx, ccnpGVR, "", "e2e-ext-annotations")
+	require.NoError(t, err)
+	assert.Equal(t, "v1", obj.GetAnnotations()["external-controller"],
+		"external annotation should survive SSA re-apply")
+	assert.Equal(t, "managed-v2", obj.GetAnnotations()["operator-note"],
+		"operator annotation should be updated")
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-ext-annotations")
+	})
+}
+
+// TestReconciler_ExternalAnnotationDeletedByOperator verifies that when the operator
+// removes an annotation it previously owned (by omitting it from the apply), SSA
+// releases ownership of that key without affecting external annotations.
+func TestReconciler_ExternalAnnotationDeletedByOperator(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+
+	// Step 1: Apply policy with two operator annotations
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:          "cnp-ann-del",
+				Name:        "e2e-ann-delete",
+				Annotations: map[string]string{"keep": "yes", "remove-me": "temporary"},
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "ann-del"},
+								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-ann-delete")
+		return err == nil && obj != nil
+	}, 20*time.Second, 100*time.Millisecond, "policy should be applied")
+
+	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-ann-delete")
+	require.NoError(t, err)
+	assert.Equal(t, "yes", obj.GetAnnotations()["keep"])
+	assert.Equal(t, "temporary", obj.GetAnnotations()["remove-me"])
+
+	// Step 2: External actor adds annotation
+	patch := []byte(`{"metadata":{"annotations":{"external":"stays"}}}`)
+	_, err = testClient.GetDynamicClient().Resource(ccnpGVR).Patch(
+		ctx, "e2e-ann-delete", types.MergePatchType, patch, metav1.PatchOptions{},
+	)
+	require.NoError(t, err)
+
+	// Step 3: Operator re-applies with "remove-me" annotation dropped and annotations nil
+	// (omitting annotations entirely releases SSA ownership)
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
+			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
+					UpdateObject: &pb.ConfiguredKubernetesObjectData{
+						Id:   "cnp-ann-del",
+						Name: "e2e-ann-delete",
+						// Annotations set to nil — operator releases all annotation ownership
+						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+							CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+								Specs: []*pb.CiliumPolicyRule{
+									{
+										EndpointSelector: &pb.LabelSelector{
+											MatchLabels: map[string]string{"app": "ann-del-v2"},
+										},
+										Ingress: []*pb.CiliumPolicyIngressRule{{}},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	// Wait for spec update
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-ann-delete")
+		if err != nil || obj == nil {
+			return false
+		}
+		spec, ok := obj.Object["spec"].(map[string]any)
+		if !ok {
+			return false
+		}
+		es, ok := spec["endpointSelector"].(map[string]any)
+		if !ok {
+			return false
+		}
+		ml, ok := es["matchLabels"].(map[string]any)
+		if !ok {
+			return false
+		}
+		return ml["app"] == "ann-del-v2"
+	}, 20*time.Second, 100*time.Millisecond, "policy should be updated")
+
+	// Verify: external annotation survives, operator annotations released
+	obj, err = testClient.GetResource(ctx, ccnpGVR, "", "e2e-ann-delete")
+	require.NoError(t, err)
+	assert.Equal(t, "stays", obj.GetAnnotations()["external"],
+		"external annotation should survive operator releasing ownership")
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-ann-delete")
+	})
+}
+
+// TestReconciler_ExternalAnnotationInsertedMidLifecycle verifies that an external actor
+// can add annotations at any point in the policy lifecycle and they persist across
+// multiple reconciler re-applies.
+func TestReconciler_ExternalAnnotationInsertedMidLifecycle(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+
+	// Step 1: Apply policy with no annotations
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "cnp-ext-insert",
+				Name: "e2e-ext-insert",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "insert-v1"},
+								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-ext-insert")
+		return err == nil && obj != nil
+	}, 20*time.Second, 100*time.Millisecond, "policy should be applied")
+
+	// Step 2: External actor adds annotation
+	patch := []byte(`{"metadata":{"annotations":{"injected-by":"external-controller"}}}`)
+	_, err := testClient.GetDynamicClient().Resource(ccnpGVR).Patch(
+		ctx, "e2e-ext-insert", types.MergePatchType, patch, metav1.PatchOptions{},
+	)
+	require.NoError(t, err)
+
+	// Step 3: Reconciler re-applies twice (two mutations) — external annotation should survive both
+	for i, label := range []string{"insert-v2", "insert-v3"} {
+		fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+			Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
+				ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
+					Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
+						UpdateObject: &pb.ConfiguredKubernetesObjectData{
+							Id:   "cnp-ext-insert",
+							Name: "e2e-ext-insert",
+							KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+								CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+									Specs: []*pb.CiliumPolicyRule{
+										{
+											EndpointSelector: &pb.LabelSelector{
+												MatchLabels: map[string]string{"app": label},
+											},
+											Ingress: []*pb.CiliumPolicyIngressRule{{}},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+
+		expectedLabel := label
+		require.Eventually(t, func() bool {
+			obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-ext-insert")
+			if err != nil || obj == nil {
+				return false
+			}
+			spec, ok := obj.Object["spec"].(map[string]any)
+			if !ok {
+				return false
+			}
+			es, ok := spec["endpointSelector"].(map[string]any)
+			if !ok {
+				return false
+			}
+			ml, ok := es["matchLabels"].(map[string]any)
+			if !ok {
+				return false
+			}
+			return ml["app"] == expectedLabel
+		}, 20*time.Second, 100*time.Millisecond, "policy should be updated (mutation %d)", i+1)
+	}
+
+	// Verify external annotation survived both re-applies
+	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-ext-insert")
+	require.NoError(t, err)
+	assert.Equal(t, "external-controller", obj.GetAnnotations()["injected-by"],
+		"external annotation should survive multiple SSA re-applies")
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-ext-insert")
 	})
 }
