@@ -19,8 +19,8 @@ import (
 	"k8s.io/client-go/dynamic"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/convert"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 // ResourceStreamSender abstracts the operations for sending resources to CloudSecure.
@@ -364,6 +364,8 @@ func (r *Watcher) handleWatchEvent(
 				r.runtimeCache.Insert(configured.GetId(), configured)
 			case watch.Deleted:
 				r.runtimeCache.Delete(configured.GetId())
+			case watch.Bookmark, watch.Error:
+				// Bookmark events are handled above; Error events are handled by the outer switch.
 			}
 		}
 

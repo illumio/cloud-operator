@@ -103,6 +103,7 @@ func TestDeleteNonExistentSkipsNotification(t *testing.T) {
 
 	// Pre-spawn collector to count all notifications.
 	var collected []string
+
 	collectorDone := make(chan struct{})
 
 	go func() {
@@ -140,6 +141,7 @@ func TestInsertIdenticalSkipsNotification(t *testing.T) {
 
 	// Pre-spawn collector to count all notifications.
 	var collected []string
+
 	collectorDone := make(chan struct{})
 
 	go func() {

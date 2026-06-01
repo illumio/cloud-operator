@@ -4,11 +4,12 @@ package reconciler
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -194,7 +195,7 @@ func TestReconcileObject_SkipsApplyWhenMatching(t *testing.T) {
 	)
 
 	err := r.reconcileObject(context.Background(), "policy-1")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 0, client.applyCalls, "Should skip apply when config and runtime match")
 }
 
@@ -222,7 +223,7 @@ func TestReconcileObject_AppliesWhenDifferent(t *testing.T) {
 	)
 
 	err := r.reconcileObject(context.Background(), "policy-1")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 1, client.applyCalls, "Should apply when config and runtime differ")
 }
 
@@ -249,7 +250,7 @@ func TestReconcileObject_AppliesWhenAnnotationDeleted(t *testing.T) {
 	)
 
 	err := r.reconcileObject(context.Background(), "policy-1")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 1, client.applyCalls, "Should apply when annotation was deleted from config")
 }
 
@@ -268,7 +269,7 @@ func TestReconcileObject_DeletesOrphanedRuntimeObject(t *testing.T) {
 	)
 
 	err := r.reconcileObject(context.Background(), "policy-1")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 0, client.applyCalls, "Should not apply orphaned object")
 	assert.Equal(t, 1, client.deleteCalls, "Should delete orphaned runtime object")
 }
@@ -309,7 +310,7 @@ func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
 	)
 
 	err := r.reconcileAll(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 1, client.applyCalls, "Should only apply the changed object, not the unchanged one")
 }
 
@@ -328,7 +329,7 @@ func TestReconcileObject_AppliesNewObject(t *testing.T) {
 	)
 
 	err := r.reconcileObject(context.Background(), "policy-1")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 1, client.applyCalls, "Should apply when object exists only in config")
 }
 
@@ -336,7 +337,7 @@ func TestReconcileObject_NoOpWhenNotInEitherCache(t *testing.T) {
 	r, client := newTestReconciler(t, nil, nil)
 
 	err := r.reconcileObject(context.Background(), "non-existent")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 0, client.applyCalls)
 	assert.Equal(t, 0, client.deleteCalls)
 }
@@ -355,10 +356,10 @@ func TestReconcileObject_ApplyError(t *testing.T) {
 		nil,
 	)
 
-	client.applyErr = fmt.Errorf("API server unavailable")
+	client.applyErr = errors.New("API server unavailable")
 
 	err := r.reconcileObject(context.Background(), "policy-1")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to apply")
 	assert.Equal(t, 1, client.applyCalls)
 }
@@ -377,10 +378,10 @@ func TestReconcileObject_DeleteError(t *testing.T) {
 		map[string]*pb.ConfiguredKubernetesObjectData{"policy-1": runtimeObj},
 	)
 
-	client.deleteErr = fmt.Errorf("permission denied")
+	client.deleteErr = errors.New("permission denied")
 
 	err := r.reconcileObject(context.Background(), "policy-1")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to delete")
 	assert.Equal(t, 1, client.deleteCalls)
 }
@@ -405,7 +406,7 @@ func TestReconcileObject_DeleteNotFoundIsNotError(t *testing.T) {
 	)
 
 	err := r.reconcileObject(context.Background(), "policy-1")
-	assert.NoError(t, err, "NotFound on delete should not be an error")
+	require.NoError(t, err, "NotFound on delete should not be an error")
 	assert.Equal(t, 1, client.deleteCalls)
 }
 
@@ -422,7 +423,7 @@ func TestReconcileObject_ApplyErrorUnsupportedKind(t *testing.T) {
 	)
 
 	err := r.reconcileObject(context.Background(), "policy-1")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported kind_specific")
 	assert.Equal(t, 0, client.applyCalls, "Should not reach ApplyResource")
 }
@@ -440,7 +441,7 @@ func TestReconcileObject_DeleteErrorUnsupportedKind(t *testing.T) {
 	)
 
 	err := r.reconcileObject(context.Background(), "policy-1")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported kind_specific")
 	assert.Equal(t, 0, client.deleteCalls, "Should not reach DeleteResource")
 }
@@ -468,7 +469,7 @@ func TestReconcileAll_CollectsErrors(t *testing.T) {
 	)
 
 	err := r.reconcileAll(context.Background())
-	assert.Error(t, err, "Should return error from the failed object")
+	require.Error(t, err, "Should return error from the failed object")
 	assert.Equal(t, 1, client.applyCalls, "Should still apply the valid object")
 }
 
@@ -494,7 +495,7 @@ func TestReconcileAll_AppliesAndDeletes(t *testing.T) {
 	)
 
 	err := r.reconcileAll(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 1, client.applyCalls, "Should apply the config-only object")
 	assert.Equal(t, 1, client.deleteCalls, "Should delete the runtime-only object")
 }
@@ -542,9 +543,11 @@ func newLiveReconcilerEnv(t *testing.T, configObjects, runtimeObjects map[string
 	}
 
 	go configCache.ReplaceAll(configObjects)
+
 	<-configCache.ResourceChanged()
 
 	go runtimeCache.ReplaceAll(runtimeObjects)
+
 	<-runtimeCache.ResourceChanged()
 
 	r := NewReconciler(zap.NewNop(), client, configCache, runtimeCache)

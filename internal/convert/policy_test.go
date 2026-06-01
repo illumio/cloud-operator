@@ -59,7 +59,7 @@ func TestConvertToApplyObject_CiliumNetworkPolicy(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "prod", labels["env"])
 	assert.Equal(t, "cnp-1", labels[CloudSecureIDLabel])
-	assert.Equal(t, "cloud-operator", labels[ManagedByLabel])
+	assert.Equal(t, "illumio-cloud-operator", labels[ManagedByLabel])
 
 	annotations, ok := metadata["annotations"].(map[string]string)
 	require.True(t, ok)
@@ -228,7 +228,7 @@ func TestConvertToApplyObject_LabelsIncludeManagementLabels(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "value", labels["custom"])
 	assert.Equal(t, "cnp-labels", labels[CloudSecureIDLabel])
-	assert.Equal(t, "cloud-operator", labels[ManagedByLabel])
+	assert.Equal(t, "illumio-cloud-operator", labels[ManagedByLabel])
 	assert.Len(t, labels, 3)
 }
 
@@ -814,6 +814,7 @@ func TestConvertToApplyObject_AnnotationsDoNotLeakBetweenApplies(t *testing.T) {
 
 	meta2, ok := obj2.Object["metadata"].(map[string]any)
 	require.True(t, ok)
+
 	_, exists := meta2["annotations"]
 	assert.False(t, exists, "annotations from a previous apply must not leak into a subsequent one")
 }
@@ -1428,12 +1429,18 @@ func TestNormalizeProtojsonForCilium_UnwrapsFromEndpoints(t *testing.T) {
 
 	normalizeProtojsonForCilium(specMap)
 
-	rule := specMap["ingress"].([]any)[0].(map[string]any)
+	ingress, ok := specMap["ingress"].([]any)
+	require.True(t, ok)
+	rule, ok := ingress[0].(map[string]any)
+	require.True(t, ok)
 	fromEps, ok := rule["fromEndpoints"].([]any)
 	require.True(t, ok, "fromEndpoints should be a flat array after normalization")
 	require.Len(t, fromEps, 1)
-	ep := fromEps[0].(map[string]any)
-	assert.Equal(t, "luke", ep["matchLabels"].(map[string]any)["name"])
+	ep, ok := fromEps[0].(map[string]any)
+	require.True(t, ok)
+	labels, ok := ep["matchLabels"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "luke", labels["name"])
 }
 
 func TestNormalizeProtojsonForCilium_UnwrapsToEndpoints(t *testing.T) {
@@ -1451,12 +1458,18 @@ func TestNormalizeProtojsonForCilium_UnwrapsToEndpoints(t *testing.T) {
 
 	normalizeProtojsonForCilium(specMap)
 
-	rule := specMap["egress"].([]any)[0].(map[string]any)
+	egress, ok := specMap["egress"].([]any)
+	require.True(t, ok)
+	rule, ok := egress[0].(map[string]any)
+	require.True(t, ok)
 	toEps, ok := rule["toEndpoints"].([]any)
 	require.True(t, ok, "toEndpoints should be a flat array after normalization")
 	require.Len(t, toEps, 1)
-	ep := toEps[0].(map[string]any)
-	assert.Equal(t, "dns", ep["matchLabels"].(map[string]any)["app"])
+	ep, ok := toEps[0].(map[string]any)
+	require.True(t, ok)
+	labels, ok := ep["matchLabels"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "dns", labels["app"])
 }
 
 func TestNormalizeProtojsonForCilium_UnwrapsDenyRules(t *testing.T) {
@@ -1479,11 +1492,17 @@ func TestNormalizeProtojsonForCilium_UnwrapsDenyRules(t *testing.T) {
 
 	normalizeProtojsonForCilium(specMap)
 
-	ingressRule := specMap["ingressDeny"].([]any)[0].(map[string]any)
-	_, ok := ingressRule["fromEndpoints"].([]any)
+	ingressDeny, ok := specMap["ingressDeny"].([]any)
+	require.True(t, ok)
+	ingressRule, ok := ingressDeny[0].(map[string]any)
+	require.True(t, ok)
+	_, ok = ingressRule["fromEndpoints"].([]any)
 	require.True(t, ok, "fromEndpoints in ingressDeny should be unwrapped")
 
-	egressRule := specMap["egressDeny"].([]any)[0].(map[string]any)
+	egressDeny, ok := specMap["egressDeny"].([]any)
+	require.True(t, ok)
+	egressRule, ok := egressDeny[0].(map[string]any)
+	require.True(t, ok)
 	_, ok = egressRule["toEndpoints"].([]any)
 	require.True(t, ok, "toEndpoints in egressDeny should be unwrapped")
 }
@@ -1499,7 +1518,10 @@ func TestNormalizeProtojsonForCilium_NoEndpoints(t *testing.T) {
 
 	normalizeProtojsonForCilium(specMap)
 
-	rule := specMap["ingress"].([]any)[0].(map[string]any)
+	ingress, ok := specMap["ingress"].([]any)
+	require.True(t, ok)
+	rule, ok := ingress[0].(map[string]any)
+	require.True(t, ok)
 	assert.Nil(t, rule["fromEndpoints"], "should not add fromEndpoints when absent")
 }
 
@@ -1521,12 +1543,18 @@ func TestNormalizeProtojsonForCilium_EmptyEndpointsWrapper(t *testing.T) {
 
 	normalizeProtojsonForCilium(specMap)
 
-	ingressRule := specMap["ingress"].([]any)[0].(map[string]any)
+	ingress, ok := specMap["ingress"].([]any)
+	require.True(t, ok)
+	ingressRule, ok := ingress[0].(map[string]any)
+	require.True(t, ok)
 	fromEps, ok := ingressRule["fromEndpoints"].([]any)
 	require.True(t, ok, "empty wrapper should become empty array, not remain a map")
 	assert.Empty(t, fromEps)
 
-	egressRule := specMap["egress"].([]any)[0].(map[string]any)
+	egress, ok := specMap["egress"].([]any)
+	require.True(t, ok)
+	egressRule, ok := egress[0].(map[string]any)
+	require.True(t, ok)
 	toEps, ok := egressRule["toEndpoints"].([]any)
 	require.True(t, ok, "empty wrapper should become empty array, not remain a map")
 	assert.Empty(t, toEps)
@@ -1549,12 +1577,20 @@ func TestNormalizeProtojsonForCilium_ICMPTypeInt(t *testing.T) {
 
 	normalizeProtojsonForCilium(specMap)
 
-	rule := specMap["ingress"].([]any)[0].(map[string]any)
-	icmps := rule["icmps"].([]any)
-	fields := icmps[0].(map[string]any)["fields"].([]any)
-	field := fields[0].(map[string]any)
+	ingress, ok := specMap["ingress"].([]any)
+	require.True(t, ok)
+	rule, ok := ingress[0].(map[string]any)
+	require.True(t, ok)
+	icmps, ok := rule["icmps"].([]any)
+	require.True(t, ok)
+	icmpEntry, ok := icmps[0].(map[string]any)
+	require.True(t, ok)
+	fields, ok := icmpEntry["fields"].([]any)
+	require.True(t, ok)
+	field, ok := fields[0].(map[string]any)
+	require.True(t, ok)
 
-	assert.Equal(t, float64(8), field["type"], "typeInt should be renamed to type")
+	assert.InDelta(t, float64(8), field["type"], 0, "typeInt should be renamed to type")
 	assert.Nil(t, field["typeInt"], "typeInt should be removed")
 }
 
@@ -1575,10 +1611,18 @@ func TestNormalizeProtojsonForCilium_ICMPTypeString(t *testing.T) {
 
 	normalizeProtojsonForCilium(specMap)
 
-	rule := specMap["egress"].([]any)[0].(map[string]any)
-	icmps := rule["icmps"].([]any)
-	fields := icmps[0].(map[string]any)["fields"].([]any)
-	field := fields[0].(map[string]any)
+	egress, ok := specMap["egress"].([]any)
+	require.True(t, ok)
+	rule, ok := egress[0].(map[string]any)
+	require.True(t, ok)
+	icmps, ok := rule["icmps"].([]any)
+	require.True(t, ok)
+	icmpEntry, ok := icmps[0].(map[string]any)
+	require.True(t, ok)
+	fields, ok := icmpEntry["fields"].([]any)
+	require.True(t, ok)
+	field, ok := fields[0].(map[string]any)
+	require.True(t, ok)
 
 	assert.Equal(t, "EchoReply", field["type"], "typeString should be renamed to type")
 	assert.Nil(t, field["typeString"], "typeString should be removed")
@@ -1619,23 +1663,36 @@ func TestNormalizeProtojsonForCilium_EndToEnd(t *testing.T) {
 	result, err := marshalPolicySpecs(specs)
 	require.NoError(t, err)
 
-	spec := result["spec"].(map[string]any)
+	spec, ok := result["spec"].(map[string]any)
+	require.True(t, ok)
 
 	// fromEndpoints must be a flat array
-	ingress := spec["ingress"].([]any)
-	ingressRule := ingress[0].(map[string]any)
+	ingress, ok := spec["ingress"].([]any)
+	require.True(t, ok)
+	ingressRule, ok := ingress[0].(map[string]any)
+	require.True(t, ok)
 	fromEps, ok := ingressRule["fromEndpoints"].([]any)
 	require.True(t, ok, "fromEndpoints should be a flat array, not a wrapper object")
 	require.Len(t, fromEps, 1)
-	assert.Equal(t, "frontend", fromEps[0].(map[string]any)["matchLabels"].(map[string]any)["app"])
+	fromEp, ok := fromEps[0].(map[string]any)
+	require.True(t, ok)
+	fromLabels, ok := fromEp["matchLabels"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "frontend", fromLabels["app"])
 
 	// toEndpoints must be a flat array
-	egress := spec["egress"].([]any)
-	egressRule := egress[0].(map[string]any)
+	egress, ok := spec["egress"].([]any)
+	require.True(t, ok)
+	egressRule, ok := egress[0].(map[string]any)
+	require.True(t, ok)
 	toEps, ok := egressRule["toEndpoints"].([]any)
 	require.True(t, ok, "toEndpoints should be a flat array, not a wrapper object")
 	require.Len(t, toEps, 1)
-	assert.Equal(t, "dns", toEps[0].(map[string]any)["matchLabels"].(map[string]any)["app"])
+	toEp, ok := toEps[0].(map[string]any)
+	require.True(t, ok)
+	toLabels, ok := toEp["matchLabels"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "dns", toLabels["app"])
 }
 
 // TestMarshalPolicySpecs_EndpointSemantics validates the critical distinction between
@@ -1672,16 +1729,23 @@ func TestMarshalPolicySpecs_EndpointSemantics(t *testing.T) {
 		result, err := marshalPolicySpecs(specs)
 		require.NoError(t, err)
 
-		spec := result["spec"].(map[string]any)
+		spec, ok := result["spec"].(map[string]any)
+		require.True(t, ok)
 
 		// fromEndpoints must be [] (empty array), NOT [{}]
-		ingressRule := spec["ingress"].([]any)[0].(map[string]any)
+		ingress, ok := spec["ingress"].([]any)
+		require.True(t, ok)
+		ingressRule, ok := ingress[0].(map[string]any)
+		require.True(t, ok)
 		fromEps, ok := ingressRule["fromEndpoints"].([]any)
 		require.True(t, ok, "fromEndpoints should be an array")
 		assert.Empty(t, fromEps, "fromEndpoints: [] means allow nobody — must be empty array")
 
 		// toEndpoints must be [] (empty array), NOT [{}]
-		egressRule := spec["egress"].([]any)[0].(map[string]any)
+		egress, ok := spec["egress"].([]any)
+		require.True(t, ok)
+		egressRule, ok := egress[0].(map[string]any)
+		require.True(t, ok)
 		toEps, ok := egressRule["toEndpoints"].([]any)
 		require.True(t, ok, "toEndpoints should be an array")
 		assert.Empty(t, toEps, "toEndpoints: [] means allow nobody — must be empty array")
@@ -1711,10 +1775,14 @@ func TestMarshalPolicySpecs_EndpointSemantics(t *testing.T) {
 		result, err := marshalPolicySpecs(specs)
 		require.NoError(t, err)
 
-		spec := result["spec"].(map[string]any)
+		spec, ok := result["spec"].(map[string]any)
+		require.True(t, ok)
 
 		// fromEndpoints must be [{}] (one empty selector), NOT []
-		ingressRule := spec["ingress"].([]any)[0].(map[string]any)
+		ingress, ok := spec["ingress"].([]any)
+		require.True(t, ok)
+		ingressRule, ok := ingress[0].(map[string]any)
+		require.True(t, ok)
 		fromEps, ok := ingressRule["fromEndpoints"].([]any)
 		require.True(t, ok, "fromEndpoints should be an array")
 		require.Len(t, fromEps, 1, "fromEndpoints: [{}] means allow everybody — must have one element")
@@ -1723,7 +1791,10 @@ func TestMarshalPolicySpecs_EndpointSemantics(t *testing.T) {
 		assert.Empty(t, ep, "the single selector should be empty (wildcard)")
 
 		// toEndpoints must be [{}] (one empty selector), NOT []
-		egressRule := spec["egress"].([]any)[0].(map[string]any)
+		egress, ok := spec["egress"].([]any)
+		require.True(t, ok)
+		egressRule, ok := egress[0].(map[string]any)
+		require.True(t, ok)
 		toEps, ok := egressRule["toEndpoints"].([]any)
 		require.True(t, ok, "toEndpoints should be an array")
 		require.Len(t, toEps, 1, "toEndpoints: [{}] means allow everybody — must have one element")
@@ -1751,8 +1822,12 @@ func TestMarshalPolicySpecs_EndpointSemantics(t *testing.T) {
 		result, err := marshalPolicySpecs(specs)
 		require.NoError(t, err)
 
-		spec := result["spec"].(map[string]any)
-		ingressRule := spec["ingress"].([]any)[0].(map[string]any)
+		spec, ok := result["spec"].(map[string]any)
+		require.True(t, ok)
+		ingress, ok := spec["ingress"].([]any)
+		require.True(t, ok)
+		ingressRule, ok := ingress[0].(map[string]any)
+		require.True(t, ok)
 
 		_, exists := ingressRule["fromEndpoints"]
 		assert.False(t, exists, "nil fromEndpoints should be omitted entirely (implicit wildcard)")

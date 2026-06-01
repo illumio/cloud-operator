@@ -57,24 +57,30 @@ func NewReconciler(
 // It blocks until the context is cancelled.
 func (r *Reconciler) Run(ctx context.Context) {
 	var resourceInfo map[string]resources.ResourceInfo
+
 	for attempt := range 5 {
 		var err error
+
 		resourceInfo, err = resources.BuildResourceAPIGroupMap(resources.ConfiguredResourceKinds, r.client.GetClientset(), r.logger)
 		if err == nil {
 			break
 		}
+
 		r.logger.Warn("Failed to discover Cilium API groups, retrying",
 			zap.Int("attempt", attempt+1),
 			zap.Error(err),
 		)
+
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(time.Duration(attempt+1) * time.Second):
 		}
 	}
+
 	if resourceInfo == nil {
 		r.logger.Error("Unable to discover Cilium API groups after retries, reconciler will not start")
+
 		return
 	}
 
@@ -82,6 +88,7 @@ func (r *Reconciler) Run(ctx context.Context) {
 
 	if err := r.waitForCaches(ctx); err != nil {
 		r.logger.Error("Cache sync failed, reconciler will not start", zap.Error(err))
+
 		return
 	}
 
@@ -126,6 +133,7 @@ func (r *Reconciler) waitForCaches(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			r.logger.Info("Context cancelled while waiting for caches")
+
 			return ctx.Err()
 		case <-configCacheIsReady:
 			r.logger.Debug("Config cache is ready")
@@ -261,8 +269,10 @@ func (r *Reconciler) deleteObject(ctx context.Context, obj *pb.ConfiguredKuberne
 	if err := r.client.DeleteResource(ctx, gvr, namespace, obj.GetName()); err != nil {
 		if apierrors.IsNotFound(err) {
 			r.logger.Debug("Object already deleted", zap.String("name", obj.GetName()))
+
 			return nil
 		}
+
 		return fmt.Errorf("failed to delete: %w", err)
 	}
 

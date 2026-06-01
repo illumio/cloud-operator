@@ -7,8 +7,9 @@ import (
 	"slices"
 	"sync"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"google.golang.org/protobuf/proto"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 // ObjectCache is a generic thread-safe cache for storing objects by ID.
