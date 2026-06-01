@@ -1,0 +1,15 @@
+# From: https://github.com/cilium/cilium/blob/main/examples/policies/kubernetes/clusterwide/health.yaml
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: cilium-health-checks
+spec:
+  endpointSelector:
+    matchLabels:
+      reserved:health: ""
+  ingress:
+    - fromEntities:
+        - remote-node
+  egress:
+    - toEntities:
+        - remote-node

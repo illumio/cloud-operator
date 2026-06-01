@@ -6,7 +6,6 @@ package reconciler
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,12 +17,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/fakeserver"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
@@ -86,50 +82,22 @@ func strPtr(s string) *string {
 	return &s
 }
 
-// newFakeServer starts a fakeserver on a random port and returns it.
-func newFakeServer(t *testing.T) *fakeserver.FakeServer {
+// newTestHarness creates a FakeServerTestHarness with AutoHandshake disabled
+// (reconciler integration tests control the handshake sequence themselves).
+func newTestHarness(t *testing.T) *fakeserver.FakeServerTestHarness {
 	t.Helper()
 
-	fs := &fakeserver.FakeServer{
-		Address:         "127.0.0.1:0",
-		HTTPAddress:     "127.0.0.1:0",
-		StopChan:        make(chan struct{}),
-		Token:           "test-token",
-		Logger:          zap.NewNop(),
-		State:           &fakeserver.ServerState{},
-		ConfigResponses: make(chan *pb.GetConfigurationUpdatesResponse, 10),
-	}
-	require.NoError(t, fs.Start())
-	t.Cleanup(fs.Stop)
+	cfg := fakeserver.DefaultTestConfig()
+	cfg.GRPCAddress = "127.0.0.1:0"
+	cfg.HTTPAddress = "127.0.0.1:0"
+	cfg.AutoHandshake = false
+	cfg.EnableLogging = false
 
-	return fs
-}
+	h := fakeserver.NewTestHarness(t, cfg)
+	require.NoError(t, h.Start())
+	t.Cleanup(h.Stop)
 
-type tokenAuth struct{ token string }
-
-func (t tokenAuth) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
-	return map[string]string{"authorization": "Bearer " + t.token}, nil
-}
-
-func (t tokenAuth) RequireTransportSecurity() bool { return true }
-
-// dialFakeServer creates a gRPC client connection to the fakeserver.
-func dialFakeServer(t *testing.T, fs *fakeserver.FakeServer) *grpc.ClientConn {
-	t.Helper()
-
-	tlsCreds := credentials.NewTLS(&tls.Config{
-		InsecureSkipVerify: true, //nolint:gosec // test-only
-	})
-
-	conn, err := grpc.NewClient(
-		fs.GRPCAddress(),
-		grpc.WithTransportCredentials(tlsCreds),
-		grpc.WithPerRPCCredentials(tokenAuth{token: fs.Token}),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { conn.Close() })
-
-	return conn
+	return h
 }
 
 // setupSuite wires the full production pipeline against envtest:
@@ -142,7 +110,7 @@ func setupSuite(t *testing.T) *fakeserver.FakeServer {
 	t.Helper()
 
 	// Cleanup order is LIFO. We register in this order so teardown is:
-	// cancel (stops goroutines) → conn.Close → fs.Stop → cacheClose
+	// cancel (stops goroutines) → conn.Close → harness.Stop → cacheClose
 	configCache := cache.NewConfiguredObjectCache()
 	runtimeCache := cache.NewConfiguredObjectCache()
 
@@ -151,8 +119,8 @@ func setupSuite(t *testing.T) *fakeserver.FakeServer {
 		runtimeCache.Close()
 	})
 
-	fs := newFakeServer(t)
-	conn := dialFakeServer(t, fs)
+	h := newTestHarness(t)
+	conn := h.DialGRPC(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
@@ -185,5 +153,5 @@ func setupSuite(t *testing.T) *fakeserver.FakeServer {
 	r := NewReconciler(zap.NewNop(), testClient, configCache, runtimeCache)
 	go r.Run(ctx)
 
-	return fs
+	return h.Server
 }
