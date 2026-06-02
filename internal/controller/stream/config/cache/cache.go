@@ -3,6 +3,7 @@
 package cache
 
 import (
+	"context"
 	"maps"
 	"slices"
 	"sync"
@@ -89,7 +90,7 @@ func (c *ObjectCache[T]) ResourceChanged() <-chan string {
 // swap it in. The cache remains consistent until the swap completes.
 // Also marks the cache as ready on first call to indicate cache now has valid data.
 // Sends SnapshotReplaced on the resourceChanged channel to signal a full snapshot replacement.
-func (c *ObjectCache[T]) ReplaceAll(objects map[string]T) {
+func (c *ObjectCache[T]) ReplaceAll(ctx context.Context, objects map[string]T) error {
 	c.mutex.Lock()
 
 	c.objects = objects
@@ -104,33 +105,51 @@ func (c *ObjectCache[T]) ReplaceAll(objects map[string]T) {
 
 	c.mutex.Unlock()
 
-	c.resourceChanged <- SnapshotReplaced
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case c.resourceChanged <- SnapshotReplaced:
+	}
+
+	return nil
 }
 
 // Insert adds or updates an object in the cache.
 // Sends the object ID on the resourceChanged channel only if the object changed.
-func (c *ObjectCache[T]) Insert(id string, obj T) {
+func (c *ObjectCache[T]) Insert(ctx context.Context, id string, obj T) error {
 	c.mutex.Lock()
 	old, exists := c.objects[id]
 	c.objects[id] = obj
 	c.mutex.Unlock()
 
 	if !exists || !proto.Equal(old, obj) {
-		c.resourceChanged <- id
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case c.resourceChanged <- id:
+		}
 	}
+
+	return nil
 }
 
 // Delete removes an object from the cache by ID.
 // Sends the object ID on the resourceChanged channel only if the object existed.
-func (c *ObjectCache[T]) Delete(id string) {
+func (c *ObjectCache[T]) Delete(ctx context.Context, id string) error {
 	c.mutex.Lock()
 	_, exists := c.objects[id]
 	delete(c.objects, id)
 	c.mutex.Unlock()
 
 	if exists {
-		c.resourceChanged <- id
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case c.resourceChanged <- id:
+		}
 	}
+
+	return nil
 }
 
 // Get retrieves an object by ID. Returns the zero value if not found.

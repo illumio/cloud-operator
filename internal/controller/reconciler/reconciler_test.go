@@ -114,17 +114,26 @@ func TestNewReconciler(t *testing.T) {
 }
 
 func TestReconcile_EmptyCaches(t *testing.T) {
+	ctx := context.Background()
 	logger := zap.NewNop()
 	client := newMockClient()
 	configCache := cache.NewConfiguredObjectCache()
 	runtimeCache := cache.NewConfiguredObjectCache()
 
 	// Mark caches as ready with empty data
-	go configCache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
+	go func() {
+		err := configCache.ReplaceAll(ctx, make(map[string]*pb.ConfiguredKubernetesObjectData))
+
+		assert.NoError(t, err)
+	}()
 
 	<-configCache.ResourceChanged()
 
-	go runtimeCache.ReplaceAll(make(map[string]*pb.ConfiguredKubernetesObjectData))
+	go func() {
+		err := runtimeCache.ReplaceAll(ctx, make(map[string]*pb.ConfiguredKubernetesObjectData))
+
+		assert.NoError(t, err)
+	}()
 
 	<-runtimeCache.ResourceChanged()
 
@@ -134,13 +143,15 @@ func TestReconcile_EmptyCaches(t *testing.T) {
 		"ciliumnetworkpolicies": {Group: "cilium.io", Version: "v2"},
 	}
 
-	err := r.reconcileAll(context.Background())
-	assert.NoError(t, err)
+	err := r.reconcileAll(ctx)
+	require.NoError(t, err)
 }
 
 // populateCache fills a cache and drains its notifications synchronously.
 // Get/Values/Len still work after Close — only ResourceChanged becomes unusable.
-func populateCache(c *cache.ConfiguredObjectCache, objects map[string]*pb.ConfiguredKubernetesObjectData) {
+func populateCache(t *testing.T, c *cache.ConfiguredObjectCache, objects map[string]*pb.ConfiguredKubernetesObjectData) {
+	t.Helper()
+
 	done := make(chan struct{})
 
 	go func() {
@@ -151,7 +162,9 @@ func populateCache(c *cache.ConfiguredObjectCache, objects map[string]*pb.Config
 	}()
 
 	if objects != nil {
-		c.ReplaceAll(objects)
+		err := c.ReplaceAll(context.Background(), objects)
+
+		require.NoError(t, err)
 	}
 
 	c.Close()
@@ -166,8 +179,8 @@ func newTestReconciler(t *testing.T, configObjects, runtimeObjects map[string]*p
 	configCache := cache.NewConfiguredObjectCache()
 	runtimeCache := cache.NewConfiguredObjectCache()
 
-	populateCache(configCache, configObjects)
-	populateCache(runtimeCache, runtimeObjects)
+	populateCache(t, configCache, configObjects)
+	populateCache(t, runtimeCache, runtimeObjects)
 
 	r := NewReconciler(zap.NewNop(), client, configCache, runtimeCache)
 	r.resourceInfo = map[string]resources.ResourceInfo{

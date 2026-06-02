@@ -42,7 +42,7 @@ type ResourceConverter func(ctx context.Context, obj *unstructured.Unstructured)
 //
 // For list operations, eventType is empty — the handler accumulates the object
 // for a later bulk ReplaceAll without modifying the cache directly.
-type RuntimeCacheHandler func(eventType watch.EventType, metadata *pb.KubernetesObjectData) error
+type RuntimeCacheHandler func(ctx context.Context, eventType watch.EventType, metadata *pb.KubernetesObjectData) error
 
 // MutationCheckpointInterval is the interval for logging mutation checkpoint messages.
 const MutationCheckpointInterval = 60 * time.Second
@@ -165,7 +165,7 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 		}
 
 		if r.runtimeCacheHandler != nil {
-			if err := r.runtimeCacheHandler("", metadataObj); err != nil {
+			if err := r.runtimeCacheHandler(ctx, "", metadataObj); err != nil {
 				r.logger.Warn("Runtime cache handler error during list event", zap.Error(err))
 			}
 		}
@@ -352,7 +352,7 @@ func (r *Watcher) handleWatchEvent(
 		}
 
 		if r.runtimeCacheHandler != nil {
-			if err := r.runtimeCacheHandler(event.Type, metadataObj); err != nil {
+			if err := r.runtimeCacheHandler(ctx, event.Type, metadataObj); err != nil {
 				r.logger.Warn("Runtime cache handler error during watch event", zap.Error(err))
 			}
 		}
