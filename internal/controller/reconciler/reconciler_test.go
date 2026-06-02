@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -483,6 +484,185 @@ func TestReconcileAll_CollectsErrors(t *testing.T) {
 	err := r.reconcileAll(context.Background())
 	require.Error(t, err, "Should return error from the failed object")
 	assert.Equal(t, 1, client.applyCalls, "Should still apply the valid object")
+}
+
+// TestContextCancelDuringWaitForCaches verifies that cancelling the context
+// while the reconciler is blocked in waitForCaches (neither cache ready) causes Run()
+// to return promptly without deadlocking.
+func TestContextCancelDuringWaitForCaches(t *testing.T) {
+	client := newMockClient()
+	configCache := cache.NewConfiguredObjectCache()
+	runtimeCache := cache.NewConfiguredObjectCache()
+
+	t.Cleanup(func() {
+		configCache.Close()
+		runtimeCache.Close()
+	})
+
+	r := NewReconciler(zap.NewNop(), client, configCache, runtimeCache)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan struct{})
+	go func() {
+		r.Run(ctx)
+		close(done)
+	}()
+
+	// Cancel context while reconciler is stuck in waitForCaches (no snapshots sent)
+	time.Sleep(200 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+		// Run() returned — no deadlock
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run() did not return after context cancellation — likely deadlocked in waitForCaches")
+	}
+}
+
+// TestContextCancelUnblocksCacheInsert verifies that when a cache Insert
+// blocks on the unbuffered resourceChanged channel (no reader), cancelling the context
+// unblocks it instead of deadlocking.
+func TestContextCancelUnblocksCacheInsert(t *testing.T) {
+	c := cache.NewConfiguredObjectCache()
+	t.Cleanup(c.Close)
+
+	// Mark cache ready so Insert doesn't depend on ReplaceAll
+	ctx := context.Background()
+	readyCtx, readyCancel := context.WithCancel(ctx)
+	defer readyCancel()
+
+	// ReplaceAll marks ready and sends on channel — drain it in a goroutine
+	go func() {
+		<-c.ResourceChanged()
+	}()
+	require.NoError(t, c.ReplaceAll(readyCtx, map[string]*pb.ConfiguredKubernetesObjectData{}))
+
+	// Now try Insert with a context we'll cancel — nobody is reading resourceChanged
+	insertCtx, insertCancel := context.WithCancel(ctx)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- c.Insert(insertCtx, "test-id", &pb.ConfiguredKubernetesObjectData{Id: "test-id"})
+	}()
+
+	// Insert should be blocked — cancel context to unblock
+	time.Sleep(100 * time.Millisecond)
+	insertCancel()
+
+	select {
+	case err := <-done:
+		assert.ErrorIs(t, err, context.Canceled, "Insert should return context.Canceled")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Insert did not return after context cancellation — deadlocked on unbuffered channel")
+	}
+}
+
+// TestContextCancelUnblocksCacheReplaceAll verifies that when ReplaceAll
+// blocks on the unbuffered resourceChanged channel (reconciler not reading yet),
+// cancelling the context unblocks it instead of deadlocking.
+func TestContextCancelUnblocksCacheReplaceAll(t *testing.T) {
+	c := cache.NewConfiguredObjectCache()
+	t.Cleanup(c.Close)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		// ReplaceAll closes c.ready then blocks sending SnapshotReplaced on unbuffered channel.
+		// Nobody is reading resourceChanged.
+		done <- c.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
+			"obj-1": {Id: "obj-1"},
+		})
+	}()
+
+	// ReplaceAll should be blocked on channel send — cancel to unblock
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.ErrorIs(t, err, context.Canceled, "ReplaceAll should return context.Canceled")
+	case <-time.After(5 * time.Second):
+		t.Fatal("ReplaceAll did not return after context cancellation — deadlocked on unbuffered channel")
+	}
+
+	// Even though ReplaceAll was cancelled, the cache should be marked ready
+	// (ready is closed before the channel send)
+	select {
+	case <-c.IsReady():
+		// ready was closed — correct behavior
+	default:
+		t.Fatal("cache should be marked ready even when ReplaceAll's channel send was cancelled")
+	}
+}
+
+// TestCacheCloseUnblocksReconcilerLoop verifies that closing the cache
+// (which closes the resourceChanged channel) causes the reconciler's select loop
+// to exit gracefully when combined with context cancellation.
+func TestCacheCloseUnblocksReconcilerLoop(t *testing.T) {
+	client := newMockClient()
+	configCache := cache.NewConfiguredObjectCache()
+	runtimeCache := cache.NewConfiguredObjectCache()
+
+	r := NewReconciler(zap.NewNop(), client, configCache, runtimeCache)
+	// Pre-set resourceInfo so Run() skips the discovery retry loop entirely
+	r.resourceInfo = map[string]resources.ResourceInfo{
+		"ciliumnetworkpolicies": {Group: "cilium.io", Version: "v2"},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Mark both caches ready so reconciler gets past waitForCaches.
+	// We drain the SnapshotReplaced notifications that ReplaceAll sends.
+	go func() {
+		<-configCache.ResourceChanged()
+		<-runtimeCache.ResourceChanged()
+	}()
+	require.NoError(t, configCache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{}))
+	require.NoError(t, runtimeCache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{}))
+
+	done := make(chan struct{})
+	go func() {
+		// waitForCaches uses Run internally — but we pre-set resourceInfo,
+		// so call waitForCaches + the main loop directly via the exported Run.
+		// Since resourceInfo is set, Run skips discovery and goes straight to waitForCaches.
+		r.waitForCaches(ctx) //nolint:errcheck // caches are already ready
+		close(done)
+	}()
+
+	// waitForCaches should return immediately since both caches are ready
+	select {
+	case <-done:
+		// good — caches were ready
+	case <-time.After(5 * time.Second):
+		t.Fatal("waitForCaches did not return — likely deadlocked")
+	}
+
+	// Now test the actual reconciler loop shutdown
+	done = make(chan struct{})
+	go func() {
+		r.Run(ctx)
+		close(done)
+	}()
+
+	// Give reconciler time to enter the main select loop
+	// (it just needs to get past waitForCaches + initial reconcileAll, both of which
+	// are near-instant with empty caches and pre-set resourceInfo)
+	time.Sleep(200 * time.Millisecond)
+
+	// Close caches and cancel context — reconciler should exit without deadlock
+	configCache.Close()
+	runtimeCache.Close()
+	cancel()
+
+	select {
+	case <-done:
+		// Run() returned — no deadlock
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run() did not return after cache close + context cancel — likely deadlocked")
+	}
 }
 
 func TestReconcileAll_AppliesAndDeletes(t *testing.T) {
