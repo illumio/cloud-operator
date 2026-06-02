@@ -10,9 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/illumio/cloud-operator/internal/controller/logging"
+	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/config"
+	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 	"github.com/illumio/cloud-operator/internal/controller/stream/resources"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -2281,8 +2286,6 @@ func TestReconciler_SnapshotReplacementBulkDelete(t *testing.T) {
 	})
 }
 
-
-
 // TestReconciler_IdempotentReApply verifies that sending the same policy twice
 // (duplicate create mutation) does not cause errors — the reconciler applies
 // idempotently via SSA.
@@ -3055,5 +3058,383 @@ func TestReconciler_ExternalAnnotationInsertedMidLifecycle(t *testing.T) {
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-ext-insert")
+	})
+}
+
+// Reconciliation self-healing scenarios
+
+// TestReconciler_SSAOverwritesExternalSpecMutation verifies that when an external agent
+// (different field manager) mutates a spec field owned by the operator, the next
+// reconciliation overwrites the external change back to the desired CloudSecure state.
+func TestReconciler_SSAOverwritesExternalSpecMutation(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+
+	// Apply policy via snapshot
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "cnp-ssa-overwrite",
+				Name: "e2e-ssa-overwrite",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "web"},
+								},
+								Ingress: []*pb.CiliumPolicyIngressRule{
+									{
+										FromEndpoints: &pb.LabelSelectorList{
+											Items: []*pb.LabelSelector{
+												{MatchLabels: map[string]string{"role": "frontend"}},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-ssa-overwrite")
+		return err == nil && obj != nil
+	}, 20*time.Second, 100*time.Millisecond, "policy should be applied")
+
+	// External agent mutates the spec with a different field manager
+	externalPatch := []byte(`{"spec":{"endpointSelector":{"matchLabels":{"app":"HACKED"}}}}`)
+	_, err := testClient.GetDynamicClient().Resource(ccnpGVR).Patch(
+		ctx, "e2e-ssa-overwrite", types.MergePatchType, externalPatch, metav1.PatchOptions{
+			FieldManager: "external-agent",
+		},
+	)
+	require.NoError(t, err)
+
+	// The runtime watcher detects the spec change, updates the runtime cache,
+	// and the reconciler automatically re-applies because config != runtime.
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-ssa-overwrite")
+		if err != nil || obj == nil {
+			return false
+		}
+		spec, ok := obj.Object["spec"].(map[string]any)
+		if !ok {
+			return false
+		}
+		es, ok := spec["endpointSelector"].(map[string]any)
+		if !ok {
+			return false
+		}
+		ml, ok := es["matchLabels"].(map[string]any)
+		if !ok {
+			return false
+		}
+		return ml["app"] == "web"
+	}, 20*time.Second, 100*time.Millisecond, "operator should overwrite external spec mutation")
+
+	// Verify operator's field manager owns the spec
+	raw, err := testClient.GetDynamicClient().Resource(ccnpGVR).Get(ctx, "e2e-ssa-overwrite", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, convert.ManagedByValue, raw.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-ssa-overwrite", raw.GetLabels()[convert.CloudSecureIDLabel])
+
+	var operatorOwnsSpec bool
+	for _, mf := range raw.GetManagedFields() {
+		if mf.Manager == FieldManager {
+			operatorOwnsSpec = true
+
+			break
+		}
+	}
+
+	assert.True(t, operatorOwnsSpec, "operator field manager should own the spec after overwrite")
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-ssa-overwrite")
+	})
+}
+
+// TestReconciler_DeletedPolicyRestoredByReconciler verifies that when a managed policy
+// is accidentally deleted from Kubernetes (e.g. by kubectl or another controller), the
+// reconciler detects the drift via the runtime cache and re-applies the policy from the
+// config cache on the next reconciliation cycle.
+func TestReconciler_DeletedPolicyRestoredByReconciler(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+
+	// Apply policy via snapshot
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "cnp-restore",
+				Name: "e2e-restore-policy",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "critical"},
+								},
+								Ingress: []*pb.CiliumPolicyIngressRule{
+									{
+										FromEndpoints: &pb.LabelSelectorList{
+											Items: []*pb.LabelSelector{
+												{MatchLabels: map[string]string{"role": "trusted"}},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	// Wait for the policy to appear
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-restore-policy")
+		return err == nil && obj != nil
+	}, 20*time.Second, 100*time.Millisecond, "policy should be applied")
+
+	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-restore-policy")
+	require.NoError(t, err)
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-restore", obj.GetLabels()[convert.CloudSecureIDLabel])
+
+	// Simulate accidental deletion (e.g. kubectl delete)
+	err = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-restore-policy")
+	require.NoError(t, err)
+
+	// Verify it's gone
+	_, err = testClient.GetResource(ctx, ccnpGVR, "", "e2e-restore-policy")
+	require.True(t, apierrors.IsNotFound(err), "policy should be deleted")
+
+	// The runtime watcher should detect the deletion, update the runtime cache,
+	// and the reconciler should re-apply the policy from the config cache.
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-restore-policy")
+		return err == nil && obj != nil
+	}, 20*time.Second, 100*time.Millisecond, "policy should be restored by reconciler after accidental deletion")
+
+	// Verify the restored policy has the correct spec and labels
+	restored, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-restore-policy")
+	require.NoError(t, err)
+	assert.Equal(t, convert.ManagedByValue, restored.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-restore", restored.GetLabels()[convert.CloudSecureIDLabel])
+
+	spec, ok := restored.Object["spec"].(map[string]any)
+	require.True(t, ok)
+	es, ok := spec["endpointSelector"].(map[string]any)
+	require.True(t, ok)
+	ml, ok := es["matchLabels"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "critical", ml["app"], "restored policy should have the original spec")
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-restore-policy")
+	})
+}
+
+// TestReconciler_ManagedByLabelRemoved verifies that when an external actor strips the
+// managed-by label from an operator-managed policy, the reconciler self-heals and restores
+// the label automatically — no CloudSecure intervention needed.
+//
+// The runtime cache handler should detect the change via field manager ownership (not labels)
+// and update the runtime cache, causing config != runtime drift that triggers re-apply via SSA.
+func TestReconciler_ManagedByLabelRemoved(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+
+	// Apply policy via snapshot
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "cnp-label-rm",
+				Name: "e2e-label-removed",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "labeled"},
+								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-label-removed")
+		return err == nil && obj != nil
+	}, 20*time.Second, 100*time.Millisecond, "policy should be applied")
+
+	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-label-removed")
+	require.NoError(t, err)
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-label-rm", obj.GetLabels()[convert.CloudSecureIDLabel])
+
+	// External actor removes the managed-by label
+	patch := []byte(`{"metadata":{"labels":{"app.kubernetes.io/managed-by":null}}}`)
+	_, err = testClient.GetDynamicClient().Resource(ccnpGVR).Patch(
+		ctx, "e2e-label-removed", types.MergePatchType, patch, metav1.PatchOptions{},
+	)
+	require.NoError(t, err)
+
+	// Verify the label was actually removed
+	obj, err = testClient.GetResource(ctx, ccnpGVR, "", "e2e-label-removed")
+	require.NoError(t, err)
+	assert.Empty(t, obj.GetLabels()[convert.ManagedByLabel], "managed-by label should be removed")
+
+	// The runtime watcher should detect this change via field manager ownership
+	// and update the runtime cache. The reconciler sees config != runtime and
+	// re-applies via SSA, restoring the managed-by label automatically.
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-label-removed")
+		if err != nil || obj == nil {
+			return false
+		}
+		return obj.GetLabels()[convert.ManagedByLabel] == convert.ManagedByValue
+	}, 20*time.Second, 100*time.Millisecond, "managed-by label should be self-healed by reconciler")
+
+	obj, err = testClient.GetResource(ctx, ccnpGVR, "", "e2e-label-removed")
+	require.NoError(t, err)
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-label-rm", obj.GetLabels()[convert.CloudSecureIDLabel])
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-label-removed")
+	})
+}
+
+// TestReconciler_CloudSecureIDLabelMutated verifies that when an external agent overwrites
+// the cloudsecure-id label, the reconciler restores it via SSA. Unlike managed-by label
+// removal, the managed-by label is still present so the runtime watcher picks up the change,
+// the runtime cache updates with the wrong ID, and the reconciler detects config != runtime
+// and re-applies.
+func TestReconciler_CloudSecureIDLabelMutated(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "cnp-id-mutated",
+				Name: "e2e-id-mutated",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "id-test"},
+								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-id-mutated")
+		return err == nil && obj != nil
+	}, 20*time.Second, 100*time.Millisecond, "policy should be applied")
+
+	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-id-mutated")
+	require.NoError(t, err)
+	assert.Equal(t, "cnp-id-mutated", obj.GetLabels()[convert.CloudSecureIDLabel])
+
+	// External agent overwrites the cloudsecure-id label
+	patch := []byte(`{"metadata":{"labels":{"` + convert.CloudSecureIDLabel + `":"WRONG-ID"}}}`)
+	_, err = testClient.GetDynamicClient().Resource(ccnpGVR).Patch(
+		ctx, "e2e-id-mutated", types.MergePatchType, patch, metav1.PatchOptions{},
+	)
+	require.NoError(t, err)
+
+	// Verify the label was mutated
+	obj, err = testClient.GetResource(ctx, ccnpGVR, "", "e2e-id-mutated")
+	require.NoError(t, err)
+	assert.Equal(t, "WRONG-ID", obj.GetLabels()[convert.CloudSecureIDLabel])
+
+	// The managed-by label is still present, so the runtime watcher picks up the change.
+	// The runtime cache updates, the reconciler detects config != runtime, and re-applies.
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-id-mutated")
+		if err != nil || obj == nil {
+			return false
+		}
+		return obj.GetLabels()[convert.CloudSecureIDLabel] == "cnp-id-mutated"
+	}, 20*time.Second, 100*time.Millisecond, "cloudsecure-id label should be restored by reconciler")
+
+	obj, err = testClient.GetResource(ctx, ccnpGVR, "", "e2e-id-mutated")
+	require.NoError(t, err)
+	assert.Equal(t, convert.ManagedByValue, obj.GetLabels()[convert.ManagedByLabel])
+	assert.Equal(t, "cnp-id-mutated", obj.GetLabels()[convert.CloudSecureIDLabel])
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-id-mutated")
 	})
 }
