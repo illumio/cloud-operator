@@ -19,6 +19,9 @@ rules:
 - apiGroups: ["networking.k8s.io"]
   resources: ["networkpolicies", "ingresses", "ingressclasses"]
   verbs: ["get", "list", "watch"]
+- apiGroups: ["cilium.io"]
+  resources: ["ciliumcidrgroups", "ciliumnetworkpolicies", "ciliumclusterwidenetworkpolicies"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 # AWS VPC CNI - operator creates ClusterNetworkPolicy for flow logging when VPC CNI is detected
 - apiGroups: ["networking.k8s.aws"]
   resources: ["clusternetworkpolicies"]

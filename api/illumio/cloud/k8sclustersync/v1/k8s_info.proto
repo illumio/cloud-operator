@@ -139,7 +139,7 @@ message KubernetesCiliumCIDRGroupData {
 // https://github.com/cilium/cilium/blob/40fafc202f3c16dfa287af9eb4dc3f3e72a120f3/pkg/k8s/apis/cilium.io/v2/cidrgroups_types.go#L34-L40
 message CiliumCIDRGroup {
   // ExternalCIDRs is a list of CIDRs selecting peers outside the clusters.
-  repeated string external_cidrs = 1;
+  repeated string external_cidrs = 1 [json_name = "externalCIDRs"];
 }
 
 // CiliumPolicyRule represents a single rule within a Cilium policy.
@@ -159,13 +159,13 @@ message CiliumPolicyRule {
   // Controls whether this spec enables default deny for ingress/egress.
   optional CiliumPolicyDefaultDeny enable_default_deny = 5;
   // Ingress rules define allowed incoming traffic.
-  repeated CiliumPolicyIngressRule ingress_rules = 6;
+  repeated CiliumPolicyIngressRule ingress = 6;
   // Egress rules define allowed outgoing traffic.
-  repeated CiliumPolicyEgressRule egress_rules = 7;
+  repeated CiliumPolicyEgressRule egress = 7;
   // IngressDeny rules explicitly deny incoming traffic.
-  repeated CiliumPolicyIngressRule ingress_deny_rules = 8;
+  repeated CiliumPolicyIngressRule ingress_deny = 8;
   // EgressDeny rules explicitly deny outgoing traffic.
-  repeated CiliumPolicyEgressRule egress_deny_rules = 9;
+  repeated CiliumPolicyEgressRule egress_deny = 9;
 }
 
 // CiliumPolicyDefaultDeny controls default deny behavior for a spec.
@@ -179,7 +179,7 @@ message CiliumPolicyDefaultDeny {
 
 // CiliumPolicyIngressRule defines a Cilium ingress rule.
 // Used for both allow and deny rules; allow vs deny is determined by which array
-// the rule belongs to (ingress_rules vs ingress_deny_rules) in CiliumPolicyRule.
+// the rule belongs to (ingress vs ingress_deny) in CiliumPolicyRule.
 // Separate from CiliumPolicyEgressRule to mirror Cilium's CRD structure and ensure
 // ingress rules only have from_* fields.
 // https://github.com/cilium/cilium/blob/40fafc202f3c16dfa287af9eb4dc3f3e72a120f3/pkg/policy/api/ingress.go#L133-L162
@@ -188,9 +188,9 @@ message CiliumPolicyIngressRule {
   // Wrapped to distinguish nil (implicit wildcard when to_ports is set) from empty (selects nothing).
   optional LabelSelectorList from_endpoints = 1;
   // FromCIDR allows/denies traffic from specific CIDR ranges.
-  repeated string from_cidr = 2;
+  repeated string from_cidr = 2 [json_name = "fromCIDR"];
   // FromCIDRSet allows/denies traffic from CIDR ranges with exceptions.
-  repeated CiliumPolicyCIDRSet from_cidr_set = 3;
+  repeated CiliumPolicyCIDRSet from_cidr_set = 3 [json_name = "fromCIDRSet"];
   // FromEntities allows/denies traffic from Cilium-defined entities (e.g., "world", "cluster", "host").
   repeated string from_entities = 4;
   // FromGroups allows/denies traffic from cloud provider security groups.
@@ -208,21 +208,21 @@ message CiliumPolicyIngressRule {
 
 // CiliumPolicyEgressRule defines a Cilium egress rule.
 // Used for both allow and deny rules; allow vs deny is determined by which array
-// the rule belongs to (egress_rules vs egress_deny_rules) in CiliumPolicyRule.
+// the rule belongs to (egress vs egress_deny) in CiliumPolicyRule.
 // https://github.com/cilium/cilium/blob/40fafc202f3c16dfa287af9eb4dc3f3e72a120f3/pkg/policy/api/egress.go#L138-L183
 message CiliumPolicyEgressRule {
   // ToEndpoints selects destination endpoints by labels.
   // Wrapped to distinguish nil (implicit wildcard when to_ports is set) from empty (selects nothing).
   optional LabelSelectorList to_endpoints = 1;
   // ToCIDR allows/denies traffic to specific CIDR ranges.
-  repeated string to_cidr = 2;
+  repeated string to_cidr = 2 [json_name = "toCIDR"];
   // ToCIDRSet allows/denies traffic to CIDR ranges with exceptions.
-  repeated CiliumPolicyCIDRSet to_cidr_set = 3;
+  repeated CiliumPolicyCIDRSet to_cidr_set = 3 [json_name = "toCIDRSet"];
   // ToEntities allows/denies traffic to Cilium-defined entities (e.g., "world", "cluster", "host").
   repeated string to_entities = 4;
   // ToFQDNs allows traffic to DNS names (e.g., "*.example.com").
   // Note: Not applicable for deny rules (field is ignored).
-  repeated CiliumPolicyFQDNSelector to_fqdns = 5;
+  repeated CiliumPolicyFQDNSelector to_fqdns = 5 [json_name = "toFQDNs"];
   // ToServices allows/denies traffic to Kubernetes services.
   repeated CiliumPolicyService to_services = 6;
   // ToGroups allows/denies traffic to cloud provider security groups.
@@ -269,8 +269,8 @@ message CiliumPolicyAWSGroup {
   // AWS security groups tags.
   map<string, string> labels = 1;
   // Security group IDs (Cilium supports multiple per group selector)
-  repeated string security_group_ids = 2;
-  repeated string security_group_names = 3;
+  repeated string security_group_ids = 2 [json_name = "securityGroupsIds"];
+  repeated string security_group_names = 3 [json_name = "securityGroupsNames"];
   optional string region = 4;
 }
 

@@ -5,6 +5,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"sync"
@@ -12,12 +13,15 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/watch"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/auth"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
+	"github.com/illumio/cloud-operator/internal/convert"
 	"github.com/illumio/cloud-operator/internal/version"
 )
 
@@ -38,6 +42,7 @@ type resourcesClient struct {
 	stats         *stream.Stats
 	flowCollector pb.FlowCollector
 	clusterName   string // Optional: cluster name for self-managed clusters
+	runtimeCache  *cache.ConfiguredObjectCache
 
 	mutex  sync.RWMutex
 	closed bool
@@ -52,7 +57,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 	dynamicClient := c.k8sClient.GetDynamicClient()
 	clientset := c.k8sClient.GetClientset()
 
-	resourceAPIGroupMap, err := buildResourceApiGroupMap(resourceList, clientset, c.logger)
+	resourceAPIGroupMap, err := BuildResourceAPIGroupMap(resourceList, clientset, c.logger)
 	if err != nil {
 		c.logger.Error("Failed to build resource api group map", zap.Error(err))
 
@@ -68,9 +73,16 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		return err
 	}
 
+	coreConverter := convert.NewCoreResourceConverter(clientset, c.logger)
+	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+		return convert.ConvertUnstructuredToCiliumResource(obj)
+	}
+
 	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
 	sharedLimiter := rate.NewLimiter(1, 5)
 	resourceManagers := make(map[string]*Watcher)
+	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
+	runtimeCacheHandler := c.newRuntimeCacheHandler(pendingSnapshot)
 
 	for _, resource := range slices.Sorted(maps.Keys(resourceAPIGroupMap)) {
 		resourceInfo := resourceAPIGroupMap[resource]
@@ -81,22 +93,38 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		default:
 		}
 
+		converter := coreConverter
+
+		var handler RuntimeCacheHandler
+
+		if convert.IsCiliumResource(resource) {
+			converter = ciliumConverter
+			handler = runtimeCacheHandler
+		}
+
 		resourceManager := NewWatcher(WatcherConfig{
-			ResourceName:    resource,
-			ApiGroup:        resourceInfo.Group,
-			ApiVersion:      resourceInfo.Version,
-			Clientset:       clientset,
-			BaseLogger:      c.logger,
-			DynamicClient:   dynamicClient,
-			ResourcesClient: c,
-			Limiter:         sharedLimiter,
+			ResourceName:        resource,
+			ApiGroup:            resourceInfo.Group,
+			ApiVersion:          resourceInfo.Version,
+			BaseLogger:          c.logger,
+			DynamicClient:       dynamicClient,
+			ResourcesClient:     c,
+			RuntimeCacheHandler: handler,
+			Limiter:             sharedLimiter,
+			Converter:           converter,
 		})
 		resourceManagers[resource] = resourceManager
 
 		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger)
 		if err != nil {
-			if apierrors.IsForbidden(err) {
-				c.logger.Warn("Access forbidden for resource", zap.String("kind", resource), zap.String("api_group", resourceInfo.Group), zap.String("api_version", resourceInfo.Version), zap.Error(err))
+			// Skip resources that are unavailable due to RBAC or missing CRDs.
+			// NotFound can occur when a CRD is deleted after discovery but before listing.
+			if apierrors.IsForbidden(err) || apierrors.IsNotFound(err) {
+				c.logger.Warn("Skipping unavailable resource",
+					zap.String("kind", resource),
+					zap.String("api_group", resourceInfo.Group),
+					zap.String("reason", string(apierrors.ReasonForError(err))),
+					zap.Error(err))
 
 				continue
 			}
@@ -110,6 +138,11 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 			apiVersion:      resourceInfo.Version,
 			resourceVersion: resourceVersion,
 		})
+	}
+
+	// Populate the runtime cache with all operator-managed resources discovered during the initial list
+	if c.runtimeCache != nil {
+		c.runtimeCache.ReplaceAll(pendingSnapshot)
 	}
 
 	err = c.sendResourceSnapshotComplete()
@@ -261,6 +294,47 @@ func (c *resourcesClient) CreateMutationObject(metadata *pb.KubernetesObjectData
 	}
 
 	return mutation
+}
+
+// newRuntimeCacheHandler returns a RuntimeCacheHandler that filters for operator-managed
+// resources and updates the runtime cache accordingly.
+//
+// For watch events (eventType is Added/Modified/Deleted), the handler inserts or deletes
+// from the runtime cache directly.
+//
+// For list operations (eventType is empty), the handler accumulates the configured object
+// into pendingSnapshot for later ReplaceAll — the cache is not modified directly.
+func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.ConfiguredKubernetesObjectData) RuntimeCacheHandler {
+	return func(eventType watch.EventType, metadata *pb.KubernetesObjectData) error {
+		labels := metadata.GetLabels()
+		if labels[convert.ManagedByLabel] != convert.ManagedByValue {
+			return nil
+		}
+
+		id := labels[convert.CloudSecureIDLabel]
+		if id == "" {
+			return nil
+		}
+
+		configured, err := convert.BuildConfiguredFromMetadata(id, metadata)
+		if err != nil {
+			return fmt.Errorf("skipping unhandled resource type in runtime cache (id=%s): %w", id, err)
+		}
+
+		if eventType == "" {
+			pendingSnapshot[configured.GetId()] = configured
+		} else {
+			//nolint:exhaustive // only mutation events reach the handler; Bookmark/Error are handled by the watcher
+			switch eventType {
+			case watch.Added, watch.Modified:
+				c.runtimeCache.Insert(configured.GetId(), configured)
+			case watch.Deleted:
+				c.runtimeCache.Delete(configured.GetId())
+			}
+		}
+
+		return nil
+	}
 }
 
 // sendClusterMetadata sends cluster metadata to CloudSecure.

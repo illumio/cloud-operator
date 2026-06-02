@@ -3,6 +3,7 @@
 package resources
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,7 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 func TestBuildResourceApiGroupMap(t *testing.T) {
@@ -42,7 +44,7 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 
 		resources := []string{"pods", "deployments"}
 
-		result, err := buildResourceApiGroupMap(resources, clientset, logger)
+		result, err := BuildResourceAPIGroupMap(resources, clientset, logger)
 		require.NoError(t, err)
 
 		// pods should be in core group (empty string)
@@ -57,7 +59,7 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 
 		resources := []string{}
 
-		result, err := buildResourceApiGroupMap(resources, clientset, logger)
+		result, err := BuildResourceAPIGroupMap(resources, clientset, logger)
 		require.NoError(t, err)
 		assert.Empty(t, result)
 	})
@@ -79,7 +81,7 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 
 		resources := []string{"nodes"}
 
-		result, err := buildResourceApiGroupMap(resources, clientset, logger)
+		result, err := BuildResourceAPIGroupMap(resources, clientset, logger)
 		require.NoError(t, err)
 
 		// nodes should NOT be mapped because metrics.k8s.io is skipped
@@ -102,7 +104,7 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 			},
 		}
 
-		result, err := buildResourceApiGroupMap([]string{"deployments"}, clientset, logger)
+		result, err := BuildResourceAPIGroupMap([]string{"deployments"}, clientset, logger)
 		require.NoError(t, err)
 		assert.Empty(t, result, "expected no match for resource not present in any group")
 	})
@@ -126,7 +128,7 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 
 		resources := []string{"deployments", "statefulsets"}
 
-		result, err := buildResourceApiGroupMap(resources, clientset, logger)
+		result, err := BuildResourceAPIGroupMap(resources, clientset, logger)
 		require.NoError(t, err)
 
 		assert.Equal(t, "apps", result["deployments"].Group)
@@ -134,6 +136,28 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 		assert.Equal(t, "apps", result["statefulsets"].Group)
 		assert.Equal(t, "v1", result["statefulsets"].Version)
 	})
+}
+
+func TestResourceListCiliumDispatchConsistency(t *testing.T) {
+	expectedCilium := map[string]bool{
+		"ciliumcidrgroups":                 true,
+		"ciliumclusterwidenetworkpolicies": true,
+		"ciliumnetworkpolicies":            true,
+	}
+
+	for _, resource := range resourceList {
+		isCilium := convert.IsCiliumResource(resource)
+
+		if expectedCilium[resource] {
+			assert.True(t, isCilium, "resource %q should be recognized as Cilium by IsCiliumResource", resource)
+		} else {
+			assert.False(t, isCilium, "resource %q should NOT be recognized as Cilium by IsCiliumResource", resource)
+		}
+	}
+
+	for name := range expectedCilium {
+		assert.True(t, slices.Contains(resourceList, name), "expected Cilium resource %q must be in resourceList", name)
+	}
 }
 
 func TestSetProcessingResources_Integration(t *testing.T) {

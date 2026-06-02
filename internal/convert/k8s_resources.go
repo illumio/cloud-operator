@@ -1,6 +1,6 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package controller
+package convert
 
 import (
 	"context"
@@ -20,6 +20,22 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
+
+// NewCoreResourceConverter returns a ResourceConverter for standard Kubernetes resources.
+// It closes over clientset and logger because core resource conversion needs them
+// to fetch additional data (Pod IPs, NetworkPolicy specs, Node provider IDs, Service details).
+func NewCoreResourceConverter(clientset kubernetes.Interface, logger *zap.Logger) func(ctx context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+	return func(ctx context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+		objMeta, err := GetMetadataFromResource(logger, *obj)
+		if err != nil {
+			return nil, fmt.Errorf("cannot get metadata from resource: %w", err)
+		}
+
+		gvk := obj.GroupVersionKind()
+
+		return ConvertMetaObjectToMetadata(ctx, *objMeta, clientset, gvk.Kind, gvk.Group, gvk.Version), nil
+	}
+}
 
 // convertObjectToMetadata extracts the ObjectMeta from a metav1.Object interface.
 func convertObjectToMetadata(obj metav1.Object) metav1.ObjectMeta {

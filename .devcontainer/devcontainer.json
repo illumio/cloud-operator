@@ -44,9 +44,6 @@
     "remoteUser": "vscode",
 
     "features": {
-      "ghcr.io/devcontainers/features/docker-in-docker:2": {
-        "version": "latest"
-      },
       // pre-commit hook  binary https://github.com/devcontainers-contrib/features/tree/main/src/pre-commit
       "ghcr.io/devcontainers-contrib/features/pre-commit:2": {
         "version": "latest"
