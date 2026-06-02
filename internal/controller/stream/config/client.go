@@ -67,7 +67,7 @@ func (c *configClient) Run(ctx context.Context) error {
 			return err
 		}
 
-		if err := c.handleConfigUpdate(resp, pendingSnapshot, &snapshotComplete); err != nil {
+		if err := c.handleConfigUpdate(ctx, resp, pendingSnapshot, &snapshotComplete); err != nil {
 			return err
 		}
 	}
@@ -75,7 +75,7 @@ func (c *configClient) Run(ctx context.Context) error {
 
 // handleConfigUpdate processes a configuration update response.
 // snapshotComplete tracks whether this current stream's snapshot has completed.
-func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesResponse, pendingSnapshot map[string]*pb.ConfiguredKubernetesObjectData, snapshotComplete *bool) error {
+func (c *configClient) handleConfigUpdate(ctx context.Context, resp *pb.GetConfigurationUpdatesResponse, pendingSnapshot map[string]*pb.ConfiguredKubernetesObjectData, snapshotComplete *bool) error {
 	switch update := resp.GetResponse().(type) {
 	case *pb.GetConfigurationUpdatesResponse_UpdateConfiguration:
 		c.handleUpdateConfiguration(update.UpdateConfiguration)
@@ -96,7 +96,11 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 
 		// Atomically swap pending snapshot into cache
 		objectCount := len(pendingSnapshot)
-		c.cache.ReplaceAll(pendingSnapshot)
+
+		err := c.cache.ReplaceAll(ctx, pendingSnapshot)
+		if err != nil {
+			return err
+		}
 
 		*snapshotComplete = true
 
@@ -110,7 +114,7 @@ func (c *configClient) handleConfigUpdate(resp *pb.GetConfigurationUpdatesRespon
 			return errors.New("server sent ResourceMutation before snapshot complete")
 		}
 
-		if err := c.handleMutation(update.ResourceMutation); err != nil {
+		if err := c.handleMutation(ctx, update.ResourceMutation); err != nil {
 			return err
 		}
 
@@ -138,24 +142,36 @@ func (c *configClient) handleUpdateConfiguration(config *pb.GetConfigurationUpda
 }
 
 // handleMutation processes a configured object mutation (create/update/delete).
-func (c *configClient) handleMutation(mutation *pb.ConfiguredKubernetesObjectMutation) error {
+func (c *configClient) handleMutation(ctx context.Context, mutation *pb.ConfiguredKubernetesObjectMutation) error {
 	switch m := mutation.GetMutation().(type) {
 	case *pb.ConfiguredKubernetesObjectMutation_CreateObject:
-		c.cache.Insert(m.CreateObject.GetId(), m.CreateObject)
+		err := c.cache.Insert(ctx, m.CreateObject.GetId(), m.CreateObject)
+		if err != nil {
+			return err
+		}
+
 		c.logger.Debug("Created configured object",
 			zap.String("id", m.CreateObject.GetId()),
 			zap.String("name", m.CreateObject.GetName()),
 		)
 
 	case *pb.ConfiguredKubernetesObjectMutation_UpdateObject:
-		c.cache.Insert(m.UpdateObject.GetId(), m.UpdateObject)
+		err := c.cache.Insert(ctx, m.UpdateObject.GetId(), m.UpdateObject)
+		if err != nil {
+			return err
+		}
+
 		c.logger.Debug("Updated configured object",
 			zap.String("id", m.UpdateObject.GetId()),
 			zap.String("name", m.UpdateObject.GetName()),
 		)
 
 	case *pb.ConfiguredKubernetesObjectMutation_DeleteObject:
-		c.cache.Delete(m.DeleteObject.GetId())
+		err := c.cache.Delete(ctx, m.DeleteObject.GetId())
+		if err != nil {
+			return err
+		}
+
 		c.logger.Debug("Deleted configured object",
 			zap.String("id", m.DeleteObject.GetId()),
 		)
