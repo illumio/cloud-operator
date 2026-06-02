@@ -504,6 +504,7 @@ func TestContextCancelDuringWaitForCaches(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan struct{})
+
 	go func() {
 		r.Run(ctx)
 		close(done)
@@ -518,83 +519,6 @@ func TestContextCancelDuringWaitForCaches(t *testing.T) {
 		// Run() returned — no deadlock
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run() did not return after context cancellation — likely deadlocked in waitForCaches")
-	}
-}
-
-// TestContextCancelUnblocksCacheInsert verifies that when a cache Insert
-// blocks on the unbuffered resourceChanged channel (no reader), cancelling the context
-// unblocks it instead of deadlocking.
-func TestContextCancelUnblocksCacheInsert(t *testing.T) {
-	c := cache.NewConfiguredObjectCache()
-	t.Cleanup(c.Close)
-
-	// Mark cache ready so Insert doesn't depend on ReplaceAll
-	ctx := context.Background()
-	readyCtx, readyCancel := context.WithCancel(ctx)
-	defer readyCancel()
-
-	// ReplaceAll marks ready and sends on channel — drain it in a goroutine
-	go func() {
-		<-c.ResourceChanged()
-	}()
-	require.NoError(t, c.ReplaceAll(readyCtx, map[string]*pb.ConfiguredKubernetesObjectData{}))
-
-	// Now try Insert with a context we'll cancel — nobody is reading resourceChanged
-	insertCtx, insertCancel := context.WithCancel(ctx)
-
-	done := make(chan error, 1)
-	go func() {
-		done <- c.Insert(insertCtx, "test-id", &pb.ConfiguredKubernetesObjectData{Id: "test-id"})
-	}()
-
-	// Insert should be blocked — cancel context to unblock
-	time.Sleep(100 * time.Millisecond)
-	insertCancel()
-
-	select {
-	case err := <-done:
-		assert.ErrorIs(t, err, context.Canceled, "Insert should return context.Canceled")
-	case <-time.After(5 * time.Second):
-		t.Fatal("Insert did not return after context cancellation — deadlocked on unbuffered channel")
-	}
-}
-
-// TestContextCancelUnblocksCacheReplaceAll verifies that when ReplaceAll
-// blocks on the unbuffered resourceChanged channel (reconciler not reading yet),
-// cancelling the context unblocks it instead of deadlocking.
-func TestContextCancelUnblocksCacheReplaceAll(t *testing.T) {
-	c := cache.NewConfiguredObjectCache()
-	t.Cleanup(c.Close)
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	done := make(chan error, 1)
-	go func() {
-		// ReplaceAll closes c.ready then blocks sending SnapshotReplaced on unbuffered channel.
-		// Nobody is reading resourceChanged.
-		done <- c.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-			"obj-1": {Id: "obj-1"},
-		})
-	}()
-
-	// ReplaceAll should be blocked on channel send — cancel to unblock
-	time.Sleep(100 * time.Millisecond)
-	cancel()
-
-	select {
-	case err := <-done:
-		assert.ErrorIs(t, err, context.Canceled, "ReplaceAll should return context.Canceled")
-	case <-time.After(5 * time.Second):
-		t.Fatal("ReplaceAll did not return after context cancellation — deadlocked on unbuffered channel")
-	}
-
-	// Even though ReplaceAll was cancelled, the cache should be marked ready
-	// (ready is closed before the channel send)
-	select {
-	case <-c.IsReady():
-		// ready was closed — correct behavior
-	default:
-		t.Fatal("cache should be marked ready even when ReplaceAll's channel send was cancelled")
 	}
 }
 
@@ -620,10 +544,12 @@ func TestCacheCloseUnblocksReconcilerLoop(t *testing.T) {
 		<-configCache.ResourceChanged()
 		<-runtimeCache.ResourceChanged()
 	}()
+
 	require.NoError(t, configCache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{}))
 	require.NoError(t, runtimeCache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{}))
 
 	done := make(chan struct{})
+
 	go func() {
 		// waitForCaches uses Run internally — but we pre-set resourceInfo,
 		// so call waitForCaches + the main loop directly via the exported Run.
@@ -642,6 +568,7 @@ func TestCacheCloseUnblocksReconcilerLoop(t *testing.T) {
 
 	// Now test the actual reconciler loop shutdown
 	done = make(chan struct{})
+
 	go func() {
 		r.Run(ctx)
 		close(done)
@@ -652,7 +579,7 @@ func TestCacheCloseUnblocksReconcilerLoop(t *testing.T) {
 	// are near-instant with empty caches and pre-set resourceInfo)
 	time.Sleep(200 * time.Millisecond)
 
-	// Close caches and cancel context — reconciler should exit without deadlock
+	// Close caches and cancel context — reconciler should exit
 	configCache.Close()
 	runtimeCache.Close()
 	cancel()

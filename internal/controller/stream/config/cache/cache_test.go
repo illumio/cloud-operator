@@ -770,6 +770,76 @@ func TestAtomicSwap_ReadersNeverBlockForever(t *testing.T) {
 	}
 }
 
+func TestContextCancelUnblocksCacheInsert(t *testing.T) {
+	c := NewConfiguredObjectCache()
+	t.Cleanup(c.Close)
+
+	ctx := context.Background()
+
+	readyCtx, readyCancel := context.WithCancel(ctx)
+	defer readyCancel()
+
+	// ReplaceAll marks ready and sends on channel — drain it in a goroutine
+	go func() {
+		<-c.ResourceChanged()
+	}()
+
+	require.NoError(t, c.ReplaceAll(readyCtx, map[string]*pb.ConfiguredKubernetesObjectData{}))
+
+	// Now try Insert with a context we'll cancel — nobody is reading resourceChanged
+	insertCtx, insertCancel := context.WithCancel(ctx)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- c.Insert(insertCtx, "test-id", &pb.ConfiguredKubernetesObjectData{Id: "test-id"})
+	}()
+
+	// Insert should be blocked — cancel context to unblock
+	time.Sleep(100 * time.Millisecond)
+	insertCancel()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled, "Insert should return context.Canceled")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Insert did not return after context cancellation — deadlocked on unbuffered channel")
+	}
+}
+
+func TestContextCancelUnblocksCacheReplaceAll(t *testing.T) {
+	c := NewConfiguredObjectCache()
+	t.Cleanup(c.Close)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- c.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
+			"obj-1": {Id: "obj-1"},
+		})
+	}()
+
+	// ReplaceAll should be blocked on channel send — cancel to unblock
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled, "ReplaceAll should return context.Canceled")
+	case <-time.After(5 * time.Second):
+		t.Fatal("ReplaceAll did not return after context cancellation — deadlocked on unbuffered channel")
+	}
+
+	// Even though ReplaceAll was cancelled, the cache should be marked ready
+	// (ready is closed before the channel send)
+	select {
+	case <-c.IsReady():
+		// ready was closed — correct behavior
+	default:
+		t.Fatal("cache should be marked ready even when ReplaceAll's channel send was cancelled")
+	}
+}
+
 func TestResourceChangedChannel(t *testing.T) {
 	ctx := context.Background()
 	cache := NewConfiguredObjectCache()
