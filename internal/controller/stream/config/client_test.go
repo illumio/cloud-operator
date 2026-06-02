@@ -57,6 +57,7 @@ type ConfigClientTestSuite struct {
 	logger     *zap.Logger
 	stats      *stream.Stats
 	client     *configClient
+	cache      *cache.ConfiguredObjectCache
 }
 
 func TestConfigClientTestSuite(t *testing.T) {
@@ -68,13 +69,53 @@ func (s *ConfigClientTestSuite) SetupTest() {
 	s.logger = zap.NewNop()
 	s.syncer = logging.NewBufferedGrpcWriteSyncerForTest(s.logger)
 	s.stats = stream.NewStats()
+	s.cache = cache.NewConfiguredObjectCache()
+
 	s.client = &configClient{
 		stream:             s.mockStream,
 		logger:             s.logger,
 		bufferedGrpcSyncer: s.syncer,
 		stats:              s.stats,
-		cache:              cache.NewConfiguredObjectCache(),
+		cache:              s.cache,
 	}
+}
+
+func (s *ConfigClientTestSuite) TearDownTest() {
+	// Close the cache channel so any goroutine blocked on ResourceChanged() send is unblocked.
+	s.cache.Close()
+}
+
+// runClient starts the client and reads the ResourceChanged channel asynchronously.
+// It returns a channel that yields the execution error when the client finally stops.
+func (s *ConfigClientTestSuite) runClient(ctx context.Context) <-chan error {
+	errCh := make(chan error, 1)
+
+	go func() {
+		errCh <- s.client.Run(ctx)
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case _, ok := <-s.cache.ResourceChanged():
+				if !ok {
+					return
+				}
+			}
+		}
+	}()
+
+	return errCh
+}
+
+// populateCache runs ReplaceAll in a goroutine and reads from ResourceChanged
+// to unblock the send, simulating pre-existing cache state from a previous stream.
+func (s *ConfigClientTestSuite) populateCache(objects map[string]*pb.ConfiguredKubernetesObjectData) {
+	go s.cache.ReplaceAll(objects)
+
+	<-s.cache.ResourceChanged()
 }
 
 func (s *ConfigClientTestSuite) TestRun_ContextCanceled() {
@@ -230,7 +271,7 @@ func (s *ConfigClientTestSuite) TestRun_FirstSnapshotFails_CacheStaysEmpty() {
 
 func (s *ConfigClientTestSuite) TestRun_ReconnectionFails_CacheKeepsOldData() {
 	// Pre-populate cache with "old" data (simulating previous successful snapshot)
-	s.client.cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
+	s.populateCache(map[string]*pb.ConfiguredKubernetesObjectData{
 		"old-policy": {Id: "old-policy", Name: "old-data"},
 	})
 
@@ -247,7 +288,7 @@ func (s *ConfigClientTestSuite) TestRun_ReconnectionFails_CacheKeepsOldData() {
 	s.mockStream.On("Recv").Return(resourceDataResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, errors.New("connection lost")).Once()
 
-	err := s.client.Run(context.Background())
+	err := <-s.runClient(context.Background())
 
 	s.Require().Error(err)
 	s.Equal(1, s.client.cache.Len())           // Still has old data count
@@ -258,7 +299,7 @@ func (s *ConfigClientTestSuite) TestRun_ReconnectionFails_CacheKeepsOldData() {
 
 func (s *ConfigClientTestSuite) TestRun_ReconnectionAcceptsNewSnapshot() {
 	// Simulate first successful snapshot
-	s.client.cache.ReplaceAll(map[string]*pb.ConfiguredKubernetesObjectData{
+	s.populateCache(map[string]*pb.ConfiguredKubernetesObjectData{
 		"old-policy": {Id: "old-policy", Name: "old-data"},
 	})
 	s.True(isReady(s.client.cache)) // Cache is ready from "previous" stream
@@ -283,7 +324,7 @@ func (s *ConfigClientTestSuite) TestRun_ReconnectionAcceptsNewSnapshot() {
 	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
-	err := s.client.Run(context.Background())
+	err := <-s.runClient(context.Background())
 
 	s.Require().NoError(err)
 	// New snapshot should have replaced old data
@@ -312,7 +353,7 @@ func (s *ConfigClientTestSuite) TestRun_ResourceDataDuringSnapshot() {
 	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
-	err := s.client.Run(context.Background())
+	err := <-s.runClient(context.Background())
 
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
@@ -343,7 +384,7 @@ func (s *ConfigClientTestSuite) TestRun_ResourceDataAfterSnapshotComplete() {
 	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
 	s.mockStream.On("Recv").Return(resourceDataResp, nil).Once()
 
-	err := s.client.Run(context.Background())
+	err := <-s.runClient(context.Background())
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "server sent ResourceData after snapshot complete")
@@ -374,7 +415,7 @@ func (s *ConfigClientTestSuite) TestRun_SnapshotComplete() {
 
 	s.False(isReady(s.client.cache))
 
-	err := s.client.Run(context.Background())
+	err := <-s.runClient(context.Background())
 
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
@@ -391,7 +432,7 @@ func (s *ConfigClientTestSuite) TestRun_DuplicateSnapshotComplete() {
 	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
 	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once() // Duplicate - protocol violation
 
-	err := s.client.Run(context.Background())
+	err := <-s.runClient(context.Background())
 
 	s.Require().Error(err)
 	// Should error - stream restarts
@@ -451,7 +492,7 @@ func (s *ConfigClientTestSuite) TestRun_MutationCreate() {
 	s.mockStream.On("Recv").Return(createMutationResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
-	err := s.client.Run(context.Background())
+	err := <-s.runClient(context.Background())
 
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
@@ -498,7 +539,7 @@ func (s *ConfigClientTestSuite) TestRun_MutationUpdate() {
 	s.mockStream.On("Recv").Return(updateMutationResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
-	err := s.client.Run(context.Background())
+	err := <-s.runClient(context.Background())
 
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
@@ -544,7 +585,7 @@ func (s *ConfigClientTestSuite) TestRun_MutationDelete() {
 	s.mockStream.On("Recv").Return(deleteMutationResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
-	err := s.client.Run(context.Background())
+	err := <-s.runClient(context.Background())
 
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
@@ -611,7 +652,7 @@ func (s *ConfigClientTestSuite) TestRun_FullSnapshotThenMutationsFlow() {
 	s.mockStream.On("Recv").Return(deleteMutation, nil).Once()
 	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
-	err := s.client.Run(context.Background())
+	err := <-s.runClient(context.Background())
 
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
@@ -646,7 +687,7 @@ func (s *ConfigClientTestSuite) TestRun_EmptySnapshot() {
 	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
-	err := s.client.Run(context.Background())
+	err := <-s.runClient(context.Background())
 
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
@@ -674,7 +715,7 @@ func (s *ConfigClientTestSuite) TestRun_UnknownMutationType() {
 	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
 	s.mockStream.On("Recv").Return(unknownMutationResp, nil).Once()
 
-	err := s.client.Run(context.Background())
+	err := <-s.runClient(context.Background())
 
 	// Unknown mutation type should close the stream with an error
 	s.Require().Error(err)
@@ -709,7 +750,7 @@ func (s *ConfigClientTestSuite) TestRun_DeleteNonExistentObject() {
 	s.mockStream.On("Recv").Return(deleteMutationResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
-	err := s.client.Run(context.Background())
+	err := <-s.runClient(context.Background())
 
 	// Should not panic or error - deleting non-existent is a no-op
 	s.Require().NoError(err)
@@ -749,7 +790,7 @@ func (s *ConfigClientTestSuite) TestRun_UpdateConfigurationDuringSnapshotPhase()
 	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
-	err := s.client.Run(context.Background())
+	err := <-s.runClient(context.Background())
 
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
@@ -791,7 +832,7 @@ func (s *ConfigClientTestSuite) TestRun_UpdateConfigurationDuringMutationPhase()
 	s.mockStream.On("Recv").Return(createMutationResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
 
-	err := s.client.Run(context.Background())
+	err := <-s.runClient(context.Background())
 
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())

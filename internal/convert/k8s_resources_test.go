@@ -1,6 +1,6 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package controller
+package convert
 
 import (
 	"context"
@@ -24,7 +24,7 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 )
 
-func (suite *ControllerTestSuite) TestConvertObjectToMetadata() {
+func (suite *ConvertTestSuite) TestConvertObjectToMetadata() {
 	// Setup a mock object, e.g., a ConfigMap with predefined metadata
 	configMap := metav1.ObjectMeta{
 		Name:            "test-pod",
@@ -158,7 +158,7 @@ func TestGetMetadataFromResource(t *testing.T) {
 	}
 }
 
-func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
+func (suite *ConvertTestSuite) TestConvertMetaObjectToMetadata() {
 	logger := zap.NewNop()
 
 	k8sClient, err := k8sclient.NewClient()
@@ -265,7 +265,7 @@ func (suite *ControllerTestSuite) TestConvertMetaObjectToMetadata() {
 	}
 }
 
-func (suite *ControllerTestSuite) TestConvertOwnerReferences() {
+func (suite *ConvertTestSuite) TestConvertOwnerReferences() {
 	tests := map[string]struct {
 		ownerReferences []metav1.OwnerReference
 		expectedRefs    []*pb.KubernetesOwnerReference
@@ -414,7 +414,7 @@ func TestConvertPodIPsToStrings(t *testing.T) {
 	}
 }
 
-func (suite *ControllerTestSuite) TestGetProviderIdNodeSpec() {
+func (suite *ConvertTestSuite) TestGetProviderIdNodeSpec() {
 	tests := map[string]struct {
 		nodeName       string
 		node           *v1.Node
@@ -476,7 +476,7 @@ func (suite *ControllerTestSuite) TestGetProviderIdNodeSpec() {
 	}
 }
 
-func (suite *ControllerTestSuite) TestGetNodeIpAddresses() {
+func (suite *ConvertTestSuite) TestGetNodeIpAddresses() {
 	tests := map[string]struct {
 		nodeName       string
 		node           *v1.Node
@@ -571,7 +571,7 @@ func (suite *ControllerTestSuite) TestGetNodeIpAddresses() {
 	}
 }
 
-func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
+func (suite *ConvertTestSuite) TestGetPodIPAddresses() {
 	tests := map[string]struct {
 		podName        string
 		namespace      string
@@ -608,7 +608,7 @@ func (suite *ControllerTestSuite) TestGetPodIPAddresses() {
 	}
 }
 
-func (suite *ControllerTestSuite) TestConvertIngressToStringList() {
+func (suite *ConvertTestSuite) TestConvertIngressToStringList() {
 	tests := map[string]struct {
 		ingress        []v1.LoadBalancerIngress
 		expectedResult []string
@@ -651,7 +651,7 @@ func (suite *ControllerTestSuite) TestConvertIngressToStringList() {
 	}
 }
 
-func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
+func (suite *ConvertTestSuite) TestConvertServicePortsToPorts() {
 	var nodePort = int32(30000)
 
 	var nodePort2 = int32(30001)
@@ -718,7 +718,7 @@ func (suite *ControllerTestSuite) TestConvertServicePortsToPorts() {
 	}
 }
 
-func (suite *ControllerTestSuite) TestCombineIPAddresses() {
+func (suite *ConvertTestSuite) TestCombineIPAddresses() {
 	tests := map[string]struct {
 		clusterIps            []string
 		externalIps           []string
@@ -771,7 +771,7 @@ func (suite *ControllerTestSuite) TestCombineIPAddresses() {
 	}
 }
 
-func (suite *ControllerTestSuite) TestConvertToKubernetesServiceData() {
+func (suite *ConvertTestSuite) TestConvertToKubernetesServiceData() {
 	tests := map[string]struct {
 		service        *v1.Service
 		expectedResult *pb.KubernetesServiceData

@@ -3,15 +3,21 @@
 package resources
 
 import (
+	"slices"
+
 	"go.uber.org/zap"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
 )
 
-var resourceList = []string{
+// ManagedResourceNames lists the plural resource names managed by the reconciler.
+var ManagedResourceNames = []string{
 	"ciliumcidrgroups",
 	"ciliumclusterwidenetworkpolicies",
 	"ciliumnetworkpolicies",
+}
+
+var resourceList = slices.Concat(ManagedResourceNames, []string{
 	"cronjobs",
 	"customresourcedefinitions",
 	"daemonsets",
@@ -32,7 +38,7 @@ var resourceList = []string{
 	"serviceaccounts",
 	"services",
 	"statefulsets",
-}
+})
 
 // ResourceInfo holds the API group and preferred version for a resource.
 type ResourceInfo struct {
@@ -40,8 +46,9 @@ type ResourceInfo struct {
 	Version string
 }
 
-// buildResourceApiGroupMap creates a mapping between Kubernetes resources and their API groups with preferred versions.
-func buildResourceApiGroupMap(resources []string, clientset kubernetes.Interface, logger *zap.Logger) (map[string]ResourceInfo, error) {
+// BuildResourceAPIGroupMap creates a mapping between Kubernetes resources and their API groups with preferred versions.
+// Exported for use by the reconciler.
+func BuildResourceAPIGroupMap(resources []string, clientset kubernetes.Interface, logger *zap.Logger) (map[string]ResourceInfo, error) {
 	resourceAPIGroupMap := make(map[string]ResourceInfo)
 
 	resourceSet := make(map[string]struct{})

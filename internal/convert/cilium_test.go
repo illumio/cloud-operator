@@ -1,6 +1,6 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package controller
+package convert
 
 import (
 	"testing"
@@ -1964,3 +1964,6 @@ func TestConvertUnstructuredToCiliumResource_EgressDenyWithICMP(t *testing.T) {
 	assert.Equal(t, "IPv6", egressDeny.GetIcmps()[0].GetFields()[1].GetFamily())
 	assert.Equal(t, "EchoReply", egressDeny.GetIcmps()[0].GetFields()[1].GetTypeString())
 }
+
+// Marshal-direction tests (ProtoToMap, MarshalPolicySpecs, round-trip, normalize,
+// camelCase) live in policy_test.go alongside the other Proto → K8s tests.

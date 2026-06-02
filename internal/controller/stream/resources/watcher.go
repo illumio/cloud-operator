@@ -32,31 +32,45 @@ type ResourceStreamSender interface {
 // KubernetesObjectData proto. Core and Cilium resources use separate implementations.
 type ResourceConverter func(ctx context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error)
 
+// RuntimeCacheHandler processes a K8s object for runtime cache population.
+// Called by the watcher after converting the K8s object to proto. The handler
+// is responsible for filtering (e.g. checking operator-managed labels) and
+// updating the runtime cache.
+//
+// For watch events, eventType is Added/Modified/Deleted and the handler
+// inserts or deletes from the runtime cache directly.
+//
+// For list operations, eventType is empty — the handler accumulates the object
+// for a later bulk ReplaceAll without modifying the cache directly.
+type RuntimeCacheHandler func(eventType watch.EventType, metadata *pb.KubernetesObjectData) error
+
 // MutationCheckpointInterval is the interval for logging mutation checkpoint messages.
 const MutationCheckpointInterval = 60 * time.Second
 
 // WatcherConfig holds the configuration for creating a new Watcher.
 type WatcherConfig struct {
-	ResourceName    string // plural-lowercase (e.g., "pods")
-	ApiGroup        string
-	ApiVersion      string
-	BaseLogger      *zap.Logger
-	DynamicClient   dynamic.Interface
-	ResourcesClient ResourceStreamSender
-	Limiter         *rate.Limiter
-	Converter       ResourceConverter
+	ResourceName        string // plural-lowercase (e.g., "pods")
+	ApiGroup            string
+	ApiVersion          string
+	BaseLogger          *zap.Logger
+	DynamicClient       dynamic.Interface
+	ResourcesClient     ResourceStreamSender // for CloudSecure streaming
+	RuntimeCacheHandler RuntimeCacheHandler  // optional: processes events for runtime cache population
+	Limiter             *rate.Limiter
+	Converter           ResourceConverter
 }
 
 // Watcher encapsulates components for listing and managing Kubernetes resources.
 type Watcher struct {
-	resourceName    string // plural-lowercase (e.g., "pods")
-	apiGroup        string
-	apiVersion      string
-	logger          *zap.Logger
-	dynamicClient   dynamic.Interface
-	resourcesClient ResourceStreamSender
-	limiter         *rate.Limiter
-	converter       ResourceConverter
+	resourceName        string // plural-lowercase (e.g., "pods")
+	apiGroup            string
+	apiVersion          string
+	logger              *zap.Logger
+	dynamicClient       dynamic.Interface
+	resourcesClient     ResourceStreamSender
+	runtimeCacheHandler RuntimeCacheHandler
+	limiter             *rate.Limiter
+	converter           ResourceConverter
 }
 
 // NewWatcher creates a new Watcher for a specific resource type.
@@ -68,14 +82,15 @@ func NewWatcher(config WatcherConfig) *Watcher {
 	)
 
 	return &Watcher{
-		resourceName:    config.ResourceName,
-		apiGroup:        config.ApiGroup,
-		apiVersion:      config.ApiVersion,
-		logger:          logger,
-		dynamicClient:   config.DynamicClient,
-		resourcesClient: config.ResourcesClient,
-		limiter:         config.Limiter,
-		converter:       config.Converter,
+		resourceName:        config.ResourceName,
+		apiGroup:            config.ApiGroup,
+		apiVersion:          config.ApiVersion,
+		logger:              logger,
+		dynamicClient:       config.DynamicClient,
+		resourcesClient:     config.ResourcesClient,
+		runtimeCacheHandler: config.RuntimeCacheHandler,
+		limiter:             config.Limiter,
+		converter:           config.Converter,
 	}
 }
 
@@ -107,7 +122,8 @@ func (r *Watcher) WatchK8sResources(ctx context.Context, cancel context.CancelFu
 	}
 }
 
-// DynamicListResources lists a specified resource dynamically and sends down the current gRPC stream.
+// DynamicListResources lists a specified resource dynamically and sends each item down the current gRPC stream.
+// If a RuntimeCacheHandler is set, it is called for each item to perform any cache-related processing.
 func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) (string, error) {
 	unstructuredResources, err := r.FetchResources(ctx, metav1.NamespaceAll)
 	if err != nil {
@@ -122,12 +138,14 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 		Kind:    removeListSuffix(listGvk.Kind),
 	}
 
-	for _, item := range unstructuredResources.Items {
+	for i := range unstructuredResources.Items {
+		item := &unstructuredResources.Items[i]
+
 		if item.GetKind() == "" {
 			item.SetGroupVersionKind(itemGvk)
 		}
 
-		metadataObj, err := r.converter(ctx, &item)
+		metadataObj, err := r.converter(ctx, item)
 		if err != nil {
 			r.logger.Warn("Skipping resource that failed conversion",
 				zap.String("kind", item.GetKind()),
@@ -144,6 +162,12 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 			r.logger.Error("Cannot send object metadata", zap.Error(err))
 
 			return "", err
+		}
+
+		if r.runtimeCacheHandler != nil {
+			if err := r.runtimeCacheHandler("", metadataObj); err != nil {
+				r.logger.Warn("Runtime cache handler error during list event", zap.Error(err))
+			}
 		}
 	}
 
@@ -322,9 +346,18 @@ func (r *Watcher) handleWatchEvent(
 	case watch.Added, watch.Modified, watch.Deleted:
 		logger.Debug("Received mutation from watcher", zap.String("type", string(event.Type)))
 
-		resourceVersion, err := r.processMutation(ctx, event, mutationChan)
+		resourceVersion, metadataObj, err := r.processMutation(ctx, event, mutationChan)
+		if err != nil {
+			return "", false, err
+		}
 
-		return resourceVersion, true, err
+		if r.runtimeCacheHandler != nil {
+			if err := r.runtimeCacheHandler(event.Type, metadataObj); err != nil {
+				r.logger.Warn("Runtime cache handler error during watch event", zap.Error(err))
+			}
+		}
+
+		return resourceVersion, true, nil
 
 	default:
 		return "", false, fmt.Errorf("watcher returned an unknown or empty watch event of type %s", string(event.Type))
@@ -366,28 +399,28 @@ func getResourceVersionFromBookmark(event watch.Event) (string, error) {
 	return resourceVersion, nil
 }
 
-func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation) (string, error) {
+func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation) (string, *pb.KubernetesObjectData, error) {
 	if event.Object == nil {
-		return "", errors.New("event object is nil")
+		return "", nil, errors.New("event object is nil")
 	}
 
 	unstructuredObj, ok := event.Object.(*unstructured.Unstructured)
 	if !ok {
-		return "", fmt.Errorf("expected *unstructured.Unstructured, got %T", event.Object)
+		return "", nil, fmt.Errorf("expected *unstructured.Unstructured, got %T", event.Object)
 	}
 
 	metadataObj, err := r.converter(ctx, unstructuredObj)
 	if err != nil {
-		return "", fmt.Errorf("failed to convert %s %s/%s: %w", unstructuredObj.GetKind(), unstructuredObj.GetNamespace(), unstructuredObj.GetName(), err)
+		return "", nil, fmt.Errorf("failed to convert %s %s/%s: %w", unstructuredObj.GetKind(), unstructuredObj.GetNamespace(), unstructuredObj.GetName(), err)
 	}
 
 	mutation := r.resourcesClient.CreateMutationObject(metadataObj, event.Type)
 
 	select {
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return "", nil, ctx.Err()
 	case mutationChan <- mutation:
 	}
 
-	return metadataObj.GetResourceVersion(), nil
+	return metadataObj.GetResourceVersion(), metadataObj, nil
 }

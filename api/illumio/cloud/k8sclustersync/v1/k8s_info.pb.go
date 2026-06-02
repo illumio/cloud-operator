@@ -1081,7 +1081,7 @@ func (x *KubernetesCiliumCIDRGroupData) GetSpec() *CiliumCIDRGroup {
 type CiliumCIDRGroup struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ExternalCIDRs is a list of CIDRs selecting peers outside the clusters.
-	ExternalCidrs []string `protobuf:"bytes,1,rep,name=external_cidrs,json=externalCidrs,proto3" json:"external_cidrs,omitempty"`
+	ExternalCidrs []string `protobuf:"bytes,1,rep,name=external_cidrs,json=externalCIDRs,proto3" json:"external_cidrs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1313,9 +1313,9 @@ type CiliumPolicyIngressRule struct {
 	// Wrapped to distinguish nil (implicit wildcard when to_ports is set) from empty (selects nothing).
 	FromEndpoints *LabelSelectorList `protobuf:"bytes,1,opt,name=from_endpoints,json=fromEndpoints,proto3,oneof" json:"from_endpoints,omitempty"`
 	// FromCIDR allows/denies traffic from specific CIDR ranges.
-	FromCidr []string `protobuf:"bytes,2,rep,name=from_cidr,json=fromCidr,proto3" json:"from_cidr,omitempty"`
+	FromCidr []string `protobuf:"bytes,2,rep,name=from_cidr,json=fromCIDR,proto3" json:"from_cidr,omitempty"`
 	// FromCIDRSet allows/denies traffic from CIDR ranges with exceptions.
-	FromCidrSet []*CiliumPolicyCIDRSet `protobuf:"bytes,3,rep,name=from_cidr_set,json=fromCidrSet,proto3" json:"from_cidr_set,omitempty"`
+	FromCidrSet []*CiliumPolicyCIDRSet `protobuf:"bytes,3,rep,name=from_cidr_set,json=fromCIDRSet,proto3" json:"from_cidr_set,omitempty"`
 	// FromEntities allows/denies traffic from Cilium-defined entities (e.g., "world", "cluster", "host").
 	FromEntities []string `protobuf:"bytes,4,rep,name=from_entities,json=fromEntities,proto3" json:"from_entities,omitempty"`
 	// FromGroups allows/denies traffic from cloud provider security groups.
@@ -1436,14 +1436,14 @@ type CiliumPolicyEgressRule struct {
 	// Wrapped to distinguish nil (implicit wildcard when to_ports is set) from empty (selects nothing).
 	ToEndpoints *LabelSelectorList `protobuf:"bytes,1,opt,name=to_endpoints,json=toEndpoints,proto3,oneof" json:"to_endpoints,omitempty"`
 	// ToCIDR allows/denies traffic to specific CIDR ranges.
-	ToCidr []string `protobuf:"bytes,2,rep,name=to_cidr,json=toCidr,proto3" json:"to_cidr,omitempty"`
+	ToCidr []string `protobuf:"bytes,2,rep,name=to_cidr,json=toCIDR,proto3" json:"to_cidr,omitempty"`
 	// ToCIDRSet allows/denies traffic to CIDR ranges with exceptions.
-	ToCidrSet []*CiliumPolicyCIDRSet `protobuf:"bytes,3,rep,name=to_cidr_set,json=toCidrSet,proto3" json:"to_cidr_set,omitempty"`
+	ToCidrSet []*CiliumPolicyCIDRSet `protobuf:"bytes,3,rep,name=to_cidr_set,json=toCIDRSet,proto3" json:"to_cidr_set,omitempty"`
 	// ToEntities allows/denies traffic to Cilium-defined entities (e.g., "world", "cluster", "host").
 	ToEntities []string `protobuf:"bytes,4,rep,name=to_entities,json=toEntities,proto3" json:"to_entities,omitempty"`
 	// ToFQDNs allows traffic to DNS names (e.g., "*.example.com").
 	// Note: Not applicable for deny rules (field is ignored).
-	ToFqdns []*CiliumPolicyFQDNSelector `protobuf:"bytes,5,rep,name=to_fqdns,json=toFqdns,proto3" json:"to_fqdns,omitempty"`
+	ToFqdns []*CiliumPolicyFQDNSelector `protobuf:"bytes,5,rep,name=to_fqdns,json=toFQDNs,proto3" json:"to_fqdns,omitempty"`
 	// ToServices allows/denies traffic to Kubernetes services.
 	ToServices []*CiliumPolicyService `protobuf:"bytes,6,rep,name=to_services,json=toServices,proto3" json:"to_services,omitempty"`
 	// ToGroups allows/denies traffic to cloud provider security groups.
@@ -1720,8 +1720,8 @@ type CiliumPolicyAWSGroup struct {
 	// AWS security groups tags.
 	Labels map[string]string `protobuf:"bytes,1,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Security group IDs (Cilium supports multiple per group selector)
-	SecurityGroupIds   []string `protobuf:"bytes,2,rep,name=security_group_ids,json=securityGroupIds,proto3" json:"security_group_ids,omitempty"`
-	SecurityGroupNames []string `protobuf:"bytes,3,rep,name=security_group_names,json=securityGroupNames,proto3" json:"security_group_names,omitempty"`
+	SecurityGroupIds   []string `protobuf:"bytes,2,rep,name=security_group_ids,json=securityGroupsIds,proto3" json:"security_group_ids,omitempty"`
+	SecurityGroupNames []string `protobuf:"bytes,3,rep,name=security_group_names,json=securityGroupsNames,proto3" json:"security_group_names,omitempty"`
 	Region             *string  `protobuf:"bytes,4,opt,name=region,proto3,oneof" json:"region,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
@@ -5432,7 +5432,7 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x1dKubernetesCiliumCIDRGroupData\x12D\n" +
 	"\x04spec\x18\x01 \x01(\v20.illumio.cloud.k8sclustersync.v1.CiliumCIDRGroupR\x04spec\"8\n" +
 	"\x0fCiliumCIDRGroup\x12%\n" +
-	"\x0eexternal_cidrs\x18\x01 \x03(\tR\rexternalCidrs\"\xa2\a\n" +
+	"\x0eexternal_cidrs\x18\x01 \x03(\tR\rexternalCIDRs\"\xa2\a\n" +
 	"\x10CiliumPolicyRule\x12`\n" +
 	"\x11endpoint_selector\x18\x01 \x01(\v2..illumio.cloud.k8sclustersync.v1.LabelSelectorH\x00R\x10endpointSelector\x88\x01\x01\x12X\n" +
 	"\rnode_selector\x18\x02 \x01(\v2..illumio.cloud.k8sclustersync.v1.LabelSelectorH\x01R\fnodeSelector\x88\x01\x01\x12%\n" +
@@ -5459,8 +5459,8 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\a_egress\"\xe8\x05\n" +
 	"\x17CiliumPolicyIngressRule\x12^\n" +
 	"\x0efrom_endpoints\x18\x01 \x01(\v22.illumio.cloud.k8sclustersync.v1.LabelSelectorListH\x00R\rfromEndpoints\x88\x01\x01\x12\x1b\n" +
-	"\tfrom_cidr\x18\x02 \x03(\tR\bfromCidr\x12X\n" +
-	"\rfrom_cidr_set\x18\x03 \x03(\v24.illumio.cloud.k8sclustersync.v1.CiliumPolicyCIDRSetR\vfromCidrSet\x12#\n" +
+	"\tfrom_cidr\x18\x02 \x03(\tR\bfromCIDR\x12X\n" +
+	"\rfrom_cidr_set\x18\x03 \x03(\v24.illumio.cloud.k8sclustersync.v1.CiliumPolicyCIDRSetR\vfromCIDRSet\x12#\n" +
 	"\rfrom_entities\x18\x04 \x03(\tR\ffromEntities\x12S\n" +
 	"\vfrom_groups\x18\x05 \x03(\v22.illumio.cloud.k8sclustersync.v1.CiliumPolicyGroupR\n" +
 	"fromGroups\x12M\n" +
@@ -5473,11 +5473,11 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x0f_authentication\"\xfa\x06\n" +
 	"\x16CiliumPolicyEgressRule\x12Z\n" +
 	"\fto_endpoints\x18\x01 \x01(\v22.illumio.cloud.k8sclustersync.v1.LabelSelectorListH\x00R\vtoEndpoints\x88\x01\x01\x12\x17\n" +
-	"\ato_cidr\x18\x02 \x03(\tR\x06toCidr\x12T\n" +
-	"\vto_cidr_set\x18\x03 \x03(\v24.illumio.cloud.k8sclustersync.v1.CiliumPolicyCIDRSetR\ttoCidrSet\x12\x1f\n" +
+	"\ato_cidr\x18\x02 \x03(\tR\x06toCIDR\x12T\n" +
+	"\vto_cidr_set\x18\x03 \x03(\v24.illumio.cloud.k8sclustersync.v1.CiliumPolicyCIDRSetR\ttoCIDRSet\x12\x1f\n" +
 	"\vto_entities\x18\x04 \x03(\tR\n" +
 	"toEntities\x12T\n" +
-	"\bto_fqdns\x18\x05 \x03(\v29.illumio.cloud.k8sclustersync.v1.CiliumPolicyFQDNSelectorR\atoFqdns\x12U\n" +
+	"\bto_fqdns\x18\x05 \x03(\v29.illumio.cloud.k8sclustersync.v1.CiliumPolicyFQDNSelectorR\atoFQDNs\x12U\n" +
 	"\vto_services\x18\x06 \x03(\v24.illumio.cloud.k8sclustersync.v1.CiliumPolicyServiceR\n" +
 	"toServices\x12O\n" +
 	"\tto_groups\x18\a \x03(\v22.illumio.cloud.k8sclustersync.v1.CiliumPolicyGroupR\btoGroups\x12I\n" +
@@ -5498,11 +5498,11 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x14_cidr_group_selector\"p\n" +
 	"\x11CiliumPolicyGroup\x12I\n" +
 	"\x03aws\x18\x01 \x01(\v25.illumio.cloud.k8sclustersync.v1.CiliumPolicyAWSGroupH\x00R\x03awsB\x10\n" +
-	"\x0ecloud_provider\"\xb4\x02\n" +
+	"\x0ecloud_provider\"\xb6\x02\n" +
 	"\x14CiliumPolicyAWSGroup\x12Y\n" +
-	"\x06labels\x18\x01 \x03(\v2A.illumio.cloud.k8sclustersync.v1.CiliumPolicyAWSGroup.LabelsEntryR\x06labels\x12,\n" +
-	"\x12security_group_ids\x18\x02 \x03(\tR\x10securityGroupIds\x120\n" +
-	"\x14security_group_names\x18\x03 \x03(\tR\x12securityGroupNames\x12\x1b\n" +
+	"\x06labels\x18\x01 \x03(\v2A.illumio.cloud.k8sclustersync.v1.CiliumPolicyAWSGroup.LabelsEntryR\x06labels\x12-\n" +
+	"\x12security_group_ids\x18\x02 \x03(\tR\x11securityGroupsIds\x121\n" +
+	"\x14security_group_names\x18\x03 \x03(\tR\x13securityGroupsNames\x12\x1b\n" +
 	"\x06region\x18\x04 \x01(\tH\x00R\x06region\x88\x01\x01\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
