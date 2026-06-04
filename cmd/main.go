@@ -286,7 +286,7 @@ func main() {
 					K8sClient:         k8sClient,
 					FlowCollectorType: flowCollectorType,
 					ClusterName:       envConfig.ClusterName,
-					RuntimeCache:      runtimeCache,
+					Cache:             runtimeCache,
 				},
 				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
 			},

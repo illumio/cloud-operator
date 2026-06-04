@@ -24,7 +24,7 @@ type Factory struct {
 	Stats             *stream.Stats
 	FlowCollectorType pb.FlowCollector
 	ClusterName       string // Optional: cluster name for self-managed clusters
-	RuntimeCache      *cache.ConfiguredObjectCache
+	Cache             *cache.ConfiguredObjectCache
 }
 
 // NewStreamClient creates a new resources stream client.
@@ -45,7 +45,7 @@ func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnI
 		stats:         f.Stats,
 		flowCollector: f.FlowCollectorType,
 		clusterName:   f.ClusterName,
-		runtimeCache:  f.RuntimeCache,
+		runtimeCache:  f.Cache,
 	}, nil
 }
 

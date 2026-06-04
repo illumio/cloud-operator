@@ -105,7 +105,6 @@ func newTestHarness(t *testing.T) *fakeserver.FakeServerTestHarness {
 //	fakeserver (gRPC) → config client → config cache ──→ reconciler → envtest K8s API
 //	                     resources client → runtime cache ─┘
 //
-// Returns the fakeserver for pushing messages. Cleanup is handled via t.Cleanup.
 // Pass an optional reconcile interval to override the default (e.g. for fast self-healing tests).
 func setupSuite(t *testing.T, reconcileInterval ...time.Duration) *fakeserver.FakeServer {
 	t.Helper()
