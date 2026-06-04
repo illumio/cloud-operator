@@ -28,7 +28,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   namespace: kube-system
-  name: aws-vpc-cni-logs-reader
+  name: cloud-operator-aws-vpc-cni-logs-reader
 rules:
 - apiGroups: [""]
   resources: ["pods/log"]

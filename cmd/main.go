@@ -261,6 +261,7 @@ func main() {
 		OVNKNamespace:            viper.GetString("ovnk_namespace"),
 		TlsAuthProps:             tlsAuthProps,
 		AWSVPCCNIPollingInterval: viper.GetDuration("aws_vpc_cni_logs_polling_interval"),
+		PodNamespace:             viper.GetString("pod_namespace"),
 	})
 
 	// Create factory config with all stream factories

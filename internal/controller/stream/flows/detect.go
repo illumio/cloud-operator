@@ -25,7 +25,7 @@ var _ stream.StreamClientFactory = (*FlowCollectorStreamFactory)(nil)
 // This allows flow collectors to be managed by the stream manager like other streams.
 type FlowCollectorStreamFactory struct {
 	Factory       CollectorFactory
-	CollectorName string // e.g., "Cilium", "OVN-K", "Falco", "VPC-CNI"
+	CollectorName string // e.g., "Cilium", "OVN-K", "Falco", "AWS-VPC-CNI"
 }
 
 // NewStreamClient creates a flow collector and wraps it as a StreamClient.
@@ -128,12 +128,12 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 		dynamicClient := config.K8sClient.GetDynamicClient()
 
 		if awsvpccni.IsCRDAvailable(config.Logger, discoveryClient) {
-			if err := awsvpccni.EnsureFlowLoggingPolicy(ctx, config.Logger, dynamicClient); err != nil {
-				config.Logger.Warn("Failed to create ClusterNetworkPolicy, flow logging may be limited",
+			if err := awsvpccni.EnsureFlowLoggingPolicy(ctx, config.Logger, dynamicClient, clientset, config.PodNamespace); err != nil {
+				config.Logger.Warn("AWS VPC CNI failed to create ClusterNetworkPolicy, flow logging may be limited",
 					zap.Error(err))
 			}
 		} else {
-			config.Logger.Warn("ClusterNetworkPolicy CRD not found - enable network policy in VPC CNI addon for comprehensive flow logging")
+			config.Logger.Warn("ClusterNetworkPolicy CRD not found - enable network policy in AWS VPC CNI addon for comprehensive flow logging")
 		}
 
 		factory := &awsvpccni.Factory{

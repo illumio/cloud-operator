@@ -3,10 +3,10 @@
 package awsvpccni
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"io"
-	"strings"
 	"sync"
 	"time"
 
@@ -31,26 +31,26 @@ type vpccniClient struct {
 
 // Run collects flows from VPC CNI by polling aws-node pod logs.
 func (c *vpccniClient) Run(ctx context.Context) error {
-	c.logger.Info("Starting VPC CNI flow collector",
-		zap.Duration("pollInterval", c.pollInterval))
+	c.logger.Info("Starting AWS VPC CNI flow collector",
+		zap.Duration("poll_interval", c.pollInterval))
 
 	ticker := time.NewTicker(c.pollInterval)
 	defer ticker.Stop()
 
 	// Do an initial poll immediately
 	if err := c.pollAllPods(ctx); err != nil {
-		c.logger.Warn("Initial poll failed", zap.Error(err))
+		c.logger.Warn("AWS VPC CNI initial poll failed", zap.Error(err))
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.Info("VPC CNI flow collector stopping")
+			c.logger.Info("AWS VPC CNI flow collector stopping")
 
 			return ctx.Err()
 		case <-ticker.C:
 			if err := c.pollAllPods(ctx); err != nil {
-				c.logger.Warn("Poll cycle failed", zap.Error(err))
+				c.logger.Warn("AWS VPC CNI poll cycle failed", zap.Error(err))
 			}
 		}
 	}
@@ -66,7 +66,7 @@ func (c *vpccniClient) pollAllPods(ctx context.Context) error {
 		return err
 	}
 
-	c.logger.Debug("Polling aws-node pods", zap.Int("count", len(pods.Items)))
+	c.logger.Debug("AWS VPC CNI polling aws-node pods", zap.Int("count", len(pods.Items)))
 
 	// Get logs from each running pod
 	for i := range pods.Items {
@@ -75,9 +75,9 @@ func (c *vpccniClient) pollAllPods(ctx context.Context) error {
 			continue
 		}
 
-		if err := c.pollPod(ctx, pod); err != nil {
-			c.logger.Debug("Failed to poll pod",
-				zap.String("pod", pod.Name),
+		podLogger := c.logger.With(zap.String("pod", pod.Name))
+		if err := c.pollPod(ctx, pod, podLogger); err != nil {
+			podLogger.Debug("AWS VPC CNI failed to poll pod",
 				zap.Error(err))
 		}
 	}
@@ -89,7 +89,7 @@ func (c *vpccniClient) pollAllPods(ctx context.Context) error {
 }
 
 // pollPod gets logs from a single aws-node pod since the last poll.
-func (c *vpccniClient) pollPod(ctx context.Context, pod *corev1.Pod) error {
+func (c *vpccniClient) pollPod(ctx context.Context, pod *corev1.Pod, logger *zap.Logger) error {
 	c.mu.Lock()
 	sinceTime := c.lastPollTime[pod.Name]
 	c.mu.Unlock()
@@ -114,13 +114,13 @@ func (c *vpccniClient) pollPod(ctx context.Context, pod *corev1.Pod) error {
 	c.mu.Unlock()
 
 	// Parse and cache flows
-	c.parseLogs(ctx, logs, pod.Name)
+	c.parseLogs(ctx, logs, logger)
 
 	return nil
 }
 
 // getLogsFromPod retrieves logs from a pod's aws-eks-nodeagent container.
-func (c *vpccniClient) getLogsFromPod(ctx context.Context, podName string, since time.Time) (string, error) {
+func (c *vpccniClient) getLogsFromPod(ctx context.Context, podName string, since time.Time) ([]byte, error) {
 	sinceTime := metav1.NewTime(since)
 	req := c.k8sClient.CoreV1().Pods(collector.AWSNodeNamespace).GetLogs(podName, &corev1.PodLogOptions{
 		Container: collector.AWSEksNodeagentContainer,
@@ -129,42 +129,40 @@ func (c *vpccniClient) getLogsFromPod(ctx context.Context, podName string, since
 
 	stream, err := req.Stream(ctx)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer stream.Close() //nolint:errcheck
 
 	buf := new(bytes.Buffer)
 	if _, err := io.Copy(buf, stream); err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return buf.String(), nil
+	return buf.Bytes(), nil
 }
 
 // parseLogs parses log lines and caches flows.
-func (c *vpccniClient) parseLogs(ctx context.Context, logs string, podName string) {
-	if logs == "" {
+func (c *vpccniClient) parseLogs(ctx context.Context, logs []byte, logger *zap.Logger) {
+	if len(logs) == 0 {
 		return
 	}
 
-	lines := strings.Split(logs, "\n")
+	scanner := bufio.NewScanner(bytes.NewReader(logs))
 	flowCount := 0
 
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
 			continue
 		}
 
-		flow, err := collector.ParseAWSVPCCNIFlowLog(line)
+		flow, err := collector.ParseAWSVPCCNIFlowLog(string(line))
 		if err != nil {
-			// Not a flow log line, skip silently
 			continue
 		}
 
 		if err := c.flowSink.CacheFlow(ctx, flow); err != nil {
-			c.logger.Debug("Failed to cache flow",
-				zap.String("pod", podName),
+			logger.Debug("AWS VPC CNI failed to cache flow",
 				zap.Error(err))
 
 			continue
@@ -176,15 +174,14 @@ func (c *vpccniClient) parseLogs(ctx context.Context, logs string, podName strin
 	}
 
 	if flowCount > 0 {
-		c.logger.Debug("Parsed flows from pod",
-			zap.String("pod", podName),
-			zap.Int("flowCount", flowCount))
+		logger.Debug("AWS VPC CNI parsed flows from pod",
+			zap.Int("flow_count", flowCount))
 	}
 }
 
 // cleanupStalePods removes entries from lastPollTime for pods that no longer exist.
 func (c *vpccniClient) cleanupStalePods(pods *corev1.PodList) {
-	activePods := make(map[string]bool)
+	activePods := make(map[string]bool, len(pods.Items))
 	for _, pod := range pods.Items {
 		activePods[pod.Name] = true
 	}
@@ -195,7 +192,7 @@ func (c *vpccniClient) cleanupStalePods(pods *corev1.PodList) {
 	for podName := range c.lastPollTime {
 		if !activePods[podName] {
 			delete(c.lastPollTime, podName)
-			c.logger.Debug("Removed stale pod from tracking", zap.String("pod", podName))
+			c.logger.Debug("AWS VPC CNI removed stale pod from tracking", zap.String("pod", podName))
 		}
 	}
 }

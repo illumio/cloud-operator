@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	discoveryfake "k8s.io/client-go/discovery/fake"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
+	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 )
 
@@ -84,7 +85,7 @@ func TestEnsureFlowLoggingPolicy(t *testing.T) {
 		scheme := runtime.NewScheme()
 		dynamicClient := dynamicfake.NewSimpleDynamicClient(scheme)
 
-		err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient)
+		err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient, fake.NewSimpleClientset(), "illumio-cloud")
 
 		require.NoError(t, err)
 
@@ -100,11 +101,11 @@ func TestEnsureFlowLoggingPolicy(t *testing.T) {
 		dynamicClient := dynamicfake.NewSimpleDynamicClient(scheme)
 
 		// Create the policy first
-		err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient)
+		err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient, fake.NewSimpleClientset(), "illumio-cloud")
 		require.NoError(t, err)
 
 		// Create again - should handle AlreadyExists
-		err = EnsureFlowLoggingPolicy(ctx, logger, dynamicClient)
+		err = EnsureFlowLoggingPolicy(ctx, logger, dynamicClient, fake.NewSimpleClientset(), "illumio-cloud")
 		require.NoError(t, err)
 	})
 
@@ -119,7 +120,7 @@ func TestEnsureFlowLoggingPolicy(t *testing.T) {
 			return true, nil, expectedErr
 		})
 
-		err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient)
+		err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient, fake.NewSimpleClientset(), "illumio-cloud")
 
 		require.Error(t, err)
 		assert.Equal(t, expectedErr, err)
@@ -133,7 +134,7 @@ func TestClusterNetworkPolicySpec(t *testing.T) {
 	scheme := runtime.NewScheme()
 	dynamicClient := dynamicfake.NewSimpleDynamicClient(scheme)
 
-	err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient)
+	err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient, fake.NewSimpleClientset(), "illumio-cloud")
 	require.NoError(t, err)
 
 	gvr := schema.GroupVersionResource{
@@ -208,7 +209,7 @@ func TestEnsureFlowLoggingPolicy_AlreadyExistsError(t *testing.T) {
 		)
 	})
 
-	err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient)
+	err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient, fake.NewSimpleClientset(), "illumio-cloud")
 
 	// Should return nil (handled gracefully)
 	require.NoError(t, err)

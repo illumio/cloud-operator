@@ -23,9 +23,9 @@ import (
 const (
 	// AWSNodeLabel is the label selector for aws-node pods.
 	AWSNodeLabel = "k8s-app=aws-node"
-	// AWSNodeNamespace is the namespace where aws-node pods run.
+	// AWSNodeNamespace is the namespace of the aws-node pods.
 	AWSNodeNamespace = "kube-system"
-	// AWSEksNodeagentContainer is the container name that has flow logs.
+	// AWSEksNodeagentContainer is the name of the container that has flow logs.
 	AWSEksNodeagentContainer = "aws-eks-nodeagent"
 )
 
@@ -42,13 +42,11 @@ var (
 //
 // Old format (v1.0.x - v1.2.1):
 // {"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client",
-//
 //	"msg":"Flow Info: ","Src IP":"10.0.141.167","Src Port":39197,
 //	"Dest IP":"172.20.0.10","Dest Port":53,"Proto":"TCP","Verdict":"ACCEPT"}
 //
 // New format (v1.2.2+):
 // {"level":"debug","ts":"2026-04-13T21:18:46.888Z","caller":"runtime/asm_amd64.s:1700",
-//
 //	"msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress"}
 type AWSVPCCNIFlowLog struct {
 	Level     string `json:"level"`

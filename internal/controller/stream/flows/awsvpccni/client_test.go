@@ -72,7 +72,7 @@ func (s *VPCCNIClientTestSuite) TestParseLogs_ValidOldFormat() {
 	s.mockSink.On("CacheFlow", ctx, mock.Anything).Return(nil)
 	s.mockSink.On("IncrementFlowsReceived").Return()
 
-	s.client.parseLogs(ctx, logs, "test-pod")
+	s.client.parseLogs(ctx, []byte(logs), s.logger)
 
 	s.mockSink.AssertNumberOfCalls(s.T(), "CacheFlow", 1)
 	s.mockSink.AssertNumberOfCalls(s.T(), "IncrementFlowsReceived", 1)
@@ -85,7 +85,7 @@ func (s *VPCCNIClientTestSuite) TestParseLogs_ValidNewFormat() {
 	s.mockSink.On("CacheFlow", ctx, mock.Anything).Return(nil)
 	s.mockSink.On("IncrementFlowsReceived").Return()
 
-	s.client.parseLogs(ctx, logs, "test-pod")
+	s.client.parseLogs(ctx, []byte(logs), s.logger)
 
 	s.mockSink.AssertNumberOfCalls(s.T(), "CacheFlow", 1)
 	s.mockSink.AssertNumberOfCalls(s.T(), "IncrementFlowsReceived", 1)
@@ -94,7 +94,7 @@ func (s *VPCCNIClientTestSuite) TestParseLogs_ValidNewFormat() {
 func (s *VPCCNIClientTestSuite) TestParseLogs_EmptyLogs() {
 	ctx := context.Background()
 
-	s.client.parseLogs(ctx, "", "test-pod")
+	s.client.parseLogs(ctx, nil, s.logger)
 
 	s.mockSink.AssertNotCalled(s.T(), "CacheFlow")
 	s.mockSink.AssertNotCalled(s.T(), "IncrementFlowsReceived")
@@ -104,7 +104,7 @@ func (s *VPCCNIClientTestSuite) TestParseLogs_NonFlowLog() {
 	ctx := context.Background()
 	logs := `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"some-logger","msg":"Some other message"}`
 
-	s.client.parseLogs(ctx, logs, "test-pod")
+	s.client.parseLogs(ctx, []byte(logs), s.logger)
 
 	s.mockSink.AssertNotCalled(s.T(), "CacheFlow")
 	s.mockSink.AssertNotCalled(s.T(), "IncrementFlowsReceived")
@@ -118,7 +118,7 @@ func (s *VPCCNIClientTestSuite) TestParseLogs_MultipleLines() {
 	s.mockSink.On("CacheFlow", ctx, mock.Anything).Return(nil)
 	s.mockSink.On("IncrementFlowsReceived").Return()
 
-	s.client.parseLogs(ctx, logs, "test-pod")
+	s.client.parseLogs(ctx, []byte(logs), s.logger)
 
 	s.mockSink.AssertNumberOfCalls(s.T(), "CacheFlow", 2)
 	s.mockSink.AssertNumberOfCalls(s.T(), "IncrementFlowsReceived", 2)

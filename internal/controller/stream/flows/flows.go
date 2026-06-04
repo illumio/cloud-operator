@@ -51,4 +51,5 @@ type CollectorConfig struct {
 	OVNKNamespace      string
 	// AWS VPC CNI configuration
 	AWSVPCCNIPollingInterval time.Duration
+	PodNamespace             string
 }
