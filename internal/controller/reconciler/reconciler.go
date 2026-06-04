@@ -21,18 +21,19 @@ import (
 )
 
 const (
-	// FullReconcileInterval is the periodic safety net for full reconciliation,
+	// DefaultReconcileInterval is the periodic safety net for full reconciliation,
 	// catching anything missed due to dropped events or transient failures.
-	FullReconcileInterval = 5 * time.Minute
+	DefaultReconcileInterval = 5 * time.Minute
 )
 
 // Reconciler synchronizes desired state from CloudSecure with actual state in Kubernetes.
 type Reconciler struct {
-	logger       *zap.Logger
-	client       k8sclient.Client
-	configCache  *cache.ConfiguredObjectCache
-	runtimeCache *cache.ConfiguredObjectCache
-	resourceInfo map[string]resources.ResourceInfo // discovered API group/version info
+	logger             *zap.Logger
+	client             k8sclient.Client
+	configCache        *cache.ConfiguredObjectCache
+	runtimeCache       *cache.ConfiguredObjectCache
+	resourceInfo       map[string]resources.ResourceInfo // discovered API group/version info
+	reconcileInterval  time.Duration
 }
 
 // NewReconciler creates a new reconciler.
@@ -43,10 +44,11 @@ func NewReconciler(
 	runtimeCache *cache.ConfiguredObjectCache,
 ) *Reconciler {
 	return &Reconciler{
-		logger:       logger,
-		client:       client,
-		configCache:  configCache,
-		runtimeCache: runtimeCache,
+		logger:            logger,
+		client:            client,
+		configCache:       configCache,
+		runtimeCache:      runtimeCache,
+		reconcileInterval: DefaultReconcileInterval,
 	}
 }
 
@@ -96,7 +98,7 @@ func (r *Reconciler) Run(ctx context.Context) {
 		r.logger.Error("Full reconciliation failed", zap.Error(err))
 	}
 
-	reconcileTimer := time.NewTimer(FullReconcileInterval)
+	reconcileTimer := time.NewTimer(r.reconcileInterval)
 
 	for {
 		select {
@@ -109,7 +111,7 @@ func (r *Reconciler) Run(ctx context.Context) {
 				r.logger.Error("Full reconciliation failed", zap.Error(err))
 			}
 
-			reconcileTimer.Reset(FullReconcileInterval)
+			reconcileTimer.Reset(r.reconcileInterval)
 		case id := <-r.configCache.ResourceChanged():
 			r.processResourceChange(ctx, id, reconcileTimer)
 		case id := <-r.runtimeCache.ResourceChanged():
@@ -154,7 +156,7 @@ func (r *Reconciler) processResourceChange(ctx context.Context, id string, recon
 			r.logger.Error("Full reconciliation failed", zap.Error(err))
 		}
 
-		reconcileTimer.Reset(FullReconcileInterval)
+		reconcileTimer.Reset(r.reconcileInterval)
 	} else {
 		if err := r.reconcileObject(ctx, id); err != nil {
 			r.logger.Error("Object reconciliation failed", zap.String("id", id), zap.Error(err))
