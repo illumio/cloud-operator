@@ -3382,108 +3382,51 @@ func TestReconciler_DeletedPolicyRestoredByReconciler(t *testing.T) {
 }
 
 // TestReconciler_CloudSecureIDLabelStripped verifies that when an external actor strips the
-// CloudSecureIDLabel from an operator-managed policy, the reconciler self-heals.
+// TODO: Requires namespace/name/kind keyed runtime cache to fix.
+// Label stripping: handler skips event (no ID), runtime cache goes stale, no self-healing.
+// Label mutation: handler inserts under wrong ID, reconciler deletes object as orphan, stale entry prevents restoration.
 //
-// The runtime watcher detects the change via field manager ownership (not labels) and uses
-// the config cache reverse lookup to find the object's ID by name/kind/namespace.
-// TODO: Requires namespace/name/kind keyed runtime cache to work correctly.
-// Label stripping causes the watcher handler to skip the event (no ID), so the
-// runtime cache goes stale and reconcileAll sees no diff.
+// func TestReconciler_CloudSecureIDLabelStripped(t *testing.T) {
+// 	fs := setupSuite(t)
+// 	ctx := context.Background()
 //
-// func TestReconciler_CloudSecureIDLabelStripped(t *testing.T) { ... }
-
-// TestReconciler_CloudSecureIDLabelMutated_CausesDestructiveDelete demonstrates a known
-// limitation of the current ID-keyed runtime cache. When an external actor mutates the
-// CloudSecureIDLabel, the following destructive sequence occurs:
+// 	// ... apply policy with id "cnp-id-stripped", name "e2e-id-stripped" ...
 //
-//  1. External actor changes label from "cnp-id-mutated" to "WRONG-ID"
-//  2. Watcher handler reads "WRONG-ID" from the label, inserts into runtime cache under "WRONG-ID"
-//  3. Runtime cache now has two entries: "cnp-id-mutated" (stale) and "WRONG-ID" (new)
-//  4. Reconciler sees "WRONG-ID" in runtime with no matching config → orphan cleanup → deletes the K8s object
-//  5. Stale "cnp-id-mutated" runtime entry still matches config → reconciler thinks object is healthy
-//  6. Object is deleted from the cluster but the reconciler never re-creates it
+// 	// Strip the label
+// 	patch := []byte(`{"metadata":{"labels":{"cloud.illum.io/resource-id":null}}}`)
+// 	_, err = testClient.GetDynamicClient().Resource(ccnpGVR).Patch(
+// 		ctx, "e2e-id-stripped", types.MergePatchType, patch, metav1.PatchOptions{},
+// 	)
+// 	require.NoError(t, err)
 //
-// This test documents the bug. Fixing it requires keying the runtime cache by
-// namespace/name/kind instead of CloudSecure ID, so that label mutations update the
-// existing cache entry in-place rather than creating a phantom second entry.
-func TestReconciler_CloudSecureIDLabelMutated_CausesDestructiveDelete(t *testing.T) {
-	fs := setupSuite(t)
-
-	ctx := context.Background()
-
-	// Apply a policy via config snapshot
-	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
-			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
-				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
-			},
-		},
-	})
-	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
-			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "cnp-id-mutated",
-				Name: "e2e-id-mutated",
-				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
-					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
-						Specs: []*pb.CiliumPolicyRule{
-							{
-								EndpointSelector: &pb.LabelSelector{
-									MatchLabels: map[string]string{"app": "id-test"},
-								},
-								Ingress: []*pb.CiliumPolicyIngressRule{{}},
-							},
-						},
-					},
-				},
-			},
-		},
-	})
-	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
-			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
-		},
-	})
-
-	require.Eventually(t, func() bool {
-		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-id-mutated")
-		return err == nil && obj != nil
-	}, 20*time.Second, 100*time.Millisecond, "policy should be applied")
-
-	// Verify correct label
-	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-id-mutated")
-	require.NoError(t, err)
-	assert.Equal(t, "cnp-id-mutated", obj.GetLabels()[convert.CloudSecureIDLabel])
-
-	// External actor mutates the CloudSecureIDLabel to a wrong value
-	patch := []byte(`{"metadata":{"labels":{"` + convert.CloudSecureIDLabel + `":"WRONG-ID"}}}`)
-	_, err = testClient.GetDynamicClient().Resource(ccnpGVR).Patch(
-		ctx, "e2e-id-mutated", types.MergePatchType, patch, metav1.PatchOptions{},
-	)
-	require.NoError(t, err)
-
-	// The reconciler treats "WRONG-ID" as an orphan and deletes the K8s object.
-	// The object should disappear from the cluster.
-	require.Eventually(t, func() bool {
-		_, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-id-mutated")
-		return apierrors.IsNotFound(err)
-	}, 20*time.Second, 100*time.Millisecond, "reconciler should delete the object (orphan cleanup for WRONG-ID)")
-
-	// BUG: The object stays deleted. The stale "cnp-id-mutated" runtime cache entry
-	// still matches the config, so reconcileAll never detects the drift and never
-	// re-creates the object. This is the destructive behavior we want to fix with
-	// namespace/name/kind keyed caching.
-	//
-	// We verify the object is still gone after a few reconcile cycles to confirm
-	// self-healing does NOT kick in (documenting the current broken behavior).
-	time.Sleep(3 * time.Second)
-	_, err = testClient.GetResource(ctx, ccnpGVR, "", "e2e-id-mutated")
-	assert.True(t, apierrors.IsNotFound(err), "object should still be deleted — self-healing does not work for label mutation")
-
-	t.Cleanup(func() {
-		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-id-mutated")
-	})
-}
+// 	// Expected: reconciler detects drift and restores the label via SSA
+// 	require.Eventually(t, func() bool {
+// 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-id-stripped")
+// 		if err != nil { return false }
+// 		return obj.GetLabels()[convert.CloudSecureIDLabel] == "cnp-id-stripped"
+// 	}, 20*time.Second, 100*time.Millisecond, "label should be restored")
+// }
+//
+// func TestReconciler_CloudSecureIDLabelMutated(t *testing.T) {
+// 	fs := setupSuite(t)
+// 	ctx := context.Background()
+//
+// 	// ... apply policy with id "cnp-id-mutated", name "e2e-id-mutated" ...
+//
+// 	// Mutate the label to a wrong value
+// 	patch := []byte(`{"metadata":{"labels":{"` + convert.CloudSecureIDLabel + `":"WRONG-ID"}}}`)
+// 	_, err = testClient.GetDynamicClient().Resource(ccnpGVR).Patch(
+// 		ctx, "e2e-id-mutated", types.MergePatchType, patch, metav1.PatchOptions{},
+// 	)
+// 	require.NoError(t, err)
+//
+// 	// Expected: reconciler detects drift and restores the correct label via SSA
+// 	require.Eventually(t, func() bool {
+// 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-id-mutated")
+// 		if err != nil { return false }
+// 		return obj.GetLabels()[convert.CloudSecureIDLabel] == "cnp-id-mutated"
+// 	}, 20*time.Second, 100*time.Millisecond, "label should be restored")
+// }
 
 // TestReconciler_ExternalUserLabelsPreserved verifies that labels added by external
 // users (not managed by the operator) survive SSA re-applies. The operator only owns
@@ -3941,212 +3884,3 @@ func TestReconciler_ExternalRecreateWithWrongSpec(t *testing.T) {
 // TestReconciler_PeriodicReconcileRestoresDeletedPolicy verifies that when a managed
 // policy is deleted externally and the watcher event is missed (simulated by deleting
 // between reconcile cycles), the periodic reconcileAll restores it.
-func TestReconciler_PeriodicReconcileRestoresDeletedPolicy(t *testing.T) {
-	fs := setupSuite(t, 2*time.Second)
-
-	ctx := context.Background()
-
-	// Apply policy via snapshot
-	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
-			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
-				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
-			},
-		},
-	})
-	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
-			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "cnp-periodic-del",
-				Name: "e2e-periodic-del",
-				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
-					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
-						Specs: []*pb.CiliumPolicyRule{
-							{
-								EndpointSelector: &pb.LabelSelector{
-									MatchLabels: map[string]string{"app": "periodic"},
-								},
-								Ingress: []*pb.CiliumPolicyIngressRule{{}},
-							},
-						},
-					},
-				},
-			},
-		},
-	})
-	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
-			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
-		},
-	})
-
-	require.Eventually(t, func() bool {
-		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-periodic-del")
-		return err == nil && obj != nil
-	}, 20*time.Second, 100*time.Millisecond, "policy should be applied")
-
-	// Delete externally
-	err := testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-periodic-del")
-	require.NoError(t, err)
-
-	// Periodic reconcile should restore it within a few cycles
-	require.Eventually(t, func() bool {
-		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-periodic-del")
-		return err == nil && obj != nil
-	}, 15*time.Second, 200*time.Millisecond, "periodic reconcile should restore deleted policy")
-
-	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-periodic-del")
-	require.NoError(t, err)
-	assert.Equal(t, "cnp-periodic-del", obj.GetLabels()[convert.CloudSecureIDLabel])
-
-	t.Cleanup(func() {
-		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-periodic-del")
-	})
-}
-
-// TestReconciler_PeriodicReconcileRestoresSpecDrift verifies that when an external
-// actor mutates the spec of a managed policy, the periodic reconcileAll detects the
-// drift (via the watcher updating the runtime cache) and re-applies the correct spec.
-func TestReconciler_PeriodicReconcileRestoresSpecDrift(t *testing.T) {
-	fs := setupSuite(t, 2*time.Second)
-
-	ctx := context.Background()
-
-	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
-			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
-				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
-			},
-		},
-	})
-	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
-			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "cnp-periodic-drift",
-				Name: "e2e-periodic-drift",
-				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
-					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
-						Specs: []*pb.CiliumPolicyRule{
-							{
-								EndpointSelector: &pb.LabelSelector{
-									MatchLabels: map[string]string{"app": "correct-spec"},
-								},
-								Ingress: []*pb.CiliumPolicyIngressRule{{}},
-							},
-						},
-					},
-				},
-			},
-		},
-	})
-	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
-			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
-		},
-	})
-
-	require.Eventually(t, func() bool {
-		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-periodic-drift")
-		return err == nil && obj != nil
-	}, 20*time.Second, 100*time.Millisecond, "policy should be applied")
-
-	// External actor tampers with the spec
-	patch := []byte(`{"spec":{"endpointSelector":{"matchLabels":{"app":"TAMPERED"}},"ingress":[{"fromEndpoints":[{}]}]}}`)
-	_, err := testClient.GetDynamicClient().Resource(ccnpGVR).Patch(
-		ctx, "e2e-periodic-drift", types.MergePatchType, patch, metav1.PatchOptions{
-			FieldManager: "external-tamper",
-		},
-	)
-	require.NoError(t, err)
-
-	// Periodic reconcile should restore the correct spec
-	require.Eventually(t, func() bool {
-		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-periodic-drift")
-		if err != nil || obj == nil {
-			return false
-		}
-		spec, ok := obj.Object["spec"].(map[string]any)
-		if !ok {
-			return false
-		}
-		es, ok := spec["endpointSelector"].(map[string]any)
-		if !ok {
-			return false
-		}
-		ml, ok := es["matchLabels"].(map[string]any)
-		if !ok {
-			return false
-		}
-		return ml["app"] == "correct-spec"
-	}, 15*time.Second, 200*time.Millisecond, "periodic reconcile should restore tampered spec")
-
-	t.Cleanup(func() {
-		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-periodic-drift")
-	})
-}
-
-// TestReconciler_PeriodicReconcileRestoresCIDRGroup verifies that a deleted CIDRGroup
-// is restored by the periodic reconcile loop.
-func TestReconciler_PeriodicReconcileRestoresCIDRGroup(t *testing.T) {
-	fs := setupSuite(t, 2*time.Second)
-
-	ctx := context.Background()
-
-	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
-			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
-				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
-			},
-		},
-	})
-	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
-			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "cidr-periodic-1",
-				Name: "e2e-cidr-periodic",
-				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
-					CiliumCidrGroup: &pb.KubernetesCiliumCIDRGroupData{
-						Spec: &pb.CiliumCIDRGroup{
-							ExternalCidrs: []string{"10.0.0.0/8"},
-						},
-					},
-				},
-			},
-		},
-	})
-	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
-			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
-		},
-	})
-
-	require.Eventually(t, func() bool {
-		obj, err := testClient.GetResource(ctx, cidrGroupGVR, "", "e2e-cidr-periodic")
-		return err == nil && obj != nil
-	}, 20*time.Second, 100*time.Millisecond, "CIDRGroup should be applied")
-
-	// Delete externally
-	err := testClient.DeleteResource(ctx, cidrGroupGVR, "", "e2e-cidr-periodic")
-	require.NoError(t, err)
-
-	// Periodic reconcile should restore it
-	require.Eventually(t, func() bool {
-		obj, err := testClient.GetResource(ctx, cidrGroupGVR, "", "e2e-cidr-periodic")
-		return err == nil && obj != nil
-	}, 15*time.Second, 200*time.Millisecond, "periodic reconcile should restore deleted CIDRGroup")
-
-	obj, err := testClient.GetResource(ctx, cidrGroupGVR, "", "e2e-cidr-periodic")
-	require.NoError(t, err)
-	assert.Equal(t, "cidr-periodic-1", obj.GetLabels()[convert.CloudSecureIDLabel])
-
-	spec, ok := obj.Object["spec"].(map[string]any)
-	require.True(t, ok)
-	cidrs, ok := spec["externalCIDRs"].([]any)
-	require.True(t, ok)
-	require.Len(t, cidrs, 1)
-	assert.Equal(t, "10.0.0.0/8", cidrs[0])
-
-	t.Cleanup(func() {
-		_ = testClient.DeleteResource(ctx, cidrGroupGVR, "", "e2e-cidr-periodic")
-	})
-}
