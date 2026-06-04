@@ -34,15 +34,15 @@ type ResourceConverter func(ctx context.Context, obj *unstructured.Unstructured)
 
 // RuntimeCacheHandler processes a K8s object for runtime cache population.
 // Called by the watcher after converting the K8s object to proto. The handler
-// is responsible for filtering (e.g. checking operator-managed labels) and
-// updating the runtime cache.
+// is responsible for ownership filtering (via managedFields on the raw object)
+// and updating the runtime cache.
 //
 // For watch events, eventType is Added/Modified/Deleted and the handler
 // inserts or deletes from the runtime cache directly.
 //
 // For list operations, eventType is empty — the handler accumulates the object
 // for a later bulk ReplaceAll without modifying the cache directly.
-type RuntimeCacheHandler func(ctx context.Context, eventType watch.EventType, metadata *pb.KubernetesObjectData) error
+type RuntimeCacheHandler func(ctx context.Context, eventType watch.EventType, obj *unstructured.Unstructured, metadata *pb.KubernetesObjectData) error
 
 // MutationCheckpointInterval is the interval for logging mutation checkpoint messages.
 const MutationCheckpointInterval = 60 * time.Second
@@ -165,7 +165,7 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 		}
 
 		if r.runtimeCacheHandler != nil {
-			if err := r.runtimeCacheHandler(ctx, "", metadataObj); err != nil {
+			if err := r.runtimeCacheHandler(ctx, "", item, metadataObj); err != nil {
 				r.logger.Warn("Runtime cache handler error during list event", zap.Error(err))
 			}
 		}
@@ -346,13 +346,13 @@ func (r *Watcher) handleWatchEvent(
 	case watch.Added, watch.Modified, watch.Deleted:
 		logger.Debug("Received mutation from watcher", zap.String("type", string(event.Type)))
 
-		resourceVersion, metadataObj, err := r.processMutation(ctx, event, mutationChan)
+		resourceVersion, unstructuredObj, metadataObj, err := r.processMutation(ctx, event, mutationChan)
 		if err != nil {
 			return "", false, err
 		}
 
 		if r.runtimeCacheHandler != nil {
-			if err := r.runtimeCacheHandler(ctx, event.Type, metadataObj); err != nil {
+			if err := r.runtimeCacheHandler(ctx, event.Type, unstructuredObj, metadataObj); err != nil {
 				r.logger.Warn("Runtime cache handler error during watch event", zap.Error(err))
 			}
 		}
@@ -399,28 +399,28 @@ func getResourceVersionFromBookmark(event watch.Event) (string, error) {
 	return resourceVersion, nil
 }
 
-func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation) (string, *pb.KubernetesObjectData, error) {
+func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutationChan chan *pb.KubernetesResourceMutation) (string, *unstructured.Unstructured, *pb.KubernetesObjectData, error) {
 	if event.Object == nil {
-		return "", nil, errors.New("event object is nil")
+		return "", nil, nil, errors.New("event object is nil")
 	}
 
 	unstructuredObj, ok := event.Object.(*unstructured.Unstructured)
 	if !ok {
-		return "", nil, fmt.Errorf("expected *unstructured.Unstructured, got %T", event.Object)
+		return "", nil, nil, fmt.Errorf("expected *unstructured.Unstructured, got %T", event.Object)
 	}
 
 	metadataObj, err := r.converter(ctx, unstructuredObj)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to convert %s %s/%s: %w", unstructuredObj.GetKind(), unstructuredObj.GetNamespace(), unstructuredObj.GetName(), err)
+		return "", nil, nil, fmt.Errorf("failed to convert %s %s/%s: %w", unstructuredObj.GetKind(), unstructuredObj.GetNamespace(), unstructuredObj.GetName(), err)
 	}
 
 	mutation := r.resourcesClient.CreateMutationObject(metadataObj, event.Type)
 
 	select {
 	case <-ctx.Done():
-		return "", nil, ctx.Err()
+		return "", nil, nil, ctx.Err()
 	case mutationChan <- mutation:
 	}
 
-	return metadataObj.GetResourceVersion(), metadataObj, nil
+	return metadataObj.GetResourceVersion(), unstructuredObj, metadataObj, nil
 }

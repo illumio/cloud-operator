@@ -26,6 +26,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 	"github.com/illumio/cloud-operator/internal/controller/stream/resources"
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 // mockClient implements k8sclient.Client for testing.
@@ -194,17 +195,27 @@ func newTestReconciler(t *testing.T, configObjects, runtimeObjects map[string]*p
 }
 
 func TestReconcileObject_SkipsApplyWhenMatching(t *testing.T) {
-	obj := &pb.ConfiguredKubernetesObjectData{
+	configObj := &pb.ConfiguredKubernetesObjectData{
 		Id:   "policy-1",
 		Name: "allow-web",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
 	}
+	// Runtime object includes CloudSecureIDLabel because apply sets it on the K8s object
+	// and BuildConfiguredFromMetadata preserves all labels into the runtime cache.
+	runtimeObj := &pb.ConfiguredKubernetesObjectData{
+		Id:     "policy-1",
+		Name:   "allow-web",
+		Labels: map[string]string{convert.CloudSecureIDLabel: "policy-1"},
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
+		},
+	}
 
 	r, client := newTestReconciler(t,
-		map[string]*pb.ConfiguredKubernetesObjectData{"policy-1": obj},
-		map[string]*pb.ConfiguredKubernetesObjectData{"policy-1": obj},
+		map[string]*pb.ConfiguredKubernetesObjectData{"policy-1": configObj},
+		map[string]*pb.ConfiguredKubernetesObjectData{"policy-1": runtimeObj},
 	)
 
 	err := r.reconcileObject(context.Background(), "policy-1")
@@ -288,9 +299,18 @@ func TestReconcileObject_DeletesOrphanedRuntimeObject(t *testing.T) {
 }
 
 func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
-	unchanged := &pb.ConfiguredKubernetesObjectData{
+	unchangedConfig := &pb.ConfiguredKubernetesObjectData{
 		Id:   "policy-1",
 		Name: "unchanged",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
+		},
+	}
+	// Runtime includes CloudSecureIDLabel (set during apply, preserved by BuildConfiguredFromMetadata)
+	unchangedRuntime := &pb.ConfiguredKubernetesObjectData{
+		Id:     "policy-1",
+		Name:   "unchanged",
+		Labels: map[string]string{convert.CloudSecureIDLabel: "policy-1"},
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
@@ -304,8 +324,9 @@ func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
 		},
 	}
 	changedRuntime := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-2",
-		Name: "changed",
+		Id:     "policy-2",
+		Name:   "changed",
+		Labels: map[string]string{convert.CloudSecureIDLabel: "policy-2"},
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
@@ -313,11 +334,11 @@ func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
 
 	r, client := newTestReconciler(t,
 		map[string]*pb.ConfiguredKubernetesObjectData{
-			"policy-1": unchanged,
+			"policy-1": unchangedConfig,
 			"policy-2": changed,
 		},
 		map[string]*pb.ConfiguredKubernetesObjectData{
-			"policy-1": unchanged,
+			"policy-1": unchangedRuntime,
 			"policy-2": changedRuntime,
 		},
 	)
