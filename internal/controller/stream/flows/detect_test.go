@@ -111,7 +111,7 @@ func TestFlowCollectorAdapter_SendKeepalive(t *testing.T) {
 
 	err := adapter.SendKeepalive(context.Background())
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestFlowCollectorAdapter_Close(t *testing.T) {
@@ -119,7 +119,7 @@ func TestFlowCollectorAdapter_Close(t *testing.T) {
 
 	err := adapter.Close()
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestCollectorFactoryFunc(t *testing.T) {

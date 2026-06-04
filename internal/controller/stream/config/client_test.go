@@ -112,8 +112,14 @@ func (s *ConfigClientTestSuite) runClient(ctx context.Context) <-chan error {
 
 // populateCache runs ReplaceAll in a goroutine and reads from ResourceChanged
 // to unblock the send, simulating pre-existing cache state from a previous stream.
-func (s *ConfigClientTestSuite) populateCache(objects map[string]*pb.ConfiguredKubernetesObjectData) {
-	go s.cache.ReplaceAll(objects)
+func (s *ConfigClientTestSuite) populateCache(ctx context.Context, objects map[string]*pb.ConfiguredKubernetesObjectData) {
+	s.T().Helper()
+
+	go func() {
+		err := s.cache.ReplaceAll(ctx, objects)
+
+		s.NoError(err)
+	}()
 
 	<-s.cache.ResourceChanged()
 }
@@ -270,8 +276,10 @@ func (s *ConfigClientTestSuite) TestRun_FirstSnapshotFails_CacheStaysEmpty() {
 }
 
 func (s *ConfigClientTestSuite) TestRun_ReconnectionFails_CacheKeepsOldData() {
+	ctx := context.Background()
+
 	// Pre-populate cache with "old" data (simulating previous successful snapshot)
-	s.populateCache(map[string]*pb.ConfiguredKubernetesObjectData{
+	s.populateCache(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
 		"old-policy": {Id: "old-policy", Name: "old-data"},
 	})
 
@@ -288,7 +296,7 @@ func (s *ConfigClientTestSuite) TestRun_ReconnectionFails_CacheKeepsOldData() {
 	s.mockStream.On("Recv").Return(resourceDataResp, nil).Once()
 	s.mockStream.On("Recv").Return(nil, errors.New("connection lost")).Once()
 
-	err := <-s.runClient(context.Background())
+	err := <-s.runClient(ctx)
 
 	s.Require().Error(err)
 	s.Equal(1, s.client.cache.Len())           // Still has old data count
@@ -298,8 +306,10 @@ func (s *ConfigClientTestSuite) TestRun_ReconnectionFails_CacheKeepsOldData() {
 }
 
 func (s *ConfigClientTestSuite) TestRun_ReconnectionAcceptsNewSnapshot() {
+	ctx := context.Background()
+
 	// Simulate first successful snapshot
-	s.populateCache(map[string]*pb.ConfiguredKubernetesObjectData{
+	s.populateCache(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
 		"old-policy": {Id: "old-policy", Name: "old-data"},
 	})
 	s.True(isReady(s.client.cache)) // Cache is ready from "previous" stream

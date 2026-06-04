@@ -142,7 +142,10 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 	// Populate the runtime cache with all operator-managed resources discovered during the initial list
 	if c.runtimeCache != nil {
-		c.runtimeCache.ReplaceAll(pendingSnapshot)
+		err := c.runtimeCache.ReplaceAll(ctx, pendingSnapshot)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = c.sendResourceSnapshotComplete()
@@ -305,7 +308,7 @@ func (c *resourcesClient) CreateMutationObject(metadata *pb.KubernetesObjectData
 // For list operations (eventType is empty), the handler accumulates the configured object
 // into pendingSnapshot for later ReplaceAll — the cache is not modified directly.
 func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.ConfiguredKubernetesObjectData) RuntimeCacheHandler {
-	return func(eventType watch.EventType, metadata *pb.KubernetesObjectData) error {
+	return func(ctx context.Context, eventType watch.EventType, metadata *pb.KubernetesObjectData) error {
 		labels := metadata.GetLabels()
 		if labels[convert.ManagedByLabel] != convert.ManagedByValue {
 			return nil
@@ -327,9 +330,15 @@ func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.
 			//nolint:exhaustive // only mutation events reach the handler; Bookmark/Error are handled by the watcher
 			switch eventType {
 			case watch.Added, watch.Modified:
-				c.runtimeCache.Insert(configured.GetId(), configured)
+				err := c.runtimeCache.Insert(ctx, configured.GetId(), configured)
+				if err != nil {
+					return fmt.Errorf("failed to insert resource into runtime cache (id=%s): %w", configured.GetId(), err)
+				}
 			case watch.Deleted:
-				c.runtimeCache.Delete(configured.GetId())
+				err := c.runtimeCache.Delete(ctx, configured.GetId())
+				if err != nil {
+					return fmt.Errorf("failed to delete resource from runtime cache (id=%s): %w", configured.GetId(), err)
+				}
 			}
 		}
 
