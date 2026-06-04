@@ -135,7 +135,7 @@ func setupSuite(t *testing.T, reconcileInterval ...time.Duration) *fakeserver.Fa
 		Logger:       zap.NewNop(),
 		K8sClient:    testClient,
 		Stats:        stream.NewStats(),
-		RuntimeCache: runtimeCache,
+		Cache: runtimeCache,
 	}
 	resourcesClient, err := resourcesFactory.NewStreamClient(ctx, conn)
 	require.NoError(t, err)
