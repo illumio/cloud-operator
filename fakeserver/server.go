@@ -302,14 +302,9 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 	}
 }
 
-// SendConfigResponse sends a configuration response to the connected config stream client.
-func (fs *FakeServer) SendConfigResponse(resp *pb.GetConfigurationUpdatesResponse) {
-	fs.ConfigResponses <- resp
-}
-
 // DisconnectConfigStream closes the current config responses channel, causing the
 // active GetConfigurationUpdates stream to end (client sees EOF). A new channel is
-// created so subsequent SendConfigResponse calls work for the next connected client.
+// created so subsequent sends to ConfigResponses work for the next connected client.
 func (fs *FakeServer) DisconnectConfigStream() {
 	close(fs.ConfigResponses)
 	fs.ConfigResponses = make(chan *pb.GetConfigurationUpdatesResponse, 10)
