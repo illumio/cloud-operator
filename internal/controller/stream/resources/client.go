@@ -43,7 +43,6 @@ type resourcesClient struct {
 	flowCollector pb.FlowCollector
 	clusterName   string // Optional: cluster name for self-managed clusters
 	runtimeCache  *cache.ConfiguredObjectCache
-	configCache   *cache.ConfiguredObjectCache
 
 	mutex  sync.RWMutex
 	closed bool
@@ -317,19 +316,8 @@ func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.
 			return nil
 		}
 
-		// Try config cache first — handles label stripping/mutation.
-		id := c.lookupIDFromConfigCache(metadata)
-
-		// Fall back to the tracking label on the K8s object. This covers the race
-		// where a config delete is processed before the watcher delivers the
-		// corresponding K8s event — the config entry is gone but the label is still
-		// on the object.
+		id := metadata.GetLabels()[convert.CloudSecureIDLabel]
 		if id == "" {
-			id = metadata.GetLabels()[convert.CloudSecureIDLabel]
-		}
-
-		if id == "" {
-			// Skip this item
 			return nil
 		}
 
@@ -358,29 +346,6 @@ func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.
 
 		return nil
 	}
-}
-
-// lookupIDFromConfigCache finds the CloudSecure ID for a K8s object by matching
-// name, namespace, and kind against the config cache.
-func (c *resourcesClient) lookupIDFromConfigCache(metadata *pb.KubernetesObjectData) string {
-	if c.configCache == nil {
-		return ""
-	}
-
-	for _, obj := range c.configCache.Values() {
-		kind, err := convert.ExtractKind(obj)
-		if err != nil {
-			continue
-		}
-
-		if obj.GetName() == metadata.GetName() &&
-			obj.GetNamespace() == metadata.GetNamespace() &&
-			kind == metadata.GetKind() {
-			return obj.GetId()
-		}
-	}
-
-	return ""
 }
 
 // hasFieldManager reports whether the object's managedFields includes the given manager.

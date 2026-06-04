@@ -25,7 +25,6 @@ type Factory struct {
 	FlowCollectorType pb.FlowCollector
 	ClusterName       string // Optional: cluster name for self-managed clusters
 	RuntimeCache      *cache.ConfiguredObjectCache
-	ConfigCache       *cache.ConfiguredObjectCache // for reverse ID lookup when CloudSecureIDLabel is stripped
 }
 
 // NewStreamClient creates a new resources stream client.
@@ -47,7 +46,6 @@ func (f *Factory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnI
 		flowCollector: f.FlowCollectorType,
 		clusterName:   f.ClusterName,
 		runtimeCache:  f.RuntimeCache,
-		configCache:   f.ConfigCache,
 	}, nil
 }
 

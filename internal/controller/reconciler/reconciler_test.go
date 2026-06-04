@@ -149,18 +149,16 @@ func TestReconcile_EmptyCaches(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// populateCache fills a cache and drains its notifications synchronously.
-// Get/Values/Len still work after Close — only ResourceChanged becomes unusable.
+// populateCache fills a cache and drains its notifications in the background.
+// The cache remains open so that subsequent operations (e.g. Delete) can still
+// send notifications without panicking on a closed channel.
 func populateCache(t *testing.T, c *cache.ConfiguredObjectCache, objects map[string]*pb.ConfiguredKubernetesObjectData) {
 	t.Helper()
 
-	done := make(chan struct{})
-
+	// Start draining before ReplaceAll so the notification channel doesn't block.
 	go func() {
 		for range c.ResourceChanged() {
 		}
-
-		close(done)
 	}()
 
 	if objects != nil {
@@ -169,8 +167,9 @@ func populateCache(t *testing.T, c *cache.ConfiguredObjectCache, objects map[str
 		require.NoError(t, err)
 	}
 
-	c.Close()
-	<-done
+	t.Cleanup(func() {
+		c.Close()
+	})
 }
 
 // newTestReconciler creates a reconciler with pre-populated caches for testing.

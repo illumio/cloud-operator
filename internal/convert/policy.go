@@ -35,20 +35,6 @@ var protoJSONMarshaler = protojson.MarshalOptions{
 	EmitUnpopulated: false,
 }
 
-// ExtractKind returns the K8s Kind (PascalCase) for the given configured object.
-func ExtractKind(data *pb.ConfiguredKubernetesObjectData) (string, error) {
-	switch data.GetKindSpecific().(type) {
-	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
-		return "CiliumNetworkPolicy", nil
-	case *pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy:
-		return "CiliumClusterwideNetworkPolicy", nil
-	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
-		return "CiliumCIDRGroup", nil
-	default:
-		return "", fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
-	}
-}
-
 // ExtractResourceName returns the plural resource name for the given configured object's kind.
 func ExtractResourceName(data *pb.ConfiguredKubernetesObjectData) (string, error) {
 	switch data.GetKindSpecific().(type) {

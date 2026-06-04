@@ -291,7 +291,6 @@ func main() {
 					FlowCollectorType: flowCollectorType,
 					ClusterName:       envConfig.ClusterName,
 					RuntimeCache:      runtimeCache,
-					ConfigCache:       configuredObjectCache,
 				},
 				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
 			},
