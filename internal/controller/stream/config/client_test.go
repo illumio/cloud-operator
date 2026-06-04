@@ -456,8 +456,8 @@ func (s *ConfigClientTestSuite) TestRun_MutationBeforeSnapshotComplete() {
 	mutationResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
-					CreateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "policy-early",
 						Name: "early-policy",
 					},
@@ -478,7 +478,7 @@ func (s *ConfigClientTestSuite) TestRun_MutationBeforeSnapshotComplete() {
 	s.Nil(s.client.cache.Get("policy-early"))
 }
 
-func (s *ConfigClientTestSuite) TestRun_MutationCreate() {
+func (s *ConfigClientTestSuite) TestRun_MutationCreateOrUpdate() {
 	// First complete the snapshot
 	snapshotCompleteResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
@@ -488,8 +488,8 @@ func (s *ConfigClientTestSuite) TestRun_MutationCreate() {
 	createMutationResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
-					CreateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "policy-new",
 						Name: "new-policy",
 					},
@@ -510,53 +510,6 @@ func (s *ConfigClientTestSuite) TestRun_MutationCreate() {
 	obj := s.client.cache.Get("policy-new")
 	s.NotNil(obj)
 	s.Equal("new-policy", obj.GetName())
-
-	// Stats should be incremented
-	_, _, _, configuredObjectMutations := s.stats.GetAndResetStats()
-	s.Equal(uint64(1), configuredObjectMutations)
-}
-
-func (s *ConfigClientTestSuite) TestRun_MutationUpdate() {
-	// Add initial object during snapshot
-	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
-			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "policy-1",
-				Name: "original-name",
-			},
-		},
-	}
-	snapshotCompleteResp := &pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
-			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
-		},
-	}
-	updateMutationResp := &pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
-			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
-					UpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:   "policy-1",
-						Name: "updated-name",
-					},
-				},
-			},
-		},
-	}
-
-	s.mockStream.On("Recv").Return(resourceDataResp, nil).Once()
-	s.mockStream.On("Recv").Return(snapshotCompleteResp, nil).Once()
-	s.mockStream.On("Recv").Return(updateMutationResp, nil).Once()
-	s.mockStream.On("Recv").Return(nil, io.EOF).Once()
-
-	err := <-s.runClient(context.Background())
-
-	s.Require().NoError(err)
-	s.mockStream.AssertExpectations(s.T())
-
-	obj := s.client.cache.Get("policy-1")
-	s.NotNil(obj)
-	s.Equal("updated-name", obj.GetName())
 
 	// Stats should be incremented
 	_, _, _, configuredObjectMutations := s.stats.GetAndResetStats()
@@ -629,8 +582,8 @@ func (s *ConfigClientTestSuite) TestRun_FullSnapshotThenMutationsFlow() {
 	createMutation := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
-					CreateObject: &pb.ConfiguredKubernetesObjectData{Id: "p3", Name: "policy-3"},
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{Id: "p3", Name: "policy-3"},
 				},
 			},
 		},
@@ -638,8 +591,8 @@ func (s *ConfigClientTestSuite) TestRun_FullSnapshotThenMutationsFlow() {
 	updateMutation := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
-					UpdateObject: &pb.ConfiguredKubernetesObjectData{Id: "p1", Name: "policy-1-updated"},
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{Id: "p1", Name: "policy-1-updated"},
 				},
 			},
 		},
@@ -827,8 +780,8 @@ func (s *ConfigClientTestSuite) TestRun_UpdateConfigurationDuringMutationPhase()
 	createMutationResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
-					CreateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "policy-1",
 						Name: "test-policy",
 					},
