@@ -54,7 +54,7 @@ func TestReconciler_BulkPopulatedSnapshot(t *testing.T) {
 	ctx := context.Background()
 	boolTrue := true
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
@@ -63,7 +63,7 @@ func TestReconciler_BulkPopulatedSnapshot(t *testing.T) {
 	})
 
 	// First policy: detailed spec with enableDefaultDeny and custom labels
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cnp-e2e-1",
@@ -92,7 +92,7 @@ func TestReconciler_BulkPopulatedSnapshot(t *testing.T) {
 	// 5 more simple policies in the same snapshot
 	bulkNames := []string{"bulk-1", "bulk-2", "bulk-3", "bulk-4", "bulk-5"}
 	for _, name := range bulkNames {
-		fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 				ResourceData: &pb.ConfiguredKubernetesObjectData{
 					Id:   "bulk-" + name,
@@ -114,7 +114,7 @@ func TestReconciler_BulkPopulatedSnapshot(t *testing.T) {
 		})
 	}
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -176,14 +176,14 @@ func TestReconciler_EmptySnapshotThenMutation(t *testing.T) {
 	ctx := context.Background()
 
 	// Send config + empty snapshot (no policies)
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -197,7 +197,7 @@ func TestReconciler_EmptySnapshotThenMutation(t *testing.T) {
 	require.Error(t, err, "no policy should exist yet")
 
 	// Now send a create mutation
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
@@ -246,14 +246,14 @@ func TestReconciler_MutationDelete(t *testing.T) {
 	ctx := context.Background()
 
 	// Send snapshot with one policy
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cnp-e2e-3",
@@ -274,7 +274,7 @@ func TestReconciler_MutationDelete(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -287,7 +287,7 @@ func TestReconciler_MutationDelete(t *testing.T) {
 	}, 20*time.Second, 100*time.Millisecond, "policy should be applied before delete")
 
 	// Send delete mutation
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
@@ -312,14 +312,14 @@ func TestReconciler_SSAFieldManagerOwnership(t *testing.T) {
 	ctx := context.Background()
 
 	// Push config + policy + snapshot complete through the gRPC stream
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cnp-ssa",
@@ -340,7 +340,7 @@ func TestReconciler_SSAFieldManagerOwnership(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -383,14 +383,14 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 	ctx := context.Background()
 
 	// Start with empty snapshot
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -399,7 +399,7 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Mutation 1: create policy A
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
@@ -426,7 +426,7 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 	})
 
 	// Mutation 2: create policy B
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
@@ -460,7 +460,7 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 	}, 20*time.Second, 100*time.Millisecond, "both policies should be applied")
 
 	// Mutation 3: update policy A with new endpoint selector
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
@@ -487,7 +487,7 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 	})
 
 	// Mutation 4: delete policy B
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
@@ -545,14 +545,14 @@ func TestReconciler_UpdateChangesSpec(t *testing.T) {
 	boolTrue := true
 
 	// Snapshot: create policy with enableDefaultDeny.Ingress = true, endpoint selector app=web
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cnp-update-spec",
@@ -577,7 +577,7 @@ func TestReconciler_UpdateChangesSpec(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -605,7 +605,7 @@ func TestReconciler_UpdateChangesSpec(t *testing.T) {
 
 	// Update mutation: change endpoint selector, labels, and switch from ingress deny to egress deny
 	boolEgress := true
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
@@ -673,14 +673,14 @@ func TestReconciler_DeleteOnlyRemovesTargetPolicy(t *testing.T) {
 	ctx := context.Background()
 
 	// Snapshot: two policies
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cnp-del-keep",
@@ -701,7 +701,7 @@ func TestReconciler_DeleteOnlyRemovesTargetPolicy(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cnp-del-remove",
@@ -722,7 +722,7 @@ func TestReconciler_DeleteOnlyRemovesTargetPolicy(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -736,7 +736,7 @@ func TestReconciler_DeleteOnlyRemovesTargetPolicy(t *testing.T) {
 	}, 20*time.Second, 100*time.Millisecond, "both policies should exist after snapshot")
 
 	// Delete only the "remove" policy
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
@@ -781,14 +781,14 @@ func TestReconciler_UpdatePreservesMetadata(t *testing.T) {
 	ctx := context.Background()
 
 	// Create initial policy with labels
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cnp-meta-preserve",
@@ -810,7 +810,7 @@ func TestReconciler_UpdatePreservesMetadata(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -822,7 +822,7 @@ func TestReconciler_UpdatePreservesMetadata(t *testing.T) {
 	}, 20*time.Second, 100*time.Millisecond, "initial policy should be applied")
 
 	// Update via mutation: change spec and labels
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
@@ -887,14 +887,14 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 	ctx := context.Background()
 
 	// Start with empty snapshot
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -903,7 +903,7 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Create a CIDRGroup via mutation
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
@@ -945,7 +945,7 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 	assert.Equal(t, "10.0.0.0/8", cidrs[0])
 
 	// Update: add more CIDRs
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
@@ -990,7 +990,7 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 	assert.Equal(t, "cidr-mut-1", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	// Delete the CIDRGroup
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
@@ -1023,14 +1023,14 @@ func TestReconciler_CiliumExample_ClusterscopePolicy(t *testing.T) {
 
 	ctx := context.Background()
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "ccnp-clusterscope",
@@ -1059,7 +1059,7 @@ func TestReconciler_CiliumExample_ClusterscopePolicy(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -1094,14 +1094,14 @@ func TestReconciler_CiliumExample_ServiceAccountPolicy(t *testing.T) {
 	ctx := context.Background()
 	tcpProto := "TCP"
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "ccnp-svc-account",
@@ -1140,7 +1140,7 @@ func TestReconciler_CiliumExample_ServiceAccountPolicy(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -1173,14 +1173,14 @@ func TestReconciler_CiliumExample_CrossNamespace(t *testing.T) {
 
 	ctx := context.Background()
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "ccnp-cross-ns",
@@ -1211,7 +1211,7 @@ func TestReconciler_CiliumExample_CrossNamespace(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -1245,14 +1245,14 @@ func TestReconciler_CiliumExample_AllowToKubeDNS(t *testing.T) {
 	ctx := context.Background()
 	udpProto := "UDP"
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "ccnp-kubedns",
@@ -1290,7 +1290,7 @@ func TestReconciler_CiliumExample_AllowToKubeDNS(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -1323,14 +1323,14 @@ func TestReconciler_CiliumExample_WildcardFromEndpoints(t *testing.T) {
 	ctx := context.Background()
 	udpProto := "UDP"
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "ccnp-wildcard",
@@ -1369,7 +1369,7 @@ func TestReconciler_CiliumExample_WildcardFromEndpoints(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -1401,14 +1401,14 @@ func TestReconciler_CiliumExample_ExternalLockdown(t *testing.T) {
 
 	ctx := context.Background()
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "ccnp-ext-lockdown",
@@ -1437,7 +1437,7 @@ func TestReconciler_CiliumExample_ExternalLockdown(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -1470,14 +1470,14 @@ func TestReconciler_CiliumExample_Init(t *testing.T) {
 	ctx := context.Background()
 	udpProto := "UDP"
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "ccnp-init",
@@ -1513,7 +1513,7 @@ func TestReconciler_CiliumExample_Init(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -1550,14 +1550,14 @@ func TestReconciler_CiliumExample_DemoHostPolicy(t *testing.T) {
 	tcpProto := "TCP"
 	ipv4Family := "IPv4"
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "ccnp-demo-host",
@@ -1600,7 +1600,7 @@ func TestReconciler_CiliumExample_DemoHostPolicy(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -1633,14 +1633,14 @@ func TestReconciler_CiliumExample_NamespaceLabelsPolicy(t *testing.T) {
 	ctx := context.Background()
 	ns := "default"
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:        "cnp-ns-labels",
@@ -1682,7 +1682,7 @@ func TestReconciler_CiliumExample_NamespaceLabelsPolicy(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -1717,14 +1717,14 @@ func TestReconciler_CiliumExample_ICMPRule(t *testing.T) {
 	ipv4Family := "IPv4"
 	ipv6Family := "IPv6"
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:        "cnp-icmp",
@@ -1756,7 +1756,7 @@ func TestReconciler_CiliumExample_ICMPRule(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -1790,14 +1790,14 @@ func TestReconciler_CiliumExample_CIDRRule(t *testing.T) {
 	ns := "default"
 	cidr := "10.0.0.0/8"
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:        "cnp-cidr",
@@ -1830,7 +1830,7 @@ func TestReconciler_CiliumExample_CIDRRule(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -1863,14 +1863,14 @@ func TestReconciler_CiliumExample_MatchExpressionsAND(t *testing.T) {
 	ctx := context.Background()
 	ns := "default"
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:        "cnp-match-and",
@@ -1912,7 +1912,7 @@ func TestReconciler_CiliumExample_MatchExpressionsAND(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -1947,14 +1947,14 @@ func TestReconciler_ExternalAnnotationsSurviveReApply(t *testing.T) {
 	ctx := context.Background()
 
 	// Step 1: Apply initial policy with operator-owned annotation
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:          "cnp-ext-ann",
@@ -1975,7 +1975,7 @@ func TestReconciler_ExternalAnnotationsSurviveReApply(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -2002,7 +2002,7 @@ func TestReconciler_ExternalAnnotationsSurviveReApply(t *testing.T) {
 	assert.Equal(t, "cnp-ext-ann", obj.GetLabels()[convert.CloudSecureIDLabel])
 
 	// Step 3: Reconciler re-applies via update mutation (spec change triggers SSA apply)
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
@@ -2071,14 +2071,14 @@ func TestReconciler_ExternalAnnotationDeletedByOperator(t *testing.T) {
 	ctx := context.Background()
 
 	// Step 1: Apply policy with two operator annotations
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:          "cnp-ann-del",
@@ -2099,7 +2099,7 @@ func TestReconciler_ExternalAnnotationDeletedByOperator(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -2126,7 +2126,7 @@ func TestReconciler_ExternalAnnotationDeletedByOperator(t *testing.T) {
 
 	// Step 3: Operator re-applies with "remove-me" annotation dropped and annotations nil
 	// (omitting annotations entirely releases SSA ownership)
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
@@ -2230,7 +2230,7 @@ func TestReconciler_SnapshotReplacementBulkDelete(t *testing.T) {
 	fs := h.Server
 
 	// First snapshot: A, B, C
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
@@ -2238,7 +2238,7 @@ func TestReconciler_SnapshotReplacementBulkDelete(t *testing.T) {
 		},
 	})
 	for _, name := range []string{"snap-a", "snap-b", "snap-c"} {
-		fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 				ResourceData: &pb.ConfiguredKubernetesObjectData{
 					Id:   "snap-" + name,
@@ -2259,7 +2259,7 @@ func TestReconciler_SnapshotReplacementBulkDelete(t *testing.T) {
 			},
 		})
 	}
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -2286,14 +2286,14 @@ func TestReconciler_SnapshotReplacementBulkDelete(t *testing.T) {
 	go newConfigClient.Run(ctx)
 
 	// Second snapshot (after reconnection): only A
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "snap-snap-a",
@@ -2313,7 +2313,7 @@ func TestReconciler_SnapshotReplacementBulkDelete(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -2349,14 +2349,14 @@ func TestReconciler_IdempotentReApply(t *testing.T) {
 	ctx := context.Background()
 
 	// Start with empty snapshot
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -2383,7 +2383,7 @@ func TestReconciler_IdempotentReApply(t *testing.T) {
 
 	// Send same create mutation twice
 	for range 2 {
-		fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 				ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 					Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
@@ -2424,7 +2424,7 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 	ctx := context.Background()
 	ns := "default"
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
@@ -2433,7 +2433,7 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 	})
 
 	// CCNP — same policy as TestReconciler_CiliumExample_ClusterscopePolicy (luke→leia)
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "mixed-ccnp",
@@ -2464,7 +2464,7 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 	})
 
 	// CNP — same policy as TestReconciler_CiliumExample_NamespaceLabelsPolicy
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:        "mixed-cnp",
@@ -2508,7 +2508,7 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 	})
 
 	// CIDRGroup — same structure as TestReconciler_CIDRGroupMutationCreateUpdateDelete
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "mixed-cidr",
@@ -2524,7 +2524,7 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 		},
 	})
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -2572,7 +2572,7 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 	// --- Mixed mutations: update CCNP, delete CNP, update CIDRGroup ---
 
 	// Update CCNP: change endpoint selector from leia to han
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
@@ -2606,7 +2606,7 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 	})
 
 	// Delete CNP
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
@@ -2619,7 +2619,7 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 	})
 
 	// Update CIDRGroup: add another CIDR
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
@@ -2710,14 +2710,14 @@ func TestReconciler_DeleteNonExistent(t *testing.T) {
 	ctx := context.Background()
 
 	// Start with empty snapshot
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -2726,7 +2726,7 @@ func TestReconciler_DeleteNonExistent(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Delete an object that was never created
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
@@ -2742,7 +2742,7 @@ func TestReconciler_DeleteNonExistent(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Send a create mutation after to verify the pipeline is still healthy
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
@@ -2832,14 +2832,14 @@ func TestReconciler_PoliciesPersistAfterOperatorShutdown(t *testing.T) {
 
 	// Apply two policies
 	ns := "default"
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "persist-ccnp",
@@ -2867,7 +2867,7 @@ func TestReconciler_PoliciesPersistAfterOperatorShutdown(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:        "persist-cnp",
@@ -2888,7 +2888,7 @@ func TestReconciler_PoliciesPersistAfterOperatorShutdown(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -2979,7 +2979,7 @@ func TestReconciler_EmptySnapshotDeletesAll(t *testing.T) {
 	fs := h.Server
 
 	// First snapshot: two policies
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
@@ -2987,7 +2987,7 @@ func TestReconciler_EmptySnapshotDeletesAll(t *testing.T) {
 		},
 	})
 	for _, name := range []string{"empty-snap-a", "empty-snap-b"} {
-		fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 				ResourceData: &pb.ConfiguredKubernetesObjectData{
 					Id:   "es-" + name,
@@ -3008,7 +3008,7 @@ func TestReconciler_EmptySnapshotDeletesAll(t *testing.T) {
 			},
 		})
 	}
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -3033,14 +3033,14 @@ func TestReconciler_EmptySnapshotDeletesAll(t *testing.T) {
 	go newConfigClient.Run(ctx)
 
 	// Second snapshot: empty (no ResourceData, just snapshot complete)
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -3068,14 +3068,14 @@ func TestReconciler_ExternalAnnotationInsertedMidLifecycle(t *testing.T) {
 	ctx := context.Background()
 
 	// Step 1: Apply policy with no annotations
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cnp-ext-insert",
@@ -3095,7 +3095,7 @@ func TestReconciler_ExternalAnnotationInsertedMidLifecycle(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -3115,7 +3115,7 @@ func TestReconciler_ExternalAnnotationInsertedMidLifecycle(t *testing.T) {
 
 	// Step 3: Reconciler re-applies twice (two mutations) — external annotation should survive both
 	for i, label := range []string{"insert-v2", "insert-v3"} {
-		fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 				ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 					Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
@@ -3186,14 +3186,14 @@ func TestReconciler_SSAOverwritesExternalSpecMutation(t *testing.T) {
 	ctx := context.Background()
 
 	// Apply policy via snapshot
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cnp-ssa-overwrite",
@@ -3221,7 +3221,7 @@ func TestReconciler_SSAOverwritesExternalSpecMutation(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -3295,14 +3295,14 @@ func TestReconciler_DeletedPolicyRestoredByReconciler(t *testing.T) {
 	ctx := context.Background()
 
 	// Apply policy via snapshot
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cnp-restore",
@@ -3330,7 +3330,7 @@ func TestReconciler_DeletedPolicyRestoredByReconciler(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -3389,11 +3389,101 @@ func TestReconciler_DeletedPolicyRestoredByReconciler(t *testing.T) {
 // TODO: Requires namespace/name/kind keyed runtime cache to work correctly.
 // Label stripping causes the watcher handler to skip the event (no ID), so the
 // runtime cache goes stale and reconcileAll sees no diff.
-// Label mutation is worse: the handler inserts under the wrong ID, the reconciler
-// deletes the object, and the stale runtime entry matches config so it's never restored.
 //
 // func TestReconciler_CloudSecureIDLabelStripped(t *testing.T) { ... }
-// func TestReconciler_CloudSecureIDLabelMutated(t *testing.T) { ... }
+
+// TestReconciler_CloudSecureIDLabelMutated_CausesDestructiveDelete demonstrates a known
+// limitation of the current ID-keyed runtime cache. When an external actor mutates the
+// CloudSecureIDLabel, the following destructive sequence occurs:
+//
+//  1. External actor changes label from "cnp-id-mutated" to "WRONG-ID"
+//  2. Watcher handler reads "WRONG-ID" from the label, inserts into runtime cache under "WRONG-ID"
+//  3. Runtime cache now has two entries: "cnp-id-mutated" (stale) and "WRONG-ID" (new)
+//  4. Reconciler sees "WRONG-ID" in runtime with no matching config → orphan cleanup → deletes the K8s object
+//  5. Stale "cnp-id-mutated" runtime entry still matches config → reconciler thinks object is healthy
+//  6. Object is deleted from the cluster but the reconciler never re-creates it
+//
+// This test documents the bug. Fixing it requires keying the runtime cache by
+// namespace/name/kind instead of CloudSecure ID, so that label mutations update the
+// existing cache entry in-place rather than creating a phantom second entry.
+func TestReconciler_CloudSecureIDLabelMutated_CausesDestructiveDelete(t *testing.T) {
+	fs := setupSuite(t)
+
+	ctx := context.Background()
+
+	// Apply a policy via config snapshot
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "cnp-id-mutated",
+				Name: "e2e-id-mutated",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "id-test"},
+								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-id-mutated")
+		return err == nil && obj != nil
+	}, 20*time.Second, 100*time.Millisecond, "policy should be applied")
+
+	// Verify correct label
+	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-id-mutated")
+	require.NoError(t, err)
+	assert.Equal(t, "cnp-id-mutated", obj.GetLabels()[convert.CloudSecureIDLabel])
+
+	// External actor mutates the CloudSecureIDLabel to a wrong value
+	patch := []byte(`{"metadata":{"labels":{"` + convert.CloudSecureIDLabel + `":"WRONG-ID"}}}`)
+	_, err = testClient.GetDynamicClient().Resource(ccnpGVR).Patch(
+		ctx, "e2e-id-mutated", types.MergePatchType, patch, metav1.PatchOptions{},
+	)
+	require.NoError(t, err)
+
+	// The reconciler treats "WRONG-ID" as an orphan and deletes the K8s object.
+	// The object should disappear from the cluster.
+	require.Eventually(t, func() bool {
+		_, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-id-mutated")
+		return apierrors.IsNotFound(err)
+	}, 20*time.Second, 100*time.Millisecond, "reconciler should delete the object (orphan cleanup for WRONG-ID)")
+
+	// BUG: The object stays deleted. The stale "cnp-id-mutated" runtime cache entry
+	// still matches the config, so reconcileAll never detects the drift and never
+	// re-creates the object. This is the destructive behavior we want to fix with
+	// namespace/name/kind keyed caching.
+	//
+	// We verify the object is still gone after a few reconcile cycles to confirm
+	// self-healing does NOT kick in (documenting the current broken behavior).
+	time.Sleep(3 * time.Second)
+	_, err = testClient.GetResource(ctx, ccnpGVR, "", "e2e-id-mutated")
+	assert.True(t, apierrors.IsNotFound(err), "object should still be deleted — self-healing does not work for label mutation")
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-id-mutated")
+	})
+}
 
 // TestReconciler_ExternalUserLabelsPreserved verifies that labels added by external
 // users (not managed by the operator) survive SSA re-applies. The operator only owns
@@ -3403,14 +3493,14 @@ func TestReconciler_ExternalUserLabelsPreserved(t *testing.T) {
 
 	ctx := context.Background()
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cnp-ext-labels",
@@ -3430,7 +3520,7 @@ func TestReconciler_ExternalUserLabelsPreserved(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -3451,7 +3541,7 @@ func TestReconciler_ExternalUserLabelsPreserved(t *testing.T) {
 	require.NoError(t, err)
 
 	// Trigger a re-apply by mutating the spec from CloudSecure
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
@@ -3516,7 +3606,7 @@ func TestReconciler_MultiplePoliciesDeletedExternally(t *testing.T) {
 
 	ctx := context.Background()
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
@@ -3526,7 +3616,7 @@ func TestReconciler_MultiplePoliciesDeletedExternally(t *testing.T) {
 
 	names := []string{"e2e-multi-del-1", "e2e-multi-del-2", "e2e-multi-del-3"}
 	for i, name := range names {
-		fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+		fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 				ResourceData: &pb.ConfiguredKubernetesObjectData{
 					Id:   fmt.Sprintf("cnp-multi-del-%d", i+1),
@@ -3548,7 +3638,7 @@ func TestReconciler_MultiplePoliciesDeletedExternally(t *testing.T) {
 		})
 	}
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -3611,14 +3701,14 @@ func TestReconciler_CIDRGroupDeletedExternallyRestored(t *testing.T) {
 
 	ctx := context.Background()
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cidr-restore-1",
@@ -3633,7 +3723,7 @@ func TestReconciler_CIDRGroupDeletedExternallyRestored(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -3682,14 +3772,14 @@ func TestReconciler_SpecWipedExternallyRestored(t *testing.T) {
 
 	ctx := context.Background()
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cnp-spec-wipe",
@@ -3717,7 +3807,7 @@ func TestReconciler_SpecWipedExternallyRestored(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -3771,14 +3861,14 @@ func TestReconciler_ExternalRecreateWithWrongSpec(t *testing.T) {
 
 	ctx := context.Background()
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cnp-recreate",
@@ -3798,7 +3888,7 @@ func TestReconciler_ExternalRecreateWithWrongSpec(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -3857,14 +3947,14 @@ func TestReconciler_PeriodicReconcileRestoresDeletedPolicy(t *testing.T) {
 	ctx := context.Background()
 
 	// Apply policy via snapshot
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cnp-periodic-del",
@@ -3884,7 +3974,7 @@ func TestReconciler_PeriodicReconcileRestoresDeletedPolicy(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -3922,14 +4012,14 @@ func TestReconciler_PeriodicReconcileRestoresSpecDrift(t *testing.T) {
 
 	ctx := context.Background()
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cnp-periodic-drift",
@@ -3949,7 +4039,7 @@ func TestReconciler_PeriodicReconcileRestoresSpecDrift(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
@@ -4002,14 +4092,14 @@ func TestReconciler_PeriodicReconcileRestoresCIDRGroup(t *testing.T) {
 
 	ctx := context.Background()
 
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
 				Id:   "cidr-periodic-1",
@@ -4024,7 +4114,7 @@ func TestReconciler_PeriodicReconcileRestoresCIDRGroup(t *testing.T) {
 			},
 		},
 	})
-	fs.SendConfigResponse(&pb.GetConfigurationUpdatesResponse{
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 		},
