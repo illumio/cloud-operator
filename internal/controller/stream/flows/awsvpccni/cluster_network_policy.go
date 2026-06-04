@@ -48,7 +48,7 @@ func IsCRDAvailable(logger *zap.Logger, discoveryClient discovery.DiscoveryInter
 // If the policy already exists, it returns nil (idempotent).
 // Sets an owner reference to the cloud-operator Deployment so the policy is cleaned up on uninstall.
 func EnsureFlowLoggingPolicy(ctx context.Context, logger *zap.Logger, dynamicClient dynamic.Interface, k8sClient kubernetes.Interface, podNamespace string) error {
-	ownerRefs, err := getDeploymentOwnerReference(ctx, logger, k8sClient, podNamespace)
+	ownerRefs, err := getDeploymentOwnerReference(ctx, k8sClient, podNamespace)
 	if err != nil {
 		logger.Warn("AWS VPC CNI could not resolve owner Deployment for ClusterNetworkPolicy, policy will not be auto-deleted on uninstall",
 			zap.Error(err))
@@ -128,7 +128,7 @@ func EnsureFlowLoggingPolicy(ctx context.Context, logger *zap.Logger, dynamicCli
 
 // getDeploymentOwnerReference looks up the cloud-operator Deployment and returns an ownerReferences
 // list suitable for unstructured objects so the ClusterNetworkPolicy is cleaned up on uninstall.
-func getDeploymentOwnerReference(ctx context.Context, logger *zap.Logger, k8sClient kubernetes.Interface, namespace string) ([]any, error) {
+func getDeploymentOwnerReference(ctx context.Context, k8sClient kubernetes.Interface, namespace string) ([]any, error) {
 	deployments, err := k8sClient.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: "app.kubernetes.io/name=cloud-operator",
 	})
