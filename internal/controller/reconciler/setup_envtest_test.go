@@ -127,10 +127,11 @@ func setupSuite(t *testing.T) *fakeserver.FakeServer {
 
 	// Start resources stream client (watches envtest K8s API → populates runtime cache → streams to fakeserver)
 	resourcesFactory := &resources.Factory{
-		Logger:    zap.NewNop(),
-		K8sClient: testClient,
-		Stats:     stream.NewStats(),
-		Cache:     runtimeCache,
+		Logger:       zap.NewNop(),
+		K8sClient:    testClient,
+		Stats:        stream.NewStats(),
+		RuntimeCache: runtimeCache,
+		ConfigCache:  configCache,
 	}
 	resourcesClient, err := resourcesFactory.NewStreamClient(ctx, conn)
 	require.NoError(t, err)
