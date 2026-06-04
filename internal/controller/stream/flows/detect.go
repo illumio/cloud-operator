@@ -128,7 +128,7 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 		dynamicClient := config.K8sClient.GetDynamicClient()
 
 		if awsvpccni.IsCRDAvailable(config.Logger, discoveryClient) {
-			if err := awsvpccni.EnsureFlowLoggingPolicy(ctx, config.Logger, dynamicClient, clientset, config.PodNamespace); err != nil {
+			if err := awsvpccni.EnsureFlowLoggingPolicy(ctx, config.Logger, dynamicClient); err != nil {
 				config.Logger.Warn("AWS VPC CNI failed to create ClusterNetworkPolicy, flow logging may be limited",
 					zap.Error(err))
 			}

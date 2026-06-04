@@ -10,16 +10,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	discoveryfake "k8s.io/client-go/discovery/fake"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
-	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 )
 
@@ -87,7 +84,7 @@ func TestEnsureFlowLoggingPolicy(t *testing.T) {
 		scheme := runtime.NewScheme()
 		dynamicClient := dynamicfake.NewSimpleDynamicClient(scheme)
 
-		err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient, fake.NewSimpleClientset(), "illumio-cloud")
+		err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient)
 
 		require.NoError(t, err)
 
@@ -103,11 +100,11 @@ func TestEnsureFlowLoggingPolicy(t *testing.T) {
 		dynamicClient := dynamicfake.NewSimpleDynamicClient(scheme)
 
 		// Create the policy first
-		err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient, fake.NewSimpleClientset(), "illumio-cloud")
+		err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient)
 		require.NoError(t, err)
 
 		// Create again - should handle AlreadyExists
-		err = EnsureFlowLoggingPolicy(ctx, logger, dynamicClient, fake.NewSimpleClientset(), "illumio-cloud")
+		err = EnsureFlowLoggingPolicy(ctx, logger, dynamicClient)
 		require.NoError(t, err)
 	})
 
@@ -122,7 +119,7 @@ func TestEnsureFlowLoggingPolicy(t *testing.T) {
 			return true, nil, expectedErr
 		})
 
-		err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient, fake.NewSimpleClientset(), "illumio-cloud")
+		err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient)
 
 		require.Error(t, err)
 		assert.Equal(t, expectedErr, err)
@@ -136,7 +133,7 @@ func TestClusterNetworkPolicySpec(t *testing.T) {
 	scheme := runtime.NewScheme()
 	dynamicClient := dynamicfake.NewSimpleDynamicClient(scheme)
 
-	err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient, fake.NewSimpleClientset(), "illumio-cloud")
+	err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient)
 	require.NoError(t, err)
 
 	gvr := schema.GroupVersionResource{
@@ -211,68 +208,8 @@ func TestEnsureFlowLoggingPolicy_AlreadyExistsError(t *testing.T) {
 		)
 	})
 
-	err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient, fake.NewSimpleClientset(), "illumio-cloud")
+	err := EnsureFlowLoggingPolicy(ctx, logger, dynamicClient)
 
 	// Should return nil (handled gracefully)
 	require.NoError(t, err)
-}
-
-func TestGetDeploymentOwnerReference(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("returns owner reference for existing deployment", func(t *testing.T) {
-		deploy := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "cloud-operator",
-				Namespace: "illumio-cloud",
-				UID:       types.UID("test-uid-1234"),
-				Labels: map[string]string{
-					"app.kubernetes.io/name": "cloud-operator",
-				},
-			},
-		}
-
-		k8sClient := fake.NewSimpleClientset(deploy)
-
-		refs, err := getDeploymentOwnerReference(ctx, k8sClient, "illumio-cloud")
-
-		require.NoError(t, err)
-		require.Len(t, refs, 1)
-
-		ref, ok := refs[0].(map[string]any)
-		require.True(t, ok)
-		assert.Equal(t, "apps/v1", ref["apiVersion"])
-		assert.Equal(t, "Deployment", ref["kind"])
-		assert.Equal(t, "cloud-operator", ref["name"])
-		assert.Equal(t, "test-uid-1234", ref["uid"])
-	})
-
-	t.Run("returns error when no deployment found", func(t *testing.T) {
-		k8sClient := fake.NewSimpleClientset()
-
-		refs, err := getDeploymentOwnerReference(ctx, k8sClient, "illumio-cloud")
-
-		require.Error(t, err)
-		assert.Nil(t, refs)
-		assert.Contains(t, err.Error(), "no cloud-operator deployment found")
-	})
-
-	t.Run("returns error when namespace is wrong", func(t *testing.T) {
-		deploy := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "cloud-operator",
-				Namespace: "other-namespace",
-				Labels: map[string]string{
-					"app.kubernetes.io/name": "cloud-operator",
-				},
-			},
-		}
-
-		k8sClient := fake.NewSimpleClientset(deploy)
-
-		refs, err := getDeploymentOwnerReference(ctx, k8sClient, "illumio-cloud")
-
-		require.Error(t, err)
-		assert.Nil(t, refs)
-	})
 }
