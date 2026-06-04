@@ -105,14 +105,8 @@ func newTestHarness(t *testing.T) *fakeserver.FakeServerTestHarness {
 //	fakeserver (gRPC) → config client → config cache ──→ reconciler → envtest K8s API
 //	                     resources client → runtime cache ─┘
 //
-// Pass an optional reconcile interval to override the default (e.g. for fast self-healing tests).
-func setupSuite(t *testing.T, reconcileInterval ...time.Duration) *fakeserver.FakeServer {
+func setupSuite(t *testing.T) *fakeserver.FakeServer {
 	t.Helper()
-
-	interval := DefaultReconcileInterval
-	if len(reconcileInterval) > 0 {
-		interval = reconcileInterval[0]
-	}
 
 	// Cleanup order is LIFO. We register in this order so teardown is:
 	// cancel (stops goroutines) → conn.Close → harness.Stop → cacheClose
@@ -156,7 +150,6 @@ func setupSuite(t *testing.T, reconcileInterval ...time.Duration) *fakeserver.Fa
 
 	// Start reconciler (config cache + runtime cache → K8s API)
 	r := NewReconciler(zap.NewNop(), testClient, configCache, runtimeCache)
-	r.reconcileInterval = interval
 	go r.Run(ctx)
 
 	return h.Server
