@@ -307,6 +307,14 @@ func (fs *FakeServer) SendConfigResponse(resp *pb.GetConfigurationUpdatesRespons
 	fs.ConfigResponses <- resp
 }
 
+// DisconnectConfigStream closes the current config responses channel, causing the
+// active GetConfigurationUpdates stream to end (client sees EOF). A new channel is
+// created so subsequent SendConfigResponse calls work for the next connected client.
+func (fs *FakeServer) DisconnectConfigStream() {
+	close(fs.ConfigResponses)
+	fs.ConfigResponses = make(chan *pb.GetConfigurationUpdatesResponse, 10)
+}
+
 // GRPCAddress returns the actual address the gRPC server is listening on.
 // Useful when the server is started with ":0" to get the OS-assigned port.
 func (fs *FakeServer) GRPCAddress() string {

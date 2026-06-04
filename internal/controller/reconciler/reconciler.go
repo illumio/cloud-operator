@@ -21,9 +21,6 @@ import (
 )
 
 const (
-	// FieldManager identifies cloud-operator as the owner of fields in Server-Side Apply.
-	FieldManager = "illumio-cloud-operator"
-
 	// FullReconcileInterval is the periodic safety net for full reconciliation,
 	// catching anything missed due to dropped events or transient failures.
 	FullReconcileInterval = 5 * time.Minute
@@ -174,7 +171,7 @@ func (r *Reconciler) reconcileObject(ctx context.Context, id string) error {
 
 	switch {
 	// In config and differs from runtime (or not yet applied) → apply
-	case configObj != nil && !proto.Equal(configObj, runtimeObj):
+	case configObj != nil && !proto.Equal(configWithExpectedLabels(configObj), runtimeObj):
 		if err := r.applyObject(ctx, configObj); err != nil {
 			return fmt.Errorf("apply %s: %w", id, err)
 		}
@@ -187,6 +184,25 @@ func (r *Reconciler) reconcileObject(ctx context.Context, id string) error {
 	}
 
 	return nil
+}
+
+// configWithExpectedLabels returns a copy of the config object with the expected
+// operator labels injected, so the reconciler can detect label drift on K8s objects.
+// The config cache doesn't include operator labels (CloudSecure doesn't send them),
+// but the runtime cache does (they're on the K8s object). Injecting them here allows
+// proto.Equal to detect when labels are stripped or mutated.
+func configWithExpectedLabels(obj *pb.ConfiguredKubernetesObjectData) *pb.ConfiguredKubernetesObjectData {
+	withLabels := proto.Clone(obj).(*pb.ConfiguredKubernetesObjectData)
+
+	labels := make(map[string]string)
+	for k, v := range withLabels.GetLabels() {
+		labels[k] = v
+	}
+
+	labels[convert.CloudSecureIDLabel] = obj.GetId()
+	withLabels.Labels = labels
+
+	return withLabels
 }
 
 // reconcileAll synchronizes all configured objects from CloudSecure to Kubernetes.
@@ -233,15 +249,15 @@ func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKu
 		return fmt.Errorf("resource not discovered: %s", resourceName)
 	}
 
-	// Convert to unstructured to be able to apply
-	desired, _, err := convert.ConvertToApplyObject(configObj, info.Group, info.Version)
+	// Enrich with tracking label and convert to unstructured for apply.
+	desired, _, err := convert.ConvertToApplyObject(configWithExpectedLabels(configObj), info.Group, info.Version)
 	if err != nil {
 		return fmt.Errorf("failed to create unstructured object: %w", err)
 	}
 
 	gvr := schema.GroupVersionResource{Group: info.Group, Version: info.Version, Resource: resourceName}
 
-	applied, err := r.client.ApplyResource(ctx, gvr, desired.GetNamespace(), desired, FieldManager)
+	applied, err := r.client.ApplyResource(ctx, gvr, desired.GetNamespace(), desired, convert.FieldManager)
 	if err != nil {
 		return fmt.Errorf("failed to apply: %w", err)
 	}

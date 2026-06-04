@@ -58,8 +58,6 @@ func TestConvertToApplyObject_CiliumNetworkPolicy(t *testing.T) {
 	labels, ok := metadata["labels"].(map[string]string)
 	require.True(t, ok)
 	assert.Equal(t, "prod", labels["env"])
-	assert.Equal(t, "cnp-1", labels[CloudSecureIDLabel])
-	assert.Equal(t, "illumio-cloud-operator", labels[ManagedByLabel])
 
 	annotations, ok := metadata["annotations"].(map[string]string)
 	require.True(t, ok)
@@ -227,9 +225,7 @@ func TestConvertToApplyObject_LabelsIncludeManagementLabels(t *testing.T) {
 	labels, ok := metadata["labels"].(map[string]string)
 	require.True(t, ok)
 	assert.Equal(t, "value", labels["custom"])
-	assert.Equal(t, "cnp-labels", labels[CloudSecureIDLabel])
-	assert.Equal(t, "illumio-cloud-operator", labels[ManagedByLabel])
-	assert.Len(t, labels, 3)
+	assert.Len(t, labels, 1)
 }
 
 func TestConvertToApplyObject_EmptyNamespace(t *testing.T) {
@@ -291,11 +287,6 @@ func TestConvertToApplyObject_ClusterwideSelectiveIngress(t *testing.T) {
 	assert.Equal(t, "selective-ingress", metadata["name"])
 	_, hasNS := metadata["namespace"]
 	assert.False(t, hasNS, "clusterwide policy should have no namespace")
-
-	labels, ok := metadata["labels"].(map[string]string)
-	require.True(t, ok)
-	assert.Equal(t, "ccnp-selective-ingress", labels[CloudSecureIDLabel])
-	assert.Equal(t, ManagedByValue, labels[ManagedByLabel])
 
 	spec, ok := obj.Object["spec"].(map[string]any)
 	require.True(t, ok)
@@ -843,45 +834,6 @@ func TestConvertToApplyObject_EmitUnpopulatedFalse(t *testing.T) {
 	assert.NotContains(t, spec, "enableDefaultDeny")
 	assert.NotContains(t, spec, "ingress")
 	assert.NotContains(t, spec, "egress")
-}
-
-func TestCopyLabels(t *testing.T) {
-	tests := map[string]struct {
-		labels   map[string]string
-		id       string
-		expected map[string]string
-	}{
-		"with existing labels": {
-			labels: map[string]string{"env": "prod", "team": "platform"},
-			id:     "obj-1",
-			expected: map[string]string{
-				"env": "prod", "team": "platform",
-				CloudSecureIDLabel: "obj-1", ManagedByLabel: ManagedByValue,
-			},
-		},
-		"nil labels": {
-			labels:   nil,
-			id:       "obj-2",
-			expected: map[string]string{CloudSecureIDLabel: "obj-2", ManagedByLabel: ManagedByValue},
-		},
-		"empty labels": {
-			labels:   map[string]string{},
-			id:       "obj-3",
-			expected: map[string]string{CloudSecureIDLabel: "obj-3", ManagedByLabel: ManagedByValue},
-		},
-		"conflicting management labels are overwritten": {
-			labels:   map[string]string{CloudSecureIDLabel: "attacker", ManagedByLabel: "someone-else"},
-			id:       "obj-4",
-			expected: map[string]string{CloudSecureIDLabel: "obj-4", ManagedByLabel: ManagedByValue},
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			result := copyLabels(tt.labels, tt.id)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
 }
 
 func TestProtoToMap_NilMessage(t *testing.T) {
