@@ -758,7 +758,7 @@ message GetConfigurationUpdatesRequest {
 // Configured Kubernetes objects:
 //   1. (0+) resource_data, one message for each object in the initial snapshot.
 //   2. (1) resource_snapshot_complete, indicates the initial snapshot is complete.
-//   3. (0+) resource_mutation, one message for each object create/update/delete.
+//   3. (0+) resource_mutation, one message for each object create-or-update or delete.
 //
 // On stream reconnection, the server sends a new full snapshot of configured objects.
 message GetConfigurationUpdatesResponse {
@@ -812,13 +812,13 @@ message ConfiguredKubernetesObjectSnapshotComplete {}
 // A configured Kubernetes object mutation to apply in the cluster.
 message ConfiguredKubernetesObjectMutation {
   oneof mutation {
-    // A new configured object to create in the cluster.
-    ConfiguredKubernetesObjectData create_object = 1;
-    // An existing configured object to update in the cluster.
-    ConfiguredKubernetesObjectData update_object = 2;
+    // A configured object to create or update in the cluster.
+    ConfiguredKubernetesObjectData create_or_update_object = 1;
     // An existing configured object to delete from the cluster.
     DeleteConfiguredKubernetesObject delete_object = 3;
   }
+
+  reserved 2;
 }
 
 // Syncs the inventory of the Kubernetes resources in the cluster into CloudSecure.
