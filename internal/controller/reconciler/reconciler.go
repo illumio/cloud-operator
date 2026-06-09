@@ -232,6 +232,7 @@ func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKu
 		return fmt.Errorf("resource not discovered: %s", resourceName)
 	}
 
+	// Convert to unstructured to be able to apply
 	desired, _, err := convert.ConvertToApplyObject(configObj, info.Group, info.Version)
 	if err != nil {
 		return fmt.Errorf("failed to create unstructured object: %w", err)

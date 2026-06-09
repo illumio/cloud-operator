@@ -294,22 +294,13 @@ func TestReconcileObject_DeletesOrphanedRuntimeObject(t *testing.T) {
 }
 
 func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
-	unchangedConfig := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
+	unchanged := &pb.ConfiguredKubernetesObjectData{
 		Name: "unchanged",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
 	}
-	unchangedRuntime := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
-		Name: "unchanged",
-		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
-			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
-		},
-	}
-	changed := &pb.ConfiguredKubernetesObjectData{
-		Id:          "policy-2",
+	changedConfig := &pb.ConfiguredKubernetesObjectData{
 		Name:        "changed",
 		Annotations: map[string]string{"note": "new"},
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -317,7 +308,6 @@ func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
 		},
 	}
 	changedRuntime := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-2",
 		Name: "changed",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
@@ -326,11 +316,11 @@ func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
 
 	r, client := newTestReconciler(t,
 		map[string]*pb.ConfiguredKubernetesObjectData{
-			"policy-1": unchangedConfig,
-			"policy-2": changed,
+			"policy-1": unchanged,
+			"policy-2": changedConfig,
 		},
 		map[string]*pb.ConfiguredKubernetesObjectData{
-			"policy-1": unchangedRuntime,
+			"policy-1": unchanged,
 			"policy-2": changedRuntime,
 		},
 	)
