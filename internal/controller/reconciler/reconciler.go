@@ -28,12 +28,12 @@ const (
 
 // Reconciler synchronizes desired state from CloudSecure with actual state in Kubernetes.
 type Reconciler struct {
-	logger             *zap.Logger
-	client             k8sclient.Client
-	configCache        *cache.ConfiguredObjectCache
-	runtimeCache       *cache.ConfiguredObjectCache
-	resourceInfo       map[string]resources.ResourceInfo // discovered API group/version info
-	reconcileInterval  time.Duration
+	logger            *zap.Logger
+	client            k8sclient.Client
+	configCache       *cache.ConfiguredObjectCache
+	runtimeCache      *cache.ConfiguredObjectCache
+	resourceInfo      map[string]resources.ResourceInfo // discovered API group/version info
+	reconcileInterval time.Duration
 }
 
 // NewReconciler creates a new reconciler.
@@ -173,7 +173,7 @@ func (r *Reconciler) reconcileObject(ctx context.Context, id string) error {
 
 	switch {
 	// In config and differs from runtime (or not yet applied) → apply
-	case configObj != nil && !proto.Equal(configWithExpectedLabels(configObj), runtimeObj):
+	case configObj != nil && !proto.Equal(configObj, runtimeObj):
 		if err := r.applyObject(ctx, configObj); err != nil {
 			return fmt.Errorf("apply %s: %w", id, err)
 		}
@@ -188,25 +188,6 @@ func (r *Reconciler) reconcileObject(ctx context.Context, id string) error {
 	return nil
 }
 
-// configWithExpectedLabels returns a copy of the config object with the expected
-// operator labels injected, so the reconciler can detect label drift on K8s objects.
-// The config cache doesn't include operator labels (CloudSecure doesn't send them),
-// but the runtime cache does (they're on the K8s object). Injecting them here allows
-// proto.Equal to detect when labels are stripped or mutated.
-func configWithExpectedLabels(obj *pb.ConfiguredKubernetesObjectData) *pb.ConfiguredKubernetesObjectData {
-	withLabels := proto.Clone(obj).(*pb.ConfiguredKubernetesObjectData)
-
-	labels := make(map[string]string)
-	for k, v := range withLabels.GetLabels() {
-		labels[k] = v
-	}
-
-	labels[convert.CloudSecureIDLabel] = obj.GetId()
-	withLabels.Labels = labels
-
-	return withLabels
-}
-
 // reconcileAll synchronizes all configured objects from CloudSecure to Kubernetes.
 // It reconciles every ID from both caches, applying new/changed objects and deleting
 // objects no longer in the config.
@@ -216,20 +197,20 @@ func (r *Reconciler) reconcileAll(ctx context.Context) error {
 			zap.Int("runtime_objects", r.runtimeCache.Len()))
 	}
 
-	allIDs := make(map[string]struct{}, max(r.configCache.Len(), r.runtimeCache.Len()))
+	allKeys := make(map[string]struct{}, max(r.configCache.Len(), r.runtimeCache.Len()))
 
-	for _, obj := range r.configCache.Values() {
-		allIDs[obj.GetId()] = struct{}{}
+	for _, key := range r.configCache.Keys() {
+		allKeys[key] = struct{}{}
 	}
 
-	for _, obj := range r.runtimeCache.Values() {
-		allIDs[obj.GetId()] = struct{}{}
+	for _, key := range r.runtimeCache.Keys() {
+		allKeys[key] = struct{}{}
 	}
 
 	var errs []error
 
-	for id := range allIDs {
-		if err := r.reconcileObject(ctx, id); err != nil {
+	for key := range allKeys {
+		if err := r.reconcileObject(ctx, key); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -251,8 +232,7 @@ func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKu
 		return fmt.Errorf("resource not discovered: %s", resourceName)
 	}
 
-	// Enrich with tracking label and convert to unstructured for apply.
-	desired, _, err := convert.ConvertToApplyObject(configWithExpectedLabels(configObj), info.Group, info.Version)
+	desired, _, err := convert.ConvertToApplyObject(configObj, info.Group, info.Version)
 	if err != nil {
 		return fmt.Errorf("failed to create unstructured object: %w", err)
 	}

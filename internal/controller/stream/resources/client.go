@@ -312,34 +312,40 @@ func (c *resourcesClient) CreateMutationObject(metadata *pb.KubernetesObjectData
 // into pendingSnapshot for later ReplaceAll — the cache is not modified directly.
 func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.ConfiguredKubernetesObjectData) RuntimeCacheHandler {
 	return func(ctx context.Context, eventType watch.EventType, obj *unstructured.Unstructured, metadata *pb.KubernetesObjectData) error {
-		if !hasFieldManager(obj, convert.FieldManager) {
-			return nil
-		}
-
-		id := metadata.GetLabels()[convert.CloudSecureIDLabel]
-		if id == "" {
-			return nil
-		}
-
-		configured, err := convert.BuildConfiguredFromMetadata(id, metadata)
+		configured, err := convert.BuildConfiguredFromMetadata(metadata)
 		if err != nil {
-			return fmt.Errorf("skipping unhandled resource type in runtime cache (id=%s): %w", id, err)
+			return nil //nolint:nilerr // unsupported kinds are silently skipped
+		}
+
+		key, err := convert.CacheKeyFromObj(configured)
+		if err != nil {
+			return nil //nolint:nilerr // unsupported kinds are silently skipped
+		}
+
+		// Determine operator ownership via managedFields, falling back to cache membership.
+		// A non-SSA write (e.g. MergePatch by an external actor) can transfer ownership of
+		// all operator-managed fields, removing our field manager entry entirely. In that case
+		// hasFieldManager returns false even though we previously applied the object. The cache
+		// membership check ensures we still track the modified state so the reconciler can
+		// detect the drift and restore it. (https://kubernetes.io/docs/reference/using-api/server-side-apply/#clearing-managedfields)
+		if !hasFieldManager(obj, convert.FieldManager) && c.runtimeCache.Get(key) == nil {
+			return nil
 		}
 
 		if eventType == "" {
-			pendingSnapshot[configured.GetId()] = configured
+			pendingSnapshot[key] = configured
 		} else {
 			//nolint:exhaustive // only mutation events reach the handler; Bookmark/Error are handled by the watcher
 			switch eventType {
 			case watch.Added, watch.Modified:
-				err := c.runtimeCache.Insert(ctx, configured.GetId(), configured)
+				err := c.runtimeCache.Insert(ctx, key, configured)
 				if err != nil {
-					return fmt.Errorf("failed to insert resource into runtime cache (id=%s): %w", configured.GetId(), err)
+					return fmt.Errorf("failed to insert resource into runtime cache (key=%s): %w", key, err)
 				}
 			case watch.Deleted:
-				err := c.runtimeCache.Delete(ctx, configured.GetId())
+				err := c.runtimeCache.Delete(ctx, key)
 				if err != nil {
-					return fmt.Errorf("failed to delete resource from runtime cache (id=%s): %w", configured.GetId(), err)
+					return fmt.Errorf("failed to delete resource from runtime cache (key=%s): %w", key, err)
 				}
 			}
 		}

@@ -1925,3 +1925,147 @@ func TestMarshalPolicySpecs_JSONNameOverrides(t *testing.T) {
 		assert.NotContains(t, aws, "securityGroupNames")
 	})
 }
+
+func TestNewCacheKey(t *testing.T) {
+	tests := []struct {
+		name      string
+		kind      string
+		namespace string
+		objName   string
+		expected  string
+	}{
+		{
+			name:      "namespaced resource",
+			kind:      "CiliumNetworkPolicy",
+			namespace: "default",
+			objName:   "allow-web",
+			expected:  "CiliumNetworkPolicy/default/allow-web",
+		},
+		{
+			name:      "cluster-scoped resource",
+			kind:      "CiliumClusterwideNetworkPolicy",
+			namespace: "",
+			objName:   "deny-all",
+			expected:  "CiliumClusterwideNetworkPolicy//deny-all",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, NewCacheKey(tc.kind, tc.namespace, tc.objName))
+		})
+	}
+}
+
+func TestExtractKind(t *testing.T) {
+	tests := []struct {
+		name     string
+		data     *pb.ConfiguredKubernetesObjectData
+		expected string
+		wantErr  bool
+	}{
+		{
+			name: "CiliumNetworkPolicy",
+			data: &pb.ConfiguredKubernetesObjectData{
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+					CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
+				},
+			},
+			expected: "CiliumNetworkPolicy",
+		},
+		{
+			name: "CiliumClusterwideNetworkPolicy",
+			data: &pb.ConfiguredKubernetesObjectData{
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{},
+				},
+			},
+			expected: "CiliumClusterwideNetworkPolicy",
+		},
+		{
+			name: "CiliumCIDRGroup",
+			data: &pb.ConfiguredKubernetesObjectData{
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
+					CiliumCidrGroup: &pb.KubernetesCiliumCIDRGroupData{},
+				},
+			},
+			expected: "CiliumCIDRGroup",
+		},
+		{
+			name:    "nil KindSpecific",
+			data:    &pb.ConfiguredKubernetesObjectData{},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, err := ExtractKind(tc.data)
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "unsupported kind_specific")
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tc.expected, kind)
+			}
+		})
+	}
+}
+
+func TestCacheKeyFromObj(t *testing.T) {
+	tests := []struct {
+		name     string
+		data     *pb.ConfiguredKubernetesObjectData
+		expected string
+		wantErr  bool
+	}{
+		{
+			name: "namespaced CiliumNetworkPolicy",
+			data: &pb.ConfiguredKubernetesObjectData{
+				Name:      "allow-web",
+				Namespace: new("prod"),
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+					CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
+				},
+			},
+			expected: "CiliumNetworkPolicy/prod/allow-web",
+		},
+		{
+			name: "cluster-scoped CiliumClusterwideNetworkPolicy",
+			data: &pb.ConfiguredKubernetesObjectData{
+				Name: "deny-all",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{},
+				},
+			},
+			expected: "CiliumClusterwideNetworkPolicy//deny-all",
+		},
+		{
+			name: "CiliumCIDRGroup",
+			data: &pb.ConfiguredKubernetesObjectData{
+				Name: "my-cidrs",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
+					CiliumCidrGroup: &pb.KubernetesCiliumCIDRGroupData{},
+				},
+			},
+			expected: "CiliumCIDRGroup//my-cidrs",
+		},
+		{
+			name:    "unsupported kind returns error",
+			data:    &pb.ConfiguredKubernetesObjectData{Name: "bad"},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			key, err := CacheKeyFromObj(tc.data)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tc.expected, key)
+			}
+		})
+	}
+}
