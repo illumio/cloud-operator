@@ -1,6 +1,6 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package main
+package fakeserver
 
 import (
 	"os"
@@ -42,10 +42,10 @@ func TestOperatorSendsCiliumFlows(t *testing.T) {
 
 	// Wait for at least one Cilium flow to be received
 	err = harness.WaitForCondition(
-		func() bool { return harness.Server.state.CiliumFlowsReceived > 0 },
+		func() bool { return harness.Server.State.CiliumFlowsReceived > 0 },
 		"Cilium flows received",
 	)
 	require.NoError(t, err, "No Cilium flows received")
 
-	t.Logf("Test passed: Received %d Cilium flows", harness.Server.state.CiliumFlowsReceived)
+	t.Logf("Test passed: Received %d Cilium flows", harness.Server.State.CiliumFlowsReceived)
 }

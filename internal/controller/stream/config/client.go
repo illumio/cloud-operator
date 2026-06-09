@@ -14,6 +14,7 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/logging"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 // Verify configClient implements stream.StreamClient.
@@ -42,6 +43,7 @@ type configClient struct {
 func (c *configClient) Run(ctx context.Context) error {
 	// Local state for THIS stream (not the cache's global state)
 	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
+	cloudSecureIDToKey := make(map[string]string) // maps CloudSecure-assigned Id → cache key
 	snapshotComplete := false
 
 	c.logger.Debug("Started configuration snapshot ingestion")
@@ -67,7 +69,7 @@ func (c *configClient) Run(ctx context.Context) error {
 			return err
 		}
 
-		if err := c.handleConfigUpdate(ctx, resp, pendingSnapshot, &snapshotComplete); err != nil {
+		if err := c.handleConfigUpdate(ctx, resp, pendingSnapshot, cloudSecureIDToKey, &snapshotComplete); err != nil {
 			return err
 		}
 	}
@@ -75,7 +77,7 @@ func (c *configClient) Run(ctx context.Context) error {
 
 // handleConfigUpdate processes a configuration update response.
 // snapshotComplete tracks whether this current stream's snapshot has completed.
-func (c *configClient) handleConfigUpdate(ctx context.Context, resp *pb.GetConfigurationUpdatesResponse, pendingSnapshot map[string]*pb.ConfiguredKubernetesObjectData, snapshotComplete *bool) error {
+func (c *configClient) handleConfigUpdate(ctx context.Context, resp *pb.GetConfigurationUpdatesResponse, pendingSnapshot map[string]*pb.ConfiguredKubernetesObjectData, cloudSecureIDToKey map[string]string, snapshotComplete *bool) error {
 	switch update := resp.GetResponse().(type) {
 	case *pb.GetConfigurationUpdatesResponse_UpdateConfiguration:
 		c.handleUpdateConfiguration(update.UpdateConfiguration)
@@ -86,7 +88,21 @@ func (c *configClient) handleConfigUpdate(ctx context.Context, resp *pb.GetConfi
 			return errors.New("server sent ResourceData after snapshot complete")
 		}
 
-		pendingSnapshot[update.ResourceData.GetId()] = update.ResourceData
+		key, err := convert.CacheKeyFromObj(update.ResourceData)
+		if err != nil {
+			c.logger.Warn("Skipping unsupported resource type",
+				zap.String("name", update.ResourceData.GetName()),
+				zap.Error(err))
+
+			return nil
+		}
+
+		cloudSecureIDToKey[update.ResourceData.GetId()] = key
+		// Clear the CloudSecure-assigned Id before caching. The cache uses kind/namespace/name
+		// keys, and the reconciler compares config vs runtime objects with proto.Equal — runtime
+		// objects don't have this field, so leaving it would cause a permanent mismatch.
+		update.ResourceData.Id = ""
+		pendingSnapshot[key] = update.ResourceData
 
 	case *pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete:
 		if *snapshotComplete {
@@ -114,7 +130,39 @@ func (c *configClient) handleConfigUpdate(ctx context.Context, resp *pb.GetConfi
 			return errors.New("server sent ResourceMutation before snapshot complete")
 		}
 
-		if err := c.handleMutation(ctx, update.ResourceMutation); err != nil {
+		// Translate CloudSecure Id → cache key for mutations before passing to handleMutation.
+		var key string
+
+		switch m := update.ResourceMutation.GetMutation().(type) {
+		case *pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject:
+			var err error
+
+			key, err = convert.CacheKeyFromObj(m.CreateOrUpdateObject)
+			if err != nil {
+				c.logger.Warn("Skipping unsupported create/update mutation",
+					zap.String("name", m.CreateOrUpdateObject.GetName()),
+					zap.Error(err))
+
+				return nil
+			}
+
+			cloudSecureIDToKey[m.CreateOrUpdateObject.GetId()] = key
+			// Clear the CloudSecure-assigned Id before caching (see ResourceData comment above).
+			m.CreateOrUpdateObject.Id = ""
+		case *pb.ConfiguredKubernetesObjectMutation_DeleteObject:
+			var ok bool
+
+			key, ok = cloudSecureIDToKey[m.DeleteObject.GetId()]
+			if !ok {
+				c.logger.Warn("Ignoring delete for unknown CloudSecure Id", zap.String("id", m.DeleteObject.GetId()))
+
+				return nil
+			}
+
+			delete(cloudSecureIDToKey, m.DeleteObject.GetId())
+		}
+
+		if err := c.handleMutation(ctx, key, update.ResourceMutation); err != nil {
 			return err
 		}
 
@@ -142,27 +190,26 @@ func (c *configClient) handleUpdateConfiguration(config *pb.GetConfigurationUpda
 }
 
 // handleMutation processes a configured object mutation (create/update/delete).
-func (c *configClient) handleMutation(ctx context.Context, mutation *pb.ConfiguredKubernetesObjectMutation) error {
+// The cache key is computed by handleConfigUpdate and passed in directly.
+func (c *configClient) handleMutation(ctx context.Context, key string, mutation *pb.ConfiguredKubernetesObjectMutation) error {
 	switch m := mutation.GetMutation().(type) {
 	case *pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject:
-		err := c.cache.Insert(ctx, m.CreateOrUpdateObject.GetId(), m.CreateOrUpdateObject)
-		if err != nil {
+		if err := c.cache.Insert(ctx, key, m.CreateOrUpdateObject); err != nil {
 			return err
 		}
 
 		c.logger.Debug("Created or updated configured object",
-			zap.String("id", m.CreateOrUpdateObject.GetId()),
+			zap.String("key", key),
 			zap.String("name", m.CreateOrUpdateObject.GetName()),
 		)
 
 	case *pb.ConfiguredKubernetesObjectMutation_DeleteObject:
-		err := c.cache.Delete(ctx, m.DeleteObject.GetId())
-		if err != nil {
+		if err := c.cache.Delete(ctx, key); err != nil {
 			return err
 		}
 
 		c.logger.Debug("Deleted configured object",
-			zap.String("id", m.DeleteObject.GetId()),
+			zap.String("key", key),
 		)
 
 	default:

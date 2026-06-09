@@ -21,21 +21,19 @@ import (
 )
 
 const (
-	// FieldManager identifies cloud-operator as the owner of fields in Server-Side Apply.
-	FieldManager = "illumio-cloud-operator"
-
-	// FullReconcileInterval is the periodic safety net for full reconciliation,
+	// DefaultReconcileInterval is the periodic safety net for full reconciliation,
 	// catching anything missed due to dropped events or transient failures.
-	FullReconcileInterval = 5 * time.Minute
+	DefaultReconcileInterval = 5 * time.Minute
 )
 
 // Reconciler synchronizes desired state from CloudSecure with actual state in Kubernetes.
 type Reconciler struct {
-	logger       *zap.Logger
-	client       k8sclient.Client
-	configCache  *cache.ConfiguredObjectCache
-	runtimeCache *cache.ConfiguredObjectCache
-	resourceInfo map[string]resources.ResourceInfo // discovered API group/version info
+	logger            *zap.Logger
+	client            k8sclient.Client
+	configCache       *cache.ConfiguredObjectCache
+	runtimeCache      *cache.ConfiguredObjectCache
+	resourceInfo      map[string]resources.ResourceInfo // discovered API group/version info
+	reconcileInterval time.Duration
 }
 
 // NewReconciler creates a new reconciler.
@@ -46,10 +44,11 @@ func NewReconciler(
 	runtimeCache *cache.ConfiguredObjectCache,
 ) *Reconciler {
 	return &Reconciler{
-		logger:       logger,
-		client:       client,
-		configCache:  configCache,
-		runtimeCache: runtimeCache,
+		logger:            logger,
+		client:            client,
+		configCache:       configCache,
+		runtimeCache:      runtimeCache,
+		reconcileInterval: DefaultReconcileInterval,
 	}
 }
 
@@ -99,7 +98,7 @@ func (r *Reconciler) Run(ctx context.Context) {
 		r.logger.Error("Full reconciliation failed", zap.Error(err))
 	}
 
-	reconcileTimer := time.NewTimer(FullReconcileInterval)
+	reconcileTimer := time.NewTimer(r.reconcileInterval)
 
 	for {
 		select {
@@ -112,7 +111,7 @@ func (r *Reconciler) Run(ctx context.Context) {
 				r.logger.Error("Full reconciliation failed", zap.Error(err))
 			}
 
-			reconcileTimer.Reset(FullReconcileInterval)
+			reconcileTimer.Reset(r.reconcileInterval)
 		case id := <-r.configCache.ResourceChanged():
 			r.processResourceChange(ctx, id, reconcileTimer)
 		case id := <-r.runtimeCache.ResourceChanged():
@@ -157,7 +156,7 @@ func (r *Reconciler) processResourceChange(ctx context.Context, id string, recon
 			r.logger.Error("Full reconciliation failed", zap.Error(err))
 		}
 
-		reconcileTimer.Reset(FullReconcileInterval)
+		reconcileTimer.Reset(r.reconcileInterval)
 	} else {
 		if err := r.reconcileObject(ctx, id); err != nil {
 			r.logger.Error("Object reconciliation failed", zap.String("id", id), zap.Error(err))
@@ -198,20 +197,20 @@ func (r *Reconciler) reconcileAll(ctx context.Context) error {
 			zap.Int("runtime_objects", r.runtimeCache.Len()))
 	}
 
-	allIDs := make(map[string]struct{}, max(r.configCache.Len(), r.runtimeCache.Len()))
+	allKeys := make(map[string]struct{}, max(r.configCache.Len(), r.runtimeCache.Len()))
 
-	for _, obj := range r.configCache.Values() {
-		allIDs[obj.GetId()] = struct{}{}
+	for _, key := range r.configCache.Keys() {
+		allKeys[key] = struct{}{}
 	}
 
-	for _, obj := range r.runtimeCache.Values() {
-		allIDs[obj.GetId()] = struct{}{}
+	for _, key := range r.runtimeCache.Keys() {
+		allKeys[key] = struct{}{}
 	}
 
 	var errs []error
 
-	for id := range allIDs {
-		if err := r.reconcileObject(ctx, id); err != nil {
+	for key := range allKeys {
+		if err := r.reconcileObject(ctx, key); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -241,7 +240,7 @@ func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKu
 
 	gvr := schema.GroupVersionResource{Group: info.Group, Version: info.Version, Resource: resourceName}
 
-	applied, err := r.client.ApplyResource(ctx, gvr, desired.GetNamespace(), desired, FieldManager)
+	applied, err := r.client.ApplyResource(ctx, gvr, desired.GetNamespace(), desired, convert.FieldManager)
 	if err != nil {
 		return fmt.Errorf("failed to apply: %w", err)
 	}

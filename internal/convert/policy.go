@@ -16,18 +16,9 @@ import (
 )
 
 const (
-	// CloudSecureIDLabel is the label key used to store the CloudSecure object ID.
-	// This ID is the unique key in the desired state (config) cache. It is set as a label on
-	// Kubernetes objects during apply so the watcher can extract it and use it as the runtime
-	// cache key, allowing the reconciler to match desired vs actual state by the same ID.
-	CloudSecureIDLabel = "cloud.illum.io/resource-id"
-
-	// ManagedByLabel is the standard Kubernetes label for identifying the managing component.
-	// https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/
-	ManagedByLabel = "app.kubernetes.io/managed-by"
-
-	// ManagedByValue is the value used for the managed-by label.
-	ManagedByValue = "illumio-cloud-operator"
+	// FieldManager identifies cloud-operator as the owner of fields in Server-Side Apply.
+	// It is also used by the watcher to check managedFields ownership on K8s objects.
+	FieldManager = "illumio-cloud-operator"
 )
 
 // protoJSONMarshaler is configured for Kubernetes Server-Side Apply:
@@ -52,25 +43,46 @@ func ExtractResourceName(data *pb.ConfiguredKubernetesObjectData) (string, error
 	}
 }
 
-// BuildConfiguredFromMetadata builds a ConfiguredKubernetesObjectData from the
-// already-converted KubernetesObjectData for the runtime cache. Operator-added
-// labels (cloudsecure-id, managed-by) are stripped so the runtime snapshot
-// matches the shape of the config cache. Annotations are passed through as-is
-// because the operator doesn't add any — SSA handles annotation ownership.
-func BuildConfiguredFromMetadata(id string, metadata *pb.KubernetesObjectData) (*pb.ConfiguredKubernetesObjectData, error) {
-	filteredLabels := make(map[string]string, len(metadata.GetLabels()))
-	for k, v := range metadata.GetLabels() {
-		if k != CloudSecureIDLabel && k != ManagedByLabel {
-			filteredLabels[k] = v
-		}
+// ExtractKind returns the Kubernetes kind string for a configured object.
+func ExtractKind(data *pb.ConfiguredKubernetesObjectData) (string, error) {
+	switch data.GetKindSpecific().(type) {
+	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
+		return "CiliumNetworkPolicy", nil
+	case *pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy:
+		return "CiliumClusterwideNetworkPolicy", nil
+	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
+		return "CiliumCIDRGroup", nil
+	default:
+		return "", fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
+	}
+}
+
+// NewCacheKey builds a cache key from kind, namespace, and name.
+// Both config and runtime caches use this key format so lookups match
+// without needing labels or reverse indexes.
+func NewCacheKey(kind, namespace, name string) string {
+	return kind + "/" + namespace + "/" + name
+}
+
+// CacheKeyFromObj computes a cache key from a configured object's kind, namespace, and name.
+func CacheKeyFromObj(data *pb.ConfiguredKubernetesObjectData) (string, error) {
+	kind, err := ExtractKind(data)
+	if err != nil {
+		return "", err
 	}
 
+	return NewCacheKey(kind, data.GetNamespace(), data.GetName()), nil
+}
+
+// BuildConfiguredFromMetadata builds a ConfiguredKubernetesObjectData from the
+// already-converted KubernetesObjectData for the runtime cache. Labels and
+// annotations are copied as-is so the reconciler can detect drift via proto.Equal.
+func BuildConfiguredFromMetadata(metadata *pb.KubernetesObjectData) (*pb.ConfiguredKubernetesObjectData, error) {
 	configured := &pb.ConfiguredKubernetesObjectData{
-		Id:          id,
 		Name:        metadata.GetName(),
 		Namespace:   metadata.Namespace,
 		Annotations: metadata.GetAnnotations(),
-		Labels:      filteredLabels,
+		Labels:      metadata.GetLabels(),
 	}
 
 	if err := setConfiguredKindSpecific(configured, metadata); err != nil {
@@ -120,13 +132,16 @@ func ConvertToApplyObject(data *pb.ConfiguredKubernetesObjectData, apiGroup, api
 
 	// Build the K8s object as a map
 	metadata := map[string]any{
-		"name":   data.GetName(),
-		"labels": copyLabels(data.GetLabels(), data.GetId()),
+		"name": data.GetName(),
 	}
 
-	// Only include annotations when explicitly set. Omitting the field lets SSA
-	// release ownership of previously-owned keys without wiping annotations from
+	// Only include labels/annotations when explicitly set. Omitting the field lets SSA
+	// release ownership of previously-owned keys without wiping values from
 	// other field managers. Sending null would claim the entire field and clear all keys.
+	if labels := data.GetLabels(); labels != nil {
+		metadata["labels"] = labels
+	}
+
 	if annotations := data.GetAnnotations(); annotations != nil {
 		metadata["annotations"] = annotations
 	}
@@ -145,17 +160,6 @@ func ConvertToApplyObject(data *pb.ConfiguredKubernetesObjectData, apiGroup, api
 	maps.Copy(obj, specFields)
 
 	return &unstructured.Unstructured{Object: obj}, resourceName, nil
-}
-
-// copyLabels copies labels and adds the CloudSecure ID and managed-by labels.
-func copyLabels(labels map[string]string, id string) map[string]string {
-	result := make(map[string]string, len(labels)+2)
-	maps.Copy(result, labels)
-
-	result[CloudSecureIDLabel] = id
-	result[ManagedByLabel] = ManagedByValue
-
-	return result
 }
 
 // --- Configured object helpers (reconciler direction: proto → K8s) ---

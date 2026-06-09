@@ -1,3 +1,5 @@
+// Copyright 2024 Illumio, Inc. All Rights Reserved.
+
 package main
 
 import (
@@ -6,6 +8,9 @@ import (
 
 	"github.com/golang-jwt/jwt/v4"
 	"go.uber.org/zap"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/fakeserver"
 )
 
 func main() {
@@ -33,28 +38,29 @@ func main() {
 		logger.Error("Token could not be signed with fake secret key")
 	}
 
-	fs := FakeServer{
-		address:     "0.0.0.0:50051",
-		httpAddress: "0.0.0.0:50053",
-		stopChan:    make(chan struct{}),
-		token:       signedToken,
-		logger:      logger,
-		state:       &ServerState{},
+	fs := &fakeserver.FakeServer{
+		Address:         "0.0.0.0:50051",
+		HTTPAddress:     "0.0.0.0:50053",
+		StopChan:        make(chan struct{}),
+		Token:           signedToken,
+		Logger:          logger,
+		State:           &fakeserver.ServerState{},
+		ConfigResponses: make(chan *pb.GetConfigurationUpdatesResponse, 10),
 	}
 
 	// Start the server
-	if err := fs.start(); err != nil {
+	if err := fs.Start(); err != nil {
 		logger.Fatal("Failed to start server", zap.Error(err))
 	}
-	defer fs.stop()
+	defer fs.Stop()
 
 	logger.Info("FakeServer started")
 
 	// Start the proxy server if the flag is set
-	var proxyServer *ProxyServer
+	var proxyServer *fakeserver.ProxyServer
 	if *proxyFlag {
 		// Initialize the ProxyServer
-		proxyServer = NewProxyServer("0.0.0.0:8888", logger)
+		proxyServer = fakeserver.NewProxyServer("0.0.0.0:8888", logger)
 
 		logger.Info("Starting ProxyServer")
 		proxyServer.Start()
@@ -66,7 +72,10 @@ func main() {
 		}()
 	}
 
-	// Wait indefinitely for server stop signal
+	// Keep the compiler happy about proxyServer usage
+	_ = proxyServer
+
+	// Wait for server stop signal
 	logger.Info("Server started")
-	<-fs.stopChan
+	<-fs.StopChan
 }
