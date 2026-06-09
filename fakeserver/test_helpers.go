@@ -140,6 +140,7 @@ func (h *FakeServerTestHarness) Start() error {
 				},
 			},
 		})
+
 		h.Server.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 				ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
