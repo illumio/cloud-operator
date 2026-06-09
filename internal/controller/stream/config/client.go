@@ -5,7 +5,6 @@ package config
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 
@@ -132,9 +131,13 @@ func (c *configClient) handleConfigUpdate(ctx context.Context, resp *pb.GetConfi
 		}
 
 		// Translate CloudSecure Id → cache key for mutations before passing to handleMutation.
+		var key string
+
 		switch m := update.ResourceMutation.GetMutation().(type) {
 		case *pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject:
-			key, err := convert.CacheKeyFromObj(m.CreateOrUpdateObject)
+			var err error
+
+			key, err = convert.CacheKeyFromObj(m.CreateOrUpdateObject)
 			if err != nil {
 				c.logger.Warn("Skipping unsupported create/update mutation",
 					zap.String("name", m.CreateOrUpdateObject.GetName()),
@@ -147,7 +150,9 @@ func (c *configClient) handleConfigUpdate(ctx context.Context, resp *pb.GetConfi
 			// Clear the CloudSecure-assigned Id before caching (see ResourceData comment above).
 			m.CreateOrUpdateObject.Id = ""
 		case *pb.ConfiguredKubernetesObjectMutation_DeleteObject:
-			key, ok := cloudSecureIDToKey[m.DeleteObject.GetId()]
+			var ok bool
+
+			key, ok = cloudSecureIDToKey[m.DeleteObject.GetId()]
 			if !ok {
 				c.logger.Warn("Ignoring delete for unknown CloudSecure Id", zap.String("id", m.DeleteObject.GetId()))
 
@@ -155,12 +160,9 @@ func (c *configClient) handleConfigUpdate(ctx context.Context, resp *pb.GetConfi
 			}
 
 			delete(cloudSecureIDToKey, m.DeleteObject.GetId())
-			// Repurpose the Id field to carry the cache key into handleMutation,
-			// since DeleteConfiguredKubernetesObject only has an Id field (no name/kind/namespace).
-			m.DeleteObject.Id = key
 		}
 
-		if err := c.handleMutation(ctx, update.ResourceMutation); err != nil {
+		if err := c.handleMutation(ctx, key, update.ResourceMutation); err != nil {
 			return err
 		}
 
@@ -188,16 +190,10 @@ func (c *configClient) handleUpdateConfiguration(config *pb.GetConfigurationUpda
 }
 
 // handleMutation processes a configured object mutation (create/update/delete).
-// By the time this is called, handleConfigUpdate has already translated CloudSecure Ids
-// to cache keys and cleared Id fields on create/update objects.
-func (c *configClient) handleMutation(ctx context.Context, mutation *pb.ConfiguredKubernetesObjectMutation) error {
+// The cache key is computed by handleConfigUpdate and passed in directly.
+func (c *configClient) handleMutation(ctx context.Context, key string, mutation *pb.ConfiguredKubernetesObjectMutation) error {
 	switch m := mutation.GetMutation().(type) {
 	case *pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject:
-		key, err := convert.CacheKeyFromObj(m.CreateOrUpdateObject)
-		if err != nil {
-			return fmt.Errorf("failed to compute cache key for create/update %q: %w", m.CreateOrUpdateObject.GetName(), err)
-		}
-
 		if err := c.cache.Insert(ctx, key, m.CreateOrUpdateObject); err != nil {
 			return err
 		}
@@ -208,9 +204,6 @@ func (c *configClient) handleMutation(ctx context.Context, mutation *pb.Configur
 		)
 
 	case *pb.ConfiguredKubernetesObjectMutation_DeleteObject:
-		// DeleteObject.Id has been replaced with the cache key by handleConfigUpdate.
-		key := m.DeleteObject.GetId()
-
 		if err := c.cache.Delete(ctx, key); err != nil {
 			return err
 		}

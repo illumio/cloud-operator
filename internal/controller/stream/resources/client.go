@@ -327,7 +327,8 @@ func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.
 		// all operator-managed fields, removing our field manager entry entirely. In that case
 		// hasFieldManager returns false even though we previously applied the object. The cache
 		// membership check ensures we still track the modified state so the reconciler can
-		// detect the drift and restore it. (https://kubernetes.io/docs/reference/using-api/server-side-apply/#clearing-managedfields)
+		// detect the drift and restore it.
+		// (https://kubernetes.io/docs/reference/using-api/server-side-apply/#clearing-managedfields)
 		if !hasFieldManager(obj, convert.FieldManager) && c.runtimeCache.Get(key) == nil {
 			return nil
 		}

@@ -39,7 +39,7 @@ func DefaultTestConfig() TestConfig {
 		HTTPAddress:   "0.0.0.0:50053",
 		Timeout:       90 * time.Second,
 		PollInterval:  500 * time.Millisecond,
-		EnableLogging: true,
+		EnableLogging: true, // Enable logging by default for debugging
 		AutoHandshake: true,
 	}
 }
