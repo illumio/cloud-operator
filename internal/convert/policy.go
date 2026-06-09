@@ -16,12 +16,6 @@ import (
 )
 
 const (
-	// CloudSecureIDLabel is the label key used to store the CloudSecure object ID.
-	// This ID is the unique key in the desired state (config) cache. It is set as a label on
-	// Kubernetes objects during apply so the watcher can extract it and use it as the runtime
-	// cache key, allowing the reconciler to match desired vs actual state by the same ID.
-	CloudSecureIDLabel = "cloud.illum.io/resource-id"
-
 	// FieldManager identifies cloud-operator as the owner of fields in Server-Side Apply.
 	// It is also used by the watcher to check managedFields ownership on K8s objects.
 	FieldManager = "illumio-cloud-operator"
@@ -49,13 +43,42 @@ func ExtractResourceName(data *pb.ConfiguredKubernetesObjectData) (string, error
 	}
 }
 
+// ExtractKind returns the Kubernetes kind string for a configured object.
+func ExtractKind(data *pb.ConfiguredKubernetesObjectData) (string, error) {
+	switch data.GetKindSpecific().(type) {
+	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
+		return "CiliumNetworkPolicy", nil
+	case *pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy:
+		return "CiliumClusterwideNetworkPolicy", nil
+	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
+		return "CiliumCIDRGroup", nil
+	default:
+		return "", fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
+	}
+}
+
+// NewCacheKey builds a cache key from kind, namespace, and name.
+// Both config and runtime caches use this key format so lookups match
+// without needing labels or reverse indexes.
+func NewCacheKey(kind, namespace, name string) string {
+	return kind + "/" + namespace + "/" + name
+}
+
+// CacheKeyFromObj computes a cache key from a configured object's kind, namespace, and name.
+func CacheKeyFromObj(data *pb.ConfiguredKubernetesObjectData) (string, error) {
+	kind, err := ExtractKind(data)
+	if err != nil {
+		return "", err
+	}
+
+	return NewCacheKey(kind, data.GetNamespace(), data.GetName()), nil
+}
+
 // BuildConfiguredFromMetadata builds a ConfiguredKubernetesObjectData from the
-// already-converted KubernetesObjectData for the runtime cache. Labels are copied
-// as-is (including operator labels like CloudSecureIDLabel) so the reconciler can
-// detect label drift.
-func BuildConfiguredFromMetadata(id string, metadata *pb.KubernetesObjectData) (*pb.ConfiguredKubernetesObjectData, error) {
+// already-converted KubernetesObjectData for the runtime cache. Labels and
+// annotations are copied as-is so the reconciler can detect drift via proto.Equal.
+func BuildConfiguredFromMetadata(metadata *pb.KubernetesObjectData) (*pb.ConfiguredKubernetesObjectData, error) {
 	configured := &pb.ConfiguredKubernetesObjectData{
-		Id:          id,
 		Name:        metadata.GetName(),
 		Namespace:   metadata.Namespace,
 		Annotations: metadata.GetAnnotations(),

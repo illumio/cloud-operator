@@ -26,7 +26,6 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 	"github.com/illumio/cloud-operator/internal/controller/stream/resources"
-	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 // mockClient implements k8sclient.Client for testing.
@@ -201,12 +200,9 @@ func TestReconcileObject_SkipsApplyWhenMatching(t *testing.T) {
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
 	}
-	// Runtime object includes CloudSecureIDLabel because apply sets it on the K8s object
-	// and BuildConfiguredFromMetadata preserves all labels into the runtime cache.
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:     "policy-1",
-		Name:   "allow-web",
-		Labels: map[string]string{convert.CloudSecureIDLabel: "policy-1"},
+		Id:   "policy-1",
+		Name: "allow-web",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
@@ -305,11 +301,9 @@ func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
 	}
-	// Runtime includes CloudSecureIDLabel (set during apply, preserved by BuildConfiguredFromMetadata)
 	unchangedRuntime := &pb.ConfiguredKubernetesObjectData{
-		Id:     "policy-1",
-		Name:   "unchanged",
-		Labels: map[string]string{convert.CloudSecureIDLabel: "policy-1"},
+		Id:   "policy-1",
+		Name: "unchanged",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
@@ -323,9 +317,8 @@ func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
 		},
 	}
 	changedRuntime := &pb.ConfiguredKubernetesObjectData{
-		Id:     "policy-2",
-		Name:   "changed",
-		Labels: map[string]string{convert.CloudSecureIDLabel: "policy-2"},
+		Id:   "policy-2",
+		Name: "changed",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
@@ -574,7 +567,8 @@ func TestCacheCloseUnblocksReconcilerLoop(t *testing.T) {
 		// waitForCaches uses Run internally — but we pre-set resourceInfo,
 		// so call waitForCaches + the main loop directly via the exported Run.
 		// Since resourceInfo is set, Run skips discovery and goes straight to waitForCaches.
-		r.waitForCaches(ctx) //nolint:errcheck // caches are already ready
+		_ = r.waitForCaches(ctx)
+
 		close(done)
 	}()
 
