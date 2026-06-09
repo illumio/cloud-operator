@@ -140,7 +140,6 @@ func TestReconciler_BulkPopulatedSnapshot(t *testing.T) {
 	assert.Equal(t, "e2e-snapshot-policy", obj.GetName())
 	assert.Equal(t, "e2e", obj.GetLabels()["env"])
 
-
 	spec, ok := obj.Object["spec"].(map[string]any)
 	require.True(t, ok)
 
@@ -197,8 +196,8 @@ func TestReconciler_EmptySnapshotThenMutation(t *testing.T) {
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
-					CreateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "CiliumClusterwideNetworkPolicy//e2e-mutation-policy",
 						Name: "e2e-mutation-policy",
 
@@ -229,7 +228,6 @@ func TestReconciler_EmptySnapshotThenMutation(t *testing.T) {
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-mutation-policy")
 	require.NoError(t, err)
 	assert.Equal(t, "e2e-mutation-policy", obj.GetName())
-
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-mutation-policy")
@@ -366,7 +364,6 @@ func TestReconciler_SSAFieldManagerOwnership(t *testing.T) {
 
 	assert.True(t, found, "expected field manager %q in managed fields", convert.FieldManager)
 
-
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-ssa-policy")
 	})
@@ -397,8 +394,8 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
-					CreateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "CiliumClusterwideNetworkPolicy//e2e-multi-a",
 						Name: "e2e-multi-a",
 
@@ -424,8 +421,8 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
-					CreateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "CiliumClusterwideNetworkPolicy//e2e-multi-b",
 						Name: "e2e-multi-b",
 
@@ -458,8 +455,8 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
-					UpdateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "CiliumClusterwideNetworkPolicy//e2e-multi-a",
 						Name: "e2e-multi-a",
 
@@ -582,7 +579,6 @@ func TestReconciler_UpdateChangesSpec(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "staging", obj.GetLabels()["env"])
 
-
 	spec, ok := obj.Object["spec"].(map[string]any)
 	require.True(t, ok)
 	es, ok := spec["endpointSelector"].(map[string]any)
@@ -596,8 +592,8 @@ func TestReconciler_UpdateChangesSpec(t *testing.T) {
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
-					UpdateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "CiliumClusterwideNetworkPolicy//e2e-update-spec",
 						Name: "e2e-update-spec",
 
@@ -647,7 +643,6 @@ func TestReconciler_UpdateChangesSpec(t *testing.T) {
 	obj, err = testClient.GetResource(ctx, ccnpGVR, "", "e2e-update-spec")
 	require.NoError(t, err)
 	assert.Equal(t, "production", obj.GetLabels()["env"])
-
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-update-spec")
@@ -746,7 +741,6 @@ func TestReconciler_DeleteOnlyRemovesTargetPolicy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "e2e-del-keep", obj.GetName())
 
-
 	spec, ok := obj.Object["spec"].(map[string]any)
 	require.True(t, ok)
 	es, ok := spec["endpointSelector"].(map[string]any)
@@ -811,8 +805,8 @@ func TestReconciler_UpdatePreservesMetadata(t *testing.T) {
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
-					UpdateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "CiliumClusterwideNetworkPolicy//e2e-meta-preserve",
 						Name: "e2e-meta-preserve",
 
@@ -860,7 +854,6 @@ func TestReconciler_UpdatePreservesMetadata(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "v2", obj.GetLabels()["version"])
 
-
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-meta-preserve")
 	})
@@ -891,8 +884,8 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
-					CreateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:     "CiliumCIDRGroup//e2e-cidr-mut",
 						Name:   "e2e-cidr-mut",
 						Labels: map[string]string{"env": "test"},
@@ -920,7 +913,6 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 	assert.Equal(t, "CiliumCIDRGroup", obj.GetKind())
 	assert.Equal(t, "test", obj.GetLabels()["env"])
 
-
 	spec, ok := obj.Object["spec"].(map[string]any)
 	require.True(t, ok)
 	cidrs, ok := spec["externalCIDRs"].([]any)
@@ -932,8 +924,8 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
-					UpdateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:     "CiliumCIDRGroup//e2e-cidr-mut",
 						Name:   "e2e-cidr-mut",
 						Labels: map[string]string{"env": "production"},
@@ -970,7 +962,6 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 	obj, err = testClient.GetResource(ctx, cidrGroupGVR, "", "e2e-cidr-mut")
 	require.NoError(t, err)
 	assert.Equal(t, "production", obj.GetLabels()["env"])
-
 
 	// Delete the CIDRGroup
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
@@ -1057,7 +1048,6 @@ func TestReconciler_CiliumExample_ClusterscopePolicy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
 
-
 	expected := loadExpectedPolicy(t, "clusterscope-policy.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
 
@@ -1137,7 +1127,6 @@ func TestReconciler_CiliumExample_ServiceAccountPolicy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
 
-
 	expected := loadExpectedPolicy(t, "serviceaccount-policy.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
 
@@ -1206,7 +1195,6 @@ func TestReconciler_CiliumExample_CrossNamespace(t *testing.T) {
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "cross-namespace-policy")
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
-
 
 	expected := loadExpectedPolicy(t, "cross-namespace-policy.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
@@ -1285,7 +1273,6 @@ func TestReconciler_CiliumExample_AllowToKubeDNS(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
 
-
 	expected := loadExpectedPolicy(t, "allow-to-kubedns.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
 
@@ -1363,7 +1350,6 @@ func TestReconciler_CiliumExample_WildcardFromEndpoints(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
 
-
 	expected := loadExpectedPolicy(t, "wildcard-from-endpoints.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
 
@@ -1429,7 +1415,6 @@ func TestReconciler_CiliumExample_ExternalLockdown(t *testing.T) {
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "external-lockdown")
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
-
 
 	expected := loadExpectedPolicy(t, "external-lockdown.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
@@ -1504,7 +1489,6 @@ func TestReconciler_CiliumExample_Init(t *testing.T) {
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "init")
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
-
 
 	expected := loadExpectedPolicy(t, "init.yaml")
 	// Fixture uses "specs" (plural array) matching the original Cilium YAML,
@@ -1591,7 +1575,6 @@ func TestReconciler_CiliumExample_DemoHostPolicy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", obj.GetKind())
 
-
 	expected := loadExpectedPolicy(t, "demo-host-policy.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
 
@@ -1672,7 +1655,6 @@ func TestReconciler_CiliumExample_NamespaceLabelsPolicy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumNetworkPolicy", obj.GetKind())
 
-
 	expected := loadExpectedPolicy(t, "namespace-labels-policy.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
 
@@ -1745,7 +1727,6 @@ func TestReconciler_CiliumExample_ICMPRule(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumNetworkPolicy", obj.GetKind())
 
-
 	expected := loadExpectedPolicy(t, "icmp-rule.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
 
@@ -1817,7 +1798,6 @@ func TestReconciler_CiliumExample_CIDRRule(t *testing.T) {
 	obj, err := testClient.GetResource(ctx, cnpGVR, ns, "cidr-rule")
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumNetworkPolicy", obj.GetKind())
-
 
 	expected := loadExpectedPolicy(t, "cidr-rule.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
@@ -1899,7 +1879,6 @@ func TestReconciler_CiliumExample_MatchExpressionsAND(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "CiliumNetworkPolicy", obj.GetKind())
 
-
 	expected := loadExpectedPolicy(t, "and-statement.yaml")
 	assert.Equal(t, expected["spec"], obj.Object["spec"])
 
@@ -1970,13 +1949,12 @@ func TestReconciler_ExternalAnnotationsSurviveReApply(t *testing.T) {
 	assert.Equal(t, "v1", obj.GetAnnotations()["external-controller"])
 	assert.Equal(t, "managed", obj.GetAnnotations()["operator-note"])
 
-
 	// Step 3: Reconciler re-applies via update mutation (spec change triggers SSA apply)
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
-					UpdateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:          "CiliumClusterwideNetworkPolicy//e2e-ext-annotations",
 						Name:        "e2e-ext-annotations",
 						Annotations: map[string]string{"operator-note": "managed-v2"},
@@ -2085,7 +2063,6 @@ func TestReconciler_ExternalAnnotationDeletedByOperator(t *testing.T) {
 	assert.Equal(t, "yes", obj.GetAnnotations()["keep"])
 	assert.Equal(t, "temporary", obj.GetAnnotations()["remove-me"])
 
-
 	// Step 2: External actor adds annotation
 	patch := []byte(`{"metadata":{"annotations":{"external":"stays"}}}`)
 	_, err = testClient.GetDynamicClient().Resource(ccnpGVR).Patch(
@@ -2098,8 +2075,8 @@ func TestReconciler_ExternalAnnotationDeletedByOperator(t *testing.T) {
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
-					UpdateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "CiliumClusterwideNetworkPolicy//e2e-ann-delete",
 						Name: "e2e-ann-delete",
 						// Annotations set to nil — operator releases all annotation ownership
@@ -2300,7 +2277,6 @@ func TestReconciler_SnapshotReplacementBulkDelete(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "snap-a", obj.GetName())
 
-
 	t.Cleanup(func() {
 		for _, name := range []string{"snap-a", "snap-b", "snap-c"} {
 			_ = testClient.DeleteResource(ctx, ccnpGVR, "", name)
@@ -2354,8 +2330,8 @@ func TestReconciler_IdempotentReApply(t *testing.T) {
 		fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 				ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-					Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
-						CreateObject: policyData,
+					Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+						CreateOrUpdateObject: policyData,
 					},
 				},
 			},
@@ -2375,7 +2351,6 @@ func TestReconciler_IdempotentReApply(t *testing.T) {
 	obj, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-idempotent")
 	require.NoError(t, err)
 	assert.Equal(t, "e2e-idempotent", obj.GetName())
-
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-idempotent")
@@ -2539,8 +2514,8 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
-					UpdateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "CiliumClusterwideNetworkPolicy//mixed-clusterwide-policy",
 						Name: "mixed-clusterwide-policy",
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
@@ -2586,8 +2561,8 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
-					UpdateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "CiliumCIDRGroup//mixed-cidr-group",
 						Name: "mixed-cidr-group",
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
@@ -2697,8 +2672,8 @@ func TestReconciler_DeleteNonExistent(t *testing.T) {
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateObject{
-					CreateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "CiliumClusterwideNetworkPolicy//e2e-after-ghost",
 						Name: "e2e-after-ghost",
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
@@ -2861,11 +2836,9 @@ func TestReconciler_PoliciesPersistAfterOperatorShutdown(t *testing.T) {
 	require.NoError(t, err, "CCNP should persist after operator shutdown")
 	assert.Equal(t, "CiliumClusterwideNetworkPolicy", ccnpObj.GetKind())
 
-
 	cnpObj, err := testClient.GetResource(freshCtx, cnpGVR, ns, "e2e-persist-cnp")
 	require.NoError(t, err, "CNP should persist after operator shutdown")
 	assert.Equal(t, "CiliumNetworkPolicy", cnpObj.GetKind())
-
 
 	t.Cleanup(func() {
 		cleanupCtx := context.Background()
@@ -3063,8 +3036,8 @@ func TestReconciler_ExternalAnnotationInsertedMidLifecycle(t *testing.T) {
 		fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 				ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-					Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
-						UpdateObject: &pb.ConfiguredKubernetesObjectData{
+					Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+						CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 							Id:   "CiliumClusterwideNetworkPolicy//e2e-ext-insert",
 							Name: "e2e-ext-insert",
 							KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
@@ -3112,7 +3085,6 @@ func TestReconciler_ExternalAnnotationInsertedMidLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "external-controller", obj.GetAnnotations()["injected-by"],
 		"external annotation should survive multiple SSA re-applies")
-
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-ext-insert")
@@ -3211,7 +3183,6 @@ func TestReconciler_SSAOverwritesExternalSpecMutation(t *testing.T) {
 	raw, err := testClient.GetDynamicClient().Resource(ccnpGVR).Get(ctx, "e2e-ssa-overwrite", metav1.GetOptions{})
 	require.NoError(t, err)
 
-
 	var operatorOwnsSpec bool
 	for _, mf := range raw.GetManagedFields() {
 		if mf.Manager == convert.FieldManager {
@@ -3304,7 +3275,6 @@ func TestReconciler_DeletedPolicyRestoredByReconciler(t *testing.T) {
 	restored, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-restore-policy")
 	require.NoError(t, err)
 
-
 	spec, ok := restored.Object["spec"].(map[string]any)
 	require.True(t, ok)
 	es, ok := spec["endpointSelector"].(map[string]any)
@@ -3377,8 +3347,8 @@ func TestReconciler_ExternalUserLabelsPreserved(t *testing.T) {
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
-				Mutation: &pb.ConfiguredKubernetesObjectMutation_UpdateObject{
-					UpdateObject: &pb.ConfiguredKubernetesObjectData{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
 						Id:   "CiliumClusterwideNetworkPolicy//e2e-ext-labels",
 						Name: "e2e-ext-labels",
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
