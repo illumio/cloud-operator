@@ -4,6 +4,7 @@ package flows
 
 import (
 	"context"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -48,4 +49,6 @@ type CollectorConfig struct {
 	TlsAuthProps       *tls.AuthProperties
 	IPFIXCollectorPort string
 	OVNKNamespace      string
+	// AWS VPC CNI configuration
+	AWSVPCCNIPollingInterval time.Duration
 }
