@@ -16,22 +16,27 @@ go test -run '^TestName$' ./path/to/pkg  # Run single test
 
 ```
 internal/controller/
-├── auth/           # OAuth2 authentication, cluster onboarding
-├── collector/      # Flow collectors (Cilium, Falco, OVN-K)
-├── stream/         # gRPC stream management (core package)
-│   ├── manager.go  # Entry point: ConnectStreams()
+├── auth/             # OAuth2 authentication, cluster onboarding
+├── collector/        # Flow collectors (Cilium, Falco, OVN-K, AWS VPC CNI)
+├── stream/           # gRPC stream management (core package)
+│   ├── manager.go    # Entry point: ConnectStreams()
 │   ├── interfaces.go # StreamClient, StreamClientFactory interfaces
-│   ├── config/     # Configuration stream (factory + client)
-│   ├── flows/      # Network flows stream
-│   │   ├── cache/  # Flow cache for aggregation/eviction
-│   │   ├── cilium/ # Cilium/Hubble flow collector
-│   │   ├── falco/  # Falco flow collector
-│   │   └── ovnk/   # OVN-Kubernetes flow collector
-│   ├── logs/       # Log stream (factory + client)
-│   └── resources/  # K8s resources stream (factory + client)
-├── k8sclient/      # Kubernetes client wrapper
-├── logging/        # Buffered gRPC log syncer, gRPC internal logging
-└── hubble/         # Cilium Hubble client
+│   ├── config/       # Configuration stream (factory + client)
+│   │   └── cache/    # Config/policy cache
+│   ├── flows/        # Network flows stream
+│   │   ├── cache/      # Flow cache for aggregation/eviction
+│   │   ├── cilium/     # Cilium/Hubble flow collector
+│   │   ├── falco/      # Falco flow collector
+│   │   ├── ovnk/       # OVN-Kubernetes flow collector
+│   │   └── awsvpccni/  # AWS VPC CNI flow collector
+│   ├── logs/         # Log stream (factory + client)
+│   └── resources/    # K8s resources stream (factory + client)
+├── reconciler/       # Policy reconciliation (cache keys, field-manager ownership)
+├── ovn_template_sets/ # OVN-K policy template set binaries
+├── k8sclient/        # Kubernetes client wrapper
+├── logging/          # Buffered gRPC log syncer, gRPC internal logging
+├── hubble/           # Cilium Hubble client
+└── testhelper/       # Shared test utilities
 ```
 
 ## Factory Pattern
@@ -64,6 +69,8 @@ Streams use the **StreamClient/StreamClientFactory** pattern for dependency inje
 | Auth flow | `auth/authenticator.go:SetUpOAuthConnection()` |
 | Flow caching | `stream/flows/cache/cache.go:FlowCache` |
 | Flow collector detection | `stream/flows/detect.go:DetectFlowCollector()` |
+| AWS VPC CNI flow parsing | `collector/awsvpccni.go:ParseAWSVPCCNIFlowLog()` |
+| Policy reconciliation | `reconciler/reconciler.go:NewReconciler()` |
 | Resource watching | `stream/resources/watcher.go` |
 | gRPC internal logging | `logging/grpc_internal_logger.go` |
 
