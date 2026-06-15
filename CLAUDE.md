@@ -69,7 +69,6 @@ Streams use the **StreamClient/StreamClientFactory** pattern for dependency inje
 | Auth flow | `auth/authenticator.go:SetUpOAuthConnection()` |
 | Flow caching | `stream/flows/cache/cache.go:FlowCache` |
 | Flow collector detection | `stream/flows/detect.go:DetectFlowCollector()` |
-| AWS VPC CNI flow parsing | `collector/awsvpccni.go:ParseAWSVPCCNIFlowLog()` |
 | Policy reconciliation | `reconciler/reconciler.go:NewReconciler()` |
 | Resource watching | `stream/resources/watcher.go` |
 | gRPC internal logging | `logging/grpc_internal_logger.go` |
