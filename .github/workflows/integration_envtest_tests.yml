@@ -25,10 +25,13 @@ jobs:
           go-version-file: "go.mod"
           cache: true
 
+      - name: Download Cilium CRDs
+        run: make download-crds
+
       - name: Install envtest binaries
         run: |
-          go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+          go install sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.23.3
           echo "KUBEBUILDER_ASSETS=$(setup-envtest use --print path)" >> $GITHUB_ENV
 
       - name: Run envtest tests
-        run: go test -tags envtest -v ./internal/controller/reconciler/...
+        run: make test-envtest

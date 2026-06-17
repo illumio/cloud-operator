@@ -7,7 +7,7 @@ LOCAL_IMAGE := $(LOCAL_REGISTRY)/$(APP_NAME)
 COMMIT := $(shell git rev-parse --short HEAD)
 DATE := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 LDFLAGS := -ldflags "-X main.Version=latest -X main.Commit=$(COMMIT) -X main.Date=$(DATE)"
-CILIUM_VERSION := $(shell grep 'github.com/cilium/cilium ' go.mod | awk '{print $$2}')
+CILIUM_VERSION := $(shell go list -m -f '{{.Version}}' github.com/cilium/cilium)
 CRD_DIR := internal/controller/reconciler/testdata/crds
 CRD_BASE_URL := https://raw.githubusercontent.com/cilium/cilium/$(CILIUM_VERSION)/pkg/k8s/apis/cilium.io/client/crds/v2
 
@@ -31,9 +31,9 @@ test:
 .PHONY: download-crds
 download-crds:
 	@mkdir -p $(CRD_DIR)
-	curl -sSL "$(CRD_BASE_URL)/ciliumnetworkpolicies.yaml" -o $(CRD_DIR)/ciliumnetworkpolicies.yaml
-	curl -sSL "$(CRD_BASE_URL)/ciliumclusterwidenetworkpolicies.yaml" -o $(CRD_DIR)/ciliumclusterwidenetworkpolicies.yaml
-	curl -sSL "$(CRD_BASE_URL)/ciliumcidrgroups.yaml" -o $(CRD_DIR)/ciliumcidrgroups.yaml
+	curl -sSLf "$(CRD_BASE_URL)/ciliumnetworkpolicies.yaml" -o $(CRD_DIR)/ciliumnetworkpolicies.yaml
+	curl -sSLf "$(CRD_BASE_URL)/ciliumclusterwidenetworkpolicies.yaml" -o $(CRD_DIR)/ciliumclusterwidenetworkpolicies.yaml
+	curl -sSLf "$(CRD_BASE_URL)/ciliumcidrgroups.yaml" -o $(CRD_DIR)/ciliumcidrgroups.yaml
 
 # Run envtest integration tests (requires setup-envtest)
 .PHONY: test-envtest
