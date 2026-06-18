@@ -150,38 +150,38 @@ func (r *Reconciler) waitForCaches(ctx context.Context) error {
 
 // processResourceChange handles a single resource change by reconciling the
 // affected object, or performing a full reconciliation if the entire snapshot was replaced.
-func (r *Reconciler) processResourceChange(ctx context.Context, id string, reconcileTimer *time.Timer) {
-	if id == cache.SnapshotReplaced {
+func (r *Reconciler) processResourceChange(ctx context.Context, key string, reconcileTimer *time.Timer) {
+	if key == cache.SnapshotReplaced {
 		if err := r.reconcileAll(ctx); err != nil {
 			r.logger.Error("Full reconciliation failed", zap.Error(err))
 		}
 
 		reconcileTimer.Reset(r.reconcileInterval)
 	} else {
-		if err := r.reconcileObject(ctx, id); err != nil {
-			r.logger.Error("Object reconciliation failed", zap.String("id", id), zap.Error(err))
+		if err := r.reconcileObject(ctx, key); err != nil {
+			r.logger.Error("Object reconciliation failed", zap.String("key", key), zap.Error(err))
 		}
 	}
 }
 
-// reconcileObject reconciles a single object by ID.
+// reconcileObject reconciles a single object by key.
 // If the object exists in the config cache and differs from the runtime cache, it is applied via SSA.
 // If the object exists only in the runtime cache (not in config), it is deleted.
-func (r *Reconciler) reconcileObject(ctx context.Context, id string) error {
-	configObj := r.configCache.Get(id)
-	runtimeObj := r.runtimeCache.Get(id)
+func (r *Reconciler) reconcileObject(ctx context.Context, key string) error {
+	configObj := r.configCache.Get(key)
+	runtimeObj := r.runtimeCache.Get(key)
 
 	switch {
 	// In config and differs from runtime (or not yet applied) → apply
 	case configObj != nil && !proto.Equal(configObj, runtimeObj):
 		if err := r.applyObject(ctx, configObj); err != nil {
-			return fmt.Errorf("apply %s: %w", id, err)
+			return fmt.Errorf("apply %s: %w", key, err)
 		}
 
 	// In runtime, not in config → delete
 	case configObj == nil && runtimeObj != nil:
 		if err := r.deleteObject(ctx, runtimeObj); err != nil {
-			return fmt.Errorf("delete %s: %w", id, err)
+			return fmt.Errorf("delete %s: %w", key, err)
 		}
 	}
 

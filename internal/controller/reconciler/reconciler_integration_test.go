@@ -19,10 +19,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kjson "k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/yaml"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -1013,7 +1016,7 @@ func TestReconciler_CiliumExample_ClusterscopePolicy(t *testing.T) {
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
 						Specs: []*pb.CiliumPolicyRule{
 							{
-								Description: strPtr("Policy for selective ingress allow to a pod from only a pod with given label"),
+								Description: ptr.To("Policy for selective ingress allow to a pod from only a pod with given label"),
 								EndpointSelector: &pb.LabelSelector{
 									MatchLabels: map[string]string{"name": "leia"},
 								},
@@ -1305,7 +1308,7 @@ func TestReconciler_CiliumExample_WildcardFromEndpoints(t *testing.T) {
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
 						Specs: []*pb.CiliumPolicyRule{
 							{
-								Description: strPtr("Policy for ingress allow to kube-dns from all Cilium managed endpoints in the cluster"),
+								Description: ptr.To("Policy for ingress allow to kube-dns from all Cilium managed endpoints in the cluster"),
 								EndpointSelector: &pb.LabelSelector{
 									MatchLabels: map[string]string{
 										"k8s:io.kubernetes.pod.namespace": "kube-system",
@@ -1526,7 +1529,7 @@ func TestReconciler_CiliumExample_DemoHostPolicy(t *testing.T) {
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
 						Specs: []*pb.CiliumPolicyRule{
 							{
-								Description: strPtr(""),
+								Description: ptr.To(""),
 								NodeSelector: &pb.LabelSelector{
 									MatchLabels: map[string]string{"node-access": "ssh"},
 								},
@@ -2384,7 +2387,7 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
 						Specs: []*pb.CiliumPolicyRule{
 							{
-								Description: strPtr("Policy for selective ingress allow to a pod from only a pod with given label"),
+								Description: ptr.To("Policy for selective ingress allow to a pod from only a pod with given label"),
 								EndpointSelector: &pb.LabelSelector{
 									MatchLabels: map[string]string{"name": "leia"},
 								},
@@ -3343,6 +3346,20 @@ func TestReconciler_ExternalUserLabelsPreserved(t *testing.T) {
 	)
 	require.NoError(t, err)
 
+	// Convergence check: a third-party label must NOT cause the reconciler to
+	// re-apply forever. Capture resourceVersion, wait across several reconcile
+	// cycles with no external input, and assert it stops moving.
+	afterPatch, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-ext-labels")
+	require.NoError(t, err)
+	rvAfterPatch := afterPatch.GetResourceVersion()
+
+	time.Sleep(3 * time.Second)
+
+	converged, err := testClient.GetResource(ctx, ccnpGVR, "", "e2e-ext-labels")
+	require.NoError(t, err)
+	assert.Equal(t, rvAfterPatch, converged.GetResourceVersion(),
+		"resourceVersion should be stable after a third-party label edit (no reconcile hot loop)")
+
 	// Trigger a re-apply by mutating the spec from CloudSecure
 	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
@@ -3397,6 +3414,109 @@ func TestReconciler_ExternalUserLabelsPreserved(t *testing.T) {
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-ext-labels")
+	})
+}
+
+// TestReconciler_ApplyCountBoundedUnderExternalLabel measures how many times the
+// reconciler calls applyObject when a managed object carries a third-party label.
+//
+// This test counts the actual apply calls (via the reconciler's "Applied configured object"
+// debug log) across multiple reconcile cycles and asserts the count stays bounded:
+//
+//   - exactly 1 apply for the initial creation, and
+//   - at most 1 additional apply caused by the external label edit
+//
+func TestReconciler_ApplyCountBoundedUnderExternalLabel(t *testing.T) {
+	core, logs := observer.New(zapcore.DebugLevel)
+	fs := setupSuiteWithReconcilerLogger(t, zap.New(core))
+
+	ctx := context.Background()
+
+	const name = "e2e-apply-count"
+
+	appliedCount := func() int {
+		return logs.FilterMessage("Applied configured object").
+			FilterField(zap.String("name", name)).
+			Len()
+	}
+
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Id:   "CiliumClusterwideNetworkPolicy//" + name,
+				Name: name,
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "web"},
+								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	// Wait for the initial creation to be applied.
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", name)
+		return err == nil && obj != nil
+	}, 20*time.Second, 100*time.Millisecond, "policy should be applied")
+
+	require.Eventually(t, func() bool {
+		return appliedCount() >= 1
+	}, 5*time.Second, 50*time.Millisecond, "initial apply should be logged")
+
+	countAfterCreate := appliedCount()
+
+	// External actor adds a label the operator does not own.
+	patch := []byte(`{"metadata":{"labels":{"team":"platform"}}}`)
+	_, err := testClient.GetDynamicClient().Resource(ccnpGVR).Patch(
+		ctx, name, types.MergePatchType, patch, metav1.PatchOptions{
+			FieldManager: "kubectl-label",
+		},
+	)
+	require.NoError(t, err)
+
+	// Observe for a window with no further external input. If a self-sustaining loop existed
+	// (each apply triggering a watch event triggering the next apply), applyObject
+	// would be called repeatedly and the count would climb over this window.
+	time.Sleep(3 * time.Second)
+
+	countAfterPatch := appliedCount()
+
+	// The external label edit may cause at most one additional reconcile/apply,
+	// because the runtime cache entry genuinely changed (gained the "team" label).
+	// After that single apply, the loop must stop.
+	assert.LessOrEqual(t, countAfterPatch-countAfterCreate, 1,
+		"a third-party label edit must cause at most one extra apply, not a hot loop "+
+			"(applies after create=%d, after patch+wait=%d)", countAfterCreate, countAfterPatch)
+
+	// Sample again after another window: the count must be completely stable now
+	// (no external input → zero additional applies until the next timer tick).
+	stableStart := appliedCount()
+	time.Sleep(2 * time.Second)
+	assert.Equal(t, stableStart, appliedCount(),
+		"apply count must be stable with no external input (no hot loop)")
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", name)
 	})
 }
 

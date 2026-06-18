@@ -57,10 +57,9 @@ func main() {
 	logger.Info("FakeServer started")
 
 	// Start the proxy server if the flag is set
-	var proxyServer *fakeserver.ProxyServer
 	if *proxyFlag {
 		// Initialize the ProxyServer
-		proxyServer = fakeserver.NewProxyServer("0.0.0.0:8888", logger)
+		proxyServer := fakeserver.NewProxyServer("0.0.0.0:8888", logger)
 
 		logger.Info("Starting ProxyServer")
 		proxyServer.Start()
@@ -71,9 +70,6 @@ func main() {
 			}
 		}()
 	}
-
-	// Keep the compiler happy about proxyServer usage
-	_ = proxyServer
 
 	// Wait for server stop signal
 	logger.Info("Server started")

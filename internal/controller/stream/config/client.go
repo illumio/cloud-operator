@@ -88,7 +88,7 @@ func (c *configClient) handleConfigUpdate(ctx context.Context, resp *pb.GetConfi
 			return errors.New("server sent ResourceData after snapshot complete")
 		}
 
-		key, err := convert.CacheKeyFromObj(update.ResourceData)
+		key, err := convert.CacheKeyForObject(update.ResourceData)
 		if err != nil {
 			c.logger.Warn("Skipping unsupported resource type",
 				zap.String("name", update.ResourceData.GetName()),
@@ -137,7 +137,7 @@ func (c *configClient) handleConfigUpdate(ctx context.Context, resp *pb.GetConfi
 		case *pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject:
 			var err error
 
-			key, err = convert.CacheKeyFromObj(m.CreateOrUpdateObject)
+			key, err = convert.CacheKeyForObject(m.CreateOrUpdateObject)
 			if err != nil {
 				c.logger.Warn("Skipping unsupported create/update mutation",
 					zap.String("name", m.CreateOrUpdateObject.GetName()),

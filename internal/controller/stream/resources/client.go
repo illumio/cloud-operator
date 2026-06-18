@@ -317,7 +317,7 @@ func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.
 			return nil //nolint:nilerr // unsupported kinds are silently skipped
 		}
 
-		key, err := convert.CacheKeyFromObj(configured)
+		key, err := convert.CacheKeyForObject(configured)
 		if err != nil {
 			return nil //nolint:nilerr // unsupported kinds are silently skipped
 		}

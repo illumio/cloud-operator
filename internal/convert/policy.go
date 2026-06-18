@@ -29,49 +29,64 @@ var protoJSONMarshaler = protojson.MarshalOptions{
 	EmitUnpopulated: false,
 }
 
-// ExtractResourceName returns the plural resource name for the given configured object's kind.
-func ExtractResourceName(data *pb.ConfiguredKubernetesObjectData) (string, error) {
+// kindMapping holds the Kubernetes kind and plural resource name for a configured
+// object's kind_specific oneof type. It is the single source of truth for the
+// kind/resource mapping used by ExtractKind, ExtractResourceName, and spec marshaling.
+type kindMapping struct {
+	kind         string
+	resourceName string
+}
+
+// kindMappingFor returns the kind/resource mapping for a configured object's
+// kind_specific oneof type, or an error for unsupported types.
+func kindMappingFor(data *pb.ConfiguredKubernetesObjectData) (kindMapping, error) {
 	switch data.GetKindSpecific().(type) {
 	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
-		return "ciliumnetworkpolicies", nil
+		return kindMapping{kind: "CiliumNetworkPolicy", resourceName: "ciliumnetworkpolicies"}, nil
 	case *pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy:
-		return "ciliumclusterwidenetworkpolicies", nil
+		return kindMapping{kind: "CiliumClusterwideNetworkPolicy", resourceName: "ciliumclusterwidenetworkpolicies"}, nil
 	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
-		return "ciliumcidrgroups", nil
+		return kindMapping{kind: "CiliumCIDRGroup", resourceName: "ciliumcidrgroups"}, nil
 	default:
-		return "", fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
+		return kindMapping{}, fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
 	}
+}
+
+// ExtractResourceName returns the plural resource name for the given configured object's kind.
+func ExtractResourceName(data *pb.ConfiguredKubernetesObjectData) (string, error) {
+	m, err := kindMappingFor(data)
+	if err != nil {
+		return "", err
+	}
+
+	return m.resourceName, nil
 }
 
 // ExtractKind returns the Kubernetes kind string for a configured object.
 func ExtractKind(data *pb.ConfiguredKubernetesObjectData) (string, error) {
-	switch data.GetKindSpecific().(type) {
-	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
-		return "CiliumNetworkPolicy", nil
-	case *pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy:
-		return "CiliumClusterwideNetworkPolicy", nil
-	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
-		return "CiliumCIDRGroup", nil
-	default:
-		return "", fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
+	m, err := kindMappingFor(data)
+	if err != nil {
+		return "", err
 	}
+
+	return m.kind, nil
 }
 
-// NewCacheKey builds a cache key from kind, namespace, and name.
+// CacheKey builds a cache key from kind, namespace, and name.
 // Both config and runtime caches use this key format so lookups match
 // without needing labels or reverse indexes.
-func NewCacheKey(kind, namespace, name string) string {
+func CacheKey(kind, namespace, name string) string {
 	return kind + "/" + namespace + "/" + name
 }
 
-// CacheKeyFromObj computes a cache key from a configured object's kind, namespace, and name.
-func CacheKeyFromObj(data *pb.ConfiguredKubernetesObjectData) (string, error) {
+// CacheKeyForObject computes a cache key from a configured object's kind, namespace, and name.
+func CacheKeyForObject(data *pb.ConfiguredKubernetesObjectData) (string, error) {
 	kind, err := ExtractKind(data)
 	if err != nil {
 		return "", err
 	}
 
-	return NewCacheKey(kind, data.GetNamespace(), data.GetName()), nil
+	return CacheKey(kind, data.GetNamespace(), data.GetName()), nil
 }
 
 // BuildConfiguredFromMetadata builds a ConfiguredKubernetesObjectData from the
@@ -167,31 +182,24 @@ func ConvertToApplyObject(data *pb.ConfiguredKubernetesObjectData, apiGroup, api
 // marshalConfiguredObjectSpecs returns the K8s kind, plural resource name, and the spec fields as a map,
 // using protojson to marshal proto specs into clean JSON that preserves types.
 func marshalConfiguredObjectSpecs(data *pb.ConfiguredKubernetesObjectData) (string, string, map[string]any, error) {
-	resourceName, err := ExtractResourceName(data)
+	m, err := kindMappingFor(data)
 	if err != nil {
 		return "", "", nil, err
 	}
 
-	var (
-		kind       string
-		specFields map[string]any
-	)
+	var specFields map[string]any
 
 	switch ks := data.GetKindSpecific().(type) {
 	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
-		kind = "CiliumNetworkPolicy"
 		specFields, err = marshalPolicySpecs(ks.CiliumNetworkPolicy.GetSpecs())
 
 	case *pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy:
-		kind = "CiliumClusterwideNetworkPolicy"
 		specFields, err = marshalPolicySpecs(ks.CiliumClusterwideNetworkPolicy.GetSpecs())
 
 	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
-		kind = "CiliumCIDRGroup"
-
 		spec := ks.CiliumCidrGroup.GetSpec()
 		if spec == nil {
-			return kind, resourceName, map[string]any{}, nil
+			return m.kind, m.resourceName, map[string]any{}, nil
 		}
 
 		var specMap map[string]any
@@ -200,16 +208,13 @@ func marshalConfiguredObjectSpecs(data *pb.ConfiguredKubernetesObjectData) (stri
 		if err == nil {
 			specFields = map[string]any{"spec": specMap}
 		}
-
-	default:
-		return "", "", nil, fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
 	}
 
 	if err != nil {
-		return "", "", nil, fmt.Errorf("failed to marshal %s specs: %w", kind, err)
+		return "", "", nil, fmt.Errorf("failed to marshal %s specs: %w", m.kind, err)
 	}
 
-	return kind, resourceName, specFields, nil
+	return m.kind, m.resourceName, specFields, nil
 }
 
 // marshalPolicySpecs marshals Cilium policy rules into the "spec" or "specs" field.

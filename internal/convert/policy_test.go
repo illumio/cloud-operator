@@ -1926,7 +1926,7 @@ func TestMarshalPolicySpecs_JSONNameOverrides(t *testing.T) {
 	})
 }
 
-func TestNewCacheKey(t *testing.T) {
+func TestCacheKey(t *testing.T) {
 	tests := []struct {
 		name      string
 		kind      string
@@ -1952,7 +1952,7 @@ func TestNewCacheKey(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.expected, NewCacheKey(tc.kind, tc.namespace, tc.objName))
+			assert.Equal(t, tc.expected, CacheKey(tc.kind, tc.namespace, tc.objName))
 		})
 	}
 }
@@ -2012,7 +2012,7 @@ func TestExtractKind(t *testing.T) {
 	}
 }
 
-func TestCacheKeyFromObj(t *testing.T) {
+func TestCacheKeyForObject(t *testing.T) {
 	tests := []struct {
 		name     string
 		data     *pb.ConfiguredKubernetesObjectData
@@ -2059,7 +2059,7 @@ func TestCacheKeyFromObj(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			key, err := CacheKeyFromObj(tc.data)
+			key, err := CacheKeyForObject(tc.data)
 			if tc.wantErr {
 				require.Error(t, err)
 			} else {

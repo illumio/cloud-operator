@@ -78,10 +78,6 @@ func testdataDir() string {
 	return filepath.Join(filepath.Dir(filename), "testdata")
 }
 
-func strPtr(s string) *string {
-	return &s
-}
-
 // newTestHarness creates a FakeServerTestHarness with AutoHandshake disabled
 // (reconciler integration tests control the handshake sequence themselves).
 func newTestHarness(t *testing.T) *fakeserver.FakeServerTestHarness {
@@ -108,6 +104,14 @@ func newTestHarness(t *testing.T) *fakeserver.FakeServerTestHarness {
 func setupSuite(t *testing.T) *fakeserver.FakeServer {
 	t.Helper()
 
+	return setupSuiteWithReconcilerLogger(t, zap.NewNop())
+}
+
+// setupSuiteWithReconcilerLogger is identical to setupSuite but injects the given
+// logger into the reconciler, so tests can observe reconciler log output.
+func setupSuiteWithReconcilerLogger(t *testing.T, reconcilerLogger *zap.Logger) *fakeserver.FakeServer {
+	t.Helper()
+
 	// Cleanup order is LIFO. We register in this order so teardown is:
 	// cancel (stops goroutines) → conn.Close → harness.Stop → cacheClose
 	configCache := cache.NewConfiguredObjectCache()
@@ -126,10 +130,10 @@ func setupSuite(t *testing.T) *fakeserver.FakeServer {
 
 	// Start resources stream client (watches envtest K8s API → populates runtime cache → streams to fakeserver)
 	resourcesFactory := &resources.Factory{
-		Logger:       zap.NewNop(),
-		K8sClient:    testClient,
-		Stats:        stream.NewStats(),
-		Cache: runtimeCache,
+		Logger:    zap.NewNop(),
+		K8sClient: testClient,
+		Stats:     stream.NewStats(),
+		Cache:     runtimeCache,
 	}
 	resourcesClient, err := resourcesFactory.NewStreamClient(ctx, conn)
 	require.NoError(t, err)
@@ -149,7 +153,7 @@ func setupSuite(t *testing.T) *fakeserver.FakeServer {
 	go configClient.Run(ctx)
 
 	// Start reconciler (config cache + runtime cache → K8s API)
-	r := NewReconciler(zap.NewNop(), testClient, configCache, runtimeCache)
+	r := NewReconciler(reconcilerLogger, testClient, configCache, runtimeCache)
 	go r.Run(ctx)
 
 	return h.Server
