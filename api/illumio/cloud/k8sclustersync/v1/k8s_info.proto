@@ -53,6 +53,8 @@ message KubernetesObjectData {
     KubernetesCiliumCIDRGroupData cilium_cidr_group = 106;
     KubernetesAdminNetworkPolicyData admin_network_policy = 107;
     KubernetesBaselineAdminNetworkPolicyData baseline_admin_network_policy = 108;
+    KubernetesEgressFirewallData egress_firewall = 109;
+    KubernetesEgressIPData egress_ip = 110;
   }
 }
 
@@ -244,6 +246,55 @@ message AdminNetworkPolicyPortRange {
   int32 start = 2;
   // End is the end of the port range (must be greater than start).
   int32 end = 3;
+}
+
+// KubernetesEgressFirewallData contains information specific to an OpenShift OVN EgressFirewall object.
+// EgressFirewall is a namespaced resource from the k8s.ovn.org API group that controls egress traffic
+// leaving the cluster for pods in the namespace it is defined in.
+// https://docs.openshift.com/container-platform/latest/networking/openshift_sdn/configuring-egress-firewall.html
+message KubernetesEgressFirewallData {
+  // Egress is the ordered list of egress rules to apply to pods in the namespace.
+  repeated EgressFirewallRule egress = 1;
+}
+
+// EgressFirewallRule describes a single egress firewall rule.
+message EgressFirewallRule {
+  // Type specifies whether traffic matching this rule is allowed or denied ("Allow" or "Deny").
+  string type = 1;
+  // To is the destination this rule applies to.
+  EgressFirewallDestination to = 2;
+  // Ports for matching traffic. If empty, the rule does not filter by port.
+  repeated EgressFirewallPort ports = 3;
+}
+
+// EgressFirewallDestination defines the target of an egress firewall rule.
+// Exactly one of cidr_selector or dns_name is set.
+message EgressFirewallDestination {
+  // CIDRSelector is a CIDR range to allow or deny traffic to.
+  optional string cidr_selector = 1 [json_name = "cidrSelector"];
+  // DNSName is a domain name to allow or deny traffic to.
+  optional string dns_name = 2 [json_name = "dnsName"];
+}
+
+// EgressFirewallPort describes a port and protocol for an egress firewall rule.
+message EgressFirewallPort {
+  // Protocol is the network protocol (TCP, UDP, or SCTP).
+  string protocol = 1;
+  // Port is the port number to match.
+  int32 port = 2;
+}
+
+// KubernetesEgressIPData contains information specific to an OpenShift OVN EgressIP object.
+// EgressIP is a cluster-scoped resource from the k8s.ovn.org API group that assigns one or more
+// egress IP addresses to the pods selected by its namespace and pod selectors.
+// https://docs.openshift.com/container-platform/latest/networking/ovn_kubernetes_network_provider/configuring-egress-ips-ovn.html
+message KubernetesEgressIPData {
+  // EgressIPs is the list of egress IP addresses assigned to the selected pods.
+  repeated string egress_ips = 1;
+  // NamespaceSelector selects the namespaces this EgressIP applies to.
+  LabelSelector namespace_selector = 2;
+  // PodSelector selects pods within the selected namespaces; if empty, selects all.
+  LabelSelector pod_selector = 3;
 }
 
 // CiliumPolicyRule represents a single rule within a Cilium policy.

@@ -1,6 +1,6 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package convert
+package cilium
 
 import (
 	"encoding/json"
@@ -17,6 +17,7 @@ import (
 	k8sIntstr "k8s.io/apimachinery/pkg/util/intstr"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 // IsCiliumResource returns true if the input identifies a Cilium resource.
@@ -49,7 +50,7 @@ func ConvertUnstructuredToCiliumResource(obj *k8sUnstructured.Unstructured) (*pb
 		Kind:              gvk.Kind,
 		Labels:            obj.GetLabels(),
 		Name:              obj.GetName(),
-		OwnerReferences:   convertOwnerReferences(obj.GetOwnerReferences()),
+		OwnerReferences:   convert.ConvertOwnerReferences(obj.GetOwnerReferences()),
 		ResourceVersion:   obj.GetResourceVersion(),
 		Uid:               string(obj.GetUID()),
 	}

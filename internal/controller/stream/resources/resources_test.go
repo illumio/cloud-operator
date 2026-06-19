@@ -14,7 +14,8 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/illumio/cloud-operator/internal/controller/stream"
-	"github.com/illumio/cloud-operator/internal/convert"
+	"github.com/illumio/cloud-operator/internal/convert/cilium"
+	"github.com/illumio/cloud-operator/internal/convert/ovn"
 )
 
 func TestBuildResourceApiGroupMap(t *testing.T) {
@@ -146,7 +147,7 @@ func TestResourceListCiliumDispatchConsistency(t *testing.T) {
 	}
 
 	for _, resource := range resourceList {
-		isCilium := convert.IsCiliumResource(resource)
+		isCilium := cilium.IsCiliumResource(resource)
 
 		if expectedCilium[resource] {
 			assert.True(t, isCilium, "resource %q should be recognized as Cilium by IsCiliumResource", resource)
@@ -167,7 +168,7 @@ func TestResourceListAdminNetworkPolicyDispatchConsistency(t *testing.T) {
 	}
 
 	for _, resource := range resourceList {
-		isANP := convert.IsAdminNetworkPolicyResource(resource)
+		isANP := ovn.IsAdminNetworkPolicyResource(resource)
 
 		if expectedANP[resource] {
 			assert.True(t, isANP, "resource %q should be recognized as ANP by IsAdminNetworkPolicyResource", resource)
@@ -178,6 +179,28 @@ func TestResourceListAdminNetworkPolicyDispatchConsistency(t *testing.T) {
 
 	for name := range expectedANP {
 		assert.True(t, slices.Contains(resourceList, name), "expected ANP resource %q must be in resourceList", name)
+	}
+}
+
+func TestResourceListEgressDispatchConsistency(t *testing.T) {
+	expectedEgress := map[string]bool{
+		"egressfirewalls": true,
+		"egressips":       true,
+	}
+
+	for _, resource := range resourceList {
+		isEgress := ovn.IsEgressResource(resource)
+
+		if expectedEgress[resource] {
+			assert.True(t, isEgress, "resource %q should be recognized as Egress by IsEgressResource", resource)
+		} else {
+			assert.False(t, isEgress, "resource %q should NOT be recognized as Egress by IsEgressResource", resource)
+		}
+	}
+
+	for name := range expectedEgress {
+		assert.True(t, slices.Contains(resourceList, name), "expected Egress resource %q must be in resourceList", name)
+		assert.False(t, slices.Contains(ManagedResourceNames, name), "Egress resource %q must not be operator-managed", name)
 	}
 }
 

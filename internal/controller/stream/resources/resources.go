@@ -24,6 +24,8 @@ var resourceList = slices.Concat(ManagedResourceNames, []string{
 	"customresourcedefinitions",
 	"daemonsets",
 	"deployments",
+	"egressfirewalls",
+	"egressips",
 	"endpoints",
 	"gateways",
 	"gatewayclasses",
