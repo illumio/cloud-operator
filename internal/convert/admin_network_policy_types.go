@@ -25,10 +25,10 @@ type adminNetworkPolicy struct {
 
 // adminNetworkPolicySpec mirrors v1alpha1.AdminNetworkPolicySpec.
 type adminNetworkPolicySpec struct {
-	Priority int32                             `json:"priority"`
-	Subject  adminNetworkPolicySubject         `json:"subject"`
-	Ingress  []adminNetworkPolicyIngressRule   `json:"ingress,omitempty"`
-	Egress   []adminNetworkPolicyEgressRule    `json:"egress,omitempty"`
+	Priority int32                           `json:"priority"`
+	Subject  adminNetworkPolicySubject       `json:"subject"`
+	Ingress  []adminNetworkPolicyIngressRule `json:"ingress,omitempty"`
+	Egress   []adminNetworkPolicyEgressRule  `json:"egress,omitempty"`
 }
 
 // baselineAdminNetworkPolicy mirrors v1alpha1.BaselineAdminNetworkPolicy.
@@ -38,9 +38,9 @@ type baselineAdminNetworkPolicy struct {
 
 // baselineAdminNetworkPolicySpec mirrors v1alpha1.BaselineAdminNetworkPolicySpec.
 type baselineAdminNetworkPolicySpec struct {
-	Subject adminNetworkPolicySubject                   `json:"subject"`
-	Ingress []baselineAdminNetworkPolicyIngressRule     `json:"ingress,omitempty"`
-	Egress  []baselineAdminNetworkPolicyEgressRule      `json:"egress,omitempty"`
+	Subject adminNetworkPolicySubject               `json:"subject"`
+	Ingress []baselineAdminNetworkPolicyIngressRule `json:"ingress,omitempty"`
+	Egress  []baselineAdminNetworkPolicyEgressRule  `json:"egress,omitempty"`
 }
 
 // adminNetworkPolicySubject mirrors v1alpha1.AdminNetworkPolicySubject.
@@ -57,34 +57,34 @@ type namespacedPod struct {
 
 // adminNetworkPolicyIngressRule mirrors v1alpha1.AdminNetworkPolicyIngressRule.
 type adminNetworkPolicyIngressRule struct {
-	Name   string                              `json:"name,omitempty"`
-	Action string                              `json:"action"`
-	From   []adminNetworkPolicyIngressPeer     `json:"from"`
-	Ports  *[]adminNetworkPolicyPort           `json:"ports,omitempty"`
+	Name   string                          `json:"name,omitempty"`
+	Action string                          `json:"action"`
+	From   []adminNetworkPolicyIngressPeer `json:"from"`
+	Ports  *[]adminNetworkPolicyPort       `json:"ports,omitempty"`
 }
 
 // adminNetworkPolicyEgressRule mirrors v1alpha1.AdminNetworkPolicyEgressRule.
 type adminNetworkPolicyEgressRule struct {
-	Name   string                             `json:"name,omitempty"`
-	Action string                             `json:"action"`
-	To     []adminNetworkPolicyEgressPeer     `json:"to"`
-	Ports  *[]adminNetworkPolicyPort          `json:"ports,omitempty"`
+	Name   string                         `json:"name,omitempty"`
+	Action string                         `json:"action"`
+	To     []adminNetworkPolicyEgressPeer `json:"to"`
+	Ports  *[]adminNetworkPolicyPort      `json:"ports,omitempty"`
 }
 
 // baselineAdminNetworkPolicyIngressRule mirrors v1alpha1.BaselineAdminNetworkPolicyIngressRule.
 type baselineAdminNetworkPolicyIngressRule struct {
-	Name   string                              `json:"name,omitempty"`
-	Action string                              `json:"action"`
-	From   []adminNetworkPolicyIngressPeer     `json:"from"`
-	Ports  *[]adminNetworkPolicyPort           `json:"ports,omitempty"`
+	Name   string                          `json:"name,omitempty"`
+	Action string                          `json:"action"`
+	From   []adminNetworkPolicyIngressPeer `json:"from"`
+	Ports  *[]adminNetworkPolicyPort       `json:"ports,omitempty"`
 }
 
 // baselineAdminNetworkPolicyEgressRule mirrors v1alpha1.BaselineAdminNetworkPolicyEgressRule.
 type baselineAdminNetworkPolicyEgressRule struct {
-	Name   string                             `json:"name,omitempty"`
-	Action string                             `json:"action"`
-	To     []adminNetworkPolicyEgressPeer     `json:"to"`
-	Ports  *[]adminNetworkPolicyPort          `json:"ports,omitempty"`
+	Name   string                         `json:"name,omitempty"`
+	Action string                         `json:"action"`
+	To     []adminNetworkPolicyEgressPeer `json:"to"`
+	Ports  *[]adminNetworkPolicyPort      `json:"ports,omitempty"`
 }
 
 // adminNetworkPolicyIngressPeer mirrors v1alpha1.AdminNetworkPolicyIngressPeer.

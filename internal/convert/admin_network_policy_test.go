@@ -99,39 +99,39 @@ func TestConvertUnstructuredToAdminNetworkPolicyResource_AdminNetworkPolicy(t *t
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	assert.Equal(t, "AdminNetworkPolicy", result.Kind)
-	assert.Equal(t, "policy.networking.k8s.io", result.ApiGroup)
-	assert.Equal(t, "v1alpha1", result.ApiVersion)
-	assert.Equal(t, "test-anp", result.Name)
-	assert.Equal(t, "test-uid", result.Uid)
+	assert.Equal(t, "AdminNetworkPolicy", result.GetKind())
+	assert.Equal(t, "policy.networking.k8s.io", result.GetApiGroup())
+	assert.Equal(t, "v1alpha1", result.GetApiVersion())
+	assert.Equal(t, "test-anp", result.GetName())
+	assert.Equal(t, "test-uid", result.GetUid())
 
 	anpData := result.GetAdminNetworkPolicy()
 	require.NotNil(t, anpData)
-	assert.Equal(t, int32(100), anpData.Priority)
+	assert.Equal(t, int32(100), anpData.GetPriority())
 
 	// Subject
-	require.NotNil(t, anpData.Subject)
-	require.NotNil(t, anpData.Subject.Namespaces)
-	assert.Equal(t, "prod", anpData.Subject.Namespaces.MatchLabels["env"])
+	require.NotNil(t, anpData.GetSubject())
+	require.NotNil(t, anpData.GetSubject().GetNamespaces())
+	assert.Equal(t, "prod", anpData.GetSubject().GetNamespaces().GetMatchLabels()["env"])
 
 	// Ingress
-	require.Len(t, anpData.Ingress, 1)
-	assert.Equal(t, "allow-monitoring", *anpData.Ingress[0].Name)
-	assert.Equal(t, "Allow", anpData.Ingress[0].Action)
-	require.Len(t, anpData.Ingress[0].Peers, 1)
-	require.NotNil(t, anpData.Ingress[0].Peers[0].Namespaces)
-	assert.Equal(t, "monitoring", anpData.Ingress[0].Peers[0].Namespaces.MatchLabels["role"])
-	require.Len(t, anpData.Ingress[0].Ports, 1)
-	require.NotNil(t, anpData.Ingress[0].Ports[0].PortNumber)
-	assert.Equal(t, "TCP", anpData.Ingress[0].Ports[0].PortNumber.Protocol)
-	assert.Equal(t, int32(9090), anpData.Ingress[0].Ports[0].PortNumber.Port)
+	require.Len(t, anpData.GetIngress(), 1)
+	assert.Equal(t, "allow-monitoring", anpData.GetIngress()[0].GetName())
+	assert.Equal(t, "Allow", anpData.GetIngress()[0].GetAction())
+	require.Len(t, anpData.GetIngress()[0].GetPeers(), 1)
+	require.NotNil(t, anpData.GetIngress()[0].GetPeers()[0].GetNamespaces())
+	assert.Equal(t, "monitoring", anpData.GetIngress()[0].GetPeers()[0].GetNamespaces().GetMatchLabels()["role"])
+	require.Len(t, anpData.GetIngress()[0].GetPorts(), 1)
+	require.NotNil(t, anpData.GetIngress()[0].GetPorts()[0].GetPortNumber())
+	assert.Equal(t, "TCP", anpData.GetIngress()[0].GetPorts()[0].GetPortNumber().GetProtocol())
+	assert.Equal(t, int32(9090), anpData.GetIngress()[0].GetPorts()[0].GetPortNumber().GetPort())
 
 	// Egress
-	require.Len(t, anpData.Egress, 1)
-	assert.Equal(t, "deny-external", *anpData.Egress[0].Name)
-	assert.Equal(t, "Deny", anpData.Egress[0].Action)
-	require.Len(t, anpData.Egress[0].Peers, 1)
-	assert.Equal(t, []string{"0.0.0.0/0"}, anpData.Egress[0].Peers[0].Networks)
+	require.Len(t, anpData.GetEgress(), 1)
+	assert.Equal(t, "deny-external", anpData.GetEgress()[0].GetName())
+	assert.Equal(t, "Deny", anpData.GetEgress()[0].GetAction())
+	require.Len(t, anpData.GetEgress()[0].GetPeers(), 1)
+	assert.Equal(t, []string{"0.0.0.0/0"}, anpData.GetEgress()[0].GetPeers()[0].GetNetworks())
 }
 
 func TestConvertUnstructuredToAdminNetworkPolicyResource_BaselineAdminNetworkPolicy(t *testing.T) {
@@ -174,22 +174,22 @@ func TestConvertUnstructuredToAdminNetworkPolicyResource_BaselineAdminNetworkPol
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	assert.Equal(t, "BaselineAdminNetworkPolicy", result.Kind)
-	assert.Equal(t, "policy.networking.k8s.io", result.ApiGroup)
+	assert.Equal(t, "BaselineAdminNetworkPolicy", result.GetKind())
+	assert.Equal(t, "policy.networking.k8s.io", result.GetApiGroup())
 
 	banpData := result.GetBaselineAdminNetworkPolicy()
 	require.NotNil(t, banpData)
 
 	// Subject with pods
-	require.NotNil(t, banpData.Subject)
-	require.NotNil(t, banpData.Subject.Pods)
-	assert.Equal(t, "my-namespace", banpData.Subject.Pods.NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"])
-	assert.Equal(t, "web", banpData.Subject.Pods.PodSelector.MatchLabels["app"])
+	require.NotNil(t, banpData.GetSubject())
+	require.NotNil(t, banpData.GetSubject().GetPods())
+	assert.Equal(t, "my-namespace", banpData.GetSubject().GetPods().GetNamespaceSelector().GetMatchLabels()["kubernetes.io/metadata.name"])
+	assert.Equal(t, "web", banpData.GetSubject().GetPods().GetPodSelector().GetMatchLabels()["app"])
 
 	// Ingress
-	require.Len(t, banpData.Ingress, 1)
-	assert.Equal(t, "default-deny", *banpData.Ingress[0].Name)
-	assert.Equal(t, "Deny", banpData.Ingress[0].Action)
+	require.Len(t, banpData.GetIngress(), 1)
+	assert.Equal(t, "default-deny", banpData.GetIngress()[0].GetName())
+	assert.Equal(t, "Deny", banpData.GetIngress()[0].GetAction())
 }
 
 func TestConvertUnstructuredToAdminNetworkPolicyResource_UnsupportedKind(t *testing.T) {
@@ -257,18 +257,18 @@ func TestConvertUnstructuredToAdminNetworkPolicyResource_WithPortRange(t *testin
 
 	anpData := result.GetAdminNetworkPolicy()
 	require.NotNil(t, anpData)
-	require.Len(t, anpData.Ingress, 1)
-	require.Len(t, anpData.Ingress[0].Ports, 2)
+	require.Len(t, anpData.GetIngress(), 1)
+	require.Len(t, anpData.GetIngress()[0].GetPorts(), 2)
 
 	// Port range
-	require.NotNil(t, anpData.Ingress[0].Ports[0].PortRange)
-	assert.Equal(t, "TCP", anpData.Ingress[0].Ports[0].PortRange.Protocol)
-	assert.Equal(t, int32(8000), anpData.Ingress[0].Ports[0].PortRange.Start)
-	assert.Equal(t, int32(9000), anpData.Ingress[0].Ports[0].PortRange.End)
+	require.NotNil(t, anpData.GetIngress()[0].GetPorts()[0].GetPortRange())
+	assert.Equal(t, "TCP", anpData.GetIngress()[0].GetPorts()[0].GetPortRange().GetProtocol())
+	assert.Equal(t, int32(8000), anpData.GetIngress()[0].GetPorts()[0].GetPortRange().GetStart())
+	assert.Equal(t, int32(9000), anpData.GetIngress()[0].GetPorts()[0].GetPortRange().GetEnd())
 
 	// Named port
-	require.NotNil(t, anpData.Ingress[0].Ports[1].NamedPort)
-	assert.Equal(t, "http", *anpData.Ingress[0].Ports[1].NamedPort)
+	require.NotNil(t, anpData.GetIngress()[0].GetPorts()[1].NamedPort)
+	assert.Equal(t, "http", anpData.GetIngress()[0].GetPorts()[1].GetNamedPort())
 }
 
 func TestConvertUnstructuredToAdminNetworkPolicyResource_EgressWithNodesAndDomains(t *testing.T) {
@@ -314,13 +314,13 @@ func TestConvertUnstructuredToAdminNetworkPolicyResource_EgressWithNodesAndDomai
 
 	anpData := result.GetAdminNetworkPolicy()
 	require.NotNil(t, anpData)
-	require.Len(t, anpData.Egress, 1)
-	require.Len(t, anpData.Egress[0].Peers, 2)
+	require.Len(t, anpData.GetEgress(), 1)
+	require.Len(t, anpData.GetEgress()[0].GetPeers(), 2)
 
 	// Domain names peer
-	assert.Equal(t, []string{"*.kubernetes.io", "api.example.com"}, anpData.Egress[0].Peers[0].DomainNames)
+	assert.Equal(t, []string{"*.kubernetes.io", "api.example.com"}, anpData.GetEgress()[0].GetPeers()[0].GetDomainNames())
 
 	// Nodes peer
-	require.NotNil(t, anpData.Egress[0].Peers[1].Nodes)
-	assert.Equal(t, "", anpData.Egress[0].Peers[1].Nodes.MatchLabels["node-role.kubernetes.io/control-plane"])
+	require.NotNil(t, anpData.GetEgress()[0].GetPeers()[1].GetNodes())
+	assert.Empty(t, anpData.GetEgress()[0].GetPeers()[1].GetNodes().GetMatchLabels()["node-role.kubernetes.io/control-plane"])
 }
