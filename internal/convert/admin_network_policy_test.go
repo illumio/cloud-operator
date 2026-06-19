@@ -267,7 +267,7 @@ func TestConvertUnstructuredToAdminNetworkPolicyResource_WithPortRange(t *testin
 	assert.Equal(t, int32(9000), anpData.GetIngress()[0].GetPorts()[0].GetPortRange().GetEnd())
 
 	// Named port
-	require.NotNil(t, anpData.GetIngress()[0].GetPorts()[1].NamedPort)
+	require.NotNil(t, anpData.GetIngress()[0].GetPorts()[1].GetNamedPort())
 	assert.Equal(t, "http", anpData.GetIngress()[0].GetPorts()[1].GetNamedPort())
 }
 
