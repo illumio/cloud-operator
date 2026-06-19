@@ -268,12 +268,14 @@ message EgressFirewallRule {
 }
 
 // EgressFirewallDestination defines the target of an egress firewall rule.
-// Exactly one of cidr_selector or dns_name is set.
+// Exactly one of cidr_selector, dns_name, or node_selector is set.
 message EgressFirewallDestination {
   // CIDRSelector is a CIDR range to allow or deny traffic to.
   optional string cidr_selector = 1 [json_name = "cidrSelector"];
   // DNSName is a domain name to allow or deny traffic to.
   optional string dns_name = 2 [json_name = "dnsName"];
+  // NodeSelector selects nodes by label; traffic to the matching node IPs is allowed or denied.
+  LabelSelector node_selector = 3 [json_name = "nodeSelector"];
 }
 
 // EgressFirewallPort describes a port and protocol for an egress firewall rule.

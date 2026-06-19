@@ -114,6 +114,7 @@ func TestConvertUnstructuredToEgressResource_EgressFirewall(t *testing.T) {
 	require.NotNil(t, allow.GetTo())
 	assert.Equal(t, "10.0.0.0/8", allow.GetTo().GetCidrSelector())
 	assert.Empty(t, allow.GetTo().GetDnsName())
+	assert.Nil(t, allow.GetTo().GetNodeSelector())
 	require.Len(t, allow.GetPorts(), 1)
 	assert.Equal(t, "TCP", allow.GetPorts()[0].GetProtocol())
 	assert.Equal(t, int32(443), allow.GetPorts()[0].GetPort())
@@ -147,6 +148,48 @@ func TestConvertUnstructuredToEgressResource_EgressFirewall_Empty(t *testing.T) 
 	efData := result.GetEgressFirewall()
 	require.NotNil(t, efData)
 	assert.Empty(t, efData.GetEgress())
+}
+
+func TestConvertUnstructuredToEgressResource_EgressFirewall_NodeSelector(t *testing.T) {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "k8s.ovn.org/v1",
+			"kind":       "EgressFirewall",
+			"metadata": map[string]any{
+				"name":      "default",
+				"namespace": "team-c",
+			},
+			"spec": map[string]any{
+				"egress": []any{
+					map[string]any{
+						"type": "Allow",
+						"to": map[string]any{
+							"nodeSelector": map[string]any{
+								"matchLabels": map[string]any{"node-role.kubernetes.io/worker": ""},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := ConvertUnstructuredToEgressResource(obj)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	efData := result.GetEgressFirewall()
+	require.NotNil(t, efData)
+	require.Len(t, efData.GetEgress(), 1)
+
+	to := efData.GetEgress()[0].GetTo()
+	require.NotNil(t, to)
+	// Node selector path is captured; CIDR and DNS are not set.
+	assert.Empty(t, to.GetCidrSelector())
+	assert.Empty(t, to.GetDnsName())
+	require.NotNil(t, to.GetNodeSelector())
+	_, ok := to.GetNodeSelector().GetMatchLabels()["node-role.kubernetes.io/worker"]
+	assert.True(t, ok, "expected worker node label in node selector")
 }
 
 func TestConvertUnstructuredToEgressResource_EgressIP(t *testing.T) {

@@ -8,13 +8,13 @@ import (
 
 // Local copies of the OpenShift OVN EgressFirewall and EgressIP CRD types.
 //
-// We define these locally instead of importing the OpenShift API modules to avoid pulling in
+// We define these locally instead of importing the OVN-Kubernetes API module to avoid pulling in
 // additional transitive dependencies. Since we only read struct fields after JSON deserialization
 // and never call any methods, plain structs with matching JSON tags are sufficient.
 //
-// Sources:
-//   - github.com/openshift/api/network/v1: egressfirewall_types.go
-//   - github.com/openshift/api/operator/v1: types_egressip.go (k8s.ovn.org EgressIP)
+// Sources (github.com/openshift/ovn-kubernetes, go-controller/pkg/crd):
+//   - egressfirewall/v1: types.go (k8s.ovn.org EgressFirewall)
+//   - egressip/v1: types.go (k8s.ovn.org EgressIP)
 
 // egressFirewall mirrors the OVN EgressFirewall CRD (k8s.ovn.org).
 type egressFirewall struct {
@@ -38,10 +38,11 @@ type egressFirewallRule struct {
 }
 
 // egressFirewallDestination mirrors EgressFirewallDestination.
-// Exactly one of CIDRSelector or DNSName is set.
+// Exactly one of CIDRSelector, DNSName, or NodeSelector is set.
 type egressFirewallDestination struct {
-	CIDRSelector string `json:"cidrSelector,omitempty"`
-	DNSName      string `json:"dnsName,omitempty"`
+	CIDRSelector string                `json:"cidrSelector,omitempty"`
+	DNSName      string                `json:"dnsName,omitempty"`
+	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 }
 
 // egressFirewallPort mirrors EgressFirewallPort.

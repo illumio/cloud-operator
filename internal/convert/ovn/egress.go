@@ -128,6 +128,10 @@ func convertEgressFirewallDestination(dst *egressFirewallDestination) *pb.Egress
 		pbDst.DnsName = &dst.DNSName
 	}
 
+	if dst.NodeSelector != nil {
+		pbDst.NodeSelector = convert.ConvertLabelSelectorToProto(dst.NodeSelector)
+	}
+
 	return pbDst
 }
 
