@@ -1190,6 +1190,7 @@ message ConfiguredKubernetesObjectData {
     KubernetesCiliumClusterwideNetworkPolicyData cilium_clusterwide_network_policy = 101;
     KubernetesCiliumCIDRGroupData cilium_cidr_group = 102;
     KubernetesAWSClusterNetworkPolicyData aws_cluster_network_policy = 103;
+    KubernetesAdminNetworkPolicyData admin_network_policy = 105;
   }
 }
 
