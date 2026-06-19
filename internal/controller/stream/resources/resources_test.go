@@ -160,6 +160,27 @@ func TestResourceListCiliumDispatchConsistency(t *testing.T) {
 	}
 }
 
+func TestResourceListAdminNetworkPolicyDispatchConsistency(t *testing.T) {
+	expectedANP := map[string]bool{
+		"adminnetworkpolicies":         true,
+		"baselineadminnetworkpolicies": true,
+	}
+
+	for _, resource := range resourceList {
+		isANP := convert.IsAdminNetworkPolicyResource(resource)
+
+		if expectedANP[resource] {
+			assert.True(t, isANP, "resource %q should be recognized as ANP by IsAdminNetworkPolicyResource", resource)
+		} else {
+			assert.False(t, isANP, "resource %q should NOT be recognized as ANP by IsAdminNetworkPolicyResource", resource)
+		}
+	}
+
+	for name := range expectedANP {
+		assert.True(t, slices.Contains(resourceList, name), "expected ANP resource %q must be in resourceList", name)
+	}
+}
+
 func TestSetProcessingResources_Integration(t *testing.T) {
 	// Reset state
 	stream.SetProcessingResources(false)

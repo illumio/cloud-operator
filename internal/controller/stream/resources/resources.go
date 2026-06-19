@@ -18,6 +18,8 @@ var ManagedResourceNames = []string{
 }
 
 var resourceList = slices.Concat(ManagedResourceNames, []string{
+	"adminnetworkpolicies",
+	"baselineadminnetworkpolicies",
 	"cronjobs",
 	"customresourcedefinitions",
 	"daemonsets",
