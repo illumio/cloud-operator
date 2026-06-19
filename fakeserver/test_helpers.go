@@ -133,7 +133,7 @@ func (h *FakeServerTestHarness) Start() error {
 	}
 
 	if h.Config.AutoHandshake {
-		h.Server.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
+		h.Server.SendConfig(&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 				UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
 					LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
@@ -141,7 +141,7 @@ func (h *FakeServerTestHarness) Start() error {
 			},
 		})
 
-		h.Server.ConfigResponses <- (&pb.GetConfigurationUpdatesResponse{
+		h.Server.SendConfig(&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
 				ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
 			},

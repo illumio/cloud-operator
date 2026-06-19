@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -65,6 +66,7 @@ type FakeServer struct {
 	Token           string
 	Logger          *zap.Logger
 	authService     *AuthService // OAuth2 AuthService to handle the /authenticate and /onboard endpoints
+	configMu        sync.Mutex   // guards ConfigResponses against the close+reassign in DisconnectConfigStream
 	ConfigResponses chan *pb.GetConfigurationUpdatesResponse
 }
 
@@ -240,8 +242,14 @@ func (fs *FakeServer) GetConfigurationUpdates(stream pb.KubernetesInfoService_Ge
 		}
 	}()
 
+	// Snapshot the channel under the lock so a concurrent DisconnectConfigStream
+	// (which closes and reassigns the field) can't race this read.
+	fs.configMu.Lock()
+	ch := fs.ConfigResponses
+	fs.configMu.Unlock()
+
 	// Send responses from the channel. The test (or default setup) controls what gets sent.
-	for resp := range fs.ConfigResponses {
+	for resp := range ch {
 		if err := stream.Send(resp); err != nil {
 			fs.Logger.Error("Failed to send config response", zap.Error(err))
 
@@ -297,10 +305,25 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 	}
 }
 
+// SendConfig sends a response to the current config responses channel. It copies the
+// channel pointer under the lock, then sends on the local copy outside the lock, so a
+// concurrent DisconnectConfigStream reassign can't race the field read.
+func (fs *FakeServer) SendConfig(resp *pb.GetConfigurationUpdatesResponse) {
+	fs.configMu.Lock()
+	ch := fs.ConfigResponses
+	fs.configMu.Unlock()
+
+	ch <- resp
+}
+
 // DisconnectConfigStream closes the current config responses channel, causing the
 // active GetConfigurationUpdates stream to end (client sees EOF). A new channel is
 // created so subsequent sends to ConfigResponses work for the next connected client.
+// The close+reassign is done under the lock to protect the shared field access.
 func (fs *FakeServer) DisconnectConfigStream() {
+	fs.configMu.Lock()
+	defer fs.configMu.Unlock()
+
 	close(fs.ConfigResponses)
 	fs.ConfigResponses = make(chan *pb.GetConfigurationUpdatesResponse, 10)
 }
