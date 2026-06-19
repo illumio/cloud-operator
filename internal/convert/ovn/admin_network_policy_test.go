@@ -1,6 +1,6 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package convert
+package ovn
 
 import (
 	"testing"

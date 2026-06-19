@@ -1,6 +1,6 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package convert
+package ovn
 
 import (
 	"encoding/json"
@@ -11,6 +11,7 @@ import (
 	k8sUnstructured "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 // IsAdminNetworkPolicyResource returns true if the input identifies an AdminNetworkPolicy
@@ -44,7 +45,7 @@ func ConvertUnstructuredToAdminNetworkPolicyResource(obj *k8sUnstructured.Unstru
 		Kind:              gvk.Kind,
 		Labels:            obj.GetLabels(),
 		Name:              obj.GetName(),
-		OwnerReferences:   convertOwnerReferences(obj.GetOwnerReferences()),
+		OwnerReferences:   convert.ConvertOwnerReferences(obj.GetOwnerReferences()),
 		ResourceVersion:   obj.GetResourceVersion(),
 		Uid:               string(obj.GetUID()),
 	}
@@ -123,7 +124,7 @@ func convertANPSubject(subject *adminNetworkPolicySubject) *pb.AdminNetworkPolic
 	pbSubject := &pb.AdminNetworkPolicySubject{}
 
 	if subject.Namespaces != nil {
-		pbSubject.Namespaces = convertLabelSelectorToProto(subject.Namespaces)
+		pbSubject.Namespaces = convert.ConvertLabelSelectorToProto(subject.Namespaces)
 	}
 
 	if subject.Pods != nil {
@@ -135,8 +136,8 @@ func convertANPSubject(subject *adminNetworkPolicySubject) *pb.AdminNetworkPolic
 
 func convertNamespacedPod(pod *namespacedPod) *pb.AdminNetworkPolicyNamespacedPod {
 	return &pb.AdminNetworkPolicyNamespacedPod{
-		NamespaceSelector: convertLabelSelectorToProto(&pod.NamespaceSelector),
-		PodSelector:       convertLabelSelectorToProto(&pod.PodSelector),
+		NamespaceSelector: convert.ConvertLabelSelectorToProto(&pod.NamespaceSelector),
+		PodSelector:       convert.ConvertLabelSelectorToProto(&pod.PodSelector),
 	}
 }
 
@@ -248,7 +249,7 @@ func convertANPIngressPeer(peer *adminNetworkPolicyIngressPeer) *pb.AdminNetwork
 	pbPeer := &pb.AdminNetworkPolicyPeer{}
 
 	if peer.Namespaces != nil {
-		pbPeer.Namespaces = convertLabelSelectorToProto(peer.Namespaces)
+		pbPeer.Namespaces = convert.ConvertLabelSelectorToProto(peer.Namespaces)
 	}
 
 	if peer.Pods != nil {
@@ -262,7 +263,7 @@ func convertANPEgressPeer(peer *adminNetworkPolicyEgressPeer) *pb.AdminNetworkPo
 	pbPeer := &pb.AdminNetworkPolicyPeer{}
 
 	if peer.Namespaces != nil {
-		pbPeer.Namespaces = convertLabelSelectorToProto(peer.Namespaces)
+		pbPeer.Namespaces = convert.ConvertLabelSelectorToProto(peer.Namespaces)
 	}
 
 	if peer.Pods != nil {
@@ -270,7 +271,7 @@ func convertANPEgressPeer(peer *adminNetworkPolicyEgressPeer) *pb.AdminNetworkPo
 	}
 
 	if peer.Nodes != nil {
-		pbPeer.Nodes = convertLabelSelectorToProto(peer.Nodes)
+		pbPeer.Nodes = convert.ConvertLabelSelectorToProto(peer.Nodes)
 	}
 
 	if len(peer.Networks) > 0 {

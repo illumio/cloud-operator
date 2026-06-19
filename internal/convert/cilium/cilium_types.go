@@ -1,6 +1,6 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package convert
+package cilium
 
 import (
 	ciliumPolicy "github.com/cilium/cilium/pkg/policy/api"

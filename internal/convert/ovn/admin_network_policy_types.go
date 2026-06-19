@@ -1,6 +1,6 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package convert
+package ovn
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
