@@ -952,6 +952,7 @@ message ConfiguredKubernetesObjectData {
     KubernetesCiliumNetworkPolicyData cilium_network_policy = 100;
     KubernetesCiliumClusterwideNetworkPolicyData cilium_clusterwide_network_policy = 101;
     KubernetesCiliumCIDRGroupData cilium_cidr_group = 102;
+    KubernetesAdminNetworkPolicyData admin_network_policy = 103;
   }
 }
 
