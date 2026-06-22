@@ -2137,13 +2137,10 @@ func TestReconciler_ExternalAnnotationDeletedByOperator(t *testing.T) {
 // arrives (after stream reconnection) with fewer objects than the first, the reconciler
 // deletes objects that are no longer in the config.
 func TestReconciler_SnapshotReplacementBulkDelete(t *testing.T) {
+	// Caches aren't closed: all readers/writers exit on ctx.Done() via cancel(), so closing
+	// from the receiver side would just race an in-flight writer send. Prod never closes them.
 	configCache := cache.NewConfiguredObjectCache()
 	runtimeCache := cache.NewConfiguredObjectCache()
-
-	t.Cleanup(func() {
-		configCache.Close()
-		runtimeCache.Close()
-	})
 
 	h := newTestHarness(t)
 	conn := h.DialGRPC(t)
@@ -2713,14 +2710,12 @@ func TestReconciler_DeleteNonExistent(t *testing.T) {
 // simulates operator uninstall/redeployment — policies must persist to avoid leaving
 // the cluster unsecured.
 func TestReconciler_PoliciesPersistAfterOperatorShutdown(t *testing.T) {
-	// Wire the pipeline manually so we control the context lifecycle
+	// Wire the pipeline manually so we control the context lifecycle.
+	// Caches are intentionally not closed: every goroutine that reads/writes them exits on
+	// ctx.Done() via cancel(), and the cache sends have a ctx.Done() escape. Closing from
+	// the receiver side would race an in-flight writer send. Production never closes them.
 	configCache := cache.NewConfiguredObjectCache()
 	runtimeCache := cache.NewConfiguredObjectCache()
-
-	t.Cleanup(func() {
-		configCache.Close()
-		runtimeCache.Close()
-	})
 
 	h := newTestHarness(t)
 	conn := h.DialGRPC(t)
@@ -2855,13 +2850,11 @@ func TestReconciler_PoliciesPersistAfterOperatorShutdown(t *testing.T) {
 // This simulates the production reconnection flow: stream disconnect → new stream client →
 // fresh snapshot with no ResourceData → ReplaceAll({}) empties config cache → reconciler deletes.
 func TestReconciler_EmptySnapshotDeletesAll(t *testing.T) {
+	// Caches are intentionally not closed: every goroutine that reads/writes them exits on
+	// ctx.Done() via cancel(), and the cache sends have a ctx.Done() escape. Closing from
+	// the receiver side would race an in-flight writer send. Production never closes them.
 	configCache := cache.NewConfiguredObjectCache()
 	runtimeCache := cache.NewConfiguredObjectCache()
-
-	t.Cleanup(func() {
-		configCache.Close()
-		runtimeCache.Close()
-	})
 
 	h := newTestHarness(t)
 	conn := h.DialGRPC(t)

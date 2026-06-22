@@ -55,19 +55,27 @@ var kasp = keepalive.ServerParameters{
 type FakeServer struct {
 	pb.UnimplementedKubernetesInfoServiceServer
 
-	Address         string
-	HTTPAddress     string
-	server          *grpc.Server
-	httpServer      *http.Server
-	listener        net.Listener
-	httpListener    net.Listener
-	State           *ServerState
-	StopChan        chan struct{}
-	Token           string
-	Logger          *zap.Logger
-	authService     *AuthService // OAuth2 AuthService to handle the /authenticate and /onboard endpoints
-	configMu        sync.Mutex   // guards ConfigResponses against the close+reassign in DisconnectConfigStream
+	Address      string
+	HTTPAddress  string
+	server       *grpc.Server
+	httpServer   *http.Server
+	listener     net.Listener
+	httpListener net.Listener
+	State        *ServerState
+	StopChan     chan struct{}
+	Token        string
+	Logger       *zap.Logger
+	authService  *AuthService // OAuth2 AuthService to handle the /authenticate and /onboard endpoints
+
+	configMu sync.Mutex // guards configDone's close+re-arm in DisconnectConfigStream
+
+	// ConfigResponses carries config responses to the active stream. Never closed:
+	// closing a channel senders write to would panic. Shutdown is signalled via configDone.
 	ConfigResponses chan *pb.GetConfigurationUpdatesResponse
+
+	// configDone is closed by DisconnectConfigStream to stop the current stream, then
+	// re-armed for the next one. Safe to close because nobody sends on it.
+	configDone chan struct{}
 }
 
 // RecordCiliumFlow increments the Cilium flow counter.
@@ -242,22 +250,25 @@ func (fs *FakeServer) GetConfigurationUpdates(stream pb.KubernetesInfoService_Ge
 		}
 	}()
 
-	// Snapshot the channel under the lock so a concurrent DisconnectConfigStream
-	// (which closes and reassigns the field) can't race this read.
+	// Snapshot the data channel and this stream's done signal under the lock so a concurrent
+	// DisconnectConfigStream re-arm can't redirect them mid-stream.
 	fs.configMu.Lock()
 	ch := fs.ConfigResponses
+	done := fs.configDone
 	fs.configMu.Unlock()
 
-	// Send responses from the channel. The test (or default setup) controls what gets sent.
-	for resp := range ch {
-		if err := stream.Send(resp); err != nil {
-			fs.Logger.Error("Failed to send config response", zap.Error(err))
+	for {
+		select {
+		case <-done:
+			return nil
+		case resp := <-ch:
+			if err := stream.Send(resp); err != nil {
+				fs.Logger.Error("Failed to send config response", zap.Error(err))
 
-			return err
+				return err
+			}
 		}
 	}
-
-	return nil
 }
 
 func (fs *FakeServer) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
@@ -305,27 +316,28 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 	}
 }
 
-// SendConfig sends a response to the current config responses channel. It copies the
-// channel pointer under the lock, then sends on the local copy outside the lock, so a
-// concurrent DisconnectConfigStream reassign can't race the field read.
+// SendConfig sends a response to the active config stream.
 func (fs *FakeServer) SendConfig(resp *pb.GetConfigurationUpdatesResponse) {
 	fs.configMu.Lock()
 	ch := fs.ConfigResponses
+	done := fs.configDone
 	fs.configMu.Unlock()
 
-	ch <- resp
+	select {
+	case ch <- resp:
+	case <-done:
+	}
 }
 
-// DisconnectConfigStream closes the current config responses channel, causing the
-// active GetConfigurationUpdates stream to end (client sees EOF). A new channel is
-// created so subsequent sends to ConfigResponses work for the next connected client.
-// The close+reassign is done under the lock to protect the shared field access.
+// DisconnectConfigStream ends the active stream (client sees EOF) by closing configDone,
+// then re-arms it for the next stream. The data channel is never closed, so an in-flight
+// SendConfig can't panic. Locked so it can't race the snapshot in SendConfig/handler.
 func (fs *FakeServer) DisconnectConfigStream() {
 	fs.configMu.Lock()
 	defer fs.configMu.Unlock()
 
-	close(fs.ConfigResponses)
-	fs.ConfigResponses = make(chan *pb.GetConfigurationUpdatesResponse, 10)
+	close(fs.configDone)
+	fs.configDone = make(chan struct{})
 }
 
 // GRPCAddress returns the actual address the gRPC server is listening on.
@@ -340,6 +352,10 @@ func (fs *FakeServer) GRPCAddress() string {
 
 func (fs *FakeServer) Start() error {
 	fs.Logger.Info("Starting FakeServer", zap.String("address", fs.Address), zap.String("httpAddress", fs.HTTPAddress), zap.String("token", fs.Token))
+
+	fs.configMu.Lock()
+	fs.configDone = make(chan struct{})
+	fs.configMu.Unlock()
 
 	// Start gRPC server
 	var err error

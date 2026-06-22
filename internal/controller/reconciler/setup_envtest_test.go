@@ -100,7 +100,6 @@ func newTestHarness(t *testing.T) *fakeserver.FakeServerTestHarness {
 //
 //	fakeserver (gRPC) → config client → config cache ──→ reconciler → envtest K8s API
 //	                     resources client → runtime cache ─┘
-//
 func setupSuite(t *testing.T) *fakeserver.FakeServer {
 	t.Helper()
 
@@ -112,15 +111,8 @@ func setupSuite(t *testing.T) *fakeserver.FakeServer {
 func setupSuiteWithReconcilerLogger(t *testing.T, reconcilerLogger *zap.Logger) *fakeserver.FakeServer {
 	t.Helper()
 
-	// Cleanup order is LIFO. We register in this order so teardown is:
-	// cancel (stops goroutines) → conn.Close → harness.Stop → cacheClose
 	configCache := cache.NewConfiguredObjectCache()
 	runtimeCache := cache.NewConfiguredObjectCache()
-
-	t.Cleanup(func() {
-		configCache.Close()
-		runtimeCache.Close()
-	})
 
 	h := newTestHarness(t)
 	conn := h.DialGRPC(t)
