@@ -160,6 +160,23 @@ func TestResourceListCiliumDispatchConsistency(t *testing.T) {
 	}
 }
 
+func TestResourceListAWSDispatchConsistency(t *testing.T) {
+	assert.True(t, slices.Contains(resourceList, "clusternetworkpolicies"),
+		"clusternetworkpolicies must be in resourceList")
+	assert.True(t, slices.Contains(ManagedResourceNames, "clusternetworkpolicies"),
+		"clusternetworkpolicies must be in ManagedResourceNames")
+	assert.True(t, convert.IsAWSResource("clusternetworkpolicies"),
+		"clusternetworkpolicies must be recognized by IsAWSResource")
+
+	// Cilium resources must not be misrouted to the AWS converter.
+	for _, resource := range resourceList {
+		if convert.IsCiliumResource(resource) {
+			assert.False(t, convert.IsAWSResource(resource),
+				"resource %q should not be recognized as both Cilium and AWS", resource)
+		}
+	}
+}
+
 func TestSetProcessingResources_Integration(t *testing.T) {
 	// Reset state
 	stream.SetProcessingResources(false)

@@ -14,6 +14,7 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 // mockResourcesStream mocks the stream.KubernetesResourcesStream interface.
@@ -118,6 +119,48 @@ func (s *ResourcesClientTestSuite) TestSendKeepalive_AfterClose() {
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "stream closed")
+}
+
+func (s *ResourcesClientTestSuite) TestRuntimeCacheHandler_ExcludesFlowLoggingCNP() {
+	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
+	handler := s.client.newRuntimeCacheHandler(pendingSnapshot)
+
+	flowLoggingCNP := &pb.KubernetesObjectData{
+		Name: "illumio-cloud-operator-flow-logging",
+		Kind: "ClusterNetworkPolicy",
+		Labels: map[string]string{
+			convert.ManagedByLabel: convert.ManagedByValue,
+		},
+		KindSpecific: &pb.KubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Tier: "Baseline"},
+		},
+	}
+
+	err := handler(context.Background(), "", flowLoggingCNP)
+	s.Require().NoError(err)
+	s.Empty(pendingSnapshot, "flow-logging CNP without resource-id must not enter the runtime cache")
+}
+
+func (s *ResourcesClientTestSuite) TestRuntimeCacheHandler_IncludesManagedCNP() {
+	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
+	handler := s.client.newRuntimeCacheHandler(pendingSnapshot)
+
+	managedCNP := &pb.KubernetesObjectData{
+		Name: "cloudsecure-policy",
+		Kind: "ClusterNetworkPolicy",
+		Labels: map[string]string{
+			convert.ManagedByLabel:     convert.ManagedByValue,
+			convert.CloudSecureIDLabel: "aws-policy-1",
+		},
+		KindSpecific: &pb.KubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Tier: "Admin"},
+		},
+	}
+
+	err := handler(context.Background(), "", managedCNP)
+	s.Require().NoError(err)
+	s.Len(pendingSnapshot, 1, "managed CNP with resource-id must enter the runtime cache")
+	s.Contains(pendingSnapshot, "aws-policy-1")
 }
 
 func (s *ResourcesClientTestSuite) TestClose() {

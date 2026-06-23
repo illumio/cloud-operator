@@ -187,6 +187,7 @@ func newTestReconciler(t *testing.T, configObjects, runtimeObjects map[string]*p
 		"ciliumnetworkpolicies":            {Group: "cilium.io", Version: "v2"},
 		"ciliumclusterwidenetworkpolicies": {Group: "cilium.io", Version: "v2"},
 		"ciliumcidrgroups":                 {Group: "cilium.io", Version: "v2alpha1"},
+		"clusternetworkpolicies":           {Group: "networking.k8s.aws", Version: "v1alpha1"},
 	}
 
 	return r, client
@@ -284,6 +285,52 @@ func TestReconcileObject_DeletesOrphanedRuntimeObject(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, client.applyCalls, "Should not apply orphaned object")
 	assert.Equal(t, 1, client.deleteCalls, "Should delete orphaned runtime object")
+}
+
+func TestReconcileObject_AppliesAWSClusterNetworkPolicyWhenDifferent(t *testing.T) {
+	configObj := &pb.ConfiguredKubernetesObjectData{
+		Id:   "aws-policy-1",
+		Name: "allow-web",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Priority: 100, Tier: "Admin"},
+		},
+	}
+	runtimeObj := &pb.ConfiguredKubernetesObjectData{
+		Id:   "aws-policy-1",
+		Name: "allow-web",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Priority: 200, Tier: "Admin"},
+		},
+	}
+
+	r, client := newTestReconciler(t,
+		map[string]*pb.ConfiguredKubernetesObjectData{"aws-policy-1": configObj},
+		map[string]*pb.ConfiguredKubernetesObjectData{"aws-policy-1": runtimeObj},
+	)
+
+	err := r.reconcileObject(context.Background(), "aws-policy-1")
+	require.NoError(t, err)
+	assert.Equal(t, 1, client.applyCalls, "Should apply AWS policy when config and runtime differ")
+}
+
+func TestReconcileObject_DeletesOrphanedAWSClusterNetworkPolicy(t *testing.T) {
+	runtimeObj := &pb.ConfiguredKubernetesObjectData{
+		Id:   "aws-policy-1",
+		Name: "orphaned",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Tier: "Baseline"},
+		},
+	}
+
+	r, client := newTestReconciler(t,
+		nil,
+		map[string]*pb.ConfiguredKubernetesObjectData{"aws-policy-1": runtimeObj},
+	)
+
+	err := r.reconcileObject(context.Background(), "aws-policy-1")
+	require.NoError(t, err)
+	assert.Equal(t, 0, client.applyCalls, "Should not apply orphaned AWS object")
+	assert.Equal(t, 1, client.deleteCalls, "Should delete orphaned AWS runtime object")
 }
 
 func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
