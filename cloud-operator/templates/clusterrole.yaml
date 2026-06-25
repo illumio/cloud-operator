@@ -25,7 +25,7 @@ rules:
 # AWS VPC CNI - operator creates a ClusterNetworkPolicy for flow logging and
 # ingests/reconciles ClusterNetworkPolicy resources for policy support.
 - apiGroups: ["networking.k8s.aws"]
-  resources: ["clusternetworkpolicies"]
+  resources: ["clusternetworkpolicies", "applicationnetworkpolicies"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["apiextensions.k8s.io"]
   resources: ["customresourcedefinitions"]

@@ -335,3 +335,125 @@ func TestConvertUnstructuredToAWSResource_MatchExpressions(t *testing.T) {
 	assert.Equal(t, "In", expr.GetOperator())
 	assert.Equal(t, []string{"frontend", "backend"}, expr.GetValues())
 }
+
+func TestIsAWSResource_ApplicationNetworkPolicy(t *testing.T) {
+	assert.True(t, IsAWSResource("ApplicationNetworkPolicy"))
+	assert.True(t, IsAWSResource("applicationnetworkpolicies"))
+}
+
+// newANP builds an unstructured ApplicationNetworkPolicy (namespaced) with the given spec.
+func newANP(name, namespace string, spec map[string]any) *unstructured.Unstructured {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "networking.k8s.aws/v1alpha1",
+			"kind":       "ApplicationNetworkPolicy",
+			"metadata": map[string]any{
+				"name":            name,
+				"namespace":       namespace,
+				"uid":             "anp-uid",
+				"resourceVersion": "67890",
+			},
+			"spec": spec,
+		},
+	}
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "networking.k8s.aws",
+		Version: "v1alpha1",
+		Kind:    "ApplicationNetworkPolicy",
+	})
+
+	return obj
+}
+
+func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_Metadata(t *testing.T) {
+	obj := newANP("test-anp", "team-a", map[string]any{
+		"podSelector": map[string]any{"matchLabels": map[string]any{"app": "web"}},
+		"policyTypes": []any{"Ingress", "Egress"},
+	})
+
+	result, err := ConvertUnstructuredToAWSResource(obj)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assert.Equal(t, "test-anp", result.GetName())
+	assert.Equal(t, "team-a", result.GetNamespace()) // namespaced
+	assert.Equal(t, "ApplicationNetworkPolicy", result.GetKind())
+	assert.Equal(t, "networking.k8s.aws", result.GetApiGroup())
+
+	anp := result.GetAwsApplicationNetworkPolicy()
+	require.NotNil(t, anp)
+	assert.True(t, anp.GetIngress())
+	assert.True(t, anp.GetEgress())
+	require.NotNil(t, anp.GetPodSelector())
+	assert.Equal(t, "web", anp.GetPodSelector().GetMatchLabels()["app"])
+}
+
+func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_IngressRules(t *testing.T) {
+	obj := newANP("ingress-anp", "default", map[string]any{
+		"podSelector": map[string]any{"matchLabels": map[string]any{"app": "db"}},
+		"policyTypes": []any{"Ingress"},
+		"ingress": []any{
+			map[string]any{
+				"ports": []any{
+					map[string]any{"port": int64(5432), "protocol": "TCP"},
+				},
+				"from": []any{
+					map[string]any{
+						"podSelector": map[string]any{"matchLabels": map[string]any{"app": "api"}},
+					},
+					map[string]any{
+						"ipBlock": map[string]any{"cidr": "10.0.0.0/8", "except": []any{"10.1.0.0/16"}},
+					},
+				},
+			},
+		},
+	})
+
+	result, err := ConvertUnstructuredToAWSResource(obj)
+	require.NoError(t, err)
+
+	anp := result.GetAwsApplicationNetworkPolicy()
+	require.Len(t, anp.GetIngressRules(), 1)
+	rule := anp.GetIngressRules()[0]
+
+	require.Len(t, rule.GetPorts(), 1)
+	assert.Equal(t, "5432", rule.GetPorts()[0].GetPort())
+
+	require.Len(t, rule.GetPeers(), 2)
+	assert.Equal(t, "api", rule.GetPeers()[0].GetPodSelector().GetMatchLabels()["app"])
+	require.NotNil(t, rule.GetPeers()[1].GetIpBlock())
+	assert.Equal(t, "10.0.0.0/8", rule.GetPeers()[1].GetIpBlock().GetCidr())
+	assert.Equal(t, []string{"10.1.0.0/16"}, rule.GetPeers()[1].GetIpBlock().GetExcept())
+	// Ingress peers never carry domain names.
+	assert.Empty(t, rule.GetPeers()[0].GetDomainNames())
+}
+
+func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_EgressDomainNames(t *testing.T) {
+	obj := newANP("egress-anp", "default", map[string]any{
+		"podSelector": map[string]any{"matchLabels": map[string]any{"security-tier": "low"}},
+		"policyTypes": []any{"Egress"},
+		"egress": []any{
+			map[string]any{
+				"to": []any{
+					map[string]any{
+						"domainNames": []any{"*.s3.us-east-1.amazonaws.com", "api.example.com"},
+					},
+					map[string]any{
+						"namespaceSelector": map[string]any{"matchLabels": map[string]any{"env": "prod"}},
+					},
+				},
+			},
+		},
+	})
+
+	result, err := ConvertUnstructuredToAWSResource(obj)
+	require.NoError(t, err)
+
+	anp := result.GetAwsApplicationNetworkPolicy()
+	require.Len(t, anp.GetEgressRules(), 1)
+	peers := anp.GetEgressRules()[0].GetPeers()
+	require.Len(t, peers, 2)
+
+	assert.Equal(t, []string{"*.s3.us-east-1.amazonaws.com", "api.example.com"}, peers[0].GetDomainNames())
+	assert.Equal(t, "prod", peers[1].GetNamespaceSelector().GetMatchLabels()["env"])
+}

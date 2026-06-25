@@ -287,6 +287,107 @@ func TestExtractResourceName_AWSClusterNetworkPolicy(t *testing.T) {
 	assert.Equal(t, "clusternetworkpolicies", name)
 }
 
+func TestExtractResourceName_AWSApplicationNetworkPolicy(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{
+			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{},
+		},
+	}
+
+	name, err := ExtractResourceName(data)
+	require.NoError(t, err)
+	assert.Equal(t, "applicationnetworkpolicies", name)
+}
+
+func TestConvertToApplyObject_AWSApplicationNetworkPolicy(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:        "anp-1",
+		Name:      "test-anp",
+		Namespace: new("team-a"),
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{
+			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{
+				Ingress:     true,
+				Egress:      true,
+				PodSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "web"}},
+				IngressRules: []*pb.AWSApplicationNetworkPolicyRule{
+					{
+						Ports: []*pb.Port{
+							{Protocol: pb.Port_PROTOCOL_TCP_UNSPECIFIED, Port: new("5432")},
+						},
+						Peers: []*pb.AWSApplicationNetworkPolicyPeer{
+							{PodSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "api"}}},
+							{IpBlock: &pb.IPBlock{Cidr: "10.0.0.0/8", Except: []string{"10.1.0.0/16"}}},
+						},
+					},
+				},
+				EgressRules: []*pb.AWSApplicationNetworkPolicyRule{
+					{
+						Peers: []*pb.AWSApplicationNetworkPolicyPeer{
+							{DomainNames: []string{"*.amazonaws.com"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj, resourceName, err := ConvertToApplyObject(data, "networking.k8s.aws", "v1alpha1")
+	require.NoError(t, err)
+
+	assert.Equal(t, "applicationnetworkpolicies", resourceName)
+	assert.Equal(t, "ApplicationNetworkPolicy", obj.GetKind())
+	assert.Equal(t, "networking.k8s.aws/v1alpha1", obj.GetAPIVersion())
+	assert.Equal(t, "team-a", obj.GetNamespace())
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+
+	// podSelector.
+	podSelector, ok := spec["podSelector"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, podSelector, "matchLabels")
+
+	// policyTypes reconstructed from ingress/egress bools.
+	policyTypes, ok := spec["policyTypes"].([]any)
+	require.True(t, ok)
+	assert.ElementsMatch(t, []any{"Ingress", "Egress"}, policyTypes)
+
+	// Ingress rule: peers under "from", numeric port rendered as int.
+	ingress, ok := spec["ingress"].([]any)
+	require.True(t, ok)
+	require.Len(t, ingress, 1)
+	inRule, ok := ingress[0].(map[string]any)
+	require.True(t, ok)
+
+	from, ok := inRule["from"].([]any)
+	require.True(t, ok)
+	require.Len(t, from, 2)
+	ipBlockPeer, ok := from[1].(map[string]any)
+	require.True(t, ok)
+	ipBlock, ok := ipBlockPeer["ipBlock"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "10.0.0.0/8", ipBlock["cidr"])
+
+	ports, ok := inRule["ports"].([]any)
+	require.True(t, ok)
+	port0, ok := ports[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "TCP", port0["protocol"])
+	assert.Equal(t, 5432, port0["port"]) // numeric port → int, not "5432"
+
+	// Egress rule: peers under "to" with domainNames.
+	egress, ok := spec["egress"].([]any)
+	require.True(t, ok)
+	require.Len(t, egress, 1)
+	eRule, ok := egress[0].(map[string]any)
+	require.True(t, ok)
+	to, ok := eRule["to"].([]any)
+	require.True(t, ok)
+	toPeer, ok := to[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, []any{"*.amazonaws.com"}, toPeer["domainNames"])
+}
+
 func TestConvertToApplyObject_NilData(t *testing.T) {
 	_, _, err := ConvertToApplyObject(nil, "cilium.io", "v2")
 	require.Error(t, err)

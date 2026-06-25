@@ -52,6 +52,7 @@ message KubernetesObjectData {
     KubernetesCiliumClusterwideNetworkPolicyData cilium_clusterwide_network_policy = 105;
     KubernetesCiliumCIDRGroupData cilium_cidr_group = 106;
     KubernetesAWSClusterNetworkPolicyData aws_cluster_network_policy = 107;
+    KubernetesAWSApplicationNetworkPolicyData aws_application_network_policy = 108;
   }
 }
 
@@ -463,6 +464,51 @@ message AWSNetworkPolicyEgressPeer {
   repeated string networks = 3;
   // DomainNames lists FQDN peers, wildcard-capable (max 25); valid only with
   // "Accept" or "Pass" actions.
+  repeated string domain_names = 4;
+}
+
+// Note: Namespaced policy with standard Kubernetes NetworkPolicy semantics plus FQDN
+// (domainNames) egress peers. Reuses the generic LabelSelector, IPBlock, and
+// Port primitives; the rule and peer types are AWS-specific so the shared
+// NetworkPolicy types stay untouched.
+// Schema pinned to:
+// https://github.com/aws/amazon-network-policy-controller-k8s/blob/59b675390bf78a3303e4e60be71a5d057845e61e/api/v1alpha1/applicationnetworkpolicy_types.go
+
+// KubernetesAWSApplicationNetworkPolicyData contains data specific to an AWS
+// ApplicationNetworkPolicy object.
+message KubernetesAWSApplicationNetworkPolicyData {
+  // True if the policy declares the Ingress policy type.
+  bool ingress = 1;
+  // True if the policy declares the Egress policy type.
+  bool egress = 2;
+  // Selects the pods this policy applies to.
+  LabelSelector pod_selector = 3;
+  // Ingress rules (standard NetworkPolicy semantics).
+  repeated AWSApplicationNetworkPolicyRule ingress_rules = 4;
+  // Egress rules; peers may include FQDN domain names.
+  repeated AWSApplicationNetworkPolicyRule egress_rules = 5;
+}
+
+// AWSApplicationNetworkPolicyRule is a single ingress or egress rule. Peers live
+// in `peers` (from-peers for ingress, to-peers for egress).
+message AWSApplicationNetworkPolicyRule {
+  // Peers allowed by this rule. Empty matches all.
+  repeated AWSApplicationNetworkPolicyPeer peers = 1;
+  // Ports restricts the rule to specific ports/protocols. Empty matches all.
+  repeated Port ports = 2;
+}
+
+// AWSApplicationNetworkPolicyPeer identifies a source (ingress) or destination
+// (egress). Mirrors the CRD peer: exactly one of pod_selector, namespace_selector,
+// or ip_block is set; domain_names applies to egress only.
+message AWSApplicationNetworkPolicyPeer {
+  // Selects pods by label within the matched namespaces.
+  LabelSelector pod_selector = 1;
+  // Selects namespaces by label.
+  LabelSelector namespace_selector = 2;
+  // IP block (CIDR with optional exceptions).
+  IPBlock ip_block = 3;
+  // FQDN peers, wildcard-capable (egress only).
   repeated string domain_names = 4;
 }
 
@@ -908,6 +954,7 @@ message ConfiguredKubernetesObjectData {
     KubernetesCiliumClusterwideNetworkPolicyData cilium_clusterwide_network_policy = 101;
     KubernetesCiliumCIDRGroupData cilium_cidr_group = 102;
     KubernetesAWSClusterNetworkPolicyData aws_cluster_network_policy = 103;
+    KubernetesAWSApplicationNetworkPolicyData aws_application_network_policy = 104;
   }
 }
 

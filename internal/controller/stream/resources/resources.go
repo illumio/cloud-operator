@@ -12,6 +12,7 @@ import (
 
 // ManagedResourceNames lists the plural resource names managed by the reconciler.
 var ManagedResourceNames = []string{
+	"applicationnetworkpolicies",
 	"ciliumcidrgroups",
 	"ciliumclusterwidenetworkpolicies",
 	"ciliumnetworkpolicies",

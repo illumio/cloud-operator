@@ -253,7 +253,30 @@ func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKu
 		zap.String("kind", applied.GetKind()),
 	)
 
+	logAWSPolicyEnforce(r.logger, "apply", configObj, applied.GetKind(), desired.Object["spec"]) // TODO(wonjun): DELETE before PR
+
 	return nil
+}
+
+// TODO(wonjun): TEMPORARY debug logging for manual EKS validation. DELETE before PR.
+// logAWSPolicyEnforce emits a greppable INFO line whenever an AWS VPC CNI policy
+// (ClusterNetworkPolicy / ApplicationNetworkPolicy) is applied to or deleted from
+// the cluster by the reconciler. Tagged "wonjun" so a manual EKS run can confirm
+// enforce correctness, including the exact rendered `spec` map that Server-Side
+// Apply sent to the cluster. `action` is "apply" or "delete".
+func logAWSPolicyEnforce(logger *zap.Logger, action string, obj *pb.ConfiguredKubernetesObjectData, kind string, spec any) {
+	switch obj.GetKindSpecific().(type) {
+	case *pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy,
+		*pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy:
+		logger.Info("wonjun >>> ENFORCE AWS policy",
+			zap.String("action", action),
+			zap.String("kind", kind),
+			zap.String("id", obj.GetId()),
+			zap.String("name", obj.GetName()),
+			zap.String("namespace", obj.GetNamespace()),
+			zap.Any("rendered_spec", spec),
+		)
+	}
 }
 
 // deleteObject deletes an object from Kubernetes by deriving the GVR from the configured object.
@@ -286,6 +309,8 @@ func (r *Reconciler) deleteObject(ctx context.Context, obj *pb.ConfiguredKuberne
 		zap.String("name", obj.GetName()),
 		zap.String("namespace", namespace),
 	)
+
+	logAWSPolicyEnforce(r.logger, "delete", obj, "", nil) // TODO(wonjun): DELETE before PR
 
 	return nil
 }
