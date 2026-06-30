@@ -50,8 +50,12 @@ spec:
             - containerPort: 5000
             - containerPort: {{ .Values.env.ipfixCollectorPort }}
               protocol: UDP
+            - containerPort: {{ .Values.env.syslogCollectorPort }}
+              protocol: TCP
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
+            - name: CALICO_NAMESPACE
+              value: "{{ .Values.calico.namespace }}"
             - name: CILIUM_NAMESPACES
               value: "{{ join " " .Values.cilium.namespaces }}"
             - name: CLUSTER_CREDS_SECRET
@@ -110,6 +114,8 @@ spec:
               value: "{{ .Values.env.streamSuccessPeriods.auth }}"
             - name: STREAM_SUCCESS_PERIOD_CONNECT
               value: "{{ .Values.env.streamSuccessPeriods.connect }}"
+            - name: SYSLOG_COLLECTOR_PORT
+              value: "{{ .Values.env.syslogCollectorPort }}"
             - name: TLS_SKIP_VERIFY
               value: "{{ .Values.env.tlsSkipVerify }}"
             - name: TOKEN_ENDPOINT

@@ -64,6 +64,27 @@ cilium:
     - kube-system
     - gke-managed-dpv2-observability
 
+calico:
+  # The namespace in which Calico Enterprise is deployed.
+  # cloud-operator uses this to determine whether Calico Enterprise is deployed,
+  # in which case the syslog collector on TCP port 6514 is enabled to receive
+  # Felix flow logs.
+  namespace: "calico-system"
+
+  # The list of IP address CIDRs of the cluster's worker nodes.
+  # Used to restrict access from only those nodes to the syslog collector on TCP
+  # port 6514 in the NetworkPolicy.
+  #
+  # For example:
+  # workerNodeCidrs:
+  #   - "10.1.0.0/24"
+  #   - "10.2.0.0/24"
+  #
+  # If empty, defaults to allowing ingress traffic to TCP port 6514 from any
+  # address. This is a safe default only on clusters that are not running Calico
+  # Enterprise, because port 6514 is not open in that case.
+  workerNodeCidrs: []
+
 openshift:
   # The namespace in which OVN-k is deployed.
   # cloud-operator uses this to determine whether OVN-k is deployed, in which
@@ -186,6 +207,12 @@ env:
   # only listens on this port if it detects at startup that OVN-k is installed.
   # UDP 4739 is the standard port for IPFIX over UDP and should not be changed.
   ipfixCollectorPort: 4739
+
+  # The TCP port on which cloud-operator receives syslog flow logs from Calico
+  # Enterprise's Felix reporter. cloud-operator only listens on this port if it
+  # detects at startup that Calico Enterprise is installed.
+  # TCP 6514 is the standard port for syslog over TLS/TCP.
+  syslogCollectorPort: 6514
 
   # The API URL used by cloud-operator to onboard itself if onboardingSecret
   # is set and clusterCredsSecret is not set.

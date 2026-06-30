@@ -94,6 +94,7 @@ func bindEnv(logger *zap.Logger, key, envVar string) {
 func logStartupConfig(logger *zap.Logger, envConfig stream.Config) {
 	logger.Info("Starting application",
 		zap.Duration("aws_vpc_cni_logs_polling_interval", viper.GetDuration("aws_vpc_cni_logs_polling_interval")),
+		zap.String("calico_namespace", viper.GetString("calico_namespace")),
 		zap.Strings("cilium_namespaces", viper.GetStringSlice("cilium_namespaces")),
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
 		zap.String("cluster_name", envConfig.ClusterName),
@@ -137,6 +138,7 @@ func main() {
 
 	// Bind specific environment variables to keys
 	bindEnv(logger, "aws_vpc_cni_logs_polling_interval", "AWS_VPC_CNI_LOGS_POLLING_INTERVAL")
+	bindEnv(logger, "calico_namespace", "CALICO_NAMESPACE")
 	bindEnv(logger, "cilium_namespaces", "CILIUM_NAMESPACES")
 	bindEnv(logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
 	bindEnv(logger, "cluster_name", "CLUSTER_NAME")
@@ -161,12 +163,14 @@ func main() {
 	bindEnv(logger, "stream_keepalive_period_logs", "STREAM_KEEPALIVE_PERIOD_LOGS")
 	bindEnv(logger, "stream_success_period_auth", "STREAM_SUCCESS_PERIOD_AUTH")
 	bindEnv(logger, "stream_success_period_connect", "STREAM_SUCCESS_PERIOD_CONNECT")
+	bindEnv(logger, "syslog_collector_port", "SYSLOG_COLLECTOR_PORT")
 	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "verbose_debugging", "VERBOSE_DEBUGGING")
 
 	// Set default values
 	viper.SetDefault("aws_vpc_cni_logs_polling_interval", "1s")
+	viper.SetDefault("calico_namespace", "calico-system")
 	viper.SetDefault("cilium_namespaces", []string{"kube-system", "gke-managed-dpv2-observability"})
 	viper.SetDefault("cluster_creds", "clustercreds")
 	viper.SetDefault("eks_auto_mode_log_path", collector.DefaultNetworkPolicyAgentLogPath)
@@ -188,6 +192,7 @@ func main() {
 	viper.SetDefault("stream_keepalive_period_logs", defaultStreamKeepalivePeriodLogs)
 	viper.SetDefault("stream_success_period_auth", defaultStreamSuccessPeriodAuth)
 	viper.SetDefault("stream_success_period_connect", defaultStreamSuccessPeriodConnect)
+	viper.SetDefault("syslog_collector_port", "6514")
 	viper.SetDefault("tls_skip_verify", false)
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("verbose_debugging", false)
@@ -277,6 +282,7 @@ func main() {
 		AutoModeLogPath:                viper.GetString("eks_auto_mode_log_path"),
 		AutoModeMaxConcurrentNodePolls: viper.GetInt("eks_auto_mode_max_concurrent_node_polls"),
 		AutoModePollInterval:           viper.GetDuration("eks_auto_mode_poll_interval"),
+		CalicoNamespace:                viper.GetString("calico_namespace"),
 		CiliumNamespaces:               viper.GetStringSlice("cilium_namespaces"),
 		FlowCache:                      flowCache,
 		IPFIXCollectorPort:             viper.GetString("ipfix_collector_port"),
@@ -284,6 +290,7 @@ func main() {
 		Logger:                         logger,
 		OVNKNamespace:                  viper.GetString("ovnk_namespace"),
 		Stats:                          stats,
+		SyslogCollectorPort:            viper.GetString("syslog_collector_port"),
 		TlsAuthProps:                   tlsAuthProps,
 	})
 

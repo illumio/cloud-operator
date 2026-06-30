@@ -14,6 +14,7 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/awsautomode"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/awsvpccni"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/calico"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cilium"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/ovnk"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
@@ -134,6 +135,21 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 		}
 
 		return pb.FlowCollector_FLOW_COLLECTOR_OVNK, "OVN-K", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
+			return factory.NewCollector(ctx)
+		})
+	}
+
+	// Check for Calico Enterprise (Felix syslog flow reporter)
+	if collector.IsCalicoEnterpriseDeployed(ctx, config.Logger, config.CalicoNamespace, clientset) {
+		config.Logger.Info("Using Calico Enterprise flow collector")
+
+		factory := &calico.Factory{
+			Logger:     config.Logger,
+			SyslogPort: config.SyslogCollectorPort,
+			FlowSink:   flowSink,
+		}
+
+		return pb.FlowCollector_FLOW_COLLECTOR_CALICO_ENTERPRISE, "Calico-Enterprise", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
 			return factory.NewCollector(ctx)
 		})
 	}

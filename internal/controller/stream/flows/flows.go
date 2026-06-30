@@ -59,4 +59,8 @@ type CollectorConfig struct {
 	AutoModePollInterval           time.Duration
 	AutoModeMaxConcurrentNodePolls int
 	AutoModeLogPath                string
+
+	// Calico Enterprise (Felix syslog flow reporter) configuration
+	SyslogCollectorPort string
+	CalicoNamespace     string
 }
