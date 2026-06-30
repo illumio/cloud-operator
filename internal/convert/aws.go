@@ -48,6 +48,7 @@ func ConvertUnstructuredToAWSResource(obj *k8sUnstructured.Unstructured) (*pb.Ku
 		ResourceVersion:   obj.GetResourceVersion(),
 		Uid:               string(obj.GetUID()),
 	}
+
 	jsonBytes, err := obj.MarshalJSON()
 	if err != nil {
 		return nil, fmt.Errorf("marshaling %s to JSON: %w", gvk.Kind, err)

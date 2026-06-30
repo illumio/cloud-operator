@@ -234,7 +234,7 @@ func marshalConfiguredObjectSpecs(data *pb.ConfiguredKubernetesObjectData) (stri
 // marshalAWSApplicationNetworkPolicySpec builds the ApplicationNetworkPolicy CRD
 // spec map from the proto. The proto mirrors KubernetesNetworkPolicyData (ingress/
 // egress bools + rule arrays), which does not map 1:1 to the CRD, so the spec is
-// constructed explicitly rather than via protoToMap
+// constructed explicitly rather than via protoToMap.
 func marshalAWSApplicationNetworkPolicySpec(data *pb.KubernetesAWSApplicationNetworkPolicyData) map[string]any {
 	spec := map[string]any{}
 
