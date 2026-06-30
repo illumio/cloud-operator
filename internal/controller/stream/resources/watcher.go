@@ -158,8 +158,6 @@ func (r *Watcher) DynamicListResources(ctx context.Context, logger *zap.Logger) 
 			continue
 		}
 
-		logAWSPolicyIngest(r.logger, "list", metadataObj) // TODO(wonjun): DELETE before PR
-
 		if err := r.resourcesClient.SendObjectData(logger, metadataObj); err != nil {
 			r.logger.Error("Cannot send object metadata", zap.Error(err))
 
@@ -304,43 +302,6 @@ func removeListSuffix(s string) string {
 	return strings.TrimSuffix(s, "List")
 }
 
-// TODO(wonjun): TEMPORARY debug logging for manual EKS validation. DELETE before PR.
-// logAWSPolicyIngest emits a greppable INFO line whenever an AWS VPC CNI policy
-// (ClusterNetworkPolicy / ApplicationNetworkPolicy) is ingested and converted.
-// Tagged "wonjun" so a manual EKS run can filter the operator log to confirm
-// ingest correctness. `source` is "list" (initial sync) or "watch" (live event).
-func logAWSPolicyIngest(logger *zap.Logger, source string, obj *pb.KubernetesObjectData) {
-	if obj == nil {
-		return
-	}
-
-	switch obj.GetKindSpecific().(type) {
-	case *pb.KubernetesObjectData_AwsClusterNetworkPolicy:
-		cnp := obj.GetAwsClusterNetworkPolicy()
-		logger.Info("wonjun >>> INGEST ClusterNetworkPolicy",
-			zap.String("source", source),
-			zap.String("name", obj.GetName()),
-			zap.String("api_group", obj.GetApiGroup()),
-			zap.String("tier", cnp.GetTier()),
-			zap.Int32("priority", cnp.GetPriority()),
-			zap.Int("ingress_rules", len(cnp.GetIngress())),
-			zap.Int("egress_rules", len(cnp.GetEgress())),
-		)
-	case *pb.KubernetesObjectData_AwsApplicationNetworkPolicy:
-		anp := obj.GetAwsApplicationNetworkPolicy()
-		logger.Info("wonjun >>> INGEST ApplicationNetworkPolicy",
-			zap.String("source", source),
-			zap.String("name", obj.GetName()),
-			zap.String("namespace", obj.GetNamespace()),
-			zap.String("api_group", obj.GetApiGroup()),
-			zap.Bool("ingress_enabled", anp.GetIngress()),
-			zap.Bool("egress_enabled", anp.GetEgress()),
-			zap.Int("ingress_rules", len(anp.GetIngressRules())),
-			zap.Int("egress_rules", len(anp.GetEgressRules())),
-		)
-	}
-}
-
 func (r *Watcher) newWatcher(ctx context.Context, resourceVersion string, logger *zap.Logger) (watch.Interface, error) {
 	watchOptions := metav1.ListOptions{
 		Watch:               true,
@@ -452,8 +413,6 @@ func (r *Watcher) processMutation(ctx context.Context, event watch.Event, mutati
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to convert %s %s/%s: %w", unstructuredObj.GetKind(), unstructuredObj.GetNamespace(), unstructuredObj.GetName(), err)
 	}
-
-	logAWSPolicyIngest(r.logger, "watch", metadataObj) // TODO(wonjun): DELETE before PR
 
 	mutation := r.resourcesClient.CreateMutationObject(metadataObj, event.Type)
 
