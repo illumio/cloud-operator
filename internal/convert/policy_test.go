@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
@@ -181,7 +182,7 @@ func TestConvertToApplyObject_AWSClusterNetworkPolicy(t *testing.T) {
 		// Cluster-scoped: no namespace.
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{
 			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{
-				Priority: 100,
+				Priority: new(int32(100)),
 				Tier:     "Admin",
 				Subject: &pb.AWSNetworkPolicySubject{
 					Pods: &pb.AWSNetworkPolicyPodSelector{
@@ -275,6 +276,29 @@ func TestConvertToApplyObject_AWSClusterNetworkPolicy(t *testing.T) {
 	assert.Contains(t, peer0, "domainNames")
 }
 
+func TestConvertToApplyObject_AWSClusterNetworkPolicyPriorityZero(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:   "cnp-prio-zero",
+		Name: "prio-zero",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{
+				Priority: new(int32(0)),
+				Tier:     "Admin",
+			},
+		},
+	}
+
+	obj, _, err := ConvertToApplyObject(data, "networking.k8s.aws", "v1alpha1")
+	require.NoError(t, err)
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+
+	prio, present := spec["priority"]
+	require.True(t, present, "priority=0 must be present, not dropped by protojson")
+	assert.EqualValues(t, 0, prio)
+}
+
 func TestExtractResourceName_AWSClusterNetworkPolicy(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{
@@ -306,23 +330,22 @@ func TestConvertToApplyObject_AWSApplicationNetworkPolicy(t *testing.T) {
 		Namespace: new("team-a"),
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{
 			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{
-				Ingress:     true,
-				Egress:      true,
 				PodSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "web"}},
-				IngressRules: []*pb.AWSApplicationNetworkPolicyRule{
+				PolicyTypes: []string{"Ingress", "Egress"},
+				Ingress: []*pb.AWSApplicationNetworkPolicyIngressRule{
 					{
-						Ports: []*pb.Port{
-							{Protocol: pb.Port_PROTOCOL_TCP_UNSPECIFIED, Port: new("5432")},
+						Ports: []*pb.AWSApplicationNetworkPolicyPort{
+							{Protocol: new("TCP"), Port: structpb.NewNumberValue(5432)},
 						},
-						Peers: []*pb.AWSApplicationNetworkPolicyPeer{
+						From: []*pb.AWSApplicationNetworkPolicyIngressPeer{
 							{PodSelector: &pb.LabelSelector{MatchLabels: map[string]string{"app": "api"}}},
 							{IpBlock: &pb.IPBlock{Cidr: "10.0.0.0/8", Except: []string{"10.1.0.0/16"}}},
 						},
 					},
 				},
-				EgressRules: []*pb.AWSApplicationNetworkPolicyRule{
+				Egress: []*pb.AWSApplicationNetworkPolicyEgressRule{
 					{
-						Peers: []*pb.AWSApplicationNetworkPolicyPeer{
+						To: []*pb.AWSApplicationNetworkPolicyEgressPeer{
 							{DomainNames: []string{"*.amazonaws.com"}},
 						},
 					},
@@ -373,7 +396,7 @@ func TestConvertToApplyObject_AWSApplicationNetworkPolicy(t *testing.T) {
 	port0, ok := ports[0].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "TCP", port0["protocol"])
-	assert.Equal(t, 5432, port0["port"]) // numeric port → int, not "5432"
+	assert.InDelta(t, 5432, port0["port"], 0) // Value → bare JSON number (intstr Int)
 
 	// Egress rule: peers under "to" with domainNames.
 	egress, ok := spec["egress"].([]any)

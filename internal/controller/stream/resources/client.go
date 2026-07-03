@@ -77,9 +77,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 		return convert.ConvertUnstructuredToCiliumResource(obj)
 	}
-	awsConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return convert.ConvertUnstructuredToAWSResource(obj)
-	}
+	awsConverter := convert.NewAWSResourceConverter(c.logger)
 
 	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
 	sharedLimiter := rate.NewLimiter(1, 5)
@@ -322,6 +320,11 @@ func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.
 			return nil
 		}
 
+		// The resource-id label is what scopes reconciliation to desired-state
+		// objects. Operator-created policies that are not desired-state-managed
+		// (e.g. the AWS VPC CNI flow-logging ClusterNetworkPolicy) deliberately
+		// omit it, so they are skipped here and never reach the reconciler for
+		// deletion — see EnsureFlowLoggingPolicy.
 		id := labels[convert.CloudSecureIDLabel]
 		if id == "" {
 			return nil

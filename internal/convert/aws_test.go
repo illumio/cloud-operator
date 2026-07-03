@@ -3,10 +3,13 @@
 package convert
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -34,7 +37,7 @@ func TestIsAWSResource(t *testing.T) {
 }
 
 func TestConvertUnstructuredToAWSResource_Nil(t *testing.T) {
-	result, err := ConvertUnstructuredToAWSResource(nil)
+	result, err := ConvertUnstructuredToAWSResource(zap.NewNop(), nil)
 	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "cannot convert nil object")
@@ -48,7 +51,7 @@ func TestConvertUnstructuredToAWSResource_UnsupportedKind(t *testing.T) {
 		Kind:    "SecurityGroupPolicy",
 	})
 
-	result, err := ConvertUnstructuredToAWSResource(obj)
+	result, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
 	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "unsupported AWS resource kind")
@@ -88,7 +91,7 @@ func TestConvertUnstructuredToAWSResource_Metadata(t *testing.T) {
 		},
 	})
 
-	result, err := ConvertUnstructuredToAWSResource(obj)
+	result, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -146,7 +149,7 @@ func TestConvertUnstructuredToAWSResource_IngressWithPodSubjectAndPorts(t *testi
 		},
 	})
 
-	result, err := ConvertUnstructuredToAWSResource(obj)
+	result, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
 	require.NoError(t, err)
 
 	cnp := result.GetAwsClusterNetworkPolicy()
@@ -203,7 +206,7 @@ func TestConvertUnstructuredToAWSResource_EgressWithNetworksAndDomainNames(t *te
 		},
 	})
 
-	result, err := ConvertUnstructuredToAWSResource(obj)
+	result, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
 	require.NoError(t, err)
 
 	cnp := result.GetAwsClusterNetworkPolicy()
@@ -234,7 +237,7 @@ func TestConvertUnstructuredToAWSResource_PortRangeAndNamedPort(t *testing.T) {
 		},
 	})
 
-	result, err := ConvertUnstructuredToAWSResource(obj)
+	result, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
 	require.NoError(t, err)
 
 	rule := result.GetAwsClusterNetworkPolicy().GetIngress()[0]
@@ -272,7 +275,7 @@ func TestConvertUnstructuredToAWSResource_DenyAndPassActions(t *testing.T) {
 		},
 	})
 
-	result, err := ConvertUnstructuredToAWSResource(obj)
+	result, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
 	require.NoError(t, err)
 
 	cnp := result.GetAwsClusterNetworkPolicy()
@@ -300,7 +303,7 @@ func TestConvertUnstructuredToAWSResource_RuleName(t *testing.T) {
 		},
 	})
 
-	result, err := ConvertUnstructuredToAWSResource(obj)
+	result, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
 	require.NoError(t, err)
 
 	rule := result.GetAwsClusterNetworkPolicy().GetIngress()[0]
@@ -324,7 +327,7 @@ func TestConvertUnstructuredToAWSResource_MatchExpressions(t *testing.T) {
 		},
 	})
 
-	result, err := ConvertUnstructuredToAWSResource(obj)
+	result, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
 	require.NoError(t, err)
 
 	sel := result.GetAwsClusterNetworkPolicy().GetSubject().GetNamespaces()
@@ -371,7 +374,7 @@ func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_Metadata(t *t
 		"policyTypes": []any{"Ingress", "Egress"},
 	})
 
-	result, err := ConvertUnstructuredToAWSResource(obj)
+	result, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -382,10 +385,31 @@ func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_Metadata(t *t
 
 	anp := result.GetAwsApplicationNetworkPolicy()
 	require.NotNil(t, anp)
-	assert.True(t, anp.GetIngress())
-	assert.True(t, anp.GetEgress())
+	assert.ElementsMatch(t, []string{"Ingress", "Egress"}, anp.GetPolicyTypes())
 	require.NotNil(t, anp.GetPodSelector())
 	assert.Equal(t, "web", anp.GetPodSelector().GetMatchLabels()["app"])
+}
+
+func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_UnknownPolicyType(t *testing.T) {
+	core, logs := observer.New(zap.WarnLevel)
+	logger := zap.New(core)
+
+	obj := newANP("weird-anp", "team-a", map[string]any{
+		"podSelector": map[string]any{},
+		"policyTypes": []any{"Ingress", "Bogus"},
+	})
+
+	result, err := ConvertUnstructuredToAWSResource(logger, obj)
+	require.NoError(t, err)
+
+	// Unknown types are passed through unchanged, not dropped.
+	anp := result.GetAwsApplicationNetworkPolicy()
+	assert.Equal(t, []string{"Ingress", "Bogus"}, anp.GetPolicyTypes())
+
+	// The unexpected value is logged as a warning.
+	warnings := logs.FilterMessage("Unknown ApplicationNetworkPolicy policy type").All()
+	require.Len(t, warnings, 1)
+	assert.Equal(t, "Bogus", warnings[0].ContextMap()["policy_type"])
 }
 
 func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_IngressRules(t *testing.T) {
@@ -409,23 +433,22 @@ func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_IngressRules(
 		},
 	})
 
-	result, err := ConvertUnstructuredToAWSResource(obj)
+	result, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
 	require.NoError(t, err)
 
 	anp := result.GetAwsApplicationNetworkPolicy()
-	require.Len(t, anp.GetIngressRules(), 1)
-	rule := anp.GetIngressRules()[0]
+	require.Len(t, anp.GetIngress(), 1)
+	rule := anp.GetIngress()[0]
 
 	require.Len(t, rule.GetPorts(), 1)
-	assert.Equal(t, "5432", rule.GetPorts()[0].GetPort())
+	assert.InDelta(t, 5432, rule.GetPorts()[0].GetPort().GetNumberValue(), 0)
+	assert.Equal(t, "TCP", rule.GetPorts()[0].GetProtocol())
 
-	require.Len(t, rule.GetPeers(), 2)
-	assert.Equal(t, "api", rule.GetPeers()[0].GetPodSelector().GetMatchLabels()["app"])
-	require.NotNil(t, rule.GetPeers()[1].GetIpBlock())
-	assert.Equal(t, "10.0.0.0/8", rule.GetPeers()[1].GetIpBlock().GetCidr())
-	assert.Equal(t, []string{"10.1.0.0/16"}, rule.GetPeers()[1].GetIpBlock().GetExcept())
-	// Ingress peers never carry domain names.
-	assert.Empty(t, rule.GetPeers()[0].GetDomainNames())
+	require.Len(t, rule.GetFrom(), 2)
+	assert.Equal(t, "api", rule.GetFrom()[0].GetPodSelector().GetMatchLabels()["app"])
+	require.NotNil(t, rule.GetFrom()[1].GetIpBlock())
+	assert.Equal(t, "10.0.0.0/8", rule.GetFrom()[1].GetIpBlock().GetCidr())
+	assert.Equal(t, []string{"10.1.0.0/16"}, rule.GetFrom()[1].GetIpBlock().GetExcept())
 }
 
 func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_EgressDomainNames(t *testing.T) {
@@ -446,14 +469,103 @@ func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_EgressDomainN
 		},
 	})
 
-	result, err := ConvertUnstructuredToAWSResource(obj)
+	result, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
 	require.NoError(t, err)
 
 	anp := result.GetAwsApplicationNetworkPolicy()
-	require.Len(t, anp.GetEgressRules(), 1)
-	peers := anp.GetEgressRules()[0].GetPeers()
+	require.Len(t, anp.GetEgress(), 1)
+	peers := anp.GetEgress()[0].GetTo()
 	require.Len(t, peers, 2)
 
 	assert.Equal(t, []string{"*.s3.us-east-1.amazonaws.com", "api.example.com"}, peers[0].GetDomainNames())
 	assert.Equal(t, "prod", peers[1].GetNamespaceSelector().GetMatchLabels()["env"])
+}
+
+func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_RoundTrip(t *testing.T) {
+	inputSpec := map[string]any{
+		"podSelector": map[string]any{}, // empty {} = all pods in namespace
+		"policyTypes": []any{"Ingress", "Egress"},
+		"ingress": []any{
+			map[string]any{
+				"ports": []any{
+					map[string]any{"port": int64(5432), "protocol": "TCP"}, // numeric port
+					map[string]any{"port": "https"},                        // named port
+				},
+				"from": []any{
+					map[string]any{"podSelector": map[string]any{}}, // empty {} = all pods
+					map[string]any{"namespaceSelector": map[string]any{"matchLabels": map[string]any{"env": "prod"}}},
+					map[string]any{"ipBlock": map[string]any{"cidr": "10.0.0.0/8", "except": []any{"10.1.0.0/16"}}},
+				},
+			},
+		},
+		"egress": []any{
+			map[string]any{
+				"to": []any{
+					map[string]any{"domainNames": []any{"*.amazonaws.com"}},
+				},
+			},
+		},
+	}
+
+	obj := newANP("rt-anp", "team-a", inputSpec)
+
+	// CRD → proto.
+	meta, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
+	require.NoError(t, err)
+
+	// proto (metadata) → proto (configured), as done before reconcile apply.
+	configured, err := BuildConfiguredFromMetadata("rt-id", meta)
+	require.NoError(t, err)
+
+	// proto → applied CRD.
+	apply, resourceName, err := ConvertToApplyObject(configured, "networking.k8s.aws", "v1alpha1")
+	require.NoError(t, err)
+
+	assert.Equal(t, "applicationnetworkpolicies", resourceName)
+	assert.Equal(t, "ApplicationNetworkPolicy", apply.GetKind())
+
+	appliedSpec, ok := apply.Object["spec"].(map[string]any)
+	require.True(t, ok, "expected spec to be a map")
+
+	// The whole spec must survive the round-trip byte-for-byte (after JSON
+	// normalization of numeric types), catching any dropped or mutated field.
+	assert.Equal(t, normalizeJSON(t, inputSpec), normalizeJSON(t, appliedSpec))
+
+	// Explicit checks on the fix-critical invariants:
+	// 1. Empty podSelector is preserved as {} (top-level and peer), not dropped.
+	assert.Equal(t, map[string]any{}, appliedSpec["podSelector"], "empty podSelector must stay {}")
+
+	ingress, ok := appliedSpec["ingress"].([]any)
+	require.True(t, ok)
+	rule, ok := ingress[0].(map[string]any)
+	require.True(t, ok)
+
+	from, ok := rule["from"].([]any)
+	require.True(t, ok)
+	peer0, ok := from[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, map[string]any{}, peer0["podSelector"], "empty peer podSelector must stay {}")
+
+	// 2. Ports serialize as intstr: bare number for numeric, bare string for named.
+	ports, ok := rule["ports"].([]any)
+	require.True(t, ok)
+	port0, ok := ports[0].(map[string]any)
+	require.True(t, ok)
+	port1, ok := ports[1].(map[string]any)
+	require.True(t, ok)
+	assert.InDelta(t, 5432, port0["port"], 0)
+	assert.Equal(t, "https", port1["port"])
+}
+
+func normalizeJSON(t *testing.T, v any) map[string]any {
+	t.Helper()
+
+	b, err := json.Marshal(v)
+	require.NoError(t, err)
+
+	var out map[string]any
+
+	require.NoError(t, json.Unmarshal(b, &out))
+
+	return out
 }

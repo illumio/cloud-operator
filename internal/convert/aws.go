@@ -3,14 +3,17 @@
 package convert
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 
+	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	networkingv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sUnstructured "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/intstr"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
@@ -27,9 +30,18 @@ func IsAWSResource(kindOrResource string) bool {
 	}
 }
 
+// NewAWSResourceConverter returns a ResourceConverter for AWS VPC CNI policy
+// resources. It closes over logger so conversion can warn on unexpected values
+// (e.g. unknown policy types) without failing the conversion.
+func NewAWSResourceConverter(logger *zap.Logger) func(ctx context.Context, obj *k8sUnstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+	return func(_ context.Context, obj *k8sUnstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+		return ConvertUnstructuredToAWSResource(logger, obj)
+	}
+}
+
 // ConvertUnstructuredToAWSResource converts an unstructured AWS ClusterNetworkPolicy
 // (networking.k8s.aws/v1alpha1) to a KubernetesObjectData proto.
-func ConvertUnstructuredToAWSResource(obj *k8sUnstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+func ConvertUnstructuredToAWSResource(logger *zap.Logger, obj *k8sUnstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 	if obj == nil {
 		return nil, errors.New("cannot convert nil object")
 	}
@@ -77,7 +89,7 @@ func ConvertUnstructuredToAWSResource(obj *k8sUnstructured.Unstructured) (*pb.Ku
 		}
 
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_AwsApplicationNetworkPolicy{
-			AwsApplicationNetworkPolicy: convertAWSApplicationNetworkPolicy(&anp),
+			AwsApplicationNetworkPolicy: convertAWSApplicationNetworkPolicy(logger, &anp),
 		}
 	default:
 		return nil, fmt.Errorf("unsupported AWS resource kind: %s", gvk.Kind)
@@ -87,8 +99,10 @@ func ConvertUnstructuredToAWSResource(obj *k8sUnstructured.Unstructured) (*pb.Ku
 }
 
 func convertAWSClusterNetworkPolicy(cnp *awsClusterNetworkPolicy) *pb.KubernetesAWSClusterNetworkPolicyData {
+	priority := cnp.Spec.Priority
+
 	return &pb.KubernetesAWSClusterNetworkPolicyData{
-		Priority: cnp.Spec.Priority,
+		Priority: &priority,
 		Tier:     cnp.Spec.Tier,
 		Subject:  convertAWSSubject(cnp.Spec.Subject),
 		Ingress:  convertAWSIngressRules(cnp.Spec.Ingress),
@@ -104,7 +118,7 @@ func convertAWSSubject(sub awsSubject) *pb.AWSNetworkPolicySubject {
 	}
 
 	if sub.Namespaces != nil {
-		out.Namespaces = convertMetaV1LabelSelector(sub.Namespaces)
+		out.Namespaces = convertLabelSelectorToProto(sub.Namespaces)
 	}
 
 	return out
@@ -116,8 +130,8 @@ func convertAWSNamespacedPod(p *awsNamespacedPod) *pb.AWSNetworkPolicyPodSelecto
 	}
 
 	return &pb.AWSNetworkPolicyPodSelector{
-		NamespaceSelector: convertMetaV1LabelSelector(&p.NamespaceSelector),
-		PodSelector:       convertMetaV1LabelSelector(&p.PodSelector),
+		NamespaceSelector: convertLabelSelectorToProto(&p.NamespaceSelector),
+		PodSelector:       convertLabelSelectorToProto(&p.PodSelector),
 	}
 }
 
@@ -213,7 +227,7 @@ func convertAWSIngressPeers(peers []awsIngressPeer) []*pb.AWSNetworkPolicyIngres
 	for _, p := range peers {
 		out = append(out, &pb.AWSNetworkPolicyIngressPeer{
 			Pods:       convertAWSNamespacedPod(p.Pods),
-			Namespaces: convertMetaV1LabelSelector(p.Namespaces),
+			Namespaces: convertLabelSelectorToProto(p.Namespaces),
 		})
 	}
 
@@ -229,7 +243,7 @@ func convertAWSEgressPeers(peers []awsEgressPeer) []*pb.AWSNetworkPolicyEgressPe
 	for _, p := range peers {
 		out = append(out, &pb.AWSNetworkPolicyEgressPeer{
 			Pods:        convertAWSNamespacedPod(p.Pods),
-			Namespaces:  convertMetaV1LabelSelector(p.Namespaces),
+			Namespaces:  convertLabelSelectorToProto(p.Namespaces),
 			Networks:    p.Networks,
 			DomainNames: p.DomainNames,
 		})
@@ -238,80 +252,82 @@ func convertAWSEgressPeers(peers []awsEgressPeer) []*pb.AWSNetworkPolicyEgressPe
 	return out
 }
 
-func convertAWSApplicationNetworkPolicy(anp *awsApplicationNetworkPolicy) *pb.KubernetesAWSApplicationNetworkPolicyData {
+func convertAWSApplicationNetworkPolicy(logger *zap.Logger, anp *awsApplicationNetworkPolicy) *pb.KubernetesAWSApplicationNetworkPolicyData {
 	spec := anp.Spec
 
-	var ingressEnabled, egressEnabled bool
-
-	for _, policyType := range spec.PolicyTypes {
-		switch policyType {
-		case "Ingress":
-			ingressEnabled = true
-		case "Egress":
-			egressEnabled = true
-		}
-	}
-
-	var podSelector *pb.LabelSelector
-	if len(spec.PodSelector.MatchLabels) > 0 || len(spec.PodSelector.MatchExpressions) > 0 {
-		podSelector = convertMetaV1LabelSelector(&spec.PodSelector)
-	}
-
 	return &pb.KubernetesAWSApplicationNetworkPolicyData{
-		Ingress:      ingressEnabled,
-		Egress:       egressEnabled,
-		PodSelector:  podSelector,
-		IngressRules: convertAWSANPIngressRules(spec.Ingress),
-		EgressRules:  convertAWSANPEgressRules(spec.Egress),
+		PodSelector: convertLabelSelectorToProto(&spec.PodSelector),
+		PolicyTypes: convertAWSANPPolicyTypes(logger, spec.PolicyTypes),
+		Ingress:     convertAWSANPIngressRules(spec.Ingress),
+		Egress:      convertAWSANPEgressRules(spec.Egress),
 	}
+}
+
+// convertAWSANPPolicyTypes copies the policy types through unchanged, warning on
+// any value that isn't the expected "Ingress" or "Egress" so unexpected CRD
+// values surface in logs instead of silently passing through.
+func convertAWSANPPolicyTypes(logger *zap.Logger, policyTypes []string) []string {
+	if len(policyTypes) == 0 {
+		return nil
+	}
+
+	out := make([]string, 0, len(policyTypes))
+	for _, pt := range policyTypes {
+		if pt != "Ingress" && pt != "Egress" {
+			logger.Warn("Unknown ApplicationNetworkPolicy policy type", zap.String("policy_type", pt))
+		}
+
+		out = append(out, pt)
+	}
+
+	return out
 }
 
 // convertAWSANPIngressRules converts standard NetworkPolicy ingress rules. The
-// CRD embeds upstream networking/v1 types, so the existing standard-NetworkPolicy
-// peer/port helpers are reused; ingress peers never carry domain names.
-func convertAWSANPIngressRules(rules []networkingv1.NetworkPolicyIngressRule) []*pb.AWSApplicationNetworkPolicyRule {
+// CRD embeds upstream networking/v1 types; ingress peers never carry domain names.
+func convertAWSANPIngressRules(rules []networkingv1.NetworkPolicyIngressRule) []*pb.AWSApplicationNetworkPolicyIngressRule {
 	if len(rules) == 0 {
 		return nil
 	}
 
-	out := make([]*pb.AWSApplicationNetworkPolicyRule, 0, len(rules))
+	out := make([]*pb.AWSApplicationNetworkPolicyIngressRule, 0, len(rules))
 	for _, r := range rules {
-		out = append(out, &pb.AWSApplicationNetworkPolicyRule{
-			Peers: convertAWSANPPeersFromStandard(r.From),
-			Ports: convertNetworkPolicyPortToProto(r.Ports),
+		out = append(out, &pb.AWSApplicationNetworkPolicyIngressRule{
+			From:  convertAWSANPIngressPeers(r.From),
+			Ports: convertANPPorts(r.Ports),
 		})
 	}
 
 	return out
 }
 
-func convertAWSANPEgressRules(rules []awsANPEgressRule) []*pb.AWSApplicationNetworkPolicyRule {
+func convertAWSANPEgressRules(rules []awsANPEgressRule) []*pb.AWSApplicationNetworkPolicyEgressRule {
 	if len(rules) == 0 {
 		return nil
 	}
 
-	out := make([]*pb.AWSApplicationNetworkPolicyRule, 0, len(rules))
+	out := make([]*pb.AWSApplicationNetworkPolicyEgressRule, 0, len(rules))
 	for _, r := range rules {
-		out = append(out, &pb.AWSApplicationNetworkPolicyRule{
-			Peers: convertAWSANPEgressPeers(r.To),
-			Ports: convertNetworkPolicyPortToProto(r.Ports),
+		out = append(out, &pb.AWSApplicationNetworkPolicyEgressRule{
+			To:    convertAWSANPEgressPeers(r.To),
+			Ports: convertANPPorts(r.Ports),
 		})
 	}
 
 	return out
 }
 
-// convertAWSANPPeersFromStandard converts upstream NetworkPolicyPeers (ingress).
-func convertAWSANPPeersFromStandard(peers []networkingv1.NetworkPolicyPeer) []*pb.AWSApplicationNetworkPolicyPeer {
+// convertAWSANPIngressPeers converts upstream NetworkPolicyPeers (ingress sources).
+func convertAWSANPIngressPeers(peers []networkingv1.NetworkPolicyPeer) []*pb.AWSApplicationNetworkPolicyIngressPeer {
 	if len(peers) == 0 {
 		return nil
 	}
 
-	out := make([]*pb.AWSApplicationNetworkPolicyPeer, 0, len(peers))
+	out := make([]*pb.AWSApplicationNetworkPolicyIngressPeer, 0, len(peers))
 	for _, p := range peers {
-		out = append(out, &pb.AWSApplicationNetworkPolicyPeer{
-			PodSelector:       convertMetaV1LabelSelector(p.PodSelector),
-			NamespaceSelector: convertMetaV1LabelSelector(p.NamespaceSelector),
+		out = append(out, &pb.AWSApplicationNetworkPolicyIngressPeer{
+			PodSelector:       convertLabelSelectorToProto(p.PodSelector),
+			NamespaceSelector: convertLabelSelectorToProto(p.NamespaceSelector),
 			IpBlock:           convertIPBlockToProto(p.IPBlock),
 		})
 	}
@@ -319,18 +335,18 @@ func convertAWSANPPeersFromStandard(peers []networkingv1.NetworkPolicyPeer) []*p
 	return out
 }
 
-// convertAWSANPEgressPeers converts ApplicationNetworkPolicy egress peers, which
-// additionally carry FQDN domain names.
-func convertAWSANPEgressPeers(peers []awsANPEgressPeer) []*pb.AWSApplicationNetworkPolicyPeer {
+// convertAWSANPEgressPeers converts ApplicationNetworkPolicy egress destinations,
+// which additionally carry FQDN domain names.
+func convertAWSANPEgressPeers(peers []awsANPEgressPeer) []*pb.AWSApplicationNetworkPolicyEgressPeer {
 	if len(peers) == 0 {
 		return nil
 	}
 
-	out := make([]*pb.AWSApplicationNetworkPolicyPeer, 0, len(peers))
+	out := make([]*pb.AWSApplicationNetworkPolicyEgressPeer, 0, len(peers))
 	for _, p := range peers {
-		out = append(out, &pb.AWSApplicationNetworkPolicyPeer{
-			PodSelector:       convertMetaV1LabelSelector(p.PodSelector),
-			NamespaceSelector: convertMetaV1LabelSelector(p.NamespaceSelector),
+		out = append(out, &pb.AWSApplicationNetworkPolicyEgressPeer{
+			PodSelector:       convertLabelSelectorToProto(p.PodSelector),
+			NamespaceSelector: convertLabelSelectorToProto(p.NamespaceSelector),
 			IpBlock:           convertIPBlockToProto(p.IPBlock),
 			DomainNames:       p.DomainNames,
 		})
@@ -339,26 +355,37 @@ func convertAWSANPEgressPeers(peers []awsANPEgressPeer) []*pb.AWSApplicationNetw
 	return out
 }
 
-// convertMetaV1LabelSelector converts a standard metav1.LabelSelector to proto.
-// Cilium's path uses slim label-selector types; the AWS CRD uses the standard
-// metav1 type, so this is a small dedicated helper.
-func convertMetaV1LabelSelector(sel *metav1.LabelSelector) *pb.LabelSelector {
-	if sel == nil {
+// convertANPPorts converts upstream NetworkPolicyPorts to the AWS ANP port proto.
+// The port field is a google.protobuf.Value so protojson emits a bare number for
+// numeric ports and a bare string for named ports, matching the CRD's intstr.IntOrString.
+func convertANPPorts(ports []networkingv1.NetworkPolicyPort) []*pb.AWSApplicationNetworkPolicyPort {
+	if len(ports) == 0 {
 		return nil
 	}
 
-	out := &pb.LabelSelector{}
+	out := make([]*pb.AWSApplicationNetworkPolicyPort, 0, len(ports))
+	for _, p := range ports {
+		pbPort := &pb.AWSApplicationNetworkPolicyPort{}
 
-	if len(sel.MatchLabels) > 0 {
-		out.MatchLabels = sel.MatchLabels
-	}
+		if p.Protocol != nil {
+			protocol := string(*p.Protocol)
+			pbPort.Protocol = &protocol
+		}
 
-	for _, e := range sel.MatchExpressions {
-		out.MatchExpressions = append(out.MatchExpressions, &pb.LabelSelectorRequirement{
-			Key:      e.Key,
-			Operator: string(e.Operator),
-			Values:   e.Values,
-		})
+		if p.Port != nil {
+			switch p.Port.Type {
+			case intstr.Int:
+				pbPort.Port = structpb.NewNumberValue(float64(p.Port.IntVal))
+			case intstr.String:
+				pbPort.Port = structpb.NewStringValue(p.Port.StrVal)
+			}
+		}
+
+		if p.EndPort != nil {
+			pbPort.EndPort = p.EndPort
+		}
+
+		out = append(out, pbPort)
 	}
 
 	return out

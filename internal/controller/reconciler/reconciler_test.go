@@ -293,14 +293,14 @@ func TestReconcileObject_AppliesAWSClusterNetworkPolicyWhenDifferent(t *testing.
 		Id:   "aws-policy-1",
 		Name: "allow-web",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{
-			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Priority: 100, Tier: "Admin"},
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Priority: new(int32(100)), Tier: "Admin"},
 		},
 	}
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
 		Id:   "aws-policy-1",
 		Name: "allow-web",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{
-			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Priority: 200, Tier: "Admin"},
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Priority: new(int32(200)), Tier: "Admin"},
 		},
 	}
 
@@ -340,7 +340,7 @@ func TestReconcileObject_AppliesAWSApplicationNetworkPolicyWhenDifferent(t *test
 		Name:      "allow-egress",
 		Namespace: new("team-a"),
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{
-			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{Egress: true},
+			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{PolicyTypes: []string{"Egress"}},
 		},
 	}
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
@@ -348,7 +348,7 @@ func TestReconcileObject_AppliesAWSApplicationNetworkPolicyWhenDifferent(t *test
 		Name:      "allow-egress",
 		Namespace: new("team-a"),
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{
-			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{Ingress: true},
+			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{PolicyTypes: []string{"Ingress"}},
 		},
 	}
 
@@ -368,7 +368,7 @@ func TestReconcileObject_DeletesOrphanedAWSApplicationNetworkPolicy(t *testing.T
 		Name:      "orphaned",
 		Namespace: new("team-a"),
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{
-			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{Ingress: true},
+			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{PolicyTypes: []string{"Ingress"}},
 		},
 	}
 

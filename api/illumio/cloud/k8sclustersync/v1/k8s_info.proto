@@ -4,6 +4,7 @@ syntax = "proto3";
 
 package illumio.cloud.k8sclustersync.v1;
 
+import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
 
@@ -366,7 +367,9 @@ message CiliumPolicyPort {
 // ClusterNetworkPolicy object.
 message KubernetesAWSClusterNetworkPolicyData {
   // Evaluation order within a tier (0-1000); lower is higher precedence.
-  int32 priority = 1;
+  // Optional so an explicit priority of 0 (valid, highest precedence) is
+  // preserved through protojson instead of being dropped as a zero value.
+  optional int32 priority = 1;
   // Tier categorizes the policy: "Admin" or "Baseline".
   string tier = 2;
   // Subject selects the pods/namespaces this policy applies to.
@@ -477,39 +480,68 @@ message AWSNetworkPolicyEgressPeer {
 // KubernetesAWSApplicationNetworkPolicyData contains data specific to an AWS
 // ApplicationNetworkPolicy object.
 message KubernetesAWSApplicationNetworkPolicyData {
-  // True if the policy declares the Ingress policy type.
-  bool ingress = 1;
-  // True if the policy declares the Egress policy type.
-  bool egress = 2;
   // Selects the pods this policy applies to.
-  LabelSelector pod_selector = 3;
-  // Ingress rules (standard NetworkPolicy semantics).
-  repeated AWSApplicationNetworkPolicyRule ingress_rules = 4;
+  LabelSelector pod_selector = 1;
+  // Policy types the policy declares: "Ingress" and/or "Egress".
+  repeated string policy_types = 2;
+  // Ingress rules (standard NetworkPolicy semantics; peers carry no FQDNs).
+  repeated AWSApplicationNetworkPolicyIngressRule ingress = 3;
   // Egress rules; peers may include FQDN domain names.
-  repeated AWSApplicationNetworkPolicyRule egress_rules = 5;
+  repeated AWSApplicationNetworkPolicyEgressRule egress = 4;
 }
 
-// AWSApplicationNetworkPolicyRule is a single ingress or egress rule. Peers live
-// in `peers` (from-peers for ingress, to-peers for egress).
-message AWSApplicationNetworkPolicyRule {
-  // Peers allowed by this rule. Empty matches all.
-  repeated AWSApplicationNetworkPolicyPeer peers = 1;
+// AWSApplicationNetworkPolicyIngressRule mirrors a CRD ingress rule. Sources are
+// listed under `from`.
+message AWSApplicationNetworkPolicyIngressRule {
+  // Sources allowed by this rule (rule.from). Empty matches all.
+  repeated AWSApplicationNetworkPolicyIngressPeer from = 1;
   // Ports restricts the rule to specific ports/protocols. Empty matches all.
-  repeated Port ports = 2;
+  repeated AWSApplicationNetworkPolicyPort ports = 2;
 }
 
-// AWSApplicationNetworkPolicyPeer identifies a source (ingress) or destination
-// (egress). Mirrors the CRD peer: exactly one of pod_selector, namespace_selector,
-// or ip_block is set; domain_names applies to egress only.
-message AWSApplicationNetworkPolicyPeer {
+// AWSApplicationNetworkPolicyEgressRule mirrors a CRD egress rule. Destinations
+// are listed under `to`.
+message AWSApplicationNetworkPolicyEgressRule {
+  // Destinations allowed by this rule (rule.to). Empty matches all.
+  repeated AWSApplicationNetworkPolicyEgressPeer to = 1;
+  // Ports restricts the rule to specific ports/protocols. Empty matches all.
+  repeated AWSApplicationNetworkPolicyPort ports = 2;
+}
+
+// AWSApplicationNetworkPolicyIngressPeer identifies an ingress source. Ingress
+// peers may select by pods, namespaces, or IP block only — never FQDNs.
+message AWSApplicationNetworkPolicyIngressPeer {
   // Selects pods by label within the matched namespaces.
   LabelSelector pod_selector = 1;
   // Selects namespaces by label.
   LabelSelector namespace_selector = 2;
   // IP block (CIDR with optional exceptions).
   IPBlock ip_block = 3;
-  // FQDN peers, wildcard-capable (egress only).
+}
+
+// AWSApplicationNetworkPolicyEgressPeer identifies an egress destination. Egress
+// peers additionally allow FQDN domain names.
+message AWSApplicationNetworkPolicyEgressPeer {
+  // Selects pods by label within the matched namespaces.
+  LabelSelector pod_selector = 1;
+  // Selects namespaces by label.
+  LabelSelector namespace_selector = 2;
+  // IP block (CIDR with optional exceptions).
+  IPBlock ip_block = 3;
+  // FQDN peers, wildcard-capable.
   repeated string domain_names = 4;
+}
+
+// AWSApplicationNetworkPolicyPort mirrors upstream networking.v1 NetworkPolicyPort.
+// `port` is a google.protobuf.Value so it serializes to either a bare JSON number
+// (numeric port) or string (named port), matching the CRD's intstr.IntOrString.
+message AWSApplicationNetworkPolicyPort {
+  // IP protocol: "TCP" (default), "UDP", or "SCTP".
+  optional string protocol = 1;
+  // Port number or named port; omitted matches all ports.
+  google.protobuf.Value port = 2;
+  // End of a port range (inclusive); requires port to be numeric.
+  optional int32 end_port = 3;
 }
 
 // LabelSelector selects a k8s resource (e.g., a pod or namespace) by its labels.

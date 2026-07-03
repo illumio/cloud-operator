@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"strconv"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -218,7 +217,13 @@ func marshalConfiguredObjectSpecs(data *pb.ConfiguredKubernetesObjectData) (stri
 
 	case *pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy:
 		kind = "ApplicationNetworkPolicy"
-		specFields = map[string]any{"spec": marshalAWSApplicationNetworkPolicySpec(ks.AwsApplicationNetworkPolicy)}
+
+		var specMap map[string]any
+
+		specMap, err = protoToMap(ks.AwsApplicationNetworkPolicy)
+		if err == nil {
+			specFields = map[string]any{"spec": specMap}
+		}
 
 	default:
 		return "", "", nil, fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
@@ -229,192 +234,6 @@ func marshalConfiguredObjectSpecs(data *pb.ConfiguredKubernetesObjectData) (stri
 	}
 
 	return kind, resourceName, specFields, nil
-}
-
-// marshalAWSApplicationNetworkPolicySpec builds the ApplicationNetworkPolicy CRD
-// spec map from the proto. The proto mirrors KubernetesNetworkPolicyData (ingress/
-// egress bools + rule arrays), which does not map 1:1 to the CRD, so the spec is
-// constructed explicitly rather than via protoToMap.
-func marshalAWSApplicationNetworkPolicySpec(data *pb.KubernetesAWSApplicationNetworkPolicyData) map[string]any {
-	spec := map[string]any{}
-
-	if sel := awsLabelSelectorToMap(data.GetPodSelector()); sel != nil {
-		spec["podSelector"] = sel
-	}
-
-	var policyTypes []any
-	if data.GetIngress() {
-		policyTypes = append(policyTypes, "Ingress")
-	}
-
-	if data.GetEgress() {
-		policyTypes = append(policyTypes, "Egress")
-	}
-
-	if len(policyTypes) > 0 {
-		spec["policyTypes"] = policyTypes
-	}
-
-	if rules := marshalAWSANPRules(data.GetIngressRules(), "from"); len(rules) > 0 {
-		spec["ingress"] = rules
-	}
-
-	if rules := marshalAWSANPRules(data.GetEgressRules(), "to"); len(rules) > 0 {
-		spec["egress"] = rules
-	}
-
-	return spec
-}
-
-// marshalAWSANPRules renders ApplicationNetworkPolicy rules. peerKey is "from"
-// for ingress rules and "to" for egress rules, matching the CRD.
-func marshalAWSANPRules(rules []*pb.AWSApplicationNetworkPolicyRule, peerKey string) []any {
-	if len(rules) == 0 {
-		return nil
-	}
-
-	out := make([]any, 0, len(rules))
-	for _, rule := range rules {
-		ruleMap := map[string]any{}
-
-		if peers := marshalAWSANPPeers(rule.GetPeers()); len(peers) > 0 {
-			ruleMap[peerKey] = peers
-		}
-
-		if ports := marshalAWSANPPorts(rule.GetPorts()); len(ports) > 0 {
-			ruleMap["ports"] = ports
-		}
-
-		out = append(out, ruleMap)
-	}
-
-	return out
-}
-
-func marshalAWSANPPeers(peers []*pb.AWSApplicationNetworkPolicyPeer) []any {
-	if len(peers) == 0 {
-		return nil
-	}
-
-	out := make([]any, 0, len(peers))
-	for _, peer := range peers {
-		peerMap := map[string]any{}
-
-		if sel := awsLabelSelectorToMap(peer.GetPodSelector()); sel != nil {
-			peerMap["podSelector"] = sel
-		}
-
-		if sel := awsLabelSelectorToMap(peer.GetNamespaceSelector()); sel != nil {
-			peerMap["namespaceSelector"] = sel
-		}
-
-		if b := peer.GetIpBlock(); b != nil {
-			ipBlock := map[string]any{"cidr": b.GetCidr()}
-			if except := b.GetExcept(); len(except) > 0 {
-				ipBlock["except"] = stringsToAny(except)
-			}
-
-			peerMap["ipBlock"] = ipBlock
-		}
-
-		if dns := peer.GetDomainNames(); len(dns) > 0 {
-			peerMap["domainNames"] = stringsToAny(dns)
-		}
-
-		out = append(out, peerMap)
-	}
-
-	return out
-}
-
-func marshalAWSANPPorts(ports []*pb.Port) []any {
-	if len(ports) == 0 {
-		return nil
-	}
-
-	out := make([]any, 0, len(ports))
-	for _, port := range ports {
-		portMap := map[string]any{
-			"protocol": awsProtocolToString(port.GetProtocol()),
-		}
-
-		if port.Port != nil {
-			if n, convErr := strconv.Atoi(port.GetPort()); convErr == nil {
-				portMap["port"] = n
-			} else {
-				portMap["port"] = port.GetPort()
-			}
-		}
-
-		if port.EndPort != nil {
-			portMap["endPort"] = int(port.GetEndPort())
-		}
-
-		out = append(out, portMap)
-	}
-
-	return out
-}
-
-// awsProtocolToString maps the Port protocol enum to the CRD's string value.
-func awsProtocolToString(p pb.Port_Protocol) string {
-	switch p {
-	case pb.Port_PROTOCOL_UDP:
-		return "UDP"
-	case pb.Port_PROTOCOL_SCTP:
-		return "SCTP"
-	case pb.Port_PROTOCOL_TCP_UNSPECIFIED:
-		return "TCP"
-	default:
-		return "TCP"
-	}
-}
-
-// awsLabelSelectorToMap renders a proto LabelSelector as a CRD selector map, or
-// nil when the selector is empty.
-func awsLabelSelectorToMap(sel *pb.LabelSelector) map[string]any {
-	if sel == nil {
-		return nil
-	}
-
-	out := map[string]any{}
-
-	if labels := sel.GetMatchLabels(); len(labels) > 0 {
-		matchLabels := make(map[string]any, len(labels))
-		for k, v := range labels {
-			matchLabels[k] = v
-		}
-
-		out["matchLabels"] = matchLabels
-	}
-
-	if exprs := sel.GetMatchExpressions(); len(exprs) > 0 {
-		matchExpressions := make([]any, 0, len(exprs))
-		for _, e := range exprs {
-			matchExpressions = append(matchExpressions, map[string]any{
-				"key":      e.GetKey(),
-				"operator": e.GetOperator(),
-				"values":   stringsToAny(e.GetValues()),
-			})
-		}
-
-		out["matchExpressions"] = matchExpressions
-	}
-
-	if len(out) == 0 {
-		return nil
-	}
-
-	return out
-}
-
-func stringsToAny(in []string) []any {
-	out := make([]any, len(in))
-	for i, s := range in {
-		out[i] = s
-	}
-
-	return out
 }
 
 // marshalPolicySpecs marshals Cilium policy rules into the "spec" or "specs" field.
