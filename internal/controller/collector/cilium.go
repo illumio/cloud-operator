@@ -252,7 +252,7 @@ func (fm *CiliumFlowCollector) ExportCiliumFlows(ctx context.Context, flowSink F
 	watchdogCtx, cancelWatchdog := context.WithCancel(ctx)
 	defer cancelWatchdog()
 
-	go fm.monitorRelayPeerHealth(watchdogCtx)
+	go fm.monitorHubbleRelayServerStatus(watchdogCtx)
 
 	defer func() {
 		err = stream.CloseSend()
