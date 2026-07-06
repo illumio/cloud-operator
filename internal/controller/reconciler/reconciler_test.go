@@ -25,6 +25,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 	"github.com/illumio/cloud-operator/internal/controller/stream/resources"
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 // mockClient implements k8sclient.Client for testing.
@@ -332,6 +333,29 @@ func TestReconcileObject_DeletesOrphanedAWSClusterNetworkPolicy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, client.applyCalls, "Should not apply orphaned AWS object")
 	assert.Equal(t, 1, client.deleteCalls, "Should delete orphaned AWS runtime object")
+}
+
+func TestReconcileObject_DoesNotDeleteOperatorInfrastructure(t *testing.T) {
+	runtimeObj := &pb.ConfiguredKubernetesObjectData{
+		Id:   "flow-logging-cnp",
+		Name: "illumio-cloud-operator-flow-logging",
+		Labels: map[string]string{
+			convert.ComponentLabel: convert.FlowLoggingComponentValue,
+		},
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Tier: "Baseline"},
+		},
+	}
+
+	r, client := newTestReconciler(t,
+		nil,
+		map[string]*pb.ConfiguredKubernetesObjectData{"flow-logging-cnp": runtimeObj},
+	)
+
+	err := r.reconcileObject(context.Background(), "flow-logging-cnp")
+	require.NoError(t, err)
+	assert.Equal(t, 0, client.applyCalls, "Should not apply operator infrastructure")
+	assert.Equal(t, 0, client.deleteCalls, "Should never delete operator infrastructure")
 }
 
 func TestReconcileObject_AppliesAWSApplicationNetworkPolicyWhenDifferent(t *testing.T) {

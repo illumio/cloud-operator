@@ -12,6 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
+
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 const (
@@ -51,15 +53,9 @@ func EnsureFlowLoggingPolicy(ctx context.Context, logger *zap.Logger, dynamicCli
 			"kind":       "ClusterNetworkPolicy",
 			"metadata": map[string]any{
 				"name": ClusterNetworkPolicyName,
-				// INVARIANT: this operator-created policy must NOT carry the
-				// cloud.illum.io/resource-id label. The runtime-cache handler skips
-				// any resource without that label, which keeps this flow-logging policy
-				// out of the reconciler — so it is never treated as desired-state-managed
-				// and never deleted, even though RBAC now grants delete on
-				// clusternetworkpolicies. Do not add a resource-id label here.
 				"labels": map[string]any{
-					"app.kubernetes.io/managed-by": "illumio-cloud-operator",
-					"app.kubernetes.io/component":  "flow-logging",
+					convert.ManagedByLabel: convert.ManagedByValue,
+					convert.ComponentLabel: convert.FlowLoggingComponentValue,
 				},
 			},
 			"spec": map[string]any{

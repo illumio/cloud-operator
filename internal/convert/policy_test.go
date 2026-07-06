@@ -2213,3 +2213,47 @@ func TestMarshalPolicySpecs_JSONNameOverrides(t *testing.T) {
 		assert.NotContains(t, aws, "securityGroupNames")
 	})
 }
+
+func TestIsOperatorInfrastructure(t *testing.T) {
+	tests := []struct {
+		name     string
+		labels   map[string]string
+		expected bool
+	}{
+		{
+			name:     "flow-logging component is operator infrastructure",
+			labels:   map[string]string{ComponentLabel: FlowLoggingComponentValue},
+			expected: true,
+		},
+		{
+			name: "flow-logging component with other labels",
+			labels: map[string]string{
+				ManagedByLabel:     ManagedByValue,
+				CloudSecureIDLabel: "some-id",
+				ComponentLabel:     FlowLoggingComponentValue,
+			},
+			expected: true,
+		},
+		{
+			name:     "other component is not operator infrastructure",
+			labels:   map[string]string{ComponentLabel: "something-else"},
+			expected: false,
+		},
+		{
+			name:     "no component label is not operator infrastructure",
+			labels:   map[string]string{ManagedByLabel: ManagedByValue},
+			expected: false,
+		},
+		{
+			name:     "nil labels",
+			labels:   nil,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, IsOperatorInfrastructure(tt.labels))
+		})
+	}
+}

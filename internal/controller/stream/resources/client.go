@@ -320,13 +320,12 @@ func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.
 			return nil
 		}
 
-		// The resource-id label is what scopes reconciliation to desired-state
-		// objects. Operator-created policies that are not desired-state-managed
-		// (e.g. the AWS VPC CNI flow-logging ClusterNetworkPolicy) deliberately
-		// omit it, so they are skipped here and never reach the reconciler for
-		// deletion — see EnsureFlowLoggingPolicy.
+		// Only reconcile desired-state objects. These carry a resource-id label;
+		// operator-created infrastructure (the flow-logging CNP) does not, and is
+		// also excluded by component label as a second guard so it is never deleted
+		// even if it somehow gains a resource-id. See convert.IsOperatorInfrastructure.
 		id := labels[convert.CloudSecureIDLabel]
-		if id == "" {
+		if id == "" || convert.IsOperatorInfrastructure(labels) {
 			return nil
 		}
 

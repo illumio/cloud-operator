@@ -28,7 +28,23 @@ const (
 
 	// ManagedByValue is the value used for the managed-by label.
 	ManagedByValue = "illumio-cloud-operator"
+
+	// ComponentLabel is the standard Kubernetes label identifying the component
+	// within the application.
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/
+	ComponentLabel = "app.kubernetes.io/component"
+
+	// FlowLoggingComponentValue marks the operator-created flow-logging
+	// ClusterNetworkPolicy.
+	FlowLoggingComponentValue = "flow-logging"
 )
+
+// IsOperatorInfrastructure reports whether the given labels belong to an
+// operator-created infrastructure object, which must never be treated as
+// desired-state-managed, so the runtime-cache handler and reconciler skip them.
+func IsOperatorInfrastructure(labels map[string]string) bool {
+	return labels[ComponentLabel] == FlowLoggingComponentValue
+}
 
 // protoJSONMarshaler is configured for Kubernetes Server-Side Apply:
 // - UseProtoNames=false: converts snake_case proto fields to camelCase for K8s CRD compatibility

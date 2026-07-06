@@ -141,6 +141,30 @@ func (s *ResourcesClientTestSuite) TestRuntimeCacheHandler_ExcludesFlowLoggingCN
 	s.Empty(pendingSnapshot, "flow-logging CNP without resource-id must not enter the runtime cache")
 }
 
+func (s *ResourcesClientTestSuite) TestRuntimeCacheHandler_ExcludesOperatorInfraWithResourceID() {
+	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
+	handler := s.client.newRuntimeCacheHandler(pendingSnapshot)
+
+	// Even if the flow-logging CNP somehow acquired a resource-id label, the
+	// component=flow-logging guard must still keep it out of the runtime cache.
+	flowLoggingCNP := &pb.KubernetesObjectData{
+		Name: "illumio-cloud-operator-flow-logging",
+		Kind: "ClusterNetworkPolicy",
+		Labels: map[string]string{
+			convert.ManagedByLabel:     convert.ManagedByValue,
+			convert.CloudSecureIDLabel: "should-be-ignored",
+			convert.ComponentLabel:     convert.FlowLoggingComponentValue,
+		},
+		KindSpecific: &pb.KubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Tier: "Baseline"},
+		},
+	}
+
+	err := handler(context.Background(), "", flowLoggingCNP)
+	s.Require().NoError(err)
+	s.Empty(pendingSnapshot, "operator infrastructure must not enter the runtime cache even with a resource-id")
+}
+
 func (s *ResourcesClientTestSuite) TestRuntimeCacheHandler_IncludesManagedCNP() {
 	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
 	handler := s.client.newRuntimeCacheHandler(pendingSnapshot)
