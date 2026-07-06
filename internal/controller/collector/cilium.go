@@ -7,6 +7,7 @@ import (
 	cryptotls "crypto/tls"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/cilium/cilium/api/v1/flow"
 	observer "github.com/cilium/cilium/api/v1/observer"
@@ -22,6 +23,10 @@ import (
 type CiliumFlowCollector struct {
 	logger *zap.Logger
 	client observer.ObserverClient
+
+	// relayStatusCheckInterval is how often the peer-health watchdog polls
+	// Hubble Relay's ServerStatus RPC. Defaults to HubbleRelayStatusCheckInterval.
+	relayStatusCheckInterval time.Duration
 }
 
 const (
@@ -29,6 +34,14 @@ const (
 
 	// Constants for fetching the mTLS secret.
 	ciliumHubbleMTLSSecretName string = "hubble-relay-client-certs" //nolint:gosec
+
+	// HubbleRelayStatusCheckInterval is how often the peer-health watchdog polls
+	// Hubble Relay's ServerStatus RPC while a flow stream is active.
+	HubbleRelayStatusCheckInterval = 5 * time.Minute
+
+	// relayStatusRPCTimeout bounds a single ServerStatus RPC so a hung Relay
+	// cannot block the watchdog loop.
+	relayStatusRPCTimeout = 10 * time.Second
 )
 
 // NewCiliumFlowCollector connects to Cilium Hubble Relay, sets up an Observer client,
@@ -96,7 +109,11 @@ func NewCiliumFlowCollector(ctx context.Context, logger *zap.Logger, clientset k
 
 	hubbleClient := observer.NewObserverClient(conn)
 
-	return &CiliumFlowCollector{logger: logger, client: hubbleClient}, nil
+	return &CiliumFlowCollector{
+		logger:                   logger,
+		client:                   hubbleClient,
+		relayStatusCheckInterval: HubbleRelayStatusCheckInterval,
+	}, nil
 }
 
 // convertCiliumIP converts a flow.IP object to a pb.IP object.
@@ -227,6 +244,15 @@ func (fm *CiliumFlowCollector) ExportCiliumFlows(ctx context.Context, flowSink F
 	}
 
 	fm.logger.Info("Started collecting Cilium network flows")
+
+	// Watch Hubble Relay's connectivity to its agent nodes for the lifetime of
+	// this stream. This is observability only: it surfaces the otherwise-silent
+	// case where Relay holds the stream open but delivers no flows because it
+	// cannot reach its agents. The watchdog goroutine exits when ctx is done.
+	watchdogCtx, cancelWatchdog := context.WithCancel(ctx)
+	defer cancelWatchdog()
+
+	go fm.monitorRelayPeerHealth(watchdogCtx)
 
 	defer func() {
 		err = stream.CloseSend()
