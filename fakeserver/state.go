@@ -119,6 +119,98 @@ func (s *ServerState) RecordResourceSnapshot() {
 	s.ConnectionSuccessful = true // Legacy compatibility
 }
 
+// IncrementResourcesReceived increments the count of resources received.
+func (s *ServerState) IncrementResourcesReceived() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.ResourcesReceived++
+}
+
+// CheckAndClearBadInitialCommit returns whether BadIntialCommit was set and, if
+// so, clears it. Returns true when the initial commit should be treated as bad.
+func (s *ServerState) CheckAndClearBadInitialCommit() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.BadIntialCommit {
+		s.BadIntialCommit = false
+
+		return true
+	}
+
+	return false
+}
+
+// SetConnectionSuccessful marks the connection as successful and the resource
+// snapshot as complete.
+func (s *ServerState) SetConnectionSuccessful() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.ConnectionSuccessful = true
+	s.ResourceSnapshotComplete = true
+}
+
+// SetBadInitialCommit sets the BadIntialCommit flag.
+func (s *ServerState) SetBadInitialCommit(bad bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.BadIntialCommit = bad
+}
+
+// Reset resets the legacy connection/commit tracking fields for a new test phase.
+func (s *ServerState) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.ConnectionSuccessful = false
+	s.BadIntialCommit = false
+	s.ResourcesReceived = 0
+	s.ResourceSnapshotComplete = false
+}
+
+// GetResourcesReceived returns the count of resources received.
+func (s *ServerState) GetResourcesReceived() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.ResourcesReceived
+}
+
+// IsBadInitialCommit returns whether BadIntialCommit is set.
+func (s *ServerState) IsBadInitialCommit() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.BadIntialCommit
+}
+
+// IsResourceSnapshotComplete returns whether the resource snapshot has completed.
+func (s *ServerState) IsResourceSnapshotComplete() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.ResourceSnapshotComplete
+}
+
+// GetCiliumFlowsReceived returns the count of Cilium flows received.
+func (s *ServerState) GetCiliumFlowsReceived() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.CiliumFlowsReceived
+}
+
+// GetFiveTupleFlowsReceived returns the count of FiveTuple flows received.
+func (s *ServerState) GetFiveTupleFlowsReceived() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.FiveTupleFlowsReceived
+}
+
 // RecordAuthRequest records an authentication request.
 func (s *ServerState) RecordAuthRequest() {
 	s.mu.Lock()

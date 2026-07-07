@@ -42,7 +42,19 @@ func TestMain(m *testing.M) {
 	// Set KUBEBUILDER_ASSETS if not already set, so tests work from IDEs
 	// without needing to manually export the variable.
 	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
-		out, err := exec.Command("setup-envtest", "use", "--print", "path").Output()
+		// Pin the k8s version so envtest is reproducible across machines/CI rather
+		// than resolving to whatever "latest" happens to be. ENVTEST_K8S_VERSION is
+		// the single source of truth (set by `make test-envtest` and CI); require it
+		// explicitly so bare `go test`/IDE runs can't silently drift.
+		k8sVersion := os.Getenv("ENVTEST_K8S_VERSION")
+		if k8sVersion == "" {
+			fmt.Fprintln(os.Stderr, "ENVTEST_K8S_VERSION not set; run via `make test-envtest` or export it")
+			os.Exit(1)
+		}
+
+		fmt.Fprintf(os.Stderr, "envtest: using Kubernetes version %s\n", k8sVersion)
+
+		out, err := exec.Command("setup-envtest", "use", k8sVersion, "--print", "path").Output()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "KUBEBUILDER_ASSETS not set and setup-envtest not available: %v\n", err)
 			os.Exit(1)

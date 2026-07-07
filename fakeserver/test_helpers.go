@@ -235,7 +235,7 @@ func (h *FakeServerTestHarness) WaitForCondition(condition func() bool, descript
 // WaitForConnection waits for the operator to connect and complete resource snapshot.
 func (h *FakeServerTestHarness) WaitForConnection() error {
 	return h.WaitForCondition(
-		func() bool { return h.Server.State.ConnectionSuccessful },
+		func() bool { return h.Server.State.IsConnectionSuccessful() },
 		"operator connection successful (resource snapshot complete)",
 	)
 }
@@ -244,20 +244,17 @@ func (h *FakeServerTestHarness) WaitForConnection() error {
 func (h *FakeServerTestHarness) LogCurrentState() {
 	state := h.Server.State
 	h.T.Logf("Current state: ConnectionSuccessful=%v, BadInitialCommit=%v, ResourcesReceived=%d, ResourceSnapshotComplete=%v",
-		state.ConnectionSuccessful, state.BadIntialCommit, state.ResourcesReceived, state.ResourceSnapshotComplete)
+		state.IsConnectionSuccessful(), state.IsBadInitialCommit(), state.GetResourcesReceived(), state.IsResourceSnapshotComplete())
 }
 
 // ResetState resets the server state for a new test phase.
 func (h *FakeServerTestHarness) ResetState() {
-	h.Server.State.ConnectionSuccessful = false
-	h.Server.State.BadIntialCommit = false
-	h.Server.State.ResourcesReceived = 0
-	h.Server.State.ResourceSnapshotComplete = false
+	h.Server.State.Reset()
 	h.T.Log("Server state reset")
 }
 
 // SetBadInitialCommit configures the server to fail the initial commit.
 func (h *FakeServerTestHarness) SetBadInitialCommit(bad bool) {
-	h.Server.State.BadIntialCommit = bad
+	h.Server.State.SetBadInitialCommit(bad)
 	h.T.Logf("BadInitialCommit set to: %v", bad)
 }

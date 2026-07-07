@@ -142,26 +142,23 @@ func (fs *FakeServer) SendKubernetesResources(stream pb.KubernetesInfoService_Se
 		case *pb.SendKubernetesResourcesRequest_ClusterMetadata:
 			fs.Logger.Info("Cluster metadata received")
 
-			fs.State.ResourcesReceived++
+			fs.State.IncrementResourcesReceived()
 		case *pb.SendKubernetesResourcesRequest_ResourceData:
 			fs.Logger.Info("Initial inventory data")
 
-			fs.State.ResourcesReceived++
+			fs.State.IncrementResourcesReceived()
 		case *pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete:
 			fs.Logger.Info("Initial inventory complete")
 
-			if fs.State.BadIntialCommit {
-				fs.State.BadIntialCommit = false
-
+			if fs.State.CheckAndClearBadInitialCommit() {
 				return io.EOF
 			}
 
-			fs.State.ConnectionSuccessful = true
-			fs.State.ResourceSnapshotComplete = true
+			fs.State.SetConnectionSuccessful()
 		case *pb.SendKubernetesResourcesRequest_KubernetesResourceMutation:
 			fs.Logger.Info("Mutation Detected")
 
-			fs.State.ResourcesReceived++
+			fs.State.IncrementResourcesReceived()
 		}
 
 		if err := stream.Send(&pb.SendKubernetesResourcesResponse{}); err != nil {

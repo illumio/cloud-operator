@@ -42,10 +42,10 @@ func TestOperatorSendsCiliumFlows(t *testing.T) {
 
 	// Wait for at least one Cilium flow to be received
 	err = harness.WaitForCondition(
-		func() bool { return harness.Server.State.CiliumFlowsReceived > 0 },
+		func() bool { return harness.Server.State.GetCiliumFlowsReceived() > 0 },
 		"Cilium flows received",
 	)
 	require.NoError(t, err, "No Cilium flows received")
 
-	t.Logf("Test passed: Received %d Cilium flows", harness.Server.State.CiliumFlowsReceived)
+	t.Logf("Test passed: Received %d Cilium flows", harness.Server.State.GetCiliumFlowsReceived())
 }
