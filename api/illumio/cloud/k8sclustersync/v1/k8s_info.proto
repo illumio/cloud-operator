@@ -424,21 +424,21 @@ message AWSNetworkPolicyEgressRule {
 // AWSNetworkPolicyPort selects a port; exactly one form is set, mirroring the
 // CRD's port {portNumber | portRange | namedPort}.
 message AWSNetworkPolicyPort {
-  AWSPortNumber port_number = 1;
-  AWSPortRange port_range = 2;
+  AWSNetworkPolicyPortNumber port_number = 1;
+  AWSNetworkPolicyPortRange port_range = 2;
   optional string named_port = 3;
 }
 
-// AWSPortNumber is a single port number with its protocol.
-message AWSPortNumber {
+// AWSNetworkPolicyPortNumber is a single port number with its protocol.
+message AWSNetworkPolicyPortNumber {
   // IP protocol: "TCP", "UDP", or "SCTP" (default "TCP").
   string protocol = 1;
   // Port number (1-65535).
   int32 port = 2;
 }
 
-// AWSPortRange is an inclusive port range with its protocol.
-message AWSPortRange {
+// AWSNetworkPolicyPortRange is an inclusive port range with its protocol.
+message AWSNetworkPolicyPortRange {
   // IP protocol: "TCP", "UDP", or "SCTP" (default "TCP").
   string protocol = 1;
   // Start of the port range (1-65535).
@@ -466,7 +466,7 @@ message AWSNetworkPolicyEgressPeer {
   // Networks lists CIDR blocks (max 25).
   repeated string networks = 3;
   // DomainNames lists FQDN peers, wildcard-capable (max 25); valid only with
-  // "Accept" or "Pass" actions.
+  // the "Accept" action.
   repeated string domain_names = 4;
 }
 

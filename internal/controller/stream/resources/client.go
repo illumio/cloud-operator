@@ -320,12 +320,8 @@ func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.
 			return nil
 		}
 
-		// Only reconcile desired-state objects. These carry a resource-id label;
-		// operator-created infrastructure (the flow-logging CNP) does not, and is
-		// also excluded by component label as a second guard so it is never deleted
-		// even if it somehow gains a resource-id. See convert.IsOperatorInfrastructure.
 		id := labels[convert.CloudSecureIDLabel]
-		if id == "" || convert.IsOperatorInfrastructure(labels) {
+		if id == "" {
 			return nil
 		}
 

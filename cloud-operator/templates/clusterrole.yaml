@@ -24,10 +24,7 @@ rules:
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 # AWS VPC CNI - operator creates a ClusterNetworkPolicy for flow logging and
 # ingests/reconciles ClusterNetworkPolicy resources for policy support.
-# NOTE: delete only applies to policies from CloudSecure, which carry the
-# cloud.illum.io/resource-id label. The operator's own flow-logging policy
-# lacks that label, and also carries component=flow-logging as a second guard,
-# so it is never deleted (see convert.IsOperatorInfrastructure).
+# NOTE: delete only applies to policies from CloudSecure.
 - apiGroups: ["networking.k8s.aws"]
   resources: ["clusternetworkpolicies", "applicationnetworkpolicies"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

@@ -193,14 +193,14 @@ func convertAWSPorts(ports *[]awsPort) []*pb.AWSNetworkPolicyPort {
 		pbPort := &pb.AWSNetworkPolicyPort{}
 
 		if p.PortNumber != nil {
-			pbPort.PortNumber = &pb.AWSPortNumber{
+			pbPort.PortNumber = &pb.AWSNetworkPolicyPortNumber{
 				Protocol: p.PortNumber.Protocol,
 				Port:     p.PortNumber.Port,
 			}
 		}
 
 		if p.PortRange != nil {
-			pbPort.PortRange = &pb.AWSPortRange{
+			pbPort.PortRange = &pb.AWSNetworkPolicyPortRange{
 				Protocol: p.PortRange.Protocol,
 				Start:    p.PortRange.Start,
 				End:      p.PortRange.End,

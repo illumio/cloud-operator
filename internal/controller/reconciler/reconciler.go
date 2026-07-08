@@ -258,16 +258,6 @@ func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKu
 
 // deleteObject deletes an object from Kubernetes by deriving the GVR from the configured object.
 func (r *Reconciler) deleteObject(ctx context.Context, obj *pb.ConfiguredKubernetesObjectData) error {
-	// Never delete operator-created infrastructure (e.g. the AWS VPC CNI
-	// flow-logging ClusterNetworkPolicy).
-	if convert.IsOperatorInfrastructure(obj.GetLabels()) {
-		r.logger.Warn("Refusing to delete operator infrastructure",
-			zap.String("name", obj.GetName()),
-		)
-
-		return nil
-	}
-
 	resourceName, err := convert.ExtractResourceName(obj)
 	if err != nil {
 		return err

@@ -2692,10 +2692,10 @@ func (x *AWSNetworkPolicyEgressRule) GetTo() []*AWSNetworkPolicyEgressPeer {
 // AWSNetworkPolicyPort selects a port; exactly one form is set, mirroring the
 // CRD's port {portNumber | portRange | namedPort}.
 type AWSNetworkPolicyPort struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	PortNumber    *AWSPortNumber         `protobuf:"bytes,1,opt,name=port_number,json=portNumber,proto3" json:"port_number,omitempty"`
-	PortRange     *AWSPortRange          `protobuf:"bytes,2,opt,name=port_range,json=portRange,proto3" json:"port_range,omitempty"`
-	NamedPort     *string                `protobuf:"bytes,3,opt,name=named_port,json=namedPort,proto3,oneof" json:"named_port,omitempty"`
+	state         protoimpl.MessageState      `protogen:"open.v1"`
+	PortNumber    *AWSNetworkPolicyPortNumber `protobuf:"bytes,1,opt,name=port_number,json=portNumber,proto3" json:"port_number,omitempty"`
+	PortRange     *AWSNetworkPolicyPortRange  `protobuf:"bytes,2,opt,name=port_range,json=portRange,proto3" json:"port_range,omitempty"`
+	NamedPort     *string                     `protobuf:"bytes,3,opt,name=named_port,json=namedPort,proto3,oneof" json:"named_port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2730,14 +2730,14 @@ func (*AWSNetworkPolicyPort) Descriptor() ([]byte, []int) {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{31}
 }
 
-func (x *AWSNetworkPolicyPort) GetPortNumber() *AWSPortNumber {
+func (x *AWSNetworkPolicyPort) GetPortNumber() *AWSNetworkPolicyPortNumber {
 	if x != nil {
 		return x.PortNumber
 	}
 	return nil
 }
 
-func (x *AWSNetworkPolicyPort) GetPortRange() *AWSPortRange {
+func (x *AWSNetworkPolicyPort) GetPortRange() *AWSNetworkPolicyPortRange {
 	if x != nil {
 		return x.PortRange
 	}
@@ -2751,8 +2751,8 @@ func (x *AWSNetworkPolicyPort) GetNamedPort() string {
 	return ""
 }
 
-// AWSPortNumber is a single port number with its protocol.
-type AWSPortNumber struct {
+// AWSNetworkPolicyPortNumber is a single port number with its protocol.
+type AWSNetworkPolicyPortNumber struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// IP protocol: "TCP", "UDP", or "SCTP" (default "TCP").
 	Protocol string `protobuf:"bytes,1,opt,name=protocol,proto3" json:"protocol,omitempty"`
@@ -2762,20 +2762,20 @@ type AWSPortNumber struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *AWSPortNumber) Reset() {
-	*x = AWSPortNumber{}
+func (x *AWSNetworkPolicyPortNumber) Reset() {
+	*x = AWSNetworkPolicyPortNumber{}
 	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AWSPortNumber) String() string {
+func (x *AWSNetworkPolicyPortNumber) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AWSPortNumber) ProtoMessage() {}
+func (*AWSNetworkPolicyPortNumber) ProtoMessage() {}
 
-func (x *AWSPortNumber) ProtoReflect() protoreflect.Message {
+func (x *AWSNetworkPolicyPortNumber) ProtoReflect() protoreflect.Message {
 	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2787,27 +2787,27 @@ func (x *AWSPortNumber) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use AWSPortNumber.ProtoReflect.Descriptor instead.
-func (*AWSPortNumber) Descriptor() ([]byte, []int) {
+// Deprecated: Use AWSNetworkPolicyPortNumber.ProtoReflect.Descriptor instead.
+func (*AWSNetworkPolicyPortNumber) Descriptor() ([]byte, []int) {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{32}
 }
 
-func (x *AWSPortNumber) GetProtocol() string {
+func (x *AWSNetworkPolicyPortNumber) GetProtocol() string {
 	if x != nil {
 		return x.Protocol
 	}
 	return ""
 }
 
-func (x *AWSPortNumber) GetPort() int32 {
+func (x *AWSNetworkPolicyPortNumber) GetPort() int32 {
 	if x != nil {
 		return x.Port
 	}
 	return 0
 }
 
-// AWSPortRange is an inclusive port range with its protocol.
-type AWSPortRange struct {
+// AWSNetworkPolicyPortRange is an inclusive port range with its protocol.
+type AWSNetworkPolicyPortRange struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// IP protocol: "TCP", "UDP", or "SCTP" (default "TCP").
 	Protocol string `protobuf:"bytes,1,opt,name=protocol,proto3" json:"protocol,omitempty"`
@@ -2819,20 +2819,20 @@ type AWSPortRange struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *AWSPortRange) Reset() {
-	*x = AWSPortRange{}
+func (x *AWSNetworkPolicyPortRange) Reset() {
+	*x = AWSNetworkPolicyPortRange{}
 	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AWSPortRange) String() string {
+func (x *AWSNetworkPolicyPortRange) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AWSPortRange) ProtoMessage() {}
+func (*AWSNetworkPolicyPortRange) ProtoMessage() {}
 
-func (x *AWSPortRange) ProtoReflect() protoreflect.Message {
+func (x *AWSNetworkPolicyPortRange) ProtoReflect() protoreflect.Message {
 	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2844,26 +2844,26 @@ func (x *AWSPortRange) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use AWSPortRange.ProtoReflect.Descriptor instead.
-func (*AWSPortRange) Descriptor() ([]byte, []int) {
+// Deprecated: Use AWSNetworkPolicyPortRange.ProtoReflect.Descriptor instead.
+func (*AWSNetworkPolicyPortRange) Descriptor() ([]byte, []int) {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{33}
 }
 
-func (x *AWSPortRange) GetProtocol() string {
+func (x *AWSNetworkPolicyPortRange) GetProtocol() string {
 	if x != nil {
 		return x.Protocol
 	}
 	return ""
 }
 
-func (x *AWSPortRange) GetStart() int32 {
+func (x *AWSNetworkPolicyPortRange) GetStart() int32 {
 	if x != nil {
 		return x.Start
 	}
 	return 0
 }
 
-func (x *AWSPortRange) GetEnd() int32 {
+func (x *AWSNetworkPolicyPortRange) GetEnd() int32 {
 	if x != nil {
 		return x.End
 	}
@@ -2937,7 +2937,7 @@ type AWSNetworkPolicyEgressPeer struct {
 	// Networks lists CIDR blocks (max 25).
 	Networks []string `protobuf:"bytes,3,rep,name=networks,proto3" json:"networks,omitempty"`
 	// DomainNames lists FQDN peers, wildcard-capable (max 25); valid only with
-	// "Accept" or "Pass" actions.
+	// the "Accept" action.
 	DomainNames   []string `protobuf:"bytes,4,rep,name=domain_names,json=domainNames,proto3" json:"domain_names,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -6676,19 +6676,19 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x06action\x18\x02 \x01(\tR\x06action\x12K\n" +
 	"\x05ports\x18\x03 \x03(\v25.illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPortR\x05ports\x12K\n" +
 	"\x02to\x18\x04 \x03(\v2;.illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressPeerR\x02toB\a\n" +
-	"\x05_name\"\xe8\x01\n" +
-	"\x14AWSNetworkPolicyPort\x12O\n" +
-	"\vport_number\x18\x01 \x01(\v2..illumio.cloud.k8sclustersync.v1.AWSPortNumberR\n" +
-	"portNumber\x12L\n" +
+	"\x05_name\"\x82\x02\n" +
+	"\x14AWSNetworkPolicyPort\x12\\\n" +
+	"\vport_number\x18\x01 \x01(\v2;.illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPortNumberR\n" +
+	"portNumber\x12Y\n" +
 	"\n" +
-	"port_range\x18\x02 \x01(\v2-.illumio.cloud.k8sclustersync.v1.AWSPortRangeR\tportRange\x12\"\n" +
+	"port_range\x18\x02 \x01(\v2:.illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPortRangeR\tportRange\x12\"\n" +
 	"\n" +
 	"named_port\x18\x03 \x01(\tH\x00R\tnamedPort\x88\x01\x01B\r\n" +
-	"\v_named_port\"?\n" +
-	"\rAWSPortNumber\x12\x1a\n" +
+	"\v_named_port\"L\n" +
+	"\x1aAWSNetworkPolicyPortNumber\x12\x1a\n" +
 	"\bprotocol\x18\x01 \x01(\tR\bprotocol\x12\x12\n" +
-	"\x04port\x18\x02 \x01(\x05R\x04port\"R\n" +
-	"\fAWSPortRange\x12\x1a\n" +
+	"\x04port\x18\x02 \x01(\x05R\x04port\"_\n" +
+	"\x19AWSNetworkPolicyPortRange\x12\x1a\n" +
 	"\bprotocol\x18\x01 \x01(\tR\bprotocol\x12\x14\n" +
 	"\x05start\x18\x02 \x01(\x05R\x05start\x12\x10\n" +
 	"\x03end\x18\x03 \x01(\x05R\x03end\"\xbf\x01\n" +
@@ -7029,8 +7029,8 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_goTypes = []any{
 	(*AWSNetworkPolicyIngressRule)(nil),                  // 35: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressRule
 	(*AWSNetworkPolicyEgressRule)(nil),                   // 36: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressRule
 	(*AWSNetworkPolicyPort)(nil),                         // 37: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPort
-	(*AWSPortNumber)(nil),                                // 38: illumio.cloud.k8sclustersync.v1.AWSPortNumber
-	(*AWSPortRange)(nil),                                 // 39: illumio.cloud.k8sclustersync.v1.AWSPortRange
+	(*AWSNetworkPolicyPortNumber)(nil),                   // 38: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPortNumber
+	(*AWSNetworkPolicyPortRange)(nil),                    // 39: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPortRange
 	(*AWSNetworkPolicyIngressPeer)(nil),                  // 40: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressPeer
 	(*AWSNetworkPolicyEgressPeer)(nil),                   // 41: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressPeer
 	(*KubernetesAWSApplicationNetworkPolicyData)(nil),    // 42: illumio.cloud.k8sclustersync.v1.KubernetesAWSApplicationNetworkPolicyData
@@ -7155,8 +7155,8 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	40,  // 60: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressRule.from:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressPeer
 	37,  // 61: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressRule.ports:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPort
 	41,  // 62: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressRule.to:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressPeer
-	38,  // 63: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPort.port_number:type_name -> illumio.cloud.k8sclustersync.v1.AWSPortNumber
-	39,  // 64: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPort.port_range:type_name -> illumio.cloud.k8sclustersync.v1.AWSPortRange
+	38,  // 63: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPort.port_number:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPortNumber
+	39,  // 64: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPort.port_range:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPortRange
 	34,  // 65: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressPeer.pods:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPodSelector
 	48,  // 66: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressPeer.namespaces:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
 	34,  // 67: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressPeer.pods:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPodSelector

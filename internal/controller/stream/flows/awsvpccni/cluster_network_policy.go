@@ -12,8 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
-
-	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 const (
@@ -54,8 +52,8 @@ func EnsureFlowLoggingPolicy(ctx context.Context, logger *zap.Logger, dynamicCli
 			"metadata": map[string]any{
 				"name": ClusterNetworkPolicyName,
 				"labels": map[string]any{
-					convert.ManagedByLabel: convert.ManagedByValue,
-					convert.ComponentLabel: convert.FlowLoggingComponentValue,
+					"app.kubernetes.io/managed-by": "illumio-cloud-operator",
+					"app.kubernetes.io/component":  "flow-logging",
 				},
 			},
 			"spec": map[string]any{
