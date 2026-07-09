@@ -1,9 +1,14 @@
 # Copyright 2024 Illumio, Inc. All Rights Reserved.
 
+# The cloud-operator's service account only exists in the release namespace, so
+# a namespaced RoleBinding is sufficient to grant it the cluster-reader
+# permissions. A RoleBinding may reference a ClusterRole, which lets us reuse
+# the clusterwide-read ClusterRole without a clusterwide binding.
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   name: cluster-reader-binding
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cloud-operator.labels" . | nindent 4 }}
 subjects:
