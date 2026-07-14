@@ -557,6 +557,94 @@ func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_RoundTrip(t *
 	assert.Equal(t, "https", port1["port"])
 }
 
+func TestConvertUnstructuredToAWSResource_ClusterNetworkPolicy_RoundTrip(t *testing.T) {
+	inputSpec := map[string]any{
+		"priority": int64(100),
+		"tier":     "Admin",
+		"subject": map[string]any{
+			"namespaces": map[string]any{"matchLabels": map[string]any{"env": "prod"}},
+		},
+		"ingress": []any{
+			map[string]any{
+				"name":   "allow-frontend",
+				"action": "Accept",
+				"ports": []any{
+					map[string]any{"portNumber": map[string]any{"protocol": "TCP", "port": int64(443)}},
+					map[string]any{"portRange": map[string]any{"protocol": "TCP", "start": int64(8000), "end": int64(9000)}},
+					map[string]any{"namedPort": "http"},
+				},
+				"from": []any{
+					map[string]any{"namespaces": map[string]any{"matchLabels": map[string]any{"team": "frontend"}}},
+					map[string]any{"pods": map[string]any{
+						"namespaceSelector": map[string]any{"matchLabels": map[string]any{"kubernetes.io/metadata.name": "ns"}},
+						"podSelector":       map[string]any{"matchLabels": map[string]any{"app": "web"}},
+					}},
+				},
+			},
+		},
+		"egress": []any{
+			map[string]any{
+				"action": "Pass",
+				"to": []any{
+					map[string]any{
+						"networks":    []any{"10.0.0.0/8"},
+						"domainNames": []any{"*.amazonaws.com"},
+					},
+				},
+			},
+		},
+	}
+
+	obj := newCNP("rt-cnp", inputSpec)
+
+	// CRD → proto.
+	meta, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
+	require.NoError(t, err)
+
+	// proto (metadata) → proto (configured), as done before reconcile apply.
+	configured, err := BuildConfiguredFromMetadata("rt-cnp-id", meta)
+	require.NoError(t, err)
+
+	// proto → applied CRD.
+	apply, resourceName, err := ConvertToApplyObject(configured, "networking.k8s.aws", "v1alpha1")
+	require.NoError(t, err)
+
+	assert.Equal(t, "clusternetworkpolicies", resourceName)
+	assert.Equal(t, "ClusterNetworkPolicy", apply.GetKind())
+	assert.Empty(t, apply.GetNamespace()) // cluster-scoped
+
+	appliedSpec, ok := apply.Object["spec"].(map[string]any)
+	require.True(t, ok, "expected spec to be a map")
+
+	// The whole spec must survive the round-trip byte-for-byte (after JSON
+	// normalization of numeric types), catching any dropped or mutated field.
+	assert.Equal(t, normalizeJSON(t, inputSpec), normalizeJSON(t, appliedSpec))
+}
+
+func TestConvertUnstructuredToAWSResource_ClusterNetworkPolicy_PriorityUnset(t *testing.T) {
+	// No "priority" key in the spec.
+	obj := newCNP("no-priority", map[string]any{
+		"tier":    "Admin",
+		"subject": map[string]any{"namespaces": map[string]any{"matchLabels": map[string]any{}}},
+	})
+
+	meta, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
+	require.NoError(t, err)
+
+	configured, err := BuildConfiguredFromMetadata("no-priority-id", meta)
+	require.NoError(t, err)
+
+	apply, _, err := ConvertToApplyObject(configured, "networking.k8s.aws", "v1alpha1")
+	require.NoError(t, err)
+
+	appliedSpec, ok := apply.Object["spec"].(map[string]any)
+	require.True(t, ok)
+
+	priority, present := appliedSpec["priority"]
+	require.True(t, present, "unset priority must still be enforced as 0, not dropped")
+	assert.EqualValues(t, 0, priority)
+}
+
 func normalizeJSON(t *testing.T, v any) map[string]any {
 	t.Helper()
 
