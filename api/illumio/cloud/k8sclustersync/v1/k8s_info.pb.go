@@ -59,7 +59,7 @@ var (
 		"FLOW_COLLECTOR_CILIUM":      2,
 		"FLOW_COLLECTOR_FALCO":       3,
 		"FLOW_COLLECTOR_OVNK":        4,
-		"FLOW_COLLECTOR_AWS_VPC_CNI":     5,
+		"FLOW_COLLECTOR_AWS_VPC_CNI": 5,
 	}
 )
 
@@ -5060,12 +5060,12 @@ func (*ConfiguredKubernetesObjectData_CiliumCidrGroup) isConfiguredKubernetesObj
 }
 
 // Configured Kubernetes object reference for delete operations.
-// Only the ID is needed because the full ConfiguredKubernetesObjectData is stored in memory,
-// which contains all fields required to delete from the cluster.
+// The kind, namespace, and name uniquely identify the object to delete from the cluster.
 type DeleteConfiguredKubernetesObject struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Unique identifier for tracking this object.
-	Id            string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	Namespace     *string                `protobuf:"bytes,2,opt,name=namespace,proto3,oneof" json:"namespace,omitempty"`
+	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5100,9 +5100,23 @@ func (*DeleteConfiguredKubernetesObject) Descriptor() ([]byte, []int) {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{62}
 }
 
-func (x *DeleteConfiguredKubernetesObject) GetId() string {
+func (x *DeleteConfiguredKubernetesObject) GetKind() string {
 	if x != nil {
-		return x.Id
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *DeleteConfiguredKubernetesObject) GetNamespace() string {
+	if x != nil && x.Namespace != nil {
+		return *x.Namespace
+	}
+	return ""
+}
+
+func (x *DeleteConfiguredKubernetesObject) GetName() string {
+	if x != nil {
+		return x.Name
 	}
 	return ""
 }
@@ -5734,21 +5748,26 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0f\n" +
 	"\rkind_specificB\f\n" +
 	"\n" +
-	"_namespace\"2\n" +
-	" DeleteConfiguredKubernetesObject\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\",\n" +
+	"_namespace\"{\n" +
+	" DeleteConfiguredKubernetesObject\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12!\n" +
+	"\tnamespace\x18\x02 \x01(\tH\x00R\tnamespace\x88\x01\x01\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04nameB\f\n" +
+	"\n" +
+	"_namespace\",\n" +
 	"*ConfiguredKubernetesObjectSnapshotComplete\"\x9a\x02\n" +
 	"\"ConfiguredKubernetesObjectMutation\x12x\n" +
 	"\x17create_or_update_object\x18\x01 \x01(\v2?.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectDataH\x00R\x14createOrUpdateObject\x12h\n" +
 	"\rdelete_object\x18\x03 \x01(\v2A.illumio.cloud.k8sclustersync.v1.DeleteConfiguredKubernetesObjectH\x00R\fdeleteObjectB\n" +
 	"\n" +
-	"\bmutationJ\x04\b\x02\x10\x03*\x9a\x01\n" +
+	"\bmutationJ\x04\b\x02\x10\x03*\xba\x01\n" +
 	"\rFlowCollector\x12\x1e\n" +
 	"\x1aFLOW_COLLECTOR_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17FLOW_COLLECTOR_DISABLED\x10\x01\x12\x19\n" +
 	"\x15FLOW_COLLECTOR_CILIUM\x10\x02\x12\x18\n" +
 	"\x14FLOW_COLLECTOR_FALCO\x10\x03\x12\x17\n" +
-	"\x13FLOW_COLLECTOR_OVNK\x10\x04*\x8c\x01\n" +
+	"\x13FLOW_COLLECTOR_OVNK\x10\x04\x12\x1e\n" +
+	"\x1aFLOW_COLLECTOR_AWS_VPC_CNI\x10\x05*\x8c\x01\n" +
 	"\x10TrafficDirection\x12;\n" +
 	"7TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19TRAFFIC_DIRECTION_INGRESS\x10\x01\x12\x1c\n" +
@@ -6091,6 +6110,7 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() {
 		(*ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy)(nil),
 		(*ConfiguredKubernetesObjectData_CiliumCidrGroup)(nil),
 	}
+	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[62].OneofWrappers = []any{}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[64].OneofWrappers = []any{
 		(*ConfiguredKubernetesObjectMutation_CreateOrUpdateObject)(nil),
 		(*ConfiguredKubernetesObjectMutation_DeleteObject)(nil),
