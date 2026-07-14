@@ -6,7 +6,6 @@ package reconciler
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -69,7 +68,6 @@ func TestReconciler_BulkPopulatedSnapshot(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//e2e-snapshot-policy",
 				Name: "e2e-snapshot-policy",
 
 				Labels: map[string]string{"env": "e2e"},
@@ -98,7 +96,6 @@ func TestReconciler_BulkPopulatedSnapshot(t *testing.T) {
 		fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 				ResourceData: &pb.ConfiguredKubernetesObjectData{
-					Id:   "CiliumClusterwideNetworkPolicy//" + name,
 					Name: name,
 					KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 						CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -201,7 +198,6 @@ func TestReconciler_EmptySnapshotThenMutation(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:   "CiliumClusterwideNetworkPolicy//e2e-mutation-policy",
 						Name: "e2e-mutation-policy",
 
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
@@ -253,7 +249,6 @@ func TestReconciler_MutationDelete(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//e2e-delete-policy",
 				Name: "e2e-delete-policy",
 
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
@@ -289,7 +284,8 @@ func TestReconciler_MutationDelete(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
 					DeleteObject: &pb.DeleteConfiguredKubernetesObject{
-						Id: "CiliumClusterwideNetworkPolicy//e2e-delete-policy",
+						Kind: "CiliumClusterwideNetworkPolicy",
+						Name: "e2e-delete-policy",
 					},
 				},
 			},
@@ -319,7 +315,6 @@ func TestReconciler_SSAFieldManagerOwnership(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//e2e-ssa-policy",
 				Name: "e2e-ssa-policy",
 
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
@@ -399,7 +394,6 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:   "CiliumClusterwideNetworkPolicy//e2e-multi-a",
 						Name: "e2e-multi-a",
 
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
@@ -426,7 +420,6 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:   "CiliumClusterwideNetworkPolicy//e2e-multi-b",
 						Name: "e2e-multi-b",
 
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
@@ -460,7 +453,6 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:   "CiliumClusterwideNetworkPolicy//e2e-multi-a",
 						Name: "e2e-multi-a",
 
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
@@ -487,7 +479,8 @@ func TestReconciler_MultipleMutationsConverge(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
 					DeleteObject: &pb.DeleteConfiguredKubernetesObject{
-						Id: "CiliumClusterwideNetworkPolicy//e2e-multi-b",
+						Kind: "CiliumClusterwideNetworkPolicy",
+						Name: "e2e-multi-b",
 					},
 				},
 			},
@@ -544,7 +537,6 @@ func TestReconciler_UpdateChangesSpec(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//e2e-update-spec",
 				Name: "e2e-update-spec",
 
 				Labels: map[string]string{"env": "staging"},
@@ -597,7 +589,6 @@ func TestReconciler_UpdateChangesSpec(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:   "CiliumClusterwideNetworkPolicy//e2e-update-spec",
 						Name: "e2e-update-spec",
 
 						Labels: map[string]string{"env": "production"},
@@ -668,7 +659,6 @@ func TestReconciler_DeleteOnlyRemovesTargetPolicy(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//e2e-del-keep",
 				Name: "e2e-del-keep",
 
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
@@ -689,7 +679,6 @@ func TestReconciler_DeleteOnlyRemovesTargetPolicy(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//e2e-del-remove",
 				Name: "e2e-del-remove",
 
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
@@ -726,7 +715,8 @@ func TestReconciler_DeleteOnlyRemovesTargetPolicy(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
 					DeleteObject: &pb.DeleteConfiguredKubernetesObject{
-						Id: "CiliumClusterwideNetworkPolicy//e2e-del-remove",
+						Kind: "CiliumClusterwideNetworkPolicy",
+						Name: "e2e-del-remove",
 					},
 				},
 			},
@@ -774,7 +764,6 @@ func TestReconciler_UpdatePreservesMetadata(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//e2e-meta-preserve",
 				Name: "e2e-meta-preserve",
 
 				Labels: map[string]string{"version": "v1"},
@@ -810,7 +799,6 @@ func TestReconciler_UpdatePreservesMetadata(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:   "CiliumClusterwideNetworkPolicy//e2e-meta-preserve",
 						Name: "e2e-meta-preserve",
 
 						Labels: map[string]string{"version": "v2"},
@@ -889,7 +877,6 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:     "CiliumCIDRGroup//e2e-cidr-mut",
 						Name:   "e2e-cidr-mut",
 						Labels: map[string]string{"env": "test"},
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
@@ -929,7 +916,6 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:     "CiliumCIDRGroup//e2e-cidr-mut",
 						Name:   "e2e-cidr-mut",
 						Labels: map[string]string{"env": "production"},
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
@@ -972,7 +958,8 @@ func TestReconciler_CIDRGroupMutationCreateUpdateDelete(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
 					DeleteObject: &pb.DeleteConfiguredKubernetesObject{
-						Id: "CiliumCIDRGroup//e2e-cidr-mut",
+						Kind: "CiliumCIDRGroup",
+						Name: "e2e-cidr-mut",
 					},
 				},
 			},
@@ -1010,7 +997,6 @@ func TestReconciler_CiliumExample_ClusterscopePolicy(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//clusterwide-policy-example",
 				Name: "clusterwide-policy-example",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -1079,7 +1065,6 @@ func TestReconciler_CiliumExample_ServiceAccountPolicy(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//k8s-svc-account",
 				Name: "k8s-svc-account",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -1156,7 +1141,6 @@ func TestReconciler_CiliumExample_CrossNamespace(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//cross-namespace-policy",
 				Name: "cross-namespace-policy",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -1226,7 +1210,6 @@ func TestReconciler_CiliumExample_AllowToKubeDNS(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//allow-to-kubedns",
 				Name: "allow-to-kubedns",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -1302,7 +1285,6 @@ func TestReconciler_CiliumExample_WildcardFromEndpoints(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//wildcard-from-endpoints",
 				Name: "wildcard-from-endpoints",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -1378,7 +1360,6 @@ func TestReconciler_CiliumExample_ExternalLockdown(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//external-lockdown",
 				Name: "external-lockdown",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -1445,7 +1426,6 @@ func TestReconciler_CiliumExample_Init(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//init",
 				Name: "init",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -1523,7 +1503,6 @@ func TestReconciler_CiliumExample_DemoHostPolicy(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//demo-host-policy",
 				Name: "demo-host-policy",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -1604,7 +1583,6 @@ func TestReconciler_CiliumExample_NamespaceLabelsPolicy(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:        "CiliumNetworkPolicy/default/alliance-only",
 				Name:      "alliance-only",
 				Namespace: &ns,
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -1686,7 +1664,6 @@ func TestReconciler_CiliumExample_ICMPRule(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:        "CiliumNetworkPolicy/default/icmp-rule",
 				Name:      "icmp-rule",
 				Namespace: &ns,
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -1757,7 +1734,6 @@ func TestReconciler_CiliumExample_CIDRRule(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:        "CiliumNetworkPolicy/default/cidr-rule",
 				Name:      "cidr-rule",
 				Namespace: &ns,
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -1828,7 +1804,6 @@ func TestReconciler_CiliumExample_MatchExpressionsAND(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:        "CiliumNetworkPolicy/default/and-statement-policy",
 				Name:      "and-statement-policy",
 				Namespace: &ns,
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -1910,7 +1885,6 @@ func TestReconciler_ExternalAnnotationsSurviveReApply(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:          "CiliumClusterwideNetworkPolicy//e2e-ext-annotations",
 				Name:        "e2e-ext-annotations",
 				Annotations: map[string]string{"operator-note": "managed"},
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
@@ -1958,7 +1932,6 @@ func TestReconciler_ExternalAnnotationsSurviveReApply(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:          "CiliumClusterwideNetworkPolicy//e2e-ext-annotations",
 						Name:        "e2e-ext-annotations",
 						Annotations: map[string]string{"operator-note": "managed-v2"},
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
@@ -2032,7 +2005,6 @@ func TestReconciler_ExternalAnnotationDeletedByOperator(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:          "CiliumClusterwideNetworkPolicy//e2e-ann-delete",
 				Name:        "e2e-ann-delete",
 				Annotations: map[string]string{"keep": "yes", "remove-me": "temporary"},
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
@@ -2080,7 +2052,6 @@ func TestReconciler_ExternalAnnotationDeletedByOperator(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:   "CiliumClusterwideNetworkPolicy//e2e-ann-delete",
 						Name: "e2e-ann-delete",
 						// Annotations set to nil — operator releases all annotation ownership
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
@@ -2187,7 +2158,6 @@ func TestReconciler_SnapshotReplacementBulkDelete(t *testing.T) {
 		fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 				ResourceData: &pb.ConfiguredKubernetesObjectData{
-					Id:   "CiliumClusterwideNetworkPolicy//" + name,
 					Name: name,
 					KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 						CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -2242,7 +2212,6 @@ func TestReconciler_SnapshotReplacementBulkDelete(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//snap-a",
 				Name: "snap-a",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -2309,7 +2278,6 @@ func TestReconciler_IdempotentReApply(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	policyData := &pb.ConfiguredKubernetesObjectData{
-		Id:   "CiliumClusterwideNetworkPolicy//e2e-idempotent",
 		Name: "e2e-idempotent",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 			CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -2378,7 +2346,6 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//mixed-clusterwide-policy",
 				Name: "mixed-clusterwide-policy",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -2409,7 +2376,6 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:        "CiliumNetworkPolicy/default/mixed-namespace-policy",
 				Name:      "mixed-namespace-policy",
 				Namespace: &ns,
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -2453,7 +2419,6 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumCIDRGroup//mixed-cidr-group",
 				Name: "mixed-cidr-group",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
 					CiliumCidrGroup: &pb.KubernetesCiliumCIDRGroupData{
@@ -2516,7 +2481,6 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:   "CiliumClusterwideNetworkPolicy//mixed-clusterwide-policy",
 						Name: "mixed-clusterwide-policy",
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 							CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -2550,7 +2514,9 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
 					DeleteObject: &pb.DeleteConfiguredKubernetesObject{
-						Id: "CiliumNetworkPolicy/default/mixed-namespace-policy",
+						Kind:      "CiliumNetworkPolicy",
+						Namespace: &ns,
+						Name:      "mixed-namespace-policy",
 					},
 				},
 			},
@@ -2563,7 +2529,6 @@ func TestReconciler_MixedKindsInSnapshot(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:   "CiliumCIDRGroup//mixed-cidr-group",
 						Name: "mixed-cidr-group",
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
 							CiliumCidrGroup: &pb.KubernetesCiliumCIDRGroupData{
@@ -2658,7 +2623,8 @@ func TestReconciler_DeleteNonExistent(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
 					DeleteObject: &pb.DeleteConfiguredKubernetesObject{
-						Id: "CiliumClusterwideNetworkPolicy//e2e-ghost",
+						Kind: "CiliumClusterwideNetworkPolicy",
+						Name: "e2e-ghost",
 					},
 				},
 			},
@@ -2674,7 +2640,6 @@ func TestReconciler_DeleteNonExistent(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:   "CiliumClusterwideNetworkPolicy//e2e-after-ghost",
 						Name: "e2e-after-ghost",
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 							CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -2762,7 +2727,6 @@ func TestReconciler_PoliciesPersistAfterOperatorShutdown(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//e2e-persist-ccnp",
 				Name: "e2e-persist-ccnp",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -2790,7 +2754,6 @@ func TestReconciler_PoliciesPersistAfterOperatorShutdown(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:        "CiliumNetworkPolicy/default/e2e-persist-cnp",
 				Name:      "e2e-persist-cnp",
 				Namespace: &ns,
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -2904,7 +2867,6 @@ func TestReconciler_EmptySnapshotDeletesAll(t *testing.T) {
 		fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 				ResourceData: &pb.ConfiguredKubernetesObjectData{
-					Id:   "CiliumClusterwideNetworkPolicy//" + name,
 					Name: name,
 					KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 						CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -2992,7 +2954,6 @@ func TestReconciler_ExternalAnnotationInsertedMidLifecycle(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//e2e-ext-insert",
 				Name: "e2e-ext-insert",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -3034,7 +2995,6 @@ func TestReconciler_ExternalAnnotationInsertedMidLifecycle(t *testing.T) {
 				ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 					Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 						CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-							Id:   "CiliumClusterwideNetworkPolicy//e2e-ext-insert",
 							Name: "e2e-ext-insert",
 							KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 								CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -3108,7 +3068,6 @@ func TestReconciler_SSAOverwritesExternalSpecMutation(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//e2e-ssa-overwrite",
 				Name: "e2e-ssa-overwrite",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -3215,7 +3174,6 @@ func TestReconciler_DeletedPolicyRestoredByReconciler(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//e2e-restore-policy",
 				Name: "e2e-restore-policy",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -3302,7 +3260,6 @@ func TestReconciler_ExternalUserLabelsPreserved(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//e2e-ext-labels",
 				Name: "e2e-ext-labels",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -3359,7 +3316,6 @@ func TestReconciler_ExternalUserLabelsPreserved(t *testing.T) {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:   "CiliumClusterwideNetworkPolicy//e2e-ext-labels",
 						Name: "e2e-ext-labels",
 						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 							CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -3418,7 +3374,6 @@ func TestReconciler_ExternalUserLabelsPreserved(t *testing.T) {
 //
 //   - exactly 1 apply for the initial creation, and
 //   - at most 1 additional apply caused by the external label edit
-//
 func TestReconciler_ApplyCountBoundedUnderExternalLabel(t *testing.T) {
 	core, logs := observer.New(zapcore.DebugLevel)
 	fs := setupSuiteWithReconcilerLogger(t, zap.New(core))
@@ -3443,7 +3398,6 @@ func TestReconciler_ApplyCountBoundedUnderExternalLabel(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//" + name,
 				Name: name,
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -3534,7 +3488,6 @@ func TestReconciler_MultiplePoliciesDeletedExternally(t *testing.T) {
 		fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 				ResourceData: &pb.ConfiguredKubernetesObjectData{
-					Id:   fmt.Sprintf("CiliumClusterwideNetworkPolicy//%s", name),
 					Name: name,
 					KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 						CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -3625,7 +3578,6 @@ func TestReconciler_CIDRGroupDeletedExternallyRestored(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumCIDRGroup//e2e-cidr-restore",
 				Name: "e2e-cidr-restore",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
 					CiliumCidrGroup: &pb.KubernetesCiliumCIDRGroupData{
@@ -3695,7 +3647,6 @@ func TestReconciler_SpecWipedExternallyRestored(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//e2e-spec-wipe",
 				Name: "e2e-spec-wipe",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -3784,7 +3735,6 @@ func TestReconciler_ExternalRecreateWithWrongSpec(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "CiliumClusterwideNetworkPolicy//e2e-recreate",
 				Name: "e2e-recreate",
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -3866,7 +3816,6 @@ func TestReconciler_ObjectTrackedByKindNamespaceNameNotLabels(t *testing.T) {
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:     "CiliumClusterwideNetworkPolicy//e2e-track-by-key",
 				Name:   "e2e-track-by-key",
 				Labels: map[string]string{"managed": "true", "env": "prod"},
 				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{

@@ -269,7 +269,6 @@ func (s *ConfigClientTestSuite) TestRun_FirstSnapshotFails_CacheStaysEmpty() {
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:           "policy-1",
 				Name:         "partial-data",
 				KindSpecific: ccnpKind,
 			},
@@ -291,14 +290,13 @@ func (s *ConfigClientTestSuite) TestRun_ReconnectionFails_CacheKeepsOldData() {
 
 	// Pre-populate cache with "old" data (simulating previous successful snapshot)
 	s.populateCache(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-		ccnpKey("old-data"): {Id: ccnpKey("old-data"), Name: "old-data", KindSpecific: ccnpKind},
+		ccnpKey("old-data"): {Name: "old-data", KindSpecific: ccnpKind},
 	})
 
 	// Now simulate reconnection that fails partway through new snapshot
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:           "new-policy",
 				Name:         "new-partial-data",
 				KindSpecific: ccnpKind,
 			},
@@ -322,7 +320,7 @@ func (s *ConfigClientTestSuite) TestRun_ReconnectionAcceptsNewSnapshot() {
 
 	// Simulate first successful snapshot
 	s.populateCache(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-		ccnpKey("old-data"): {Id: ccnpKey("old-data"), Name: "old-data", KindSpecific: ccnpKind},
+		ccnpKey("old-data"): {Name: "old-data", KindSpecific: ccnpKind},
 	})
 	s.True(isReady(s.client.cache)) // Cache is ready from "previous" stream
 
@@ -331,7 +329,6 @@ func (s *ConfigClientTestSuite) TestRun_ReconnectionAcceptsNewSnapshot() {
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:           "new-policy",
 				Name:         "new-data",
 				KindSpecific: ccnpKind,
 			},
@@ -361,7 +358,6 @@ func (s *ConfigClientTestSuite) TestRun_ResourceDataDuringSnapshot() {
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:           "policy-1",
 				Name:         "allow-web",
 				KindSpecific: ccnpKind,
 			},
@@ -399,7 +395,6 @@ func (s *ConfigClientTestSuite) TestRun_ResourceDataAfterSnapshotComplete() {
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:           "policy-late",
 				Name:         "late-policy",
 				KindSpecific: ccnpKind,
 			},
@@ -423,7 +418,6 @@ func (s *ConfigClientTestSuite) TestRun_SnapshotComplete() {
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:           "policy-1",
 				Name:         "allow-web",
 				KindSpecific: ccnpKind,
 			},
@@ -474,7 +468,6 @@ func (s *ConfigClientTestSuite) TestRun_MutationBeforeSnapshotComplete() {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:           "policy-early",
 						Name:         "early-policy",
 						KindSpecific: ccnpKind,
 					},
@@ -507,7 +500,6 @@ func (s *ConfigClientTestSuite) TestRun_MutationCreateOrUpdate() {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:           "policy-new",
 						Name:         "new-policy",
 						KindSpecific: ccnpKind,
 					},
@@ -539,7 +531,6 @@ func (s *ConfigClientTestSuite) TestRun_MutationDelete() {
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:           "policy-1",
 				Name:         "to-delete",
 				KindSpecific: ccnpKind,
 			},
@@ -555,7 +546,8 @@ func (s *ConfigClientTestSuite) TestRun_MutationDelete() {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
 					DeleteObject: &pb.DeleteConfiguredKubernetesObject{
-						Id: "policy-1", // server's original Id from ResourceData
+						Kind: "CiliumClusterwideNetworkPolicy",
+						Name: "to-delete",
 					},
 				},
 			},
@@ -584,12 +576,12 @@ func (s *ConfigClientTestSuite) TestRun_FullSnapshotThenMutationsFlow() {
 	// Snapshot phase
 	resourceData1 := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
-			ResourceData: &pb.ConfiguredKubernetesObjectData{Id: "p1", Name: "policy-1", KindSpecific: ccnpKind},
+			ResourceData: &pb.ConfiguredKubernetesObjectData{Name: "policy-1", KindSpecific: ccnpKind},
 		},
 	}
 	resourceData2 := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
-			ResourceData: &pb.ConfiguredKubernetesObjectData{Id: "p2", Name: "policy-2", KindSpecific: ccnpKind},
+			ResourceData: &pb.ConfiguredKubernetesObjectData{Name: "policy-2", KindSpecific: ccnpKind},
 		},
 	}
 	snapshotComplete := &pb.GetConfigurationUpdatesResponse{
@@ -602,7 +594,7 @@ func (s *ConfigClientTestSuite) TestRun_FullSnapshotThenMutationsFlow() {
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
-					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{Id: "p3", Name: "policy-3", KindSpecific: ccnpKind},
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{Name: "policy-3", KindSpecific: ccnpKind},
 				},
 			},
 		},
@@ -611,7 +603,7 @@ func (s *ConfigClientTestSuite) TestRun_FullSnapshotThenMutationsFlow() {
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
-					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{Id: "p1", Name: "policy-1", Annotations: map[string]string{"updated": "true"}, KindSpecific: ccnpKind},
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{Name: "policy-1", Annotations: map[string]string{"updated": "true"}, KindSpecific: ccnpKind},
 				},
 			},
 		},
@@ -620,7 +612,7 @@ func (s *ConfigClientTestSuite) TestRun_FullSnapshotThenMutationsFlow() {
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
-					DeleteObject: &pb.DeleteConfiguredKubernetesObject{Id: "p2"}, // server's original Id from ResourceData
+					DeleteObject: &pb.DeleteConfiguredKubernetesObject{Kind: "CiliumClusterwideNetworkPolicy", Name: "policy-2"},
 				},
 			},
 		},
@@ -722,7 +714,8 @@ func (s *ConfigClientTestSuite) TestRun_DeleteNonExistentObject() {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
 					DeleteObject: &pb.DeleteConfiguredKubernetesObject{
-						Id: "non-existent-id",
+						Kind: "CiliumClusterwideNetworkPolicy",
+						Name: "non-existent",
 					},
 				},
 			},
@@ -753,7 +746,6 @@ func (s *ConfigClientTestSuite) TestRun_UpdateConfigurationDuringSnapshotPhase()
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:           "policy-1",
 				Name:         "test-policy",
 				KindSpecific: ccnpKind,
 			},
@@ -799,7 +791,6 @@ func (s *ConfigClientTestSuite) TestRun_UpdateConfigurationDuringMutationPhase()
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:           "policy-1",
 						Name:         "test-policy",
 						KindSpecific: ccnpKind,
 					},

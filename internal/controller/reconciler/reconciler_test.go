@@ -194,14 +194,12 @@ func newTestReconciler(t *testing.T, configObjects, runtimeObjects map[string]*p
 
 func TestReconcileObject_SkipsApplyWhenMatching(t *testing.T) {
 	configObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "allow-web",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
 	}
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "allow-web",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
@@ -220,7 +218,6 @@ func TestReconcileObject_SkipsApplyWhenMatching(t *testing.T) {
 
 func TestReconcileObject_AppliesWhenDifferent(t *testing.T) {
 	configObj := &pb.ConfiguredKubernetesObjectData{
-		Id:          "policy-1",
 		Name:        "allow-web",
 		Annotations: map[string]string{"note": "updated"},
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -228,7 +225,6 @@ func TestReconcileObject_AppliesWhenDifferent(t *testing.T) {
 		},
 	}
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:          "policy-1",
 		Name:        "allow-web",
 		Annotations: map[string]string{"note": "old"},
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -248,14 +244,12 @@ func TestReconcileObject_AppliesWhenDifferent(t *testing.T) {
 
 func TestReconcileObject_AppliesWhenAnnotationDeleted(t *testing.T) {
 	configObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "allow-web",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
 	}
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:          "policy-1",
 		Name:        "allow-web",
 		Annotations: map[string]string{"note": "should-be-removed"},
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -275,7 +269,6 @@ func TestReconcileObject_AppliesWhenAnnotationDeleted(t *testing.T) {
 
 func TestReconcileObject_DeletesOrphanedRuntimeObject(t *testing.T) {
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "orphaned",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
@@ -332,7 +325,6 @@ func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
 
 func TestReconcileObject_AppliesNewObject(t *testing.T) {
 	configObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "new-policy",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
@@ -360,7 +352,6 @@ func TestReconcileObject_NoOpWhenNotInEitherCache(t *testing.T) {
 
 func TestReconcileObject_ApplyError(t *testing.T) {
 	configObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "allow-web",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
@@ -382,7 +373,6 @@ func TestReconcileObject_ApplyError(t *testing.T) {
 
 func TestReconcileObject_DeleteError(t *testing.T) {
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "orphaned",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
@@ -404,7 +394,6 @@ func TestReconcileObject_DeleteError(t *testing.T) {
 
 func TestReconcileObject_DeleteNotFoundIsNotError(t *testing.T) {
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "already-gone",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
@@ -428,7 +417,6 @@ func TestReconcileObject_DeleteNotFoundIsNotError(t *testing.T) {
 
 func TestReconcileObject_ApplyErrorUnsupportedKind(t *testing.T) {
 	configObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "bad-kind",
 		// No KindSpecific set — unsupported
 	}
@@ -446,7 +434,6 @@ func TestReconcileObject_ApplyErrorUnsupportedKind(t *testing.T) {
 
 func TestReconcileObject_DeleteErrorUnsupportedKind(t *testing.T) {
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "bad-kind",
 		// No KindSpecific set — unsupported
 	}
@@ -464,14 +451,12 @@ func TestReconcileObject_DeleteErrorUnsupportedKind(t *testing.T) {
 
 func TestReconcileAll_CollectsErrors(t *testing.T) {
 	obj1 := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "good-policy",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
 	}
 	obj2 := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-2",
 		Name: "bad-kind",
 		// No KindSpecific — will fail
 	}
@@ -598,14 +583,12 @@ func TestCacheCloseUnblocksReconcilerLoop(t *testing.T) {
 
 func TestReconcileAll_AppliesAndDeletes(t *testing.T) {
 	configObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "desired",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
 	}
 	orphanedObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-2",
 		Name: "orphaned",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},

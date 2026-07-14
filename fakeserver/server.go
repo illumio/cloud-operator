@@ -154,7 +154,7 @@ func (fs *FakeServer) SendKubernetesResources(stream pb.KubernetesInfoService_Se
 				return io.EOF
 			}
 
-			fs.State.SetConnectionSuccessful()
+			fs.State.RecordResourceSnapshot()
 		case *pb.SendKubernetesResourcesRequest_KubernetesResourceMutation:
 			fs.Logger.Info("Mutation Detected")
 

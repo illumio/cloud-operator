@@ -90,15 +90,16 @@ func testdataDir() string {
 	return filepath.Join(filepath.Dir(filename), "testdata")
 }
 
-// newTestHarness creates a FakeServerTestHarness with AutoHandshake disabled
-// (reconciler integration tests control the handshake sequence themselves).
+// newTestHarness creates a FakeServerTestHarness with AutoInitialConfigSnapshot
+// disabled (reconciler integration tests control the initial config snapshot
+// sequence themselves).
 func newTestHarness(t *testing.T) *fakeserver.FakeServerTestHarness {
 	t.Helper()
 
 	cfg := fakeserver.DefaultTestConfig()
 	cfg.GRPCAddress = "127.0.0.1:0"
 	cfg.HTTPAddress = "127.0.0.1:0"
-	cfg.AutoHandshake = false
+	cfg.AutoInitialConfigSnapshot = false
 	cfg.EnableLogging = false
 
 	h := fakeserver.NewTestHarness(t, cfg)

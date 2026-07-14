@@ -4913,8 +4913,6 @@ func (*GetConfigurationUpdatesResponse_ResourceMutation) isGetConfigurationUpdat
 // Configured object data for snapshot or create/update operations.
 type ConfiguredKubernetesObjectData struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Unique identifier for tracking this object.
-	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Kubernetes annotations to apply to this object.
 	Annotations map[string]string `protobuf:"bytes,2,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Kubernetes labels to apply to this object.
@@ -4963,13 +4961,6 @@ func (x *ConfiguredKubernetesObjectData) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ConfiguredKubernetesObjectData.ProtoReflect.Descriptor instead.
 func (*ConfiguredKubernetesObjectData) Descriptor() ([]byte, []int) {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{61}
-}
-
-func (x *ConfiguredKubernetesObjectData) GetId() string {
-	if x != nil {
-		return x.Id
-	}
-	return ""
 }
 
 func (x *ConfiguredKubernetesObjectData) GetAnnotations() map[string]string {
@@ -5730,9 +5721,8 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\rConfiguration\x12F\n" +
 	"\tlog_level\x18\x01 \x01(\x0e2).illumio.cloud.k8sclustersync.v1.LogLevelR\blogLevelB\n" +
 	"\n" +
-	"\bresponse\"\xdf\x06\n" +
-	"\x1eConfiguredKubernetesObjectData\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12r\n" +
+	"\bresponse\"\xcf\x06\n" +
+	"\x1eConfiguredKubernetesObjectData\x12r\n" +
 	"\vannotations\x18\x02 \x03(\v2P.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.AnnotationsEntryR\vannotations\x12c\n" +
 	"\x06labels\x18\x03 \x03(\v2K.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.LabelsEntryR\x06labels\x12\x12\n" +
 	"\x04name\x18\x04 \x01(\tR\x04name\x12!\n" +

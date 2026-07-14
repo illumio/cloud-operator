@@ -19,7 +19,6 @@ func TestConvertToApplyObject_CiliumNetworkPolicy(t *testing.T) {
 	desc := "allow ingress"
 
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:          "cnp-1",
 		Name:        "test-policy",
 		Namespace:   new("default"),
 		Labels:      map[string]string{"env": "prod"},
@@ -73,7 +72,6 @@ func TestConvertToApplyObject_CiliumNetworkPolicy(t *testing.T) {
 
 func TestConvertToApplyObject_MultipleSpecs(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:   "cnp-multi",
 		Name: "multi-spec-policy",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
@@ -101,7 +99,6 @@ func TestConvertToApplyObject_MultipleSpecs(t *testing.T) {
 
 func TestConvertToApplyObject_EmptySpecs(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:   "cnp-empty",
 		Name: "empty-spec-policy",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{Specs: []*pb.CiliumPolicyRule{}},
@@ -120,7 +117,6 @@ func TestConvertToApplyObject_EmptySpecs(t *testing.T) {
 
 func TestConvertToApplyObject_CiliumClusterwideNetworkPolicy(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:   "ccnp-1",
 		Name: "clusterwide-policy",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 			CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -145,7 +141,6 @@ func TestConvertToApplyObject_CiliumClusterwideNetworkPolicy(t *testing.T) {
 
 func TestConvertToApplyObject_CiliumCIDRGroup(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:   "cidr-1",
 		Name: "test-cidr-group",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
 			CiliumCidrGroup: &pb.KubernetesCiliumCIDRGroupData{
@@ -176,7 +171,7 @@ func TestConvertToApplyObject_NilData(t *testing.T) {
 }
 
 func TestConvertToApplyObject_UnsupportedKindSpecific(t *testing.T) {
-	data := &pb.ConfiguredKubernetesObjectData{Id: "unknown-1", Name: "unknown-kind"}
+	data := &pb.ConfiguredKubernetesObjectData{Name: "unknown-kind"}
 	_, _, err := ConvertToApplyObject(data, "example.io", "v1")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported")
@@ -184,7 +179,6 @@ func TestConvertToApplyObject_UnsupportedKindSpecific(t *testing.T) {
 
 func TestConvertToApplyObject_APIVersionFormats(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:   "cnp-api",
 		Name: "api-test",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
@@ -209,7 +203,6 @@ func TestConvertToApplyObject_APIVersionFormats(t *testing.T) {
 
 func TestConvertToApplyObject_LabelsIncludeManagementLabels(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:     "cnp-labels",
 		Name:   "label-test",
 		Labels: map[string]string{"custom": "value"},
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -230,7 +223,6 @@ func TestConvertToApplyObject_LabelsIncludeManagementLabels(t *testing.T) {
 
 func TestConvertToApplyObject_EmptyNamespace(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:   "ccnp-no-ns",
 		Name: "cluster-scoped",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 			CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{},
@@ -251,7 +243,6 @@ func TestConvertToApplyObject_EmptyNamespace(t *testing.T) {
 // Selective ingress: only pods with name=luke can reach pods with name=leia.
 func TestConvertToApplyObject_ClusterwideSelectiveIngress(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:   "ccnp-selective-ingress",
 		Name: "selective-ingress",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
 			CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
@@ -319,7 +310,6 @@ func TestConvertToApplyObject_ClusterwideSelectiveIngress(t *testing.T) {
 // Health check policy: reserved:health endpoints with ingress/egress remote-node.
 func TestConvertToApplyObject_CiliumHealthChecks(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:        "cnp-health",
 		Name:      "health",
 		Namespace: new("default"),
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -393,7 +383,6 @@ func TestConvertToApplyObject_CiliumHealthChecks(t *testing.T) {
 func TestConvertToApplyObject_WildcardDNSIngress(t *testing.T) {
 	udpProto := "UDP"
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:        "cnp-wildcard-dns",
 		Name:      "wildcard-dns",
 		Namespace: new("kube-system"),
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -483,7 +472,6 @@ func TestConvertToApplyObject_WildcardDNSIngress(t *testing.T) {
 // Namespace label selectors: faction=alliance.
 func TestConvertToApplyObject_NamespaceLabelSelectors(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:        "cnp-ns-labels",
 		Name:      "ns-labels-policy",
 		Namespace: new("default"),
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -547,7 +535,6 @@ func TestConvertToApplyObject_NamespaceLabelSelectors(t *testing.T) {
 func TestConvertToApplyObject_EgressToKubeDNS(t *testing.T) {
 	udpProto := "UDP"
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:        "cnp-kubedns",
 		Name:      "kubedns-policy",
 		Namespace: new("default"),
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -629,7 +616,6 @@ func TestConvertToApplyObject_EgressToKubeDNS(t *testing.T) {
 // Namespace isolation: empty selectors restrict to same-namespace traffic.
 func TestConvertToApplyObject_NamespaceIsolation(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:        "cnp-isolate-ns",
 		Name:      "isolate-ns",
 		Namespace: new("default"),
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -711,7 +697,6 @@ func TestConvertToApplyObject_NamespaceIsolation(t *testing.T) {
 // ownership of previously-owned annotation keys without wiping other managers' annotations.
 func TestConvertToApplyObject_NilAnnotationsOmitted(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:   "cnp-no-annotations",
 		Name: "no-annotations",
 		// Annotations intentionally not set (nil)
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -735,7 +720,6 @@ func TestConvertToApplyObject_NilAnnotationsOmitted(t *testing.T) {
 
 func TestConvertToApplyObject_WithAnnotations(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:          "cnp-with-annotations",
 		Name:        "with-annotations",
 		Annotations: map[string]string{"note": "test", "env": "prod"},
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -766,7 +750,6 @@ func TestConvertToApplyObject_WithAnnotations(t *testing.T) {
 func TestConvertToApplyObject_AnnotationsDoNotLeakBetweenApplies(t *testing.T) {
 	// First apply: has annotations
 	withAnnotations := &pb.ConfiguredKubernetesObjectData{
-		Id:          "cnp-1",
 		Name:        "policy-1",
 		Annotations: map[string]string{"owner": "team-a"},
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -789,7 +772,6 @@ func TestConvertToApplyObject_AnnotationsDoNotLeakBetweenApplies(t *testing.T) {
 
 	// Second apply: no annotations
 	withoutAnnotations := &pb.ConfiguredKubernetesObjectData{
-		Id:   "cnp-2",
 		Name: "policy-2",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
@@ -812,7 +794,6 @@ func TestConvertToApplyObject_AnnotationsDoNotLeakBetweenApplies(t *testing.T) {
 
 func TestConvertToApplyObject_EmitUnpopulatedFalse(t *testing.T) {
 	data := &pb.ConfiguredKubernetesObjectData{
-		Id:   "cnp-sparse",
 		Name: "sparse-policy",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{
@@ -1863,7 +1844,6 @@ func TestMarshalPolicySpecs_JSONNameOverrides(t *testing.T) {
 
 	t.Run("CIDRGroup externalCIDRs", func(t *testing.T) {
 		data := &pb.ConfiguredKubernetesObjectData{
-			Id:   "cidr-json-name",
 			Name: "cidr-group-test",
 			KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{
 				CiliumCidrGroup: &pb.KubernetesCiliumCIDRGroupData{

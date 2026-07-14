@@ -25,22 +25,23 @@ type TestConfig struct {
 	Timeout       time.Duration
 	PollInterval  time.Duration
 	EnableLogging bool
-	// AutoHandshake controls whether Start() sends the default config handshake
-	// (UpdateConfiguration + empty ResourceSnapshotComplete). Set to false when
-	// tests need to control the handshake sequence themselves.
-	AutoHandshake bool
+	// AutoInitialConfigSnapshot controls whether Start() sends the default
+	// initial config snapshot (UpdateConfiguration + empty
+	// ResourceSnapshotComplete). Set to false when tests need to control the
+	// initial config snapshot sequence themselves.
+	AutoInitialConfigSnapshot bool
 }
 
 // DefaultTestConfig returns sensible defaults for testing.
 // Uses fixed ports for tests that start the full operator binary (connectivity, flows).
 func DefaultTestConfig() TestConfig {
 	return TestConfig{
-		GRPCAddress:   "0.0.0.0:50051",
-		HTTPAddress:   "0.0.0.0:50053",
-		Timeout:       90 * time.Second,
-		PollInterval:  500 * time.Millisecond,
-		EnableLogging: true, // Enable logging by default for debugging
-		AutoHandshake: true,
+		GRPCAddress:               "0.0.0.0:50051",
+		HTTPAddress:               "0.0.0.0:50053",
+		Timeout:                   90 * time.Second,
+		PollInterval:              500 * time.Millisecond,
+		EnableLogging:             true, // Enable logging by default for debugging
+		AutoInitialConfigSnapshot: true,
 	}
 }
 
@@ -121,9 +122,10 @@ func NewTestHarness(t *testing.T, config TestConfig) *FakeServerTestHarness {
 	}
 }
 
-// Start starts the fake server. If AutoHandshake is true (the default), it also
-// sends the default config handshake messages (UpdateConfiguration + empty
-// ResourceSnapshotComplete) so connected clients complete the initial snapshot.
+// Start starts the fake server. If AutoInitialConfigSnapshot is true (the
+// default), it also sends the default initial config snapshot messages
+// (UpdateConfiguration + empty ResourceSnapshotComplete) so connected clients
+// complete the initial snapshot.
 func (h *FakeServerTestHarness) Start() error {
 	h.T.Log("Starting FakeServer...")
 
@@ -132,7 +134,7 @@ func (h *FakeServerTestHarness) Start() error {
 		return fmt.Errorf("failed to start FakeServer: %w", err)
 	}
 
-	if h.Config.AutoHandshake {
+	if h.Config.AutoInitialConfigSnapshot {
 		h.Server.SendConfig(&pb.GetConfigurationUpdatesResponse{
 			Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
 				UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{

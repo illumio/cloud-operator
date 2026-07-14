@@ -142,16 +142,6 @@ func (s *ServerState) CheckAndClearBadInitialCommit() bool {
 	return false
 }
 
-// SetConnectionSuccessful marks the connection as successful and the resource
-// snapshot as complete.
-func (s *ServerState) SetConnectionSuccessful() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.ConnectionSuccessful = true
-	s.ResourceSnapshotComplete = true
-}
-
 // SetBadInitialCommit sets the BadIntialCommit flag.
 func (s *ServerState) SetBadInitialCommit(bad bool) {
 	s.mu.Lock()

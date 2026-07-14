@@ -21,8 +21,9 @@ import (
 )
 
 const (
-	// DefaultReconcileInterval is the periodic safety net for full reconciliation,
-	// catching anything missed due to dropped events or transient failures.
+	// DefaultReconcileInterval is the default interval between periodic full
+	// reconciliations done for safety, catching anything missed due to dropped
+	// events or transient failures.
 	DefaultReconcileInterval = 5 * time.Minute
 )
 
@@ -246,7 +247,6 @@ func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKu
 	}
 
 	r.logger.Debug("Applied configured object",
-		zap.String("id", configObj.GetId()),
 		zap.String("name", applied.GetName()),
 		zap.String("namespace", applied.GetNamespace()),
 		zap.String("kind", applied.GetKind()),
@@ -281,7 +281,6 @@ func (r *Reconciler) deleteObject(ctx context.Context, obj *pb.ConfiguredKuberne
 	}
 
 	r.logger.Debug("Deleted object no longer in configuration",
-		zap.String("id", obj.GetId()),
 		zap.String("name", obj.GetName()),
 		zap.String("namespace", namespace),
 	)
