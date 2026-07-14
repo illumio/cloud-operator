@@ -27,7 +27,7 @@ import (
 //
 // Block on <-cache.IsReady() to wait for the first snapshot to complete before reading.
 //
-// The cache notifies consumers of changes via an unbuffered resourceChanged channel.
+// The cache notifies consumers of changes via the resourceChanged channel.
 // Insert and Delete send the object ID; ReplaceAll sends SnapshotReplaced to indicate
 // a full snapshot.
 type ObjectCache[T proto.Message] struct {
@@ -41,7 +41,8 @@ type ObjectCache[T proto.Message] struct {
 
 	// resourceChanged carries the ID of every resource modified.
 	// SnapshotReplaced ("*") indicates the entire cache was replaced via a full snapshot.
-	// Unbuffered: the sender blocks until the consumer reads.
+	// Buffered by one so a snapshot notification can be enqueued without blocking
+	// on a consumer that is not yet draining.
 	resourceChanged chan string
 }
 
@@ -52,9 +53,14 @@ const SnapshotReplaced = "*"
 // NewObjectCache creates a new cache instance.
 func NewObjectCache[T proto.Message]() *ObjectCache[T] {
 	return &ObjectCache[T]{
-		objects:         make(map[string]T),
-		ready:           make(chan struct{}),
-		resourceChanged: make(chan string),
+		objects: make(map[string]T),
+		ready:   make(chan struct{}),
+		// Buffered by one so a snapshot swap (ReplaceAll) can enqueue its
+		// SnapshotReplaced notification without blocking on a consumer that is
+		// not yet draining (e.g. the reconciler still waiting on another cache to
+		// become ready). Without the buffer the first snapshot can deadlock the
+		// resource stream, which then fails its liveness probe and crash-loops.
+		resourceChanged: make(chan string, 1),
 	}
 }
 
@@ -77,7 +83,7 @@ func (c *ObjectCache[T]) IsReady() <-chan struct{} {
 	return c.ready
 }
 
-// ResourceChanged returns an unbuffered channel that emits the ID of every resource
+// ResourceChanged returns the channel that emits the ID of every resource
 // modified. SnapshotReplaced ("*") indicates the entire cache was replaced via a full
 // snapshot (ReplaceAll). The cache owns this channel and writes to it on Insert,
 // Delete, and ReplaceAll.
