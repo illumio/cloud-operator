@@ -37,7 +37,7 @@ const (
 
 	// HubbleRelayStatusCheckInterval is how often the peer-health watchdog polls
 	// Hubble Relay's ServerStatus RPC while a flow stream is active.
-	HubbleRelayStatusCheckInterval = 5 * time.Minute
+	HubbleRelayStatusCheckInterval = 30 * time.Minute
 
 	// relayStatusRPCTimeout bounds a single ServerStatus RPC so a hung Relay
 	// cannot block the watchdog loop.
