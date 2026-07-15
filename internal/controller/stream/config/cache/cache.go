@@ -127,8 +127,14 @@ func (c *ObjectCache[T]) ReplaceAll(ctx context.Context, objects map[string]T) e
 	// completion from consumer readiness and prevents a startup/reconnect
 	// deadlock that would otherwise wedge the resource stream and trip the
 	// liveness probe.
+	//
+	// The ctx.Done() case reports cancellation deterministically when it is
+	// already observable at the notification point, without ever blocking the
+	// caller (the default keeps the send non-blocking).
 	select {
 	case c.resourceChanged <- SnapshotReplaced:
+	case <-ctx.Done():
+		return ctx.Err()
 	default:
 	}
 

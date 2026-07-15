@@ -311,19 +311,28 @@ func TestReplaceAllDoesNotBlockWithoutConsumer(t *testing.T) {
 	// Call ReplaceAll several times with nothing draining ResourceChanged.
 	// Each call must return promptly; the redundant SnapshotReplaced signals
 	// are coalesced (dropped when the buffer is full) rather than blocking.
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
+	// Errors are sent back to the main goroutine — *testing.T and testify
+	// helpers are not safe to use concurrently.
+	errCh := make(chan error, 1)
 
+	go func() {
 		for range 3 {
-			err := cache.ReplaceAll(ctx, snapshot)
-			assert.NoError(t, err)
+			if err := cache.ReplaceAll(ctx, snapshot); err != nil {
+				errCh <- err
+
+				return
+			}
 		}
+
+		close(errCh)
 	}()
 
 	select {
-	case <-done:
-		// All calls returned without a consumer — no deadlock.
+	case err, ok := <-errCh:
+		if ok {
+			t.Fatalf("ReplaceAll returned an unexpected error: %v", err)
+		}
+		// Channel closed with no error — all calls returned, no deadlock.
 	case <-time.After(5 * time.Second):
 		t.Fatal("ReplaceAll blocked without a consumer draining ResourceChanged")
 	}
