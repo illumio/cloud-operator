@@ -309,8 +309,8 @@ func TestReplaceAllDoesNotBlockWithoutConsumer(t *testing.T) {
 	}
 
 	// Call ReplaceAll several times with nothing draining ResourceChanged.
-	// Each call must return promptly; the redundant SnapshotReplaced signals
-	// are coalesced (dropped when the buffer is full) rather than blocking.
+	// Each call must return promptly: it drains any stale queued value and
+	// re-enqueues SnapshotReplaced rather than blocking on the full buffer.
 	// Errors are sent back to the main goroutine — *testing.T and testify
 	// helpers are not safe to use concurrently.
 	errCh := make(chan error, 1)
@@ -346,6 +346,40 @@ func TestReplaceAllDoesNotBlockWithoutConsumer(t *testing.T) {
 		assert.Equal(t, SnapshotReplaced, id)
 	default:
 		t.Fatal("expected a coalesced SnapshotReplaced notification to be queued")
+	}
+}
+
+// TestReplaceAllSupersedesQueuedPerIDSignal verifies that when a per-ID
+// notification is already queued and no consumer is draining, ReplaceAll drains
+// it and enqueues SnapshotReplaced instead — a full resync supersedes the stale
+// per-ID signal, and the snapshot notification is never lost or blocked.
+func TestReplaceAllSupersedesQueuedPerIDSignal(t *testing.T) {
+	ctx := context.Background()
+	cache := NewConfiguredObjectCache()
+
+	// Queue a per-ID notification with nothing draining.
+	require.NoError(t, cache.Insert(ctx, "id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1"}))
+
+	// ReplaceAll must not block and must leave SnapshotReplaced queued.
+	done := make(chan error, 1)
+	go func() {
+		done <- cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
+			"id-2": {Id: "id-2"},
+		})
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("ReplaceAll blocked when a per-ID signal was already queued")
+	}
+
+	select {
+	case id := <-cache.ResourceChanged():
+		assert.Equal(t, SnapshotReplaced, id, "queued per-ID signal should be superseded by SnapshotReplaced")
+	default:
+		t.Fatal("expected SnapshotReplaced to be queued after ReplaceAll")
 	}
 }
 

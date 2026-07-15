@@ -118,24 +118,26 @@ func (c *ObjectCache[T]) ReplaceAll(ctx context.Context, objects map[string]T) e
 	}
 
 	// Notify consumers of the full replacement without blocking the caller.
-	// SnapshotReplaced is idempotent ("the whole cache was replaced, reconcile
-	// everything"), so the send is buffered by one and coalescing: if a prior
-	// SnapshotReplaced is still queued because the consumer is not draining yet
-	// (e.g. the reconciler is still waiting on the other cache to become ready,
-	// including across stream reconnects that call ReplaceAll again), dropping
-	// this one is correct and must not block. This fully decouples snapshot
-	// completion from consumer readiness and prevents a startup/reconnect
-	// deadlock that would otherwise wedge the resource stream and trip the
-	// liveness probe.
-	//
-	// The ctx.Done() case reports cancellation deterministically when it is
-	// already observable at the notification point, without ever blocking the
-	// caller (the default keeps the send non-blocking).
+	// SnapshotReplaced supersedes any per-ID signal already queued (it means
+	// "reconcile everything", which subsumes any single object change), so drain
+	// a stale queued value first and then enqueue SnapshotReplaced. On a
+	// single-slot buffer the drain frees the slot, so the send does not block and
+	// the snapshot notification is not lost. This decouples snapshot completion
+	// from consumer readiness and prevents the startup/reconnect deadlock that
+	// would otherwise wedge the resource stream and trip the liveness probe.
+	select {
+	case <-c.resourceChanged:
+		// Drained a stale queued value.
+	default:
+		// Buffer already empty.
+	}
+
 	select {
 	case c.resourceChanged <- SnapshotReplaced:
-	case <-ctx.Done():
-		return ctx.Err()
 	default:
+		// A concurrent Insert/Delete refilled the slot between the drain and this
+		// send. That signal already tells the consumer there is work to do, so
+		// skipping keeps ReplaceAll non-blocking without losing the wakeup.
 	}
 
 	return nil
