@@ -111,10 +111,25 @@ func (c *ObjectCache[T]) ReplaceAll(ctx context.Context, objects map[string]T) e
 
 	c.mutex.Unlock()
 
+	// Honor cancellation deterministically before attempting to notify, so a
+	// cancelled snapshot is never reported as successful.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	// Notify consumers of the full replacement without blocking the caller.
+	// SnapshotReplaced is idempotent ("the whole cache was replaced, reconcile
+	// everything"), so the send is buffered by one and coalescing: if a prior
+	// SnapshotReplaced is still queued because the consumer is not draining yet
+	// (e.g. the reconciler is still waiting on the other cache to become ready,
+	// including across stream reconnects that call ReplaceAll again), dropping
+	// this one is correct and must not block. This fully decouples snapshot
+	// completion from consumer readiness and prevents a startup/reconnect
+	// deadlock that would otherwise wedge the resource stream and trip the
+	// liveness probe.
 	select {
-	case <-ctx.Done():
-		return ctx.Err()
 	case c.resourceChanged <- SnapshotReplaced:
+	default:
 	}
 
 	return nil

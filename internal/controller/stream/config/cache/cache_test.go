@@ -294,6 +294,65 @@ func TestReplaceAll(t *testing.T) {
 	assert.Equal(t, "policy-2", cache.Get("id-2").GetName())
 }
 
+// TestReplaceAllDoesNotBlockWithoutConsumer verifies that ReplaceAll never
+// blocks even when no goroutine is draining ResourceChanged, including when it
+// is called repeatedly before the consumer starts (e.g. across stream
+// reconnects while the reconciler is still waiting on the other cache to become
+// ready). This is the startup/reconnect deadlock the buffered, non-blocking
+// notification is meant to prevent.
+func TestReplaceAllDoesNotBlockWithoutConsumer(t *testing.T) {
+	ctx := context.Background()
+	cache := NewConfiguredObjectCache()
+
+	snapshot := map[string]*pb.ConfiguredKubernetesObjectData{
+		"id-1": {Id: "id-1", Name: "policy-1"},
+	}
+
+	// Call ReplaceAll several times with nothing draining ResourceChanged.
+	// Each call must return promptly; the redundant SnapshotReplaced signals
+	// are coalesced (dropped when the buffer is full) rather than blocking.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 3 {
+			err := cache.ReplaceAll(ctx, snapshot)
+			assert.NoError(t, err)
+		}
+	}()
+
+	select {
+	case <-done:
+		// All calls returned without a consumer — no deadlock.
+	case <-time.After(5 * time.Second):
+		t.Fatal("ReplaceAll blocked without a consumer draining ResourceChanged")
+	}
+
+	assert.True(t, isReady(cache))
+	assert.Equal(t, 1, cache.Len())
+
+	// A pending notification is still available for the consumer.
+	select {
+	case id := <-cache.ResourceChanged():
+		assert.Equal(t, SnapshotReplaced, id)
+	default:
+		t.Fatal("expected a coalesced SnapshotReplaced notification to be queued")
+	}
+}
+
+// TestReplaceAllCancelledContext verifies that a cancelled context is reported
+// deterministically, rather than being masked by the non-blocking notification.
+func TestReplaceAllCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	cache := NewConfiguredObjectCache()
+
+	err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
+		"id-1": {Id: "id-1", Name: "policy-1"},
+	})
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
 func TestReplaceAllWithEmptyMap(t *testing.T) {
 	ctx := context.Background()
 	cache := NewConfiguredObjectCache()
