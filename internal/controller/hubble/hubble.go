@@ -9,11 +9,13 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -25,6 +27,17 @@ const (
 	ciliumHubbleRelayExpectedServerName = "ui.hubble-relay.cilium.io"
 	ciliumHubbleRelayServiceName        = "hubble-relay"
 )
+
+// hubbleKeepaliveParams probes the long-lived Relay connection so a dead or
+// half-open operator<->Relay TCP connection is detected instead of leaving the
+// flow stream's Recv() blocked forever. Time is >= Relay's default server-side
+// MinTime (5m) so pings are not rejected with GOAWAY "too_many_pings" on an idle
+// flow stream.
+var hubbleKeepaliveParams = keepalive.ClientParameters{
+	Time:                5 * time.Minute,  // ping after 5m of no activity (== server MinTime)
+	Timeout:             20 * time.Second, // declare the connection dead if no ack within 20s
+	PermitWithoutStream: true,             // keep probing across reconnect gaps
+}
 
 // expectedServerName returns the TLS ServerName to use when connecting to Hubble Relay.
 // For the default Cilium deployment in kube-system, the certificate uses a special DNS name.
@@ -206,6 +219,7 @@ func ConnectToHubbleRelay(ctx context.Context, logger *zap.Logger, hubbleAddress
 		hubbleAddress,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithNoProxy(),
+		grpc.WithKeepaliveParams(hubbleKeepaliveParams),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Cilium Hubble Relay: %w", err)
