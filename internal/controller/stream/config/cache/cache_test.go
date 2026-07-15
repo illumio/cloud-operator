@@ -314,6 +314,7 @@ func TestReplaceAllDoesNotBlockWithoutConsumer(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+
 		for range 3 {
 			err := cache.ReplaceAll(ctx, snapshot)
 			assert.NoError(t, err)
