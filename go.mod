@@ -16,6 +16,8 @@ require (
 	sigs.k8s.io/controller-runtime v0.23.3 // only used for integration tests
 )
 
+require go.uber.org/goleak v1.3.0
+
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect

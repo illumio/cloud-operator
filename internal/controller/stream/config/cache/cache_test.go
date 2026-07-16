@@ -11,9 +11,17 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
+
+// TestMain runs the cache tests under goleak so that any goroutine left blocked
+// on a cache send (e.g. a ReplaceAll/Insert/Delete stuck on resourceChanged with
+// no consumer draining) fails the suite instead of silently leaking.
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // isReady is a test helper to check if the cache's Ready channel is closed.
 func isReady(c *ConfiguredObjectCache) bool {
@@ -794,4 +802,142 @@ func TestResourceChangedChannel(t *testing.T) {
 
 	id = <-cache.ResourceChanged()
 	assert.Equal(t, "id-1", id)
+}
+
+// TestReplaceAll_ReturnsWithoutConsumer pins the producer/consumer decoupling
+// contract that the buffered resourceChanged channel provides.
+//
+// The reconciler is the only consumer, and it does not start draining until *both* caches are
+// ready. When one cache is starved (e.g. its substream is gated off by a
+// feature flag), the reconciler stays in waitForCaches forever, so the other
+// cache's ReplaceAll send never unblocks and its ReplaceAll never returns.
+func TestReplaceAll_ReturnsWithoutConsumer(t *testing.T) {
+	ctx := context.Background()
+	cache := NewConfiguredObjectCache()
+
+	done := make(chan error, 1)
+	go func() {
+		// No goroutine is reading ResourceChanged() — this models the
+		// reconciler being stuck in waitForCaches on the *other* cache.
+		done <- cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
+			"id-1": {Name: "id-1"},
+		})
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("ReplaceAll blocked on send with no consumer draining")
+	}
+
+	// The cache must be marked ready even though nobody drained the channel.
+	assert.True(t, isReady(cache))
+
+	// And the SnapshotReplaced notification must be preserved, not dropped:
+	// a consumer that starts later still sees it.
+	select {
+	case id := <-cache.ResourceChanged():
+		assert.Equal(t, SnapshotReplaced, id)
+	case <-time.After(time.Second):
+		t.Fatal("buffered SnapshotReplaced notification was lost")
+	}
+}
+
+// TestReplaceAll_ReconnectResnapshotAfterDrain models the stream-reconnect path where
+// the consumer drains the first snapshot before the second arrives — exactly what
+// happens when the reconciler has been running steadily and the config stream then
+// reconnects and re-sends a full snapshot.
+func TestReplaceAll_ReconnectResnapshotAfterDrain(t *testing.T) {
+	cache := NewConfiguredObjectCache()
+
+	// First snapshot (initial connect). Fills the buffer / would block unbuffered.
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- cache.ReplaceAll(context.Background(),
+			map[string]*pb.ConfiguredKubernetesObjectData{"id-1": {Name: "id-1"}})
+	}()
+
+	// A consumer drains the first notification — modelling the live reconciler.
+	select {
+	case id := <-cache.ResourceChanged():
+		require.Equal(t, SnapshotReplaced, id)
+	case <-time.After(2 * time.Second):
+		t.Fatal("first snapshot notification was never delivered")
+	}
+
+	select {
+	case err := <-firstDone:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("first ReplaceAll did not return after its notification was drained")
+	}
+
+	// Reconnect: a fresh full snapshot arrives. The buffer is empty again, but no
+	// consumer is actively waiting at this instant (the reconnect gap).
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- cache.ReplaceAll(context.Background(),
+			map[string]*pb.ConfiguredKubernetesObjectData{"id-2": {Name: "id-2"}})
+	}()
+
+	select {
+	case err := <-secondDone:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("reconnect ReplaceAll blocked with no consumer waiting — the buffer " +
+			"must decouple a re-snapshot after the previous one was drained (PR #441)")
+	}
+
+	// The reconnect snapshot replaced the contents and its notification is preserved.
+	require.Equal(t, []string{"id-2"}, cache.Keys())
+
+	select {
+	case id := <-cache.ResourceChanged():
+		require.Equal(t, SnapshotReplaced, id)
+	case <-time.After(time.Second):
+		t.Fatal("reconnect SnapshotReplaced notification was lost")
+	}
+}
+
+// TestReplaceAll_BlockedSendReturnsOnCtxCancel pins the shutdown safety valve:
+// when a ReplaceAll is blocked because the buffer is already full and no consumer
+// is draining, cancelling the ctx must unblock it with ctx.Err() rather than
+// leaving the goroutine parked forever. goleak (TestMain) fails the suite if the
+// send goroutine is left leaked.
+//
+// This models the reconciler being torn down (its stream ctx cancelled) while a
+// second snapshot is mid-send into an undrained buffer.
+func TestReplaceAll_BlockedSendReturnsOnCtxCancel(t *testing.T) {
+	cache := NewConfiguredObjectCache()
+
+	// First ReplaceAll fills the single buffer slot with no consumer draining.
+	require.NoError(t, cache.ReplaceAll(context.Background(),
+		map[string]*pb.ConfiguredKubernetesObjectData{"id-1": {Name: "id-1"}}))
+
+	// Second ReplaceAll blocks on the send: buffer is full, nobody is draining.
+	ctx, cancel := context.WithCancel(context.Background())
+
+	blocked := make(chan error, 1)
+	go func() {
+		blocked <- cache.ReplaceAll(ctx,
+			map[string]*pb.ConfiguredKubernetesObjectData{"id-2": {Name: "id-2"}})
+	}()
+
+	// It must still be blocked (no consumer, full buffer).
+	select {
+	case err := <-blocked:
+		t.Fatalf("second ReplaceAll returned before ctx cancel: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	// Cancelling the ctx is the escape hatch: the blocked send returns ctx.Err().
+	cancel()
+
+	select {
+	case err := <-blocked:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(2 * time.Second):
+		t.Fatal("blocked ReplaceAll did not return after ctx cancel — send escape at cache.go select is broken")
+	}
 }

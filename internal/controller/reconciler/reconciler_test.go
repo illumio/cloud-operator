@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -578,6 +579,106 @@ func TestCacheCloseUnblocksReconcilerLoop(t *testing.T) {
 		// Run() returned — no deadlock
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run() did not return after cache close + context cancel — likely deadlocked")
+	}
+}
+
+// With an unbuffered channel, the fed cache's ReplaceAll then blocks on its
+// send indefinitely (its snapshot ingestion never completes → in prod the
+// processing flag never clears → liveness probe restarts the pod → crash loop).
+// With the buffered channel, ReplaceAll enqueues its notification and returns,
+// so snapshot ingestion completes even though the reconciler is still waiting.
+func TestReplaceAllDoesNotDeadlockWhenReconcilerStarved(t *testing.T) {
+	// VerifyNone (deferred first, so it runs LAST after cancel below) asserts no
+	// goroutine is left blocked on a cache send once the test cancels its context.
+	// With the fix, the ctx.Done() escape unblocks any pending send; without it,
+	// a wedged ReplaceAll goroutine would both time out AND leak here.
+	defer goleak.VerifyNone(t)
+
+	client := newMockClient()
+	configCache := cache.NewConfiguredObjectCache()
+	runtimeCache := cache.NewConfiguredObjectCache()
+
+	r := NewReconciler(zap.NewNop(), client, configCache, runtimeCache)
+	r.resourceInfo = map[string]resources.ResourceInfo{
+		"ciliumnetworkpolicies": {Group: "cilium.io", Version: "v2"},
+	}
+
+	ctx := t.Context()
+
+	go r.Run(ctx)
+
+	// Feed ONLY the config cache, as a substream still-running while the other
+	// is flag-gated-off would. This must return: snapshot ingestion cannot be
+	// coupled to a consumer that is not yet draining.
+	done := make(chan error, 1)
+	go func() {
+		done <- configCache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
+			"policy-1": {Name: "policy-1"},
+		})
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("configCache.ReplaceAll blocked because the reconciler is starved " +
+			"on runtimeCache and never drains — this is the PR #441 startup deadlock")
+	}
+
+	// Sanity: the config cache reached ready even though the reconciler never
+	// consumed from it (it is still stuck in waitForCaches on runtimeCache).
+	select {
+	case <-configCache.IsReady():
+	default:
+		t.Fatal("configCache should be ready after ReplaceAll returned")
+	}
+}
+
+// TestReplaceAllDoesNotDeadlockWhenConfigCacheStarved is the mirror of
+// TestReplaceAllDoesNotDeadlockWhenReconcilerStarved: here the runtime substream
+// (resources.Factory) wins the startup race and delivers its snapshot first,
+// while the config substream (config.Factory) is slow, reconnecting, or has not
+// yet pushed a snapshot from CloudSecure.
+func TestReplaceAllDoesNotDeadlockWhenConfigCacheStarved(t *testing.T) {
+	// See TestReplaceAllDoesNotDeadlockWhenReconcilerStarved: assert no leaked
+	// goroutine blocked on a cache send after the context is cancelled.
+	defer goleak.VerifyNone(t)
+
+	client := newMockClient()
+	configCache := cache.NewConfiguredObjectCache()
+	runtimeCache := cache.NewConfiguredObjectCache()
+
+	r := NewReconciler(zap.NewNop(), client, configCache, runtimeCache)
+	r.resourceInfo = map[string]resources.ResourceInfo{
+		"ciliumnetworkpolicies": {Group: "cilium.io", Version: "v2"},
+	}
+
+	ctx := t.Context()
+
+	// Reconciler starts and blocks in waitForCaches — configCache is never fed.
+	go r.Run(ctx)
+
+	// Feed ONLY the runtime cache. This must return even though the reconciler
+	// is starved on configCache and never drains runtimeCache's channel.
+	done := make(chan error, 1)
+	go func() {
+		done <- runtimeCache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
+			"policy-1": {Name: "policy-1"},
+		})
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("runtimeCache.ReplaceAll blocked because the reconciler is starved " +
+			"on configCache and never drains — this is the PR #441 startup deadlock")
+	}
+
+	select {
+	case <-runtimeCache.IsReady():
+	default:
+		t.Fatal("runtimeCache should be ready after ReplaceAll returned")
 	}
 }
 

@@ -3879,3 +3879,213 @@ func TestReconciler_ObjectTrackedByKindNamespaceNameNotLabels(t *testing.T) {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "e2e-track-by-key")
 	})
 }
+
+// Sequence:
+//  1. Start the config stream client + reconciler. The runtime cache is created
+//     but never fed, so the reconciler blocks in waitForCaches.
+//  2. Push a full config snapshot through the real gRPC stream. Its ReplaceAll
+//     must COMPLETE (ingest) even though the reconciler is not yet draining.
+//  3. Feed the runtime cache. The reconciler unblocks, runs, and applies the
+//     policy from the config snapshot — proving the earlier snapshot was
+//     preserved, not dropped.
+func TestReconciler_Lifecycle_ConfigSnapshotIngestsWhileRuntimeStarved(t *testing.T) {
+	configCache := cache.NewConfiguredObjectCache()
+	runtimeCache := cache.NewConfiguredObjectCache()
+
+	h := newTestHarness(t)
+	conn := h.DialGRPC(t)
+	fs := h.Server
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	// Start the REAL config stream client → feeds configCache via ReplaceAll.
+	configFactory := &config.Factory{
+		Logger:             zap.NewNop(),
+		BufferedGrpcSyncer: logging.NewBufferedGrpcWriteSyncerForTest(zap.NewNop()),
+		Stats:              stream.NewStats(),
+		Cache:              configCache,
+	}
+	configClient, err := configFactory.NewStreamClient(ctx, conn)
+	require.NoError(t, err)
+
+	go configClient.Run(ctx)
+
+	// Start the reconciler. runtimeCache is intentionally NEVER fed here, so the
+	// reconciler blocks in waitForCaches and does not drain configCache.
+	r := NewReconciler(zap.NewNop(), testClient, configCache, runtimeCache)
+	go r.Run(ctx)
+
+	// Push a full config snapshot through the real gRPC stream.
+	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+			},
+		},
+	})
+	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Name: "lifecycle-starved-policy",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "web"},
+								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
+			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
+				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
+						Name: "lifecycle-post-snapshot-policy",
+						KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+							CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+								Specs: []*pb.CiliumPolicyRule{
+									{
+										EndpointSelector: &pb.LabelSelector{
+											MatchLabels: map[string]string{"app": "post"},
+										},
+										Ingress: []*pb.CiliumPolicyIngressRule{{}},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	// The stream must make progress past the snapshot: the post-snapshot mutation
+	// is ingested only if ReplaceAll returned.
+	require.Eventually(t, func() bool {
+		return configCache.Len() == 2
+	}, 10*time.Second, 100*time.Millisecond,
+		"config stream must advance past the snapshot while runtime is starved")
+
+	// The policy must NOT be applied yet: the reconciler is still in waitForCaches.
+	_, err = testClient.GetResource(ctx, ccnpGVR, "", "lifecycle-starved-policy")
+	require.True(t, apierrors.IsNotFound(err),
+		"policy must not be applied while the reconciler is still waiting on the runtime cache")
+
+	// Now feed the runtime cache. The reconciler unblocks and applies the policy
+	// from the snapshot ingested earlier — proving the notification was preserved.
+	require.NoError(t, runtimeCache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{}))
+
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "lifecycle-starved-policy")
+		return err == nil && obj != nil
+	}, 20*time.Second, 100*time.Millisecond,
+		"once the runtime cache is fed, the reconciler must apply the earlier config snapshot")
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "lifecycle-starved-policy")
+	})
+}
+
+// The config stream is connected but deliberately never sends
+// ResourceSnapshotComplete, so configCache stays starved and the reconciler
+// blocks in waitForCaches. We assert the runtime snapshot still ingests (no
+// deadlock), then feed config and confirm reconciliation proceeds.
+func TestReconciler_Lifecycle_RuntimeSnapshotIngestsWhileConfigStarved(t *testing.T) {
+	configCache := cache.NewConfiguredObjectCache()
+	runtimeCache := cache.NewConfiguredObjectCache()
+
+	h := newTestHarness(t)
+	conn := h.DialGRPC(t)
+	fs := h.Server
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	// Start the config stream client so the config stream is genuinely connected,
+	// but we never send ResourceSnapshotComplete on it — configCache stays starved.
+	configFactory := &config.Factory{
+		Logger:             zap.NewNop(),
+		BufferedGrpcSyncer: logging.NewBufferedGrpcWriteSyncerForTest(zap.NewNop()),
+		Stats:              stream.NewStats(),
+		Cache:              configCache,
+	}
+	configClient, err := configFactory.NewStreamClient(ctx, conn)
+	require.NoError(t, err)
+
+	go configClient.Run(ctx)
+
+	// Start the reconciler. configCache is intentionally never completed, so the
+	// reconciler blocks in waitForCaches and does not drain runtimeCache.
+	r := NewReconciler(zap.NewNop(), testClient, configCache, runtimeCache)
+	go r.Run(ctx)
+
+	// Feed the runtime cache with a non-empty snapshot. This ReplaceAll must
+	// COMPLETE even though the reconciler is starved on configCache and not
+	// draining. With the unbuffered channel it blocks here forever.
+	runtimeSnapshot := map[string]*pb.ConfiguredKubernetesObjectData{
+		"runtime-obj-1": {Name: "runtime-obj-1"},
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- runtimeCache.ReplaceAll(ctx, runtimeSnapshot)
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("runtimeCache.ReplaceAll blocked while config is starved")
+	}
+
+	// Nothing should be applied to K8s yet: the reconciler is still waiting on config.
+	// Now feed the config cache with a real snapshot through the real gRPC stream.
+	// The reconciler unblocks, runs reconcileAll, and applies the config policy.
+	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
+			ResourceData: &pb.ConfiguredKubernetesObjectData{
+				Name: "lifecycle-config-late-policy",
+				KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+					CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{
+						Specs: []*pb.CiliumPolicyRule{
+							{
+								EndpointSelector: &pb.LabelSelector{
+									MatchLabels: map[string]string{"app": "late"},
+								},
+								Ingress: []*pb.CiliumPolicyIngressRule{{}},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
+		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+		},
+	})
+
+	require.Eventually(t, func() bool {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", "lifecycle-config-late-policy")
+		return err == nil && obj != nil
+	}, 20*time.Second, 100*time.Millisecond,
+		"once the config cache is fed, the reconciler must apply the config policy")
+
+	t.Cleanup(func() {
+		_ = testClient.DeleteResource(ctx, ccnpGVR, "", "lifecycle-config-late-policy")
+	})
+}
