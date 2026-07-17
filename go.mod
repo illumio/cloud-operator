@@ -3,7 +3,7 @@ module github.com/illumio/cloud-operator
 go 1.26.2
 
 require (
-	github.com/cilium/cilium v1.19.5
+	github.com/cilium/cilium v1.19.6
 	github.com/go-logr/zapr v1.3.0
 	github.com/netsampler/goflow2 v1.3.7
 	go.uber.org/zap v1.28.0
@@ -18,7 +18,7 @@ require (
 require (
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cilium/ebpf v0.20.1-0.20260218191617-ee67e7f43dd9 // indirect
+	github.com/cilium/ebpf v0.22.0 // indirect
 	github.com/cilium/hive v0.0.0-20260108104938-97756f6ff54c // indirect
 	github.com/cilium/proxy v0.0.0-20250623105955-2136f59a4ea1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
@@ -103,7 +103,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kube-openapi v0.0.0-20260317180543-43fb72c5454a // indirect
-	k8s.io/utils v0.0.0-20260507154919-ff6756f316d2 // indirect
+	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
