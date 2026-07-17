@@ -108,6 +108,7 @@ func (c *ObjectCache[T]) ReplaceAll(ctx context.Context, objects map[string]T) e
 	select {
 	case <-ctx.Done():
 		c.mutex.Unlock()
+
 		return ctx.Err()
 	case <-c.ready:
 		// Already closed
