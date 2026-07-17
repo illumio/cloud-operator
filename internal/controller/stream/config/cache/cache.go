@@ -95,7 +95,10 @@ func (c *ObjectCache[T]) ResourceChanged() <-chan string {
 // Use this for snapshot ingestion: build a local map, then call ReplaceAll to
 // swap it in. The cache remains consistent until the swap completes.
 // Also marks the cache as ready on first call to indicate cache now has valid data.
-// Sends SnapshotReplaced on the resourceChanged channel to signal a full snapshot replacement.
+// Sends SnapshotReplaced on the resourceChanged channel to signal a full snapshot
+// replacement. The notification is always delivered: if the single-slot buffer is
+// full, ReplaceAll drains the stale value and retries, ensuring SnapshotReplaced
+// is enqueued without blocking indefinitely.
 func (c *ObjectCache[T]) ReplaceAll(ctx context.Context, objects map[string]T) error {
 	c.mutex.Lock()
 
@@ -103,6 +106,9 @@ func (c *ObjectCache[T]) ReplaceAll(ctx context.Context, objects map[string]T) e
 
 	// Mark ready (idempotent - safe to call on reconnect)
 	select {
+	case <-ctx.Done():
+		c.mutex.Unlock()
+		return ctx.Err()
 	case <-c.ready:
 		// Already closed
 	default:
@@ -111,33 +117,24 @@ func (c *ObjectCache[T]) ReplaceAll(ctx context.Context, objects map[string]T) e
 
 	c.mutex.Unlock()
 
-	// Honor cancellation deterministically before attempting to notify, so a
-	// cancelled snapshot is never reported as successful.
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	// Notify consumers of the full replacement without blocking the caller.
-	// SnapshotReplaced supersedes any per-ID signal already queued (it means
-	// "reconcile everything", which subsumes any single object change), so drain
-	// a stale queued value first and then enqueue SnapshotReplaced. On a
-	// single-slot buffer the drain frees the slot, so the send does not block and
-	// the snapshot notification is not lost. This decouples snapshot completion
-	// from consumer readiness and prevents the startup/reconnect deadlock that
-	// would otherwise wedge the resource stream and trip the liveness probe.
-	select {
-	case <-c.resourceChanged:
-		// Drained a stale queued value.
-	default:
-		// Buffer already empty.
-	}
-
-	select {
-	case c.resourceChanged <- SnapshotReplaced:
-	default:
-		// A concurrent Insert/Delete refilled the slot between the drain and this
-		// send. That signal already tells the consumer there is work to do, so
-		// skipping keeps ReplaceAll non-blocking without losing the wakeup.
+	// Notify consumers of the full replacement. SnapshotReplaced supersedes any
+	// per-ID signal already queued (it means "reconcile everything", which
+	// subsumes any single object change). The loop guarantees SnapshotReplaced is
+	// delivered without blocking indefinitely: if the single-slot buffer is full,
+	// it drains the stale value and retries the send. This decouples snapshot
+	// completion from consumer readiness and prevents the startup/reconnect
+	// deadlock that would otherwise wedge the resource stream and trip the
+	// liveness probe.
+Send:
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case c.resourceChanged <- SnapshotReplaced:
+			break Send
+		case <-c.resourceChanged:
+			// Buffer was full; drained a stale queued value, retry the send.
+		}
 	}
 
 	return nil
