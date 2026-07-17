@@ -22,6 +22,8 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 	"github.com/illumio/cloud-operator/internal/convert"
+	"github.com/illumio/cloud-operator/internal/convert/cilium"
+	"github.com/illumio/cloud-operator/internal/convert/ovn"
 	"github.com/illumio/cloud-operator/internal/version"
 )
 
@@ -75,7 +77,13 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 	coreConverter := convert.NewCoreResourceConverter(clientset, c.logger)
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return convert.ConvertUnstructuredToCiliumResource(obj)
+		return cilium.ConvertUnstructuredToCiliumResource(obj)
+	}
+	anpConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+		return ovn.ConvertUnstructuredToAdminNetworkPolicyResource(obj)
+	}
+	egressConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+		return ovn.ConvertUnstructuredToEgressResource(obj)
 	}
 
 	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
@@ -97,9 +105,14 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 		var handler RuntimeCacheHandler
 
-		if convert.IsCiliumResource(resource) {
+		switch {
+		case cilium.IsCiliumResource(resource):
 			converter = ciliumConverter
 			handler = runtimeCacheHandler
+		case ovn.IsAdminNetworkPolicyResource(resource):
+			converter = anpConverter
+		case ovn.IsEgressResource(resource):
+			converter = egressConverter
 		}
 
 		resourceManager := NewWatcher(WatcherConfig{

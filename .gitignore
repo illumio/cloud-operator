@@ -13,4 +13,4 @@ docs/
 
 # Binaries
 fakeserver/fakeserver
-fakeserver/fakeserver.test
+fakeserver/fakeserver.testoperator

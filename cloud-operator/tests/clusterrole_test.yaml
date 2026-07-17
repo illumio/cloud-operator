@@ -1,0 +1,33 @@
+# Copyright 2026 Illumio, Inc. All Rights Reserved.
+
+suite: test cloud-operator clusterrole
+templates:
+  - clusterrole.yaml
+
+tests:
+  - it: should grant full access to AdminNetworkPolicy and BaselineAdminNetworkPolicy
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["policy.networking.k8s.io"]
+            resources: ["adminnetworkpolicies", "baselineadminnetworkpolicies"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  - it: should grant full access to OVN EgressFirewall and EgressIP
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["k8s.ovn.org"]
+            resources: ["egressfirewalls", "egressips"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  - it: should preserve Cilium create/update/delete permissions
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["cilium.io"]
+            resources: ["ciliumcidrgroups", "ciliumnetworkpolicies", "ciliumclusterwidenetworkpolicies"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
