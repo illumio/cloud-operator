@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	"google.golang.org/protobuf/proto"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
@@ -292,6 +293,109 @@ func TestReplaceAll(t *testing.T) {
 	assert.Equal(t, 2, cache.Len())
 	assert.Equal(t, "policy-1", cache.Get("id-1").GetName())
 	assert.Equal(t, "policy-2", cache.Get("id-2").GetName())
+}
+
+// TestReplaceAllDoesNotBlockWithoutConsumer verifies that ReplaceAll never
+// blocks even when no goroutine is draining ResourceChanged, including when it
+// is called repeatedly before the consumer starts (e.g. across stream
+// reconnects while the reconciler is still waiting on the other cache to become
+// ready). This is the startup/reconnect deadlock the buffered, non-blocking
+// notification is meant to prevent.
+func TestReplaceAllDoesNotBlockWithoutConsumer(t *testing.T) {
+	ctx := context.Background()
+	cache := NewConfiguredObjectCache()
+
+	snapshot := map[string]*pb.ConfiguredKubernetesObjectData{
+		"CiliumNetworkPolicy/default/policy-1": {Name: "policy-1", Namespace: proto.String("default")},
+	}
+
+	// Call ReplaceAll several times with nothing draining ResourceChanged.
+	// Each call must return promptly: it drains any stale queued value and
+	// re-enqueues SnapshotReplaced rather than blocking on the full buffer.
+	// Errors are sent back to the main goroutine — *testing.T and testify
+	// helpers are not safe to use concurrently.
+	errCh := make(chan error, 1)
+
+	go func() {
+		for range 3 {
+			if err := cache.ReplaceAll(ctx, snapshot); err != nil {
+				errCh <- err
+
+				return
+			}
+		}
+
+		close(errCh)
+	}()
+
+	select {
+	case err, ok := <-errCh:
+		if ok {
+			t.Fatalf("ReplaceAll returned an unexpected error: %v", err)
+		}
+		// Channel closed with no error — all calls returned, no deadlock.
+	case <-time.After(5 * time.Second):
+		t.Fatal("ReplaceAll blocked without a consumer draining ResourceChanged")
+	}
+
+	assert.True(t, isReady(cache))
+	assert.Equal(t, 1, cache.Len())
+
+	// A pending notification is still available for the consumer.
+	select {
+	case id := <-cache.ResourceChanged():
+		assert.Equal(t, SnapshotReplaced, id)
+	default:
+		t.Fatal("expected a coalesced SnapshotReplaced notification to be queued")
+	}
+}
+
+// TestReplaceAllSupersedesQueuedPerIDSignal verifies that when a per-ID
+// notification is already queued and no consumer is draining, ReplaceAll drains
+// it and enqueues SnapshotReplaced instead — a full resync supersedes the stale
+// per-ID signal, and the snapshot notification is never lost or blocked.
+func TestReplaceAllSupersedesQueuedPerIDSignal(t *testing.T) {
+	ctx := context.Background()
+	cache := NewConfiguredObjectCache()
+
+	// Queue a per-ID notification with nothing draining.
+	require.NoError(t, cache.Insert(ctx, "CiliumNetworkPolicy/default/policy-1", &pb.ConfiguredKubernetesObjectData{Name: "policy-1", Namespace: proto.String("default")}))
+
+	// ReplaceAll must not block and must leave SnapshotReplaced queued.
+	done := make(chan error, 1)
+	go func() {
+		done <- cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
+			"CiliumNetworkPolicy/default/policy-2": {Name: "policy-2", Namespace: proto.String("default")},
+		})
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("ReplaceAll blocked when a per-ID signal was already queued")
+	}
+
+	select {
+	case id := <-cache.ResourceChanged():
+		assert.Equal(t, SnapshotReplaced, id, "queued per-ID signal should be superseded by SnapshotReplaced")
+	default:
+		t.Fatal("expected SnapshotReplaced to be queued after ReplaceAll")
+	}
+}
+
+// TestReplaceAllCancelledContext verifies that a cancelled context is reported
+// deterministically, rather than being masked by the non-blocking notification.
+func TestReplaceAllCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	cache := NewConfiguredObjectCache()
+
+	err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
+		"CiliumNetworkPolicy/default/policy-1": {Name: "policy-1", Namespace: proto.String("default")},
+	})
+	assert.ErrorIs(t, err, context.Canceled)
 }
 
 func TestReplaceAllWithEmptyMap(t *testing.T) {
@@ -900,44 +1004,3 @@ func TestReplaceAll_ReconnectResnapshotAfterDrain(t *testing.T) {
 	}
 }
 
-// TestReplaceAll_BlockedSendReturnsOnCtxCancel pins the shutdown safety valve:
-// when a ReplaceAll is blocked because the buffer is already full and no consumer
-// is draining, cancelling the ctx must unblock it with ctx.Err() rather than
-// leaving the goroutine parked forever. goleak (TestMain) fails the suite if the
-// send goroutine is left leaked.
-//
-// This models the reconciler being torn down (its stream ctx cancelled) while a
-// second snapshot is mid-send into an undrained buffer.
-func TestReplaceAll_BlockedSendReturnsOnCtxCancel(t *testing.T) {
-	cache := NewConfiguredObjectCache()
-
-	// First ReplaceAll fills the single buffer slot with no consumer draining.
-	require.NoError(t, cache.ReplaceAll(context.Background(),
-		map[string]*pb.ConfiguredKubernetesObjectData{"id-1": {Name: "id-1"}}))
-
-	// Second ReplaceAll blocks on the send: buffer is full, nobody is draining.
-	ctx, cancel := context.WithCancel(context.Background())
-
-	blocked := make(chan error, 1)
-	go func() {
-		blocked <- cache.ReplaceAll(ctx,
-			map[string]*pb.ConfiguredKubernetesObjectData{"id-2": {Name: "id-2"}})
-	}()
-
-	// It must still be blocked (no consumer, full buffer).
-	select {
-	case err := <-blocked:
-		t.Fatalf("second ReplaceAll returned before ctx cancel: %v", err)
-	case <-time.After(200 * time.Millisecond):
-	}
-
-	// Cancelling the ctx is the escape hatch: the blocked send returns ctx.Err().
-	cancel()
-
-	select {
-	case err := <-blocked:
-		require.ErrorIs(t, err, context.Canceled)
-	case <-time.After(2 * time.Second):
-		t.Fatal("blocked ReplaceAll did not return after ctx cancel — send escape at cache.go select is broken")
-	}
-}

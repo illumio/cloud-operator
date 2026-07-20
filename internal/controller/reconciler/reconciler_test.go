@@ -603,9 +603,21 @@ func TestReplaceAllDoesNotDeadlockWhenReconcilerStarved(t *testing.T) {
 		"ciliumnetworkpolicies": {Group: "cilium.io", Version: "v2"},
 	}
 
-	ctx := t.Context()
+	ctx, cancel := context.WithCancel(t.Context())
 
-	go r.Run(ctx)
+	// Run blocks in waitForCaches (runtimeCache is never fed). Cancel the context
+	// and wait for Run to return before goleak.VerifyNone inspects goroutines,
+	// otherwise the still-parked waitForCaches goroutine is flagged as a leak.
+	runReturned := make(chan struct{})
+	go func() {
+		defer close(runReturned)
+		r.Run(ctx)
+	}()
+
+	defer func() {
+		cancel()
+		<-runReturned
+	}()
 
 	// Feed ONLY the config cache, as a substream still-running while the other
 	// is flag-gated-off would. This must return: snapshot ingestion cannot be
@@ -653,10 +665,21 @@ func TestReplaceAllDoesNotDeadlockWhenConfigCacheStarved(t *testing.T) {
 		"ciliumnetworkpolicies": {Group: "cilium.io", Version: "v2"},
 	}
 
-	ctx := t.Context()
+	ctx, cancel := context.WithCancel(t.Context())
 
 	// Reconciler starts and blocks in waitForCaches — configCache is never fed.
-	go r.Run(ctx)
+	// Cancel and wait for Run to return before goleak.VerifyNone inspects
+	// goroutines, otherwise the parked waitForCaches goroutine is flagged.
+	runReturned := make(chan struct{})
+	go func() {
+		defer close(runReturned)
+		r.Run(ctx)
+	}()
+
+	defer func() {
+		cancel()
+		<-runReturned
+	}()
 
 	// Feed ONLY the runtime cache. This must return even though the reconciler
 	// is starved on configCache and never drains runtimeCache's channel.

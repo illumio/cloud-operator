@@ -13,8 +13,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-// ObjectCache is a generic thread-safe cache for storing objects by key.
-// Keys use the format "kind/namespace/name" (e.g. "CiliumNetworkPolicy/default/my-policy").
+// ObjectCache is a generic thread-safe cache for storing objects by ID.
 // It supports atomic replacement for snapshot-based updates.
 //
 // This cache is generic to support both:
@@ -28,21 +27,22 @@ import (
 //
 // Block on <-cache.IsReady() to wait for the first snapshot to complete before reading.
 //
-// The cache notifies consumers of changes via an unbuffered resourceChanged channel.
-// Insert and Delete send the object key; ReplaceAll sends SnapshotReplaced to indicate
+// The cache notifies consumers of changes via the resourceChanged channel.
+// Insert and Delete send the object ID; ReplaceAll sends SnapshotReplaced to indicate
 // a full snapshot.
 type ObjectCache[T proto.Message] struct {
 	mutex sync.RWMutex
 
-	// objects maps cache key (kind/namespace/name) to its value.
+	// objects maps object ID to its value.
 	objects map[string]T
 
 	// ready is closed when the first snapshot is complete.
 	ready chan struct{}
 
-	// resourceChanged carries the key of every resource modified.
+	// resourceChanged carries the ID of every resource modified.
 	// SnapshotReplaced ("*") indicates the entire cache was replaced via a full snapshot.
-	// Unbuffered: the sender blocks until the consumer reads.
+	// Buffered by one so a snapshot notification can be enqueued without blocking
+	// on a consumer that is not yet draining.
 	resourceChanged chan string
 }
 
@@ -53,9 +53,14 @@ const SnapshotReplaced = "*"
 // NewObjectCache creates a new cache instance.
 func NewObjectCache[T proto.Message]() *ObjectCache[T] {
 	return &ObjectCache[T]{
-		objects:         make(map[string]T),
-		ready:           make(chan struct{}),
-		resourceChanged: make(chan string),
+		objects: make(map[string]T),
+		ready:   make(chan struct{}),
+		// Buffered by one so a snapshot swap (ReplaceAll) can enqueue its
+		// SnapshotReplaced notification without blocking on a consumer that is
+		// not yet draining (e.g. the reconciler still waiting on another cache to
+		// become ready). Without the buffer the first snapshot can deadlock the
+		// resource stream, which then fails its liveness probe and crash-loops.
+		resourceChanged: make(chan string, 1),
 	}
 }
 
@@ -78,7 +83,7 @@ func (c *ObjectCache[T]) IsReady() <-chan struct{} {
 	return c.ready
 }
 
-// ResourceChanged returns an unbuffered channel that emits the key of every resource
+// ResourceChanged returns the channel that emits the ID of every resource
 // modified. SnapshotReplaced ("*") indicates the entire cache was replaced via a full
 // snapshot (ReplaceAll). The cache owns this channel and writes to it on Insert,
 // Delete, and ReplaceAll.
@@ -90,7 +95,10 @@ func (c *ObjectCache[T]) ResourceChanged() <-chan string {
 // Use this for snapshot ingestion: build a local map, then call ReplaceAll to
 // swap it in. The cache remains consistent until the swap completes.
 // Also marks the cache as ready on first call to indicate cache now has valid data.
-// Sends SnapshotReplaced on the resourceChanged channel to signal a full snapshot replacement.
+// Sends SnapshotReplaced on the resourceChanged channel to signal a full snapshot
+// replacement. The notification is always delivered: if the single-slot buffer is
+// full, ReplaceAll drains the stale value and retries, ensuring SnapshotReplaced
+// is enqueued without blocking indefinitely.
 func (c *ObjectCache[T]) ReplaceAll(ctx context.Context, objects map[string]T) error {
 	c.mutex.Lock()
 
@@ -98,6 +106,10 @@ func (c *ObjectCache[T]) ReplaceAll(ctx context.Context, objects map[string]T) e
 
 	// Mark ready (idempotent - safe to call on reconnect)
 	select {
+	case <-ctx.Done():
+		c.mutex.Unlock()
+
+		return ctx.Err()
 	case <-c.ready:
 		// Already closed
 	default:
@@ -106,70 +118,84 @@ func (c *ObjectCache[T]) ReplaceAll(ctx context.Context, objects map[string]T) e
 
 	c.mutex.Unlock()
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case c.resourceChanged <- SnapshotReplaced:
+	// Notify consumers of the full replacement. SnapshotReplaced supersedes any
+	// per-ID signal already queued (it means "reconcile everything", which
+	// subsumes any single object change). The loop guarantees SnapshotReplaced is
+	// delivered without blocking indefinitely: if the single-slot buffer is full,
+	// it drains the stale value and retries the send. This decouples snapshot
+	// completion from consumer readiness and prevents the startup/reconnect
+	// deadlock that would otherwise wedge the resource stream and trip the
+	// liveness probe.
+Send:
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case c.resourceChanged <- SnapshotReplaced:
+			break Send
+		case <-c.resourceChanged:
+			// Buffer was full; drained a stale queued value, retry the send.
+		}
 	}
 
 	return nil
 }
 
 // Insert adds or updates an object in the cache.
-// Sends the key on the resourceChanged channel only if the object changed.
-func (c *ObjectCache[T]) Insert(ctx context.Context, key string, obj T) error {
+// Sends the object ID on the resourceChanged channel only if the object changed.
+func (c *ObjectCache[T]) Insert(ctx context.Context, id string, obj T) error {
 	c.mutex.Lock()
-	old, exists := c.objects[key]
-	c.objects[key] = obj
+	old, exists := c.objects[id]
+	c.objects[id] = obj
 	c.mutex.Unlock()
 
 	if !exists || !proto.Equal(old, obj) {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case c.resourceChanged <- key:
+		case c.resourceChanged <- id:
 		}
 	}
 
 	return nil
 }
 
-// Delete removes an object from the cache by key.
-// Sends the key on the resourceChanged channel only if the object existed.
-func (c *ObjectCache[T]) Delete(ctx context.Context, key string) error {
+// Delete removes an object from the cache by ID.
+// Sends the object ID on the resourceChanged channel only if the object existed.
+func (c *ObjectCache[T]) Delete(ctx context.Context, id string) error {
 	c.mutex.Lock()
-	_, exists := c.objects[key]
-	delete(c.objects, key)
+	_, exists := c.objects[id]
+	delete(c.objects, id)
 	c.mutex.Unlock()
 
 	if exists {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case c.resourceChanged <- key:
+		case c.resourceChanged <- id:
 		}
 	}
 
 	return nil
 }
 
-// Get retrieves an object by key. Returns the zero value if not found.
-func (c *ObjectCache[T]) Get(key string) T {
+// Get retrieves an object by ID. Returns the zero value if not found.
+func (c *ObjectCache[T]) Get(id string) T {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
-	return c.objects[key]
+	return c.objects[id]
 }
 
-// Keys returns all cache keys, sorted for consistency.
+// Keys returns all object IDs in the cache.
 func (c *ObjectCache[T]) Keys() []string {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
-	return slices.Sorted(maps.Keys(c.objects))
+	return slices.Collect(maps.Keys(c.objects))
 }
 
-// Values returns all objects in the cache, sorted by key for consistency.
+// Values returns all objects in the cache, sorted by ID for consistency.
 func (c *ObjectCache[T]) Values() []T {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
