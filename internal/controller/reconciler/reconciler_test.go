@@ -588,11 +588,15 @@ func TestCacheCloseUnblocksReconcilerLoop(t *testing.T) {
 // With the buffered channel, ReplaceAll enqueues its notification and returns,
 // so snapshot ingestion completes even though the reconciler is still waiting.
 func TestReplaceAllDoesNotDeadlockWhenReconcilerStarved(t *testing.T) {
-	// VerifyNone (deferred first, so it runs LAST after cancel below) asserts no
-	// goroutine is left blocked on a cache send once the test cancels its context.
-	// With the fix, the ctx.Done() escape unblocks any pending send; without it,
-	// a wedged ReplaceAll goroutine would both time out AND leak here.
-	defer goleak.VerifyNone(t)
+	// Assert this test leaks no goroutine: a wedged ReplaceAll would both time out
+	// below AND leak here if the PR #441 fix regresses. IgnoreCurrent filters out
+	// goroutines already running when this test starts (e.g. the shared envtest
+	// apiserver's persistent http2 client under the envtest build), so only
+	// goroutines this test itself leaves behind fail it. The check is scoped
+	// per-test rather than in TestMain because the integration tests in this
+	// package run a fakeserver harness whose goroutines intentionally outlive
+	// each test, which a package-wide check would misreport.
+	defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
 
 	client := newMockClient()
 	configCache := cache.NewConfiguredObjectCache()
@@ -606,8 +610,8 @@ func TestReplaceAllDoesNotDeadlockWhenReconcilerStarved(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	// Run blocks in waitForCaches (runtimeCache is never fed). Cancel the context
-	// and wait for Run to return before goleak.VerifyNone inspects goroutines,
-	// otherwise the still-parked waitForCaches goroutine is flagged as a leak.
+	// and wait for Run to return so the parked waitForCaches goroutine is cleaned
+	// up before the test ends (otherwise TestMain's leak check would flag it).
 	runReturned := make(chan struct{})
 	go func() {
 		defer close(runReturned)
@@ -652,9 +656,9 @@ func TestReplaceAllDoesNotDeadlockWhenReconcilerStarved(t *testing.T) {
 // while the config substream (config.Factory) is slow, reconnecting, or has not
 // yet pushed a snapshot from CloudSecure.
 func TestReplaceAllDoesNotDeadlockWhenConfigCacheStarved(t *testing.T) {
-	// See TestReplaceAllDoesNotDeadlockWhenReconcilerStarved: assert no leaked
-	// goroutine blocked on a cache send after the context is cancelled.
-	defer goleak.VerifyNone(t)
+	// See TestReplaceAllDoesNotDeadlockWhenReconcilerStarved for why the leak
+	// check is scoped per-test with IgnoreCurrent rather than in TestMain.
+	defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
 
 	client := newMockClient()
 	configCache := cache.NewConfiguredObjectCache()
@@ -668,8 +672,8 @@ func TestReplaceAllDoesNotDeadlockWhenConfigCacheStarved(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	// Reconciler starts and blocks in waitForCaches — configCache is never fed.
-	// Cancel and wait for Run to return before goleak.VerifyNone inspects
-	// goroutines, otherwise the parked waitForCaches goroutine is flagged.
+	// Cancel and wait for Run to return so the parked waitForCaches goroutine is
+	// cleaned up before the test ends (otherwise TestMain's leak check flags it).
 	runReturned := make(chan struct{})
 	go func() {
 		defer close(runReturned)
