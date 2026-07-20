@@ -21,21 +21,20 @@ import (
 )
 
 const (
-	// FieldManager identifies cloud-operator as the owner of fields in Server-Side Apply.
-	FieldManager = "illumio-cloud-operator"
-
-	// FullReconcileInterval is the periodic safety net for full reconciliation,
-	// catching anything missed due to dropped events or transient failures.
-	FullReconcileInterval = 5 * time.Minute
+	// DefaultReconcileInterval is the default interval between periodic full
+	// reconciliations done for safety, catching anything missed due to dropped
+	// events or transient failures.
+	DefaultReconcileInterval = 5 * time.Minute
 )
 
 // Reconciler synchronizes desired state from CloudSecure with actual state in Kubernetes.
 type Reconciler struct {
-	logger       *zap.Logger
-	client       k8sclient.Client
-	configCache  *cache.ConfiguredObjectCache
-	runtimeCache *cache.ConfiguredObjectCache
-	resourceInfo map[string]resources.ResourceInfo // discovered API group/version info
+	logger            *zap.Logger
+	client            k8sclient.Client
+	configCache       *cache.ConfiguredObjectCache
+	runtimeCache      *cache.ConfiguredObjectCache
+	resourceInfo      map[string]resources.ResourceInfo // discovered API group/version info
+	reconcileInterval time.Duration
 }
 
 // NewReconciler creates a new reconciler.
@@ -46,10 +45,11 @@ func NewReconciler(
 	runtimeCache *cache.ConfiguredObjectCache,
 ) *Reconciler {
 	return &Reconciler{
-		logger:       logger,
-		client:       client,
-		configCache:  configCache,
-		runtimeCache: runtimeCache,
+		logger:            logger,
+		client:            client,
+		configCache:       configCache,
+		runtimeCache:      runtimeCache,
+		reconcileInterval: DefaultReconcileInterval,
 	}
 }
 
@@ -99,7 +99,7 @@ func (r *Reconciler) Run(ctx context.Context) {
 		r.logger.Error("Full reconciliation failed", zap.Error(err))
 	}
 
-	reconcileTimer := time.NewTimer(FullReconcileInterval)
+	reconcileTimer := time.NewTimer(r.reconcileInterval)
 
 	for {
 		select {
@@ -112,7 +112,7 @@ func (r *Reconciler) Run(ctx context.Context) {
 				r.logger.Error("Full reconciliation failed", zap.Error(err))
 			}
 
-			reconcileTimer.Reset(FullReconcileInterval)
+			reconcileTimer.Reset(r.reconcileInterval)
 		case id := <-r.configCache.ResourceChanged():
 			r.processResourceChange(ctx, id, reconcileTimer)
 		case id := <-r.runtimeCache.ResourceChanged():
@@ -151,38 +151,38 @@ func (r *Reconciler) waitForCaches(ctx context.Context) error {
 
 // processResourceChange handles a single resource change by reconciling the
 // affected object, or performing a full reconciliation if the entire snapshot was replaced.
-func (r *Reconciler) processResourceChange(ctx context.Context, id string, reconcileTimer *time.Timer) {
-	if id == cache.SnapshotReplaced {
+func (r *Reconciler) processResourceChange(ctx context.Context, key string, reconcileTimer *time.Timer) {
+	if key == cache.SnapshotReplaced {
 		if err := r.reconcileAll(ctx); err != nil {
 			r.logger.Error("Full reconciliation failed", zap.Error(err))
 		}
 
-		reconcileTimer.Reset(FullReconcileInterval)
+		reconcileTimer.Reset(r.reconcileInterval)
 	} else {
-		if err := r.reconcileObject(ctx, id); err != nil {
-			r.logger.Error("Object reconciliation failed", zap.String("id", id), zap.Error(err))
+		if err := r.reconcileObject(ctx, key); err != nil {
+			r.logger.Error("Object reconciliation failed", zap.String("key", key), zap.Error(err))
 		}
 	}
 }
 
-// reconcileObject reconciles a single object by ID.
+// reconcileObject reconciles a single object by key.
 // If the object exists in the config cache and differs from the runtime cache, it is applied via SSA.
 // If the object exists only in the runtime cache (not in config), it is deleted.
-func (r *Reconciler) reconcileObject(ctx context.Context, id string) error {
-	configObj := r.configCache.Get(id)
-	runtimeObj := r.runtimeCache.Get(id)
+func (r *Reconciler) reconcileObject(ctx context.Context, key string) error {
+	configObj := r.configCache.Get(key)
+	runtimeObj := r.runtimeCache.Get(key)
 
 	switch {
 	// In config and differs from runtime (or not yet applied) → apply
 	case configObj != nil && !proto.Equal(configObj, runtimeObj):
 		if err := r.applyObject(ctx, configObj); err != nil {
-			return fmt.Errorf("apply %s: %w", id, err)
+			return fmt.Errorf("apply %s: %w", key, err)
 		}
 
 	// In runtime, not in config → delete
 	case configObj == nil && runtimeObj != nil:
 		if err := r.deleteObject(ctx, runtimeObj); err != nil {
-			return fmt.Errorf("delete %s: %w", id, err)
+			return fmt.Errorf("delete %s: %w", key, err)
 		}
 	}
 
@@ -198,20 +198,20 @@ func (r *Reconciler) reconcileAll(ctx context.Context) error {
 			zap.Int("runtime_objects", r.runtimeCache.Len()))
 	}
 
-	allIDs := make(map[string]struct{}, max(r.configCache.Len(), r.runtimeCache.Len()))
+	allKeys := make(map[string]struct{}, max(r.configCache.Len(), r.runtimeCache.Len()))
 
-	for _, obj := range r.configCache.Values() {
-		allIDs[obj.GetId()] = struct{}{}
+	for _, key := range r.configCache.Keys() {
+		allKeys[key] = struct{}{}
 	}
 
-	for _, obj := range r.runtimeCache.Values() {
-		allIDs[obj.GetId()] = struct{}{}
+	for _, key := range r.runtimeCache.Keys() {
+		allKeys[key] = struct{}{}
 	}
 
 	var errs []error
 
-	for id := range allIDs {
-		if err := r.reconcileObject(ctx, id); err != nil {
+	for key := range allKeys {
+		if err := r.reconcileObject(ctx, key); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -241,13 +241,12 @@ func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKu
 
 	gvr := schema.GroupVersionResource{Group: info.Group, Version: info.Version, Resource: resourceName}
 
-	applied, err := r.client.ApplyResource(ctx, gvr, desired.GetNamespace(), desired, FieldManager)
+	applied, err := r.client.ApplyResource(ctx, gvr, desired.GetNamespace(), desired, convert.FieldManager)
 	if err != nil {
 		return fmt.Errorf("failed to apply: %w", err)
 	}
 
 	r.logger.Debug("Applied configured object",
-		zap.String("id", configObj.GetId()),
 		zap.String("name", applied.GetName()),
 		zap.String("namespace", applied.GetNamespace()),
 		zap.String("kind", applied.GetKind()),
@@ -282,7 +281,6 @@ func (r *Reconciler) deleteObject(ctx context.Context, obj *pb.ConfiguredKuberne
 	}
 
 	r.logger.Debug("Deleted object no longer in configuration",
-		zap.String("id", obj.GetId()),
 		zap.String("name", obj.GetName()),
 		zap.String("namespace", namespace),
 	)

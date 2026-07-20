@@ -1,8 +1,10 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package main
+package fakeserver
 
 import (
+	"context"
+	"crypto/tls"
 	"fmt"
 	"testing"
 	"time"
@@ -10,6 +12,10 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 // TestConfig holds configuration for integration tests.
@@ -19,16 +25,23 @@ type TestConfig struct {
 	Timeout       time.Duration
 	PollInterval  time.Duration
 	EnableLogging bool
+	// AutoInitialConfigSnapshot controls whether Start() sends the default
+	// initial config snapshot (UpdateConfiguration + empty
+	// ResourceSnapshotComplete). Set to false when tests need to control the
+	// initial config snapshot sequence themselves.
+	AutoInitialConfigSnapshot bool
 }
 
 // DefaultTestConfig returns sensible defaults for testing.
+// Uses fixed ports for tests that start the full operator binary (connectivity, flows).
 func DefaultTestConfig() TestConfig {
 	return TestConfig{
-		GRPCAddress:   "0.0.0.0:50051",
-		HTTPAddress:   "0.0.0.0:50053",
-		Timeout:       90 * time.Second, // Reduced from 120s
-		PollInterval:  500 * time.Millisecond,
-		EnableLogging: true, // Enable logging by default for debugging
+		GRPCAddress:               "0.0.0.0:50051",
+		HTTPAddress:               "0.0.0.0:50053",
+		Timeout:                   90 * time.Second,
+		PollInterval:              500 * time.Millisecond,
+		EnableLogging:             true, // Enable logging by default for debugging
+		AutoInitialConfigSnapshot: true,
 	}
 }
 
@@ -92,11 +105,13 @@ func NewTestHarness(t *testing.T, config TestConfig) *FakeServerTestHarness {
 	enhancedState := NewServerState()
 
 	server := &FakeServer{
-		address:     config.GRPCAddress,
-		httpAddress: config.HTTPAddress,
-		token:       token,
-		logger:      logger,
-		state:       &ServerState{}, // Legacy state
+		Address:         config.GRPCAddress,
+		HTTPAddress:     config.HTTPAddress,
+		StopChan:        make(chan struct{}),
+		Token:           token,
+		Logger:          logger,
+		State:           enhancedState,
+		ConfigResponses: make(chan *pb.GetConfigurationUpdatesResponse, 10),
 	}
 
 	return &FakeServerTestHarness{
@@ -107,24 +122,74 @@ func NewTestHarness(t *testing.T, config TestConfig) *FakeServerTestHarness {
 	}
 }
 
-// Start starts the fake server.
+// Start starts the fake server. If AutoInitialConfigSnapshot is true (the
+// default), it also sends the default initial config snapshot messages
+// (UpdateConfiguration + empty ResourceSnapshotComplete) so connected clients
+// complete the initial snapshot.
 func (h *FakeServerTestHarness) Start() error {
 	h.T.Log("Starting FakeServer...")
 
-	err := h.Server.start()
+	err := h.Server.Start()
 	if err != nil {
 		return fmt.Errorf("failed to start FakeServer: %w", err)
 	}
 
-	h.T.Logf("FakeServer started on gRPC=%s, HTTP=%s", h.Config.GRPCAddress, h.Config.HTTPAddress)
+	if h.Config.AutoInitialConfigSnapshot {
+		h.Server.SendConfig(&pb.GetConfigurationUpdatesResponse{
+			Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
+				UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
+					LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
+				},
+			},
+		})
+
+		h.Server.SendConfig(&pb.GetConfigurationUpdatesResponse{
+			Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
+				ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
+			},
+		})
+	}
+
+	h.T.Logf("FakeServer started on gRPC=%s, HTTP=%s", h.Server.GRPCAddress(), h.Server.HTTPAddress)
 
 	return nil
 }
 
+// DialGRPC creates a gRPC client connection to the fake server with TLS and token auth.
+func (h *FakeServerTestHarness) DialGRPC(t *testing.T) *grpc.ClientConn {
+	t.Helper()
+
+	tlsCreds := credentials.NewTLS(&tls.Config{
+		InsecureSkipVerify: true, //nolint:gosec // test-only
+	})
+
+	conn, err := grpc.NewClient(
+		h.Server.GRPCAddress(),
+		grpc.WithTransportCredentials(tlsCreds),
+		grpc.WithPerRPCCredentials(tokenAuth{token: h.Server.Token}),
+	)
+	if err != nil {
+		t.Fatalf("failed to dial fakeserver: %v", err)
+	}
+
+	t.Cleanup(func() { _ = conn.Close() })
+
+	return conn
+}
+
+// tokenAuth implements grpc.PerRPCCredentials for Bearer token auth.
+type tokenAuth struct{ token string }
+
+func (t tokenAuth) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
+	return map[string]string{"authorization": "Bearer " + t.token}, nil
+}
+
+func (t tokenAuth) RequireTransportSecurity() bool { return true }
+
 // Stop stops the fake server.
 func (h *FakeServerTestHarness) Stop() {
 	h.T.Log("Stopping FakeServer...")
-	h.Server.stop()
+	h.Server.Stop()
 	h.T.Log("FakeServer stopped")
 }
 
@@ -172,29 +237,26 @@ func (h *FakeServerTestHarness) WaitForCondition(condition func() bool, descript
 // WaitForConnection waits for the operator to connect and complete resource snapshot.
 func (h *FakeServerTestHarness) WaitForConnection() error {
 	return h.WaitForCondition(
-		func() bool { return h.Server.state.ConnectionSuccessful },
+		func() bool { return h.Server.State.IsConnectionSuccessful() },
 		"operator connection successful (resource snapshot complete)",
 	)
 }
 
 // LogCurrentState logs the current server state for debugging.
 func (h *FakeServerTestHarness) LogCurrentState() {
-	state := h.Server.state
+	state := h.Server.State
 	h.T.Logf("Current state: ConnectionSuccessful=%v, BadInitialCommit=%v, ResourcesReceived=%d, ResourceSnapshotComplete=%v",
-		state.ConnectionSuccessful, state.BadIntialCommit, state.ResourcesReceived, state.ResourceSnapshotComplete)
+		state.IsConnectionSuccessful(), state.IsBadInitialCommit(), state.GetResourcesReceived(), state.IsResourceSnapshotComplete())
 }
 
 // ResetState resets the server state for a new test phase.
 func (h *FakeServerTestHarness) ResetState() {
-	h.Server.state.ConnectionSuccessful = false
-	h.Server.state.BadIntialCommit = false
-	h.Server.state.ResourcesReceived = 0
-	h.Server.state.ResourceSnapshotComplete = false
+	h.Server.State.Reset()
 	h.T.Log("Server state reset")
 }
 
 // SetBadInitialCommit configures the server to fail the initial commit.
 func (h *FakeServerTestHarness) SetBadInitialCommit(bad bool) {
-	h.Server.state.BadIntialCommit = bad
+	h.Server.State.SetBadInitialCommit(bad)
 	h.T.Logf("BadInitialCommit set to: %v", bad)
 }

@@ -16,18 +16,9 @@ import (
 )
 
 const (
-	// CloudSecureIDLabel is the label key used to store the CloudSecure object ID.
-	// This ID is the unique key in the desired state (config) cache. It is set as a label on
-	// Kubernetes objects during apply so the watcher can extract it and use it as the runtime
-	// cache key, allowing the reconciler to match desired vs actual state by the same ID.
-	CloudSecureIDLabel = "cloud.illum.io/resource-id"
-
-	// ManagedByLabel is the standard Kubernetes label for identifying the managing component.
-	// https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/
-	ManagedByLabel = "app.kubernetes.io/managed-by"
-
-	// ManagedByValue is the value used for the managed-by label.
-	ManagedByValue = "illumio-cloud-operator"
+	// FieldManager identifies cloud-operator as the owner of fields in Server-Side Apply.
+	// It is also used by the watcher to check managedFields ownership on K8s objects.
+	FieldManager = "illumio-cloud-operator"
 )
 
 // protoJSONMarshaler is configured for Kubernetes Server-Side Apply:
@@ -38,39 +29,75 @@ var protoJSONMarshaler = protojson.MarshalOptions{
 	EmitUnpopulated: false,
 }
 
-// ExtractResourceName returns the plural resource name for the given configured object's kind.
-func ExtractResourceName(data *pb.ConfiguredKubernetesObjectData) (string, error) {
+// kindMapping holds the Kubernetes kind and plural resource name for a configured
+// object's kind_specific oneof type. It is the single source of truth for the
+// kind/resource mapping used by ExtractKind, ExtractResourceName, and spec marshaling.
+type kindMapping struct {
+	kind         string
+	resourceName string
+}
+
+// kindMappingFor returns the kind/resource mapping for a configured object's
+// kind_specific oneof type, or an error for unsupported types.
+func kindMappingFor(data *pb.ConfiguredKubernetesObjectData) (kindMapping, error) {
 	switch data.GetKindSpecific().(type) {
 	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
-		return "ciliumnetworkpolicies", nil
+		return kindMapping{kind: "CiliumNetworkPolicy", resourceName: "ciliumnetworkpolicies"}, nil
 	case *pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy:
-		return "ciliumclusterwidenetworkpolicies", nil
+		return kindMapping{kind: "CiliumClusterwideNetworkPolicy", resourceName: "ciliumclusterwidenetworkpolicies"}, nil
 	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
-		return "ciliumcidrgroups", nil
+		return kindMapping{kind: "CiliumCIDRGroup", resourceName: "ciliumcidrgroups"}, nil
 	default:
-		return "", fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
+		return kindMapping{}, fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
 	}
 }
 
-// BuildConfiguredFromMetadata builds a ConfiguredKubernetesObjectData from the
-// already-converted KubernetesObjectData for the runtime cache. Operator-added
-// labels (cloudsecure-id, managed-by) are stripped so the runtime snapshot
-// matches the shape of the config cache. Annotations are passed through as-is
-// because the operator doesn't add any — SSA handles annotation ownership.
-func BuildConfiguredFromMetadata(id string, metadata *pb.KubernetesObjectData) (*pb.ConfiguredKubernetesObjectData, error) {
-	filteredLabels := make(map[string]string, len(metadata.GetLabels()))
-	for k, v := range metadata.GetLabels() {
-		if k != CloudSecureIDLabel && k != ManagedByLabel {
-			filteredLabels[k] = v
-		}
+// ExtractResourceName returns the plural resource name for the given configured object's kind.
+func ExtractResourceName(data *pb.ConfiguredKubernetesObjectData) (string, error) {
+	m, err := kindMappingFor(data)
+	if err != nil {
+		return "", err
 	}
 
+	return m.resourceName, nil
+}
+
+// ExtractKind returns the Kubernetes kind string for a configured object.
+func ExtractKind(data *pb.ConfiguredKubernetesObjectData) (string, error) {
+	m, err := kindMappingFor(data)
+	if err != nil {
+		return "", err
+	}
+
+	return m.kind, nil
+}
+
+// CacheKey builds a cache key from kind, namespace, and name.
+// Both config and runtime caches use this key format so lookups match
+// without needing labels or reverse indexes.
+func CacheKey(kind, namespace, name string) string {
+	return kind + "/" + namespace + "/" + name
+}
+
+// CacheKeyForObject computes a cache key from a configured object's kind, namespace, and name.
+func CacheKeyForObject(data *pb.ConfiguredKubernetesObjectData) (string, error) {
+	kind, err := ExtractKind(data)
+	if err != nil {
+		return "", err
+	}
+
+	return CacheKey(kind, data.GetNamespace(), data.GetName()), nil
+}
+
+// BuildConfiguredFromMetadata builds a ConfiguredKubernetesObjectData from the
+// already-converted KubernetesObjectData for the runtime cache. Labels and
+// annotations are copied as-is so the reconciler can detect drift via proto.Equal.
+func BuildConfiguredFromMetadata(metadata *pb.KubernetesObjectData) (*pb.ConfiguredKubernetesObjectData, error) {
 	configured := &pb.ConfiguredKubernetesObjectData{
-		Id:          id,
 		Name:        metadata.GetName(),
 		Namespace:   metadata.Namespace,
 		Annotations: metadata.GetAnnotations(),
-		Labels:      filteredLabels,
+		Labels:      metadata.GetLabels(),
 	}
 
 	if err := setConfiguredKindSpecific(configured, metadata); err != nil {
@@ -120,13 +147,16 @@ func ConvertToApplyObject(data *pb.ConfiguredKubernetesObjectData, apiGroup, api
 
 	// Build the K8s object as a map
 	metadata := map[string]any{
-		"name":   data.GetName(),
-		"labels": copyLabels(data.GetLabels(), data.GetId()),
+		"name": data.GetName(),
 	}
 
-	// Only include annotations when explicitly set. Omitting the field lets SSA
-	// release ownership of previously-owned keys without wiping annotations from
+	// Only include labels/annotations when explicitly set. Omitting the field lets SSA
+	// release ownership of previously-owned keys without wiping values from
 	// other field managers. Sending null would claim the entire field and clear all keys.
+	if labels := data.GetLabels(); labels != nil {
+		metadata["labels"] = labels
+	}
+
 	if annotations := data.GetAnnotations(); annotations != nil {
 		metadata["annotations"] = annotations
 	}
@@ -147,47 +177,29 @@ func ConvertToApplyObject(data *pb.ConfiguredKubernetesObjectData, apiGroup, api
 	return &unstructured.Unstructured{Object: obj}, resourceName, nil
 }
 
-// copyLabels copies labels and adds the CloudSecure ID and managed-by labels.
-func copyLabels(labels map[string]string, id string) map[string]string {
-	result := make(map[string]string, len(labels)+2)
-	maps.Copy(result, labels)
-
-	result[CloudSecureIDLabel] = id
-	result[ManagedByLabel] = ManagedByValue
-
-	return result
-}
-
 // --- Configured object helpers (reconciler direction: proto → K8s) ---
 
 // marshalConfiguredObjectSpecs returns the K8s kind, plural resource name, and the spec fields as a map,
 // using protojson to marshal proto specs into clean JSON that preserves types.
 func marshalConfiguredObjectSpecs(data *pb.ConfiguredKubernetesObjectData) (string, string, map[string]any, error) {
-	resourceName, err := ExtractResourceName(data)
+	m, err := kindMappingFor(data)
 	if err != nil {
 		return "", "", nil, err
 	}
 
-	var (
-		kind       string
-		specFields map[string]any
-	)
+	var specFields map[string]any
 
 	switch ks := data.GetKindSpecific().(type) {
 	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
-		kind = "CiliumNetworkPolicy"
 		specFields, err = marshalPolicySpecs(ks.CiliumNetworkPolicy.GetSpecs())
 
 	case *pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy:
-		kind = "CiliumClusterwideNetworkPolicy"
 		specFields, err = marshalPolicySpecs(ks.CiliumClusterwideNetworkPolicy.GetSpecs())
 
 	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
-		kind = "CiliumCIDRGroup"
-
 		spec := ks.CiliumCidrGroup.GetSpec()
 		if spec == nil {
-			return kind, resourceName, map[string]any{}, nil
+			return m.kind, m.resourceName, map[string]any{}, nil
 		}
 
 		var specMap map[string]any
@@ -196,16 +208,13 @@ func marshalConfiguredObjectSpecs(data *pb.ConfiguredKubernetesObjectData) (stri
 		if err == nil {
 			specFields = map[string]any{"spec": specMap}
 		}
-
-	default:
-		return "", "", nil, fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
 	}
 
 	if err != nil {
-		return "", "", nil, fmt.Errorf("failed to marshal %s specs: %w", kind, err)
+		return "", "", nil, fmt.Errorf("failed to marshal %s specs: %w", m.kind, err)
 	}
 
-	return kind, resourceName, specFields, nil
+	return m.kind, m.resourceName, specFields, nil
 }
 
 // marshalPolicySpecs marshals Cilium policy rules into the "spec" or "specs" field.

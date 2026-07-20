@@ -13,7 +13,8 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-// ObjectCache is a generic thread-safe cache for storing objects by ID.
+// ObjectCache is a generic thread-safe cache for storing objects by key.
+// Keys use the format "kind/namespace/name".
 // It supports atomic replacement for snapshot-based updates.
 //
 // This cache is generic to support both:
@@ -28,18 +29,18 @@ import (
 // Block on <-cache.IsReady() to wait for the first snapshot to complete before reading.
 //
 // The cache notifies consumers of changes via the resourceChanged channel.
-// Insert and Delete send the object ID; ReplaceAll sends SnapshotReplaced to indicate
+// Insert and Delete send the object key; ReplaceAll sends SnapshotReplaced to indicate
 // a full snapshot.
 type ObjectCache[T proto.Message] struct {
 	mutex sync.RWMutex
 
-	// objects maps object ID to its value.
+	// objects maps object key to its value.
 	objects map[string]T
 
 	// ready is closed when the first snapshot is complete.
 	ready chan struct{}
 
-	// resourceChanged carries the ID of every resource modified.
+	// resourceChanged carries the key of every resource modified.
 	// SnapshotReplaced ("*") indicates the entire cache was replaced via a full snapshot.
 	// Buffered by one so a snapshot notification can be enqueued without blocking
 	// on a consumer that is not yet draining.
@@ -83,7 +84,7 @@ func (c *ObjectCache[T]) IsReady() <-chan struct{} {
 	return c.ready
 }
 
-// ResourceChanged returns the channel that emits the ID of every resource
+// ResourceChanged returns the channel that emits the key of every resource
 // modified. SnapshotReplaced ("*") indicates the entire cache was replaced via a full
 // snapshot (ReplaceAll). The cache owns this channel and writes to it on Insert,
 // Delete, and ReplaceAll.
@@ -119,7 +120,7 @@ func (c *ObjectCache[T]) ReplaceAll(ctx context.Context, objects map[string]T) e
 	c.mutex.Unlock()
 
 	// Notify consumers of the full replacement. SnapshotReplaced supersedes any
-	// per-ID signal already queued (it means "reconcile everything", which
+	// per-key signal already queued (it means "reconcile everything", which
 	// subsumes any single object change). The loop guarantees SnapshotReplaced is
 	// delivered without blocking indefinitely: if the single-slot buffer is full,
 	// it drains the stale value and retries the send. This decouples snapshot
@@ -142,52 +143,60 @@ Send:
 }
 
 // Insert adds or updates an object in the cache.
-// Sends the object ID on the resourceChanged channel only if the object changed.
-func (c *ObjectCache[T]) Insert(ctx context.Context, id string, obj T) error {
+// Sends the object key on the resourceChanged channel only if the object changed.
+func (c *ObjectCache[T]) Insert(ctx context.Context, key string, obj T) error {
 	c.mutex.Lock()
-	old, exists := c.objects[id]
-	c.objects[id] = obj
+	old, exists := c.objects[key]
+	c.objects[key] = obj
 	c.mutex.Unlock()
 
 	if !exists || !proto.Equal(old, obj) {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case c.resourceChanged <- id:
+		case c.resourceChanged <- key:
 		}
 	}
 
 	return nil
 }
 
-// Delete removes an object from the cache by ID.
-// Sends the object ID on the resourceChanged channel only if the object existed.
-func (c *ObjectCache[T]) Delete(ctx context.Context, id string) error {
+// Delete removes an object from the cache by key.
+// Sends the object key on the resourceChanged channel only if the object existed.
+func (c *ObjectCache[T]) Delete(ctx context.Context, key string) error {
 	c.mutex.Lock()
-	_, exists := c.objects[id]
-	delete(c.objects, id)
+	_, exists := c.objects[key]
+	delete(c.objects, key)
 	c.mutex.Unlock()
 
 	if exists {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case c.resourceChanged <- id:
+		case c.resourceChanged <- key:
 		}
 	}
 
 	return nil
 }
 
-// Get retrieves an object by ID. Returns the zero value if not found.
-func (c *ObjectCache[T]) Get(id string) T {
+// Get retrieves an object by key. Returns the zero value if not found.
+func (c *ObjectCache[T]) Get(key string) T {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
-	return c.objects[id]
+	return c.objects[key]
 }
 
-// Values returns all objects in the cache, sorted by ID for consistency.
+// Keys returns all object keys in the cache.
+func (c *ObjectCache[T]) Keys() []string {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	return slices.Collect(maps.Keys(c.objects))
+}
+
+// Values returns all objects in the cache, sorted by key for consistency.
 func (c *ObjectCache[T]) Values() []T {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()

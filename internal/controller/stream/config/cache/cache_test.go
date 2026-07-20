@@ -11,9 +11,18 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
+	"google.golang.org/protobuf/proto"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
+
+// TestMain runs the cache tests under goleak so that any goroutine left blocked
+// on a cache send (e.g. a ReplaceAll/Insert/Delete stuck on resourceChanged with
+// no consumer draining) fails the suite instead of silently leaking.
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // isReady is a test helper to check if the cache's Ready channel is closed.
 func isReady(c *ConfiguredObjectCache) bool {
@@ -39,7 +48,6 @@ func TestInsert(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	obj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "test-id",
 		Name: "test-policy",
 	}
 
@@ -62,11 +70,9 @@ func TestInsertOverwritesExisting(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	obj1 := &pb.ConfiguredKubernetesObjectData{
-		Id:   "test-id",
 		Name: "original-name",
 	}
 	obj2 := &pb.ConfiguredKubernetesObjectData{
-		Id:   "test-id",
 		Name: "updated-name",
 	}
 
@@ -97,7 +103,6 @@ func TestDelete(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	obj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "test-id",
 		Name: "test-policy",
 	}
 
@@ -141,7 +146,6 @@ func TestDeleteNonExistentSkipsNotification(t *testing.T) {
 
 	// Insert an object, should notify.
 	err := cache.Insert(ctx, "test-id", &pb.ConfiguredKubernetesObjectData{
-		Id:   "test-id",
 		Name: "test-policy",
 	})
 
@@ -188,7 +192,6 @@ func TestInsertIdenticalSkipsNotification(t *testing.T) {
 
 	// First insert: new object, should notify.
 	err := cache.Insert(ctx, "test-id", &pb.ConfiguredKubernetesObjectData{
-		Id:   "test-id",
 		Name: "test-policy",
 	})
 
@@ -196,7 +199,6 @@ func TestInsertIdenticalSkipsNotification(t *testing.T) {
 
 	// Second insert: identical object, should NOT notify.
 	err = cache.Insert(ctx, "test-id", &pb.ConfiguredKubernetesObjectData{
-		Id:   "test-id",
 		Name: "test-policy",
 	})
 
@@ -204,7 +206,6 @@ func TestInsertIdenticalSkipsNotification(t *testing.T) {
 
 	// Third insert: changed object, should notify.
 	err = cache.Insert(ctx, "test-id", &pb.ConfiguredKubernetesObjectData{
-		Id:   "test-id",
 		Name: "updated-policy",
 	})
 
@@ -230,7 +231,7 @@ func TestValuesSortedByID(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	go func() {
-		err := cache.Insert(ctx, "id-3", &pb.ConfiguredKubernetesObjectData{Id: "id-3", Name: "policy-3"})
+		err := cache.Insert(ctx, "id-3", &pb.ConfiguredKubernetesObjectData{Name: "policy-3"})
 
 		assert.NoError(t, err)
 	}()
@@ -238,7 +239,7 @@ func TestValuesSortedByID(t *testing.T) {
 	<-cache.ResourceChanged()
 
 	go func() {
-		err := cache.Insert(ctx, "id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1", Name: "policy-1"})
+		err := cache.Insert(ctx, "id-1", &pb.ConfiguredKubernetesObjectData{Name: "policy-1"})
 
 		assert.NoError(t, err)
 	}()
@@ -246,7 +247,7 @@ func TestValuesSortedByID(t *testing.T) {
 	<-cache.ResourceChanged()
 
 	go func() {
-		err := cache.Insert(ctx, "id-2", &pb.ConfiguredKubernetesObjectData{Id: "id-2", Name: "policy-2"})
+		err := cache.Insert(ctx, "id-2", &pb.ConfiguredKubernetesObjectData{Name: "policy-2"})
 
 		assert.NoError(t, err)
 	}()
@@ -256,9 +257,9 @@ func TestValuesSortedByID(t *testing.T) {
 	list := cache.Values()
 
 	assert.Len(t, list, 3)
-	assert.Equal(t, "id-1", list[0].GetId())
-	assert.Equal(t, "id-2", list[1].GetId())
-	assert.Equal(t, "id-3", list[2].GetId())
+	assert.Equal(t, "policy-1", list[0].GetName())
+	assert.Equal(t, "policy-2", list[1].GetName())
+	assert.Equal(t, "policy-3", list[2].GetName())
 }
 
 func TestValuesEmpty(t *testing.T) {
@@ -276,8 +277,8 @@ func TestReplaceAll(t *testing.T) {
 	assert.False(t, isReady(cache))
 
 	snapshot := map[string]*pb.ConfiguredKubernetesObjectData{
-		"id-1": {Id: "id-1", Name: "policy-1"},
-		"id-2": {Id: "id-2", Name: "policy-2"},
+		"id-1": {Name: "policy-1"},
+		"id-2": {Name: "policy-2"},
 	}
 
 	go func() {
@@ -305,7 +306,7 @@ func TestReplaceAllDoesNotBlockWithoutConsumer(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	snapshot := map[string]*pb.ConfiguredKubernetesObjectData{
-		"id-1": {Id: "id-1", Name: "policy-1"},
+		"CiliumNetworkPolicy/default/policy-1": {Name: "policy-1", Namespace: proto.String("default")},
 	}
 
 	// Call ReplaceAll several times with nothing draining ResourceChanged.
@@ -358,13 +359,13 @@ func TestReplaceAllSupersedesQueuedPerIDSignal(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	// Queue a per-ID notification with nothing draining.
-	require.NoError(t, cache.Insert(ctx, "id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1"}))
+	require.NoError(t, cache.Insert(ctx, "CiliumNetworkPolicy/default/policy-1", &pb.ConfiguredKubernetesObjectData{Name: "policy-1", Namespace: proto.String("default")}))
 
 	// ReplaceAll must not block and must leave SnapshotReplaced queued.
 	done := make(chan error, 1)
 	go func() {
 		done <- cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-			"id-2": {Id: "id-2"},
+			"CiliumNetworkPolicy/default/policy-2": {Name: "policy-2", Namespace: proto.String("default")},
 		})
 	}()
 
@@ -392,7 +393,7 @@ func TestReplaceAllCancelledContext(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-		"id-1": {Id: "id-1", Name: "policy-1"},
+		"CiliumNetworkPolicy/default/policy-1": {Name: "policy-1", Namespace: proto.String("default")},
 	})
 	assert.ErrorIs(t, err, context.Canceled)
 }
@@ -419,7 +420,7 @@ func TestReplaceAllReplacesExisting(t *testing.T) {
 
 	go func() {
 		err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-			"id-1": {Id: "id-1", Name: "v1"},
+			"id-1": {Name: "v1"},
 		})
 
 		assert.NoError(t, err)
@@ -432,8 +433,8 @@ func TestReplaceAllReplacesExisting(t *testing.T) {
 
 	go func() {
 		err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-			"id-1": {Id: "id-1", Name: "v2"},
-			"id-2": {Id: "id-2", Name: "new"},
+			"id-1": {Name: "v2"},
+			"id-2": {Name: "new"},
 		})
 
 		assert.NoError(t, err)
@@ -477,7 +478,7 @@ func TestReplaceAllIdempotentReady(t *testing.T) {
 
 	go func() {
 		err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-			"id-1": {Id: "id-1"},
+			"id-1": {},
 		})
 
 		assert.NoError(t, err)
@@ -489,7 +490,7 @@ func TestReplaceAllIdempotentReady(t *testing.T) {
 
 	go func() {
 		err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-			"id-2": {Id: "id-2"},
+			"id-2": {},
 		})
 
 		assert.NoError(t, err)
@@ -536,8 +537,8 @@ func TestSnapshotThenMutationFlow(t *testing.T) {
 	assert.False(t, isReady(cache))
 
 	snapshot := map[string]*pb.ConfiguredKubernetesObjectData{
-		"policy-1": {Id: "policy-1", Name: "allow-web"},
-		"policy-2": {Id: "policy-2", Name: "deny-db"},
+		"policy-1": {Name: "allow-web"},
+		"policy-2": {Name: "deny-db"},
 	}
 
 	go func() {
@@ -552,7 +553,7 @@ func TestSnapshotThenMutationFlow(t *testing.T) {
 	assert.Equal(t, 2, cache.Len())
 
 	go func() {
-		err := cache.Insert(ctx, "policy-3", &pb.ConfiguredKubernetesObjectData{Id: "policy-3", Name: "new-policy"})
+		err := cache.Insert(ctx, "policy-3", &pb.ConfiguredKubernetesObjectData{Name: "new-policy"})
 
 		assert.NoError(t, err)
 	}()
@@ -562,7 +563,7 @@ func TestSnapshotThenMutationFlow(t *testing.T) {
 	assert.Equal(t, 3, cache.Len())
 
 	go func() {
-		err := cache.Insert(ctx, "policy-1", &pb.ConfiguredKubernetesObjectData{Id: "policy-1", Name: "updated-allow-web"})
+		err := cache.Insert(ctx, "policy-1", &pb.ConfiguredKubernetesObjectData{Name: "updated-allow-web"})
 
 		assert.NoError(t, err)
 	}()
@@ -617,7 +618,7 @@ func TestConcurrentMutationsAfterSnapshot(t *testing.T) {
 			err := cache.Insert(
 				ctx,
 				string(rune('a'+i%26)),
-				&pb.ConfiguredKubernetesObjectData{Id: string(rune('a' + i%26)), Name: "policy"},
+				&pb.ConfiguredKubernetesObjectData{Name: "policy"},
 			)
 
 			assert.NoError(t, err)
@@ -656,7 +657,7 @@ func TestMultipleSnapshots(t *testing.T) {
 
 	go func() {
 		err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-			"id-1": {Id: "id-1", Name: "v1"},
+			"id-1": {Name: "v1"},
 		})
 
 		assert.NoError(t, err)
@@ -669,8 +670,8 @@ func TestMultipleSnapshots(t *testing.T) {
 
 	go func() {
 		err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-			"id-1": {Id: "id-1", Name: "v2"},
-			"id-2": {Id: "id-2", Name: "new"},
+			"id-1": {Name: "v2"},
+			"id-2": {Name: "new"},
 		})
 
 		assert.NoError(t, err)
@@ -691,7 +692,7 @@ func TestConcurrentReplaceAllAndReads(t *testing.T) {
 
 	go func() {
 		err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-			"id-1": {Id: "id-1", Name: "initial"},
+			"id-1": {Name: "initial"},
 		})
 
 		assert.NoError(t, err)
@@ -717,7 +718,7 @@ func TestConcurrentReplaceAllAndReads(t *testing.T) {
 			defer wg.Done()
 
 			err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-				"id-1": {Id: "id-1", Name: "version-" + strconv.Itoa(i)},
+				"id-1": {Name: "version-" + strconv.Itoa(i)},
 			})
 
 			assert.NoError(t, err)
@@ -745,14 +746,14 @@ func TestAtomicSwap_ReadersNeverSeePartialData(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	snapshotA := map[string]*pb.ConfiguredKubernetesObjectData{
-		"obj-1": {Id: "obj-1", Name: "A-1"},
-		"obj-2": {Id: "obj-2", Name: "A-2"},
-		"obj-3": {Id: "obj-3", Name: "A-3"},
+		"obj-1": {Name: "A-1"},
+		"obj-2": {Name: "A-2"},
+		"obj-3": {Name: "A-3"},
 	}
 	snapshotB := map[string]*pb.ConfiguredKubernetesObjectData{
-		"obj-1": {Id: "obj-1", Name: "B-1"},
-		"obj-2": {Id: "obj-2", Name: "B-2"},
-		"obj-3": {Id: "obj-3", Name: "B-3"},
+		"obj-1": {Name: "B-1"},
+		"obj-2": {Name: "B-2"},
+		"obj-3": {Name: "B-3"},
 	}
 
 	go func() {
@@ -824,7 +825,7 @@ func TestAtomicSwap_ReadersNeverBlockForever(t *testing.T) {
 
 	go func() {
 		err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-			"id-1": {Id: "id-1", Name: "initial"},
+			"id-1": {Name: "initial"},
 		})
 
 		assert.NoError(t, err)
@@ -847,7 +848,7 @@ func TestAtomicSwap_ReadersNeverBlockForever(t *testing.T) {
 	go func() {
 		for range 10000 {
 			err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-				"id-1": {Id: "id-1", Name: "version"},
+				"id-1": {Name: "version"},
 			})
 
 			assert.NoError(t, err)
@@ -879,7 +880,7 @@ func TestResourceChangedChannel(t *testing.T) {
 
 	go func() {
 		err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-			"id-1": {Id: "id-1"},
+			"id-1": {},
 		})
 
 		assert.NoError(t, err)
@@ -889,7 +890,7 @@ func TestResourceChangedChannel(t *testing.T) {
 	assert.Equal(t, SnapshotReplaced, id)
 
 	go func() {
-		err := cache.Insert(ctx, "id-2", &pb.ConfiguredKubernetesObjectData{Id: "id-2"})
+		err := cache.Insert(ctx, "id-2", &pb.ConfiguredKubernetesObjectData{})
 
 		assert.NoError(t, err)
 	}()
@@ -906,3 +907,100 @@ func TestResourceChangedChannel(t *testing.T) {
 	id = <-cache.ResourceChanged()
 	assert.Equal(t, "id-1", id)
 }
+
+// TestReplaceAll_ReturnsWithoutConsumer pins the producer/consumer decoupling
+// contract that the buffered resourceChanged channel provides.
+//
+// The reconciler is the only consumer, and it does not start draining until *both* caches are
+// ready. When one cache is starved (e.g. its substream is gated off by a
+// feature flag), the reconciler stays in waitForCaches forever, so the other
+// cache's ReplaceAll send never unblocks and its ReplaceAll never returns.
+func TestReplaceAll_ReturnsWithoutConsumer(t *testing.T) {
+	ctx := context.Background()
+	cache := NewConfiguredObjectCache()
+
+	done := make(chan error, 1)
+	go func() {
+		// No goroutine is reading ResourceChanged() — this models the
+		// reconciler being stuck in waitForCaches on the *other* cache.
+		done <- cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
+			"id-1": {Name: "id-1"},
+		})
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("ReplaceAll blocked on send with no consumer draining")
+	}
+
+	// The cache must be marked ready even though nobody drained the channel.
+	assert.True(t, isReady(cache))
+
+	// And the SnapshotReplaced notification must be preserved, not dropped:
+	// a consumer that starts later still sees it.
+	select {
+	case id := <-cache.ResourceChanged():
+		assert.Equal(t, SnapshotReplaced, id)
+	case <-time.After(time.Second):
+		t.Fatal("buffered SnapshotReplaced notification was lost")
+	}
+}
+
+// TestReplaceAll_ReconnectResnapshotAfterDrain models the stream-reconnect path where
+// the consumer drains the first snapshot before the second arrives — exactly what
+// happens when the reconciler has been running steadily and the config stream then
+// reconnects and re-sends a full snapshot.
+func TestReplaceAll_ReconnectResnapshotAfterDrain(t *testing.T) {
+	cache := NewConfiguredObjectCache()
+
+	// First snapshot (initial connect). Fills the buffer / would block unbuffered.
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- cache.ReplaceAll(context.Background(),
+			map[string]*pb.ConfiguredKubernetesObjectData{"id-1": {Name: "id-1"}})
+	}()
+
+	// A consumer drains the first notification — modelling the live reconciler.
+	select {
+	case id := <-cache.ResourceChanged():
+		require.Equal(t, SnapshotReplaced, id)
+	case <-time.After(2 * time.Second):
+		t.Fatal("first snapshot notification was never delivered")
+	}
+
+	select {
+	case err := <-firstDone:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("first ReplaceAll did not return after its notification was drained")
+	}
+
+	// Reconnect: a fresh full snapshot arrives. The buffer is empty again, but no
+	// consumer is actively waiting at this instant (the reconnect gap).
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- cache.ReplaceAll(context.Background(),
+			map[string]*pb.ConfiguredKubernetesObjectData{"id-2": {Name: "id-2"}})
+	}()
+
+	select {
+	case err := <-secondDone:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("reconnect ReplaceAll blocked with no consumer waiting — the buffer " +
+			"must decouple a re-snapshot after the previous one was drained (PR #441)")
+	}
+
+	// The reconnect snapshot replaced the contents and its notification is preserved.
+	require.Equal(t, []string{"id-2"}, cache.Keys())
+
+	select {
+	case id := <-cache.ResourceChanged():
+		require.Equal(t, SnapshotReplaced, id)
+	case <-time.After(time.Second):
+		t.Fatal("reconnect SnapshotReplaced notification was lost")
+	}
+}
+

@@ -28,6 +28,16 @@ func isReady(c *cache.ConfiguredObjectCache) bool {
 	}
 }
 
+// ccnpKind is reused across tests to set KindSpecific on config objects.
+var ccnpKind = &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{
+	CiliumClusterwideNetworkPolicy: &pb.KubernetesCiliumClusterwideNetworkPolicyData{},
+}
+
+// ccnpKey returns the cache key for a cluster-scoped CCNP with the given name.
+func ccnpKey(name string) string {
+	return "CiliumClusterwideNetworkPolicy//" + name
+}
+
 // mockConfigurationStream mocks the stream.ConfigurationStream interface.
 type mockConfigurationStream struct {
 	mock.Mock
@@ -259,8 +269,8 @@ func (s *ConfigClientTestSuite) TestRun_FirstSnapshotFails_CacheStaysEmpty() {
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "policy-1",
-				Name: "partial-data",
+				Name:         "partial-data",
+				KindSpecific: ccnpKind,
 			},
 		},
 	}
@@ -280,15 +290,15 @@ func (s *ConfigClientTestSuite) TestRun_ReconnectionFails_CacheKeepsOldData() {
 
 	// Pre-populate cache with "old" data (simulating previous successful snapshot)
 	s.populateCache(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-		"old-policy": {Id: "old-policy", Name: "old-data"},
+		ccnpKey("old-data"): {Name: "old-data", KindSpecific: ccnpKind},
 	})
 
 	// Now simulate reconnection that fails partway through new snapshot
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "new-policy",
-				Name: "new-partial-data",
+				Name:         "new-partial-data",
+				KindSpecific: ccnpKind,
 			},
 		},
 	}
@@ -299,10 +309,10 @@ func (s *ConfigClientTestSuite) TestRun_ReconnectionFails_CacheKeepsOldData() {
 	err := <-s.runClient(ctx)
 
 	s.Require().Error(err)
-	s.Equal(1, s.client.cache.Len())           // Still has old data count
-	s.NotNil(s.client.cache.Get("old-policy")) // Old data preserved
-	s.Nil(s.client.cache.Get("new-policy"))    // New partial data NOT in cache
-	s.True(isReady(s.client.cache))            // Still ready (was ready before)
+	s.Equal(1, s.client.cache.Len())                       // Still has old data count
+	s.NotNil(s.client.cache.Get(ccnpKey("old-data")))      // Old data preserved
+	s.Nil(s.client.cache.Get(ccnpKey("new-partial-data"))) // New partial data NOT in cache
+	s.True(isReady(s.client.cache))                        // Still ready (was ready before)
 }
 
 func (s *ConfigClientTestSuite) TestRun_ReconnectionAcceptsNewSnapshot() {
@@ -310,7 +320,7 @@ func (s *ConfigClientTestSuite) TestRun_ReconnectionAcceptsNewSnapshot() {
 
 	// Simulate first successful snapshot
 	s.populateCache(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-		"old-policy": {Id: "old-policy", Name: "old-data"},
+		ccnpKey("old-data"): {Name: "old-data", KindSpecific: ccnpKind},
 	})
 	s.True(isReady(s.client.cache)) // Cache is ready from "previous" stream
 
@@ -319,8 +329,8 @@ func (s *ConfigClientTestSuite) TestRun_ReconnectionAcceptsNewSnapshot() {
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "new-policy",
-				Name: "new-data",
+				Name:         "new-data",
+				KindSpecific: ccnpKind,
 			},
 		},
 	}
@@ -339,17 +349,17 @@ func (s *ConfigClientTestSuite) TestRun_ReconnectionAcceptsNewSnapshot() {
 	s.Require().NoError(err)
 	// New snapshot should have replaced old data
 	s.Equal(1, s.client.cache.Len())
-	s.Nil(s.client.cache.Get("old-policy"))    // Old data gone
-	s.NotNil(s.client.cache.Get("new-policy")) // New data present
-	s.Equal("new-data", s.client.cache.Get("new-policy").GetName())
+	s.Nil(s.client.cache.Get(ccnpKey("old-data")))    // Old data gone
+	s.NotNil(s.client.cache.Get(ccnpKey("new-data"))) // New data present
+	s.Equal("new-data", s.client.cache.Get(ccnpKey("new-data")).GetName())
 }
 
 func (s *ConfigClientTestSuite) TestRun_ResourceDataDuringSnapshot() {
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "policy-1",
-				Name: "allow-web",
+				Name:         "allow-web",
+				KindSpecific: ccnpKind,
 			},
 		},
 	}
@@ -369,7 +379,7 @@ func (s *ConfigClientTestSuite) TestRun_ResourceDataDuringSnapshot() {
 	s.mockStream.AssertExpectations(s.T())
 
 	// Verify object was stored in cache after snapshot complete
-	obj := s.client.cache.Get("policy-1")
+	obj := s.client.cache.Get(ccnpKey("allow-web"))
 	s.NotNil(obj)
 	s.Equal("allow-web", obj.GetName())
 }
@@ -385,8 +395,8 @@ func (s *ConfigClientTestSuite) TestRun_ResourceDataAfterSnapshotComplete() {
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "policy-late",
-				Name: "late-policy",
+				Name:         "late-policy",
+				KindSpecific: ccnpKind,
 			},
 		},
 	}
@@ -401,15 +411,15 @@ func (s *ConfigClientTestSuite) TestRun_ResourceDataAfterSnapshotComplete() {
 	s.mockStream.AssertExpectations(s.T())
 
 	// Verify object was NOT stored
-	s.Nil(s.client.cache.Get("policy-late"))
+	s.Nil(s.client.cache.Get(ccnpKey("late-policy")))
 }
 
 func (s *ConfigClientTestSuite) TestRun_SnapshotComplete() {
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "policy-1",
-				Name: "allow-web",
+				Name:         "allow-web",
+				KindSpecific: ccnpKind,
 			},
 		},
 	}
@@ -458,8 +468,8 @@ func (s *ConfigClientTestSuite) TestRun_MutationBeforeSnapshotComplete() {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:   "policy-early",
-						Name: "early-policy",
+						Name:         "early-policy",
+						KindSpecific: ccnpKind,
 					},
 				},
 			},
@@ -475,7 +485,7 @@ func (s *ConfigClientTestSuite) TestRun_MutationBeforeSnapshotComplete() {
 	s.mockStream.AssertExpectations(s.T())
 
 	// Verify mutation was NOT applied
-	s.Nil(s.client.cache.Get("policy-early"))
+	s.Nil(s.client.cache.Get(ccnpKey("early-policy")))
 }
 
 func (s *ConfigClientTestSuite) TestRun_MutationCreateOrUpdate() {
@@ -490,8 +500,8 @@ func (s *ConfigClientTestSuite) TestRun_MutationCreateOrUpdate() {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:   "policy-new",
-						Name: "new-policy",
+						Name:         "new-policy",
+						KindSpecific: ccnpKind,
 					},
 				},
 			},
@@ -507,7 +517,7 @@ func (s *ConfigClientTestSuite) TestRun_MutationCreateOrUpdate() {
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
 
-	obj := s.client.cache.Get("policy-new")
+	obj := s.client.cache.Get(ccnpKey("new-policy"))
 	s.NotNil(obj)
 	s.Equal("new-policy", obj.GetName())
 
@@ -521,8 +531,8 @@ func (s *ConfigClientTestSuite) TestRun_MutationDelete() {
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "policy-1",
-				Name: "to-delete",
+				Name:         "to-delete",
+				KindSpecific: ccnpKind,
 			},
 		},
 	}
@@ -536,7 +546,8 @@ func (s *ConfigClientTestSuite) TestRun_MutationDelete() {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
 					DeleteObject: &pb.DeleteConfiguredKubernetesObject{
-						Id: "policy-1",
+						Kind: "CiliumClusterwideNetworkPolicy",
+						Name: "to-delete",
 					},
 				},
 			},
@@ -553,7 +564,7 @@ func (s *ConfigClientTestSuite) TestRun_MutationDelete() {
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
 
-	s.Nil(s.client.cache.Get("policy-1"))
+	s.Nil(s.client.cache.Get(ccnpKey("to-delete")))
 	s.Equal(0, s.client.cache.Len())
 
 	// Stats should be incremented
@@ -565,12 +576,12 @@ func (s *ConfigClientTestSuite) TestRun_FullSnapshotThenMutationsFlow() {
 	// Snapshot phase
 	resourceData1 := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
-			ResourceData: &pb.ConfiguredKubernetesObjectData{Id: "p1", Name: "policy-1"},
+			ResourceData: &pb.ConfiguredKubernetesObjectData{Name: "policy-1", KindSpecific: ccnpKind},
 		},
 	}
 	resourceData2 := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
-			ResourceData: &pb.ConfiguredKubernetesObjectData{Id: "p2", Name: "policy-2"},
+			ResourceData: &pb.ConfiguredKubernetesObjectData{Name: "policy-2", KindSpecific: ccnpKind},
 		},
 	}
 	snapshotComplete := &pb.GetConfigurationUpdatesResponse{
@@ -583,7 +594,7 @@ func (s *ConfigClientTestSuite) TestRun_FullSnapshotThenMutationsFlow() {
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
-					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{Id: "p3", Name: "policy-3"},
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{Name: "policy-3", KindSpecific: ccnpKind},
 				},
 			},
 		},
@@ -592,7 +603,7 @@ func (s *ConfigClientTestSuite) TestRun_FullSnapshotThenMutationsFlow() {
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
-					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{Id: "p1", Name: "policy-1-updated"},
+					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{Name: "policy-1", Annotations: map[string]string{"updated": "true"}, KindSpecific: ccnpKind},
 				},
 			},
 		},
@@ -601,7 +612,7 @@ func (s *ConfigClientTestSuite) TestRun_FullSnapshotThenMutationsFlow() {
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceMutation{
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
-					DeleteObject: &pb.DeleteConfiguredKubernetesObject{Id: "p2"},
+					DeleteObject: &pb.DeleteConfiguredKubernetesObject{Kind: "CiliumClusterwideNetworkPolicy", Name: "policy-2"},
 				},
 			},
 		},
@@ -622,15 +633,16 @@ func (s *ConfigClientTestSuite) TestRun_FullSnapshotThenMutationsFlow() {
 
 	// Verify final state
 	s.True(isReady(s.client.cache))
-	s.Equal(2, s.client.cache.Len()) // p1 (updated) and p3, p2 was deleted
+	s.Equal(2, s.client.cache.Len()) // policy-1 (updated) and policy-3, policy-2 was deleted
 
-	obj1 := s.client.cache.Get("p1")
+	obj1 := s.client.cache.Get(ccnpKey("policy-1"))
 	s.NotNil(obj1)
-	s.Equal("policy-1-updated", obj1.GetName())
+	s.Equal("policy-1", obj1.GetName())
+	s.Equal("true", obj1.GetAnnotations()["updated"])
 
-	s.Nil(s.client.cache.Get("p2")) // Deleted
+	s.Nil(s.client.cache.Get(ccnpKey("policy-2"))) // Deleted
 
-	obj3 := s.client.cache.Get("p3")
+	obj3 := s.client.cache.Get(ccnpKey("policy-3"))
 	s.NotNil(obj3)
 	s.Equal("policy-3", obj3.GetName())
 
@@ -702,7 +714,8 @@ func (s *ConfigClientTestSuite) TestRun_DeleteNonExistentObject() {
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_DeleteObject{
 					DeleteObject: &pb.DeleteConfiguredKubernetesObject{
-						Id: "non-existent-id",
+						Kind: "CiliumClusterwideNetworkPolicy",
+						Name: "non-existent",
 					},
 				},
 			},
@@ -715,14 +728,10 @@ func (s *ConfigClientTestSuite) TestRun_DeleteNonExistentObject() {
 
 	err := <-s.runClient(context.Background())
 
-	// Should not panic or error - deleting non-existent is a no-op
+	// Should not error - deleting unknown server Id is a no-op (logged as warning)
 	s.Require().NoError(err)
 	s.mockStream.AssertExpectations(s.T())
 	s.Equal(0, s.client.cache.Len())
-
-	// Stats still incremented
-	_, _, _, configuredObjectMutations := s.stats.GetAndResetStats()
-	s.Equal(uint64(1), configuredObjectMutations)
 }
 
 func (s *ConfigClientTestSuite) TestRun_UpdateConfigurationDuringSnapshotPhase() {
@@ -737,8 +746,8 @@ func (s *ConfigClientTestSuite) TestRun_UpdateConfigurationDuringSnapshotPhase()
 	resourceDataResp := &pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_ResourceData{
 			ResourceData: &pb.ConfiguredKubernetesObjectData{
-				Id:   "policy-1",
-				Name: "test-policy",
+				Name:         "test-policy",
+				KindSpecific: ccnpKind,
 			},
 		},
 	}
@@ -782,8 +791,8 @@ func (s *ConfigClientTestSuite) TestRun_UpdateConfigurationDuringMutationPhase()
 			ResourceMutation: &pb.ConfiguredKubernetesObjectMutation{
 				Mutation: &pb.ConfiguredKubernetesObjectMutation_CreateOrUpdateObject{
 					CreateOrUpdateObject: &pb.ConfiguredKubernetesObjectData{
-						Id:   "policy-1",
-						Name: "test-policy",
+						Name:         "test-policy",
+						KindSpecific: ccnpKind,
 					},
 				},
 			},

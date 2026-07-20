@@ -7,6 +7,13 @@ LOCAL_IMAGE := $(LOCAL_REGISTRY)/$(APP_NAME)
 COMMIT := $(shell git rev-parse --short HEAD)
 DATE := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 LDFLAGS := -ldflags "-X main.Version=latest -X main.Commit=$(COMMIT) -X main.Date=$(DATE)"
+CILIUM_VERSION := $(shell go list -m -f '{{.Version}}' github.com/cilium/cilium)
+# Pin the Kubernetes API server version used by envtest so runs are reproducible
+# across machines and CI. Bump deliberately rather than tracking "latest".
+# Keep aligned with the k8s.io/* module minor version in go.mod (v0.36.x -> 1.36).
+ENVTEST_K8S_VERSION := 1.36.0
+CRD_DIR := internal/controller/reconciler/testdata/crds
+CRD_BASE_URL := https://raw.githubusercontent.com/cilium/cilium/$(CILIUM_VERSION)/pkg/k8s/apis/cilium.io/client/crds/v2
 
 # Default target
 .PHONY: all
@@ -23,6 +30,25 @@ build:
 test:
 	@echo "Running tests..."
 	go test ./...
+
+# Download Cilium CRD schemas for envtest
+.PHONY: download-crds
+download-crds:
+	@mkdir -p $(CRD_DIR)
+	curl -sSLf "$(CRD_BASE_URL)/ciliumnetworkpolicies.yaml" -o $(CRD_DIR)/ciliumnetworkpolicies.yaml
+	curl -sSLf "$(CRD_BASE_URL)/ciliumclusterwidenetworkpolicies.yaml" -o $(CRD_DIR)/ciliumclusterwidenetworkpolicies.yaml
+	curl -sSLf "$(CRD_BASE_URL)/ciliumcidrgroups.yaml" -o $(CRD_DIR)/ciliumcidrgroups.yaml
+
+# Print the pinned envtest Kubernetes version (single source of truth for CI).
+.PHONY: print-envtest-version
+print-envtest-version:
+	@echo $(ENVTEST_K8S_VERSION)
+
+# Run envtest integration tests (requires setup-envtest)
+.PHONY: test-envtest
+test-envtest: download-crds
+	@echo "Running envtest integration tests (k8s $(ENVTEST_K8S_VERSION))..."
+	ENVTEST_K8S_VERSION=$(ENVTEST_K8S_VERSION) go test -tags envtest ./internal/controller/reconciler/ -v
 
 # Run linter
 .PHONY: lint
@@ -101,6 +127,8 @@ help:
 	@echo "Available targets:"
 	@echo "  build              Build the Go project"
 	@echo "  test               Run tests"
+	@echo "  test-envtest       Run envtest integration tests"
+	@echo "  download-crds      Download Cilium CRD schemas"
 	@echo "  lint               Run golangci-lint"
 	@echo "  lint-fix           Run golangci-lint with auto-fix"
 	@echo "  clean              Clean the build"

@@ -8,6 +8,9 @@ cloud-operator-*.tgz
 # Test outputs
 coverage.out
 
+# Downloaded Cilium CRDs (fetched via `make download-crds`)
+internal/controller/reconciler/testdata/crds/
+
 # Local docs
 docs/
 

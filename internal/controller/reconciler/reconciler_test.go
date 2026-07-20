@@ -6,9 +6,11 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -147,18 +149,16 @@ func TestReconcile_EmptyCaches(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// populateCache fills a cache and drains its notifications synchronously.
-// Get/Values/Len still work after Close — only ResourceChanged becomes unusable.
+// populateCache fills a cache and drains its notifications in the background.
+// The cache remains open so that subsequent operations (e.g. Delete) can still
+// send notifications without panicking on a closed channel.
 func populateCache(t *testing.T, c *cache.ConfiguredObjectCache, objects map[string]*pb.ConfiguredKubernetesObjectData) {
 	t.Helper()
 
-	done := make(chan struct{})
-
+	// Start draining before ReplaceAll so the notification channel doesn't block.
 	go func() {
 		for range c.ResourceChanged() {
 		}
-
-		close(done)
 	}()
 
 	if objects != nil {
@@ -167,8 +167,9 @@ func populateCache(t *testing.T, c *cache.ConfiguredObjectCache, objects map[str
 		require.NoError(t, err)
 	}
 
-	c.Close()
-	<-done
+	t.Cleanup(func() {
+		c.Close()
+	})
 }
 
 // newTestReconciler creates a reconciler with pre-populated caches for testing.
@@ -193,8 +194,13 @@ func newTestReconciler(t *testing.T, configObjects, runtimeObjects map[string]*p
 }
 
 func TestReconcileObject_SkipsApplyWhenMatching(t *testing.T) {
-	obj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
+	configObj := &pb.ConfiguredKubernetesObjectData{
+		Name: "allow-web",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
+			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
+		},
+	}
+	runtimeObj := &pb.ConfiguredKubernetesObjectData{
 		Name: "allow-web",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
@@ -202,8 +208,8 @@ func TestReconcileObject_SkipsApplyWhenMatching(t *testing.T) {
 	}
 
 	r, client := newTestReconciler(t,
-		map[string]*pb.ConfiguredKubernetesObjectData{"policy-1": obj},
-		map[string]*pb.ConfiguredKubernetesObjectData{"policy-1": obj},
+		map[string]*pb.ConfiguredKubernetesObjectData{"policy-1": configObj},
+		map[string]*pb.ConfiguredKubernetesObjectData{"policy-1": runtimeObj},
 	)
 
 	err := r.reconcileObject(context.Background(), "policy-1")
@@ -213,7 +219,6 @@ func TestReconcileObject_SkipsApplyWhenMatching(t *testing.T) {
 
 func TestReconcileObject_AppliesWhenDifferent(t *testing.T) {
 	configObj := &pb.ConfiguredKubernetesObjectData{
-		Id:          "policy-1",
 		Name:        "allow-web",
 		Annotations: map[string]string{"note": "updated"},
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -221,7 +226,6 @@ func TestReconcileObject_AppliesWhenDifferent(t *testing.T) {
 		},
 	}
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:          "policy-1",
 		Name:        "allow-web",
 		Annotations: map[string]string{"note": "old"},
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -241,14 +245,12 @@ func TestReconcileObject_AppliesWhenDifferent(t *testing.T) {
 
 func TestReconcileObject_AppliesWhenAnnotationDeleted(t *testing.T) {
 	configObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "allow-web",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
 	}
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:          "policy-1",
 		Name:        "allow-web",
 		Annotations: map[string]string{"note": "should-be-removed"},
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -268,7 +270,6 @@ func TestReconcileObject_AppliesWhenAnnotationDeleted(t *testing.T) {
 
 func TestReconcileObject_DeletesOrphanedRuntimeObject(t *testing.T) {
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "orphaned",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
@@ -288,14 +289,12 @@ func TestReconcileObject_DeletesOrphanedRuntimeObject(t *testing.T) {
 
 func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
 	unchanged := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "unchanged",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
 	}
-	changed := &pb.ConfiguredKubernetesObjectData{
-		Id:          "policy-2",
+	changedConfig := &pb.ConfiguredKubernetesObjectData{
 		Name:        "changed",
 		Annotations: map[string]string{"note": "new"},
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
@@ -303,7 +302,6 @@ func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
 		},
 	}
 	changedRuntime := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-2",
 		Name: "changed",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
@@ -313,7 +311,7 @@ func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
 	r, client := newTestReconciler(t,
 		map[string]*pb.ConfiguredKubernetesObjectData{
 			"policy-1": unchanged,
-			"policy-2": changed,
+			"policy-2": changedConfig,
 		},
 		map[string]*pb.ConfiguredKubernetesObjectData{
 			"policy-1": unchanged,
@@ -328,7 +326,6 @@ func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
 
 func TestReconcileObject_AppliesNewObject(t *testing.T) {
 	configObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "new-policy",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
@@ -356,7 +353,6 @@ func TestReconcileObject_NoOpWhenNotInEitherCache(t *testing.T) {
 
 func TestReconcileObject_ApplyError(t *testing.T) {
 	configObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "allow-web",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
@@ -378,7 +374,6 @@ func TestReconcileObject_ApplyError(t *testing.T) {
 
 func TestReconcileObject_DeleteError(t *testing.T) {
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "orphaned",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
@@ -400,7 +395,6 @@ func TestReconcileObject_DeleteError(t *testing.T) {
 
 func TestReconcileObject_DeleteNotFoundIsNotError(t *testing.T) {
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "already-gone",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
@@ -424,7 +418,6 @@ func TestReconcileObject_DeleteNotFoundIsNotError(t *testing.T) {
 
 func TestReconcileObject_ApplyErrorUnsupportedKind(t *testing.T) {
 	configObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "bad-kind",
 		// No KindSpecific set — unsupported
 	}
@@ -442,7 +435,6 @@ func TestReconcileObject_ApplyErrorUnsupportedKind(t *testing.T) {
 
 func TestReconcileObject_DeleteErrorUnsupportedKind(t *testing.T) {
 	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "bad-kind",
 		// No KindSpecific set — unsupported
 	}
@@ -460,14 +452,12 @@ func TestReconcileObject_DeleteErrorUnsupportedKind(t *testing.T) {
 
 func TestReconcileAll_CollectsErrors(t *testing.T) {
 	obj1 := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "good-policy",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
 	}
 	obj2 := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-2",
 		Name: "bad-kind",
 		// No KindSpecific — will fail
 	}
@@ -485,16 +475,248 @@ func TestReconcileAll_CollectsErrors(t *testing.T) {
 	assert.Equal(t, 1, client.applyCalls, "Should still apply the valid object")
 }
 
+// TestContextCancelDuringWaitForCaches verifies that cancelling the context
+// while the reconciler is blocked in waitForCaches (neither cache ready) causes Run()
+// to return promptly without deadlocking.
+func TestContextCancelDuringWaitForCaches(t *testing.T) {
+	client := newMockClient()
+	configCache := cache.NewConfiguredObjectCache()
+	runtimeCache := cache.NewConfiguredObjectCache()
+
+	t.Cleanup(func() {
+		configCache.Close()
+		runtimeCache.Close()
+	})
+
+	r := NewReconciler(zap.NewNop(), client, configCache, runtimeCache)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan struct{})
+
+	go func() {
+		r.Run(ctx)
+		close(done)
+	}()
+
+	// Cancel context while reconciler is stuck in waitForCaches (no snapshots sent)
+	time.Sleep(200 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+		// Run() returned — no deadlock
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run() did not return after context cancellation — likely deadlocked in waitForCaches")
+	}
+}
+
+// TestCacheCloseUnblocksReconcilerLoop verifies that closing the cache
+// (which closes the resourceChanged channel) causes the reconciler's select loop
+// to exit gracefully when combined with context cancellation.
+func TestCacheCloseUnblocksReconcilerLoop(t *testing.T) {
+	client := newMockClient()
+	configCache := cache.NewConfiguredObjectCache()
+	runtimeCache := cache.NewConfiguredObjectCache()
+
+	r := NewReconciler(zap.NewNop(), client, configCache, runtimeCache)
+	// Pre-set resourceInfo so Run() skips the discovery retry loop entirely
+	r.resourceInfo = map[string]resources.ResourceInfo{
+		"ciliumnetworkpolicies": {Group: "cilium.io", Version: "v2"},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Mark both caches ready so reconciler gets past waitForCaches.
+	// We drain the SnapshotReplaced notifications that ReplaceAll sends.
+	go func() {
+		<-configCache.ResourceChanged()
+		<-runtimeCache.ResourceChanged()
+	}()
+
+	require.NoError(t, configCache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{}))
+	require.NoError(t, runtimeCache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{}))
+
+	done := make(chan struct{})
+
+	go func() {
+		// waitForCaches uses Run internally — but we pre-set resourceInfo,
+		// so call waitForCaches + the main loop directly via the exported Run.
+		// Since resourceInfo is set, Run skips discovery and goes straight to waitForCaches.
+		_ = r.waitForCaches(ctx)
+
+		close(done)
+	}()
+
+	// waitForCaches should return immediately since both caches are ready
+	select {
+	case <-done:
+		// good — caches were ready
+	case <-time.After(5 * time.Second):
+		t.Fatal("waitForCaches did not return — likely deadlocked")
+	}
+
+	// Now test the actual reconciler loop shutdown
+	done = make(chan struct{})
+
+	go func() {
+		r.Run(ctx)
+		close(done)
+	}()
+
+	// Give reconciler time to enter the main select loop
+	// (it just needs to get past waitForCaches + initial reconcileAll, both of which
+	// are near-instant with empty caches and pre-set resourceInfo)
+	time.Sleep(200 * time.Millisecond)
+
+	// Close caches and cancel context — reconciler should exit
+	configCache.Close()
+	runtimeCache.Close()
+	cancel()
+
+	select {
+	case <-done:
+		// Run() returned — no deadlock
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run() did not return after cache close + context cancel — likely deadlocked")
+	}
+}
+
+// With an unbuffered channel, the fed cache's ReplaceAll then blocks on its
+// send indefinitely (its snapshot ingestion never completes → in prod the
+// processing flag never clears → liveness probe restarts the pod → crash loop).
+// With the buffered channel, ReplaceAll enqueues its notification and returns,
+// so snapshot ingestion completes even though the reconciler is still waiting.
+func TestReplaceAllDoesNotDeadlockWhenReconcilerStarved(t *testing.T) {
+	// Assert this test leaks no goroutine: a wedged ReplaceAll would both time out
+	// below AND leak here if the PR #441 fix regresses. IgnoreCurrent filters out
+	// goroutines already running when this test starts (e.g. the shared envtest
+	// apiserver's persistent http2 client under the envtest build), so only
+	// goroutines this test itself leaves behind fail it. The check is scoped
+	// per-test rather than in TestMain because the integration tests in this
+	// package run a fakeserver harness whose goroutines intentionally outlive
+	// each test, which a package-wide check would misreport.
+	defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
+
+	client := newMockClient()
+	configCache := cache.NewConfiguredObjectCache()
+	runtimeCache := cache.NewConfiguredObjectCache()
+
+	r := NewReconciler(zap.NewNop(), client, configCache, runtimeCache)
+	r.resourceInfo = map[string]resources.ResourceInfo{
+		"ciliumnetworkpolicies": {Group: "cilium.io", Version: "v2"},
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+
+	// Run blocks in waitForCaches (runtimeCache is never fed). Cancel the context
+	// and wait for Run to return so the parked waitForCaches goroutine is cleaned
+	// up before the test ends (otherwise TestMain's leak check would flag it).
+	runReturned := make(chan struct{})
+	go func() {
+		defer close(runReturned)
+		r.Run(ctx)
+	}()
+
+	defer func() {
+		cancel()
+		<-runReturned
+	}()
+
+	// Feed ONLY the config cache, as a substream still-running while the other
+	// is flag-gated-off would. This must return: snapshot ingestion cannot be
+	// coupled to a consumer that is not yet draining.
+	done := make(chan error, 1)
+	go func() {
+		done <- configCache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
+			"policy-1": {Name: "policy-1"},
+		})
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("configCache.ReplaceAll blocked because the reconciler is starved " +
+			"on runtimeCache and never drains — this is the PR #441 startup deadlock")
+	}
+
+	// Sanity: the config cache reached ready even though the reconciler never
+	// consumed from it (it is still stuck in waitForCaches on runtimeCache).
+	select {
+	case <-configCache.IsReady():
+	default:
+		t.Fatal("configCache should be ready after ReplaceAll returned")
+	}
+}
+
+// TestReplaceAllDoesNotDeadlockWhenConfigCacheStarved is the mirror of
+// TestReplaceAllDoesNotDeadlockWhenReconcilerStarved: here the runtime substream
+// (resources.Factory) wins the startup race and delivers its snapshot first,
+// while the config substream (config.Factory) is slow, reconnecting, or has not
+// yet pushed a snapshot from CloudSecure.
+func TestReplaceAllDoesNotDeadlockWhenConfigCacheStarved(t *testing.T) {
+	// See TestReplaceAllDoesNotDeadlockWhenReconcilerStarved for why the leak
+	// check is scoped per-test with IgnoreCurrent rather than in TestMain.
+	defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
+
+	client := newMockClient()
+	configCache := cache.NewConfiguredObjectCache()
+	runtimeCache := cache.NewConfiguredObjectCache()
+
+	r := NewReconciler(zap.NewNop(), client, configCache, runtimeCache)
+	r.resourceInfo = map[string]resources.ResourceInfo{
+		"ciliumnetworkpolicies": {Group: "cilium.io", Version: "v2"},
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+
+	// Reconciler starts and blocks in waitForCaches — configCache is never fed.
+	// Cancel and wait for Run to return so the parked waitForCaches goroutine is
+	// cleaned up before the test ends (otherwise TestMain's leak check flags it).
+	runReturned := make(chan struct{})
+	go func() {
+		defer close(runReturned)
+		r.Run(ctx)
+	}()
+
+	defer func() {
+		cancel()
+		<-runReturned
+	}()
+
+	// Feed ONLY the runtime cache. This must return even though the reconciler
+	// is starved on configCache and never drains runtimeCache's channel.
+	done := make(chan error, 1)
+	go func() {
+		done <- runtimeCache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
+			"policy-1": {Name: "policy-1"},
+		})
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("runtimeCache.ReplaceAll blocked because the reconciler is starved " +
+			"on configCache and never drains — this is the PR #441 startup deadlock")
+	}
+
+	select {
+	case <-runtimeCache.IsReady():
+	default:
+		t.Fatal("runtimeCache should be ready after ReplaceAll returned")
+	}
+}
+
 func TestReconcileAll_AppliesAndDeletes(t *testing.T) {
 	configObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-1",
 		Name: "desired",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
 		},
 	}
 	orphanedObj := &pb.ConfiguredKubernetesObjectData{
-		Id:   "policy-2",
 		Name: "orphaned",
 		KindSpecific: &pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy{
 			CiliumNetworkPolicy: &pb.KubernetesCiliumNetworkPolicyData{},
