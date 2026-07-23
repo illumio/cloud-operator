@@ -12,6 +12,8 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 func TestIsAWSResource(t *testing.T) {
@@ -482,6 +484,8 @@ func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_EgressDomainN
 }
 
 func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_RoundTrip(t *testing.T) {
+	// ApplicationNetworkPolicy is ingest-only: it converts to proto and streams
+	// to CloudSecure, but it is not routed through the enforce path.
 	inputSpec := map[string]any{
 		"podSelector": map[string]any{}, // empty {} = all pods in namespace
 		"policyTypes": []any{"Ingress", "Egress"},
@@ -513,48 +517,26 @@ func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_RoundTrip(t *
 	meta, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
 	require.NoError(t, err)
 
-	// proto (metadata) → proto (configured), as done before reconcile apply.
+	anp := meta.GetAwsApplicationNetworkPolicy()
+	require.NotNil(t, anp)
+	assert.ElementsMatch(t, []string{"Ingress", "Egress"}, anp.GetPolicyTypes())
+	assert.Equal(t, "rt-anp", meta.GetName())
+
+	// proto (metadata) → proto (configured) should leave ANP out of the
+	// configured object; it is not reconciled.
 	configured, err := BuildConfiguredFromMetadata("rt-id", meta)
 	require.NoError(t, err)
+	assert.Nil(t, configured.GetAwsApplicationNetworkPolicy())
+	assert.Nil(t, configured.GetKindSpecific())
 
-	// proto → applied CRD.
-	apply, resourceName, err := ConvertToApplyObject(configured, "networking.k8s.aws", "v1alpha1")
-	require.NoError(t, err)
-
-	assert.Equal(t, "applicationnetworkpolicies", resourceName)
-	assert.Equal(t, "ApplicationNetworkPolicy", apply.GetKind())
-
-	appliedSpec, ok := apply.Object["spec"].(map[string]any)
-	require.True(t, ok, "expected spec to be a map")
-
-	// The whole spec must survive the round-trip byte-for-byte (after JSON
-	// normalization of numeric types), catching any dropped or mutated field.
-	assert.Equal(t, normalizeJSON(t, inputSpec), normalizeJSON(t, appliedSpec))
-
-	// Explicit checks on the fix-critical invariants:
-	// 1. Empty podSelector is preserved as {} (top-level and peer), not dropped.
-	assert.Equal(t, map[string]any{}, appliedSpec["podSelector"], "empty podSelector must stay {}")
-
-	ingress, ok := appliedSpec["ingress"].([]any)
-	require.True(t, ok)
-	rule, ok := ingress[0].(map[string]any)
-	require.True(t, ok)
-
-	from, ok := rule["from"].([]any)
-	require.True(t, ok)
-	peer0, ok := from[0].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, map[string]any{}, peer0["podSelector"], "empty peer podSelector must stay {}")
-
-	// 2. Ports serialize as intstr: bare number for numeric, bare string for named.
-	ports, ok := rule["ports"].([]any)
-	require.True(t, ok)
-	port0, ok := ports[0].(map[string]any)
-	require.True(t, ok)
-	port1, ok := ports[1].(map[string]any)
-	require.True(t, ok)
-	assert.InDelta(t, 5432, port0["port"], 0)
-	assert.Equal(t, "https", port1["port"])
+	// ConvertToApplyObject should reject ANP because it is no longer in the
+	// enforce path.
+	configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{
+		AwsApplicationNetworkPolicy: anp,
+	}
+	_, _, err = ConvertToApplyObject(configured, "networking.k8s.aws", "v1alpha1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported")
 }
 
 func TestConvertUnstructuredToAWSResource_ClusterNetworkPolicy_RoundTrip(t *testing.T) {

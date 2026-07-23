@@ -26,8 +26,12 @@ rules:
 # ingests/reconciles ClusterNetworkPolicy resources for policy support.
 # NOTE: delete only applies to policies from CloudSecure.
 - apiGroups: ["networking.k8s.aws"]
-  resources: ["clusternetworkpolicies", "applicationnetworkpolicies"]
+  resources: ["clusternetworkpolicies"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# ApplicationNetworkPolicy is ingested (watched/streamed) but not reconciled.
+- apiGroups: ["networking.k8s.aws"]
+  resources: ["applicationnetworkpolicies"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: ["apiextensions.k8s.io"]
   resources: ["customresourcedefinitions"]
   verbs: ["get", "list", "watch"]
