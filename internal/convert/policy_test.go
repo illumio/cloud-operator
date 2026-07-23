@@ -171,6 +171,172 @@ func TestConvertToApplyObject_CiliumCIDRGroup(t *testing.T) {
 	assert.Equal(t, "172.16.0.0/12", cidrs[1])
 }
 
+func TestConvertToApplyObject_AWSClusterNetworkPolicy(t *testing.T) {
+	ruleName := "allow-frontend"
+
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:     "cnp-aws-1",
+		Name:   "test-aws-policy",
+		Labels: map[string]string{"env": "prod"},
+		// Cluster-scoped: no namespace.
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{
+				Priority: new(int32(100)),
+				Tier:     "Admin",
+				Subject: &pb.AWSNetworkPolicySubject{
+					Pods: &pb.AWSNetworkPolicyPodSelector{
+						NamespaceSelector: &pb.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": "ns"}},
+						PodSelector:       &pb.LabelSelector{MatchLabels: map[string]string{"app": "web"}},
+					},
+				},
+				Ingress: []*pb.AWSNetworkPolicyIngressRule{
+					{
+						Name:   &ruleName,
+						Action: "Accept",
+						Ports: []*pb.AWSNetworkPolicyPort{
+							{PortNumber: &pb.AWSNetworkPolicyPortNumber{Protocol: "TCP", Port: 443}},
+						},
+						From: []*pb.AWSNetworkPolicyIngressPeer{
+							{Namespaces: &pb.LabelSelector{MatchLabels: map[string]string{"team": "frontend"}}},
+						},
+					},
+				},
+				Egress: []*pb.AWSNetworkPolicyEgressRule{
+					{
+						Action: "Pass",
+						To: []*pb.AWSNetworkPolicyEgressPeer{
+							{
+								Networks:    []string{"10.0.0.0/8"},
+								DomainNames: []string{"*.amazonaws.com"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj, resourceName, err := ConvertToApplyObject(data, "networking.k8s.aws", "v1alpha1")
+	require.NoError(t, err)
+
+	assert.Equal(t, "clusternetworkpolicies", resourceName)
+	assert.Equal(t, "ClusterNetworkPolicy", obj.GetKind())
+	assert.Equal(t, "networking.k8s.aws/v1alpha1", obj.GetAPIVersion())
+	assert.Equal(t, "test-aws-policy", obj.GetName())
+	assert.Empty(t, obj.GetNamespace())
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok, "expected spec to be a map")
+
+	// Scalars pass through verbatim (string closed-sets, no normalizer needed).
+	assert.EqualValues(t, 100, spec["priority"])
+	assert.Equal(t, "Admin", spec["tier"])
+
+	// Subject → camelCase nested selectors.
+	subject, ok := spec["subject"].(map[string]any)
+	require.True(t, ok)
+	pods, ok := subject["pods"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, pods, "namespaceSelector")
+	assert.Contains(t, pods, "podSelector")
+
+	// Ingress rule: name, action, nested portNumber, peer.
+	ingress, ok := spec["ingress"].([]any)
+	require.True(t, ok)
+	require.Len(t, ingress, 1)
+	inRule, ok := ingress[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "allow-frontend", inRule["name"])
+	assert.Equal(t, "Accept", inRule["action"])
+
+	ports, ok := inRule["ports"].([]any)
+	require.True(t, ok)
+	require.Len(t, ports, 1)
+	port0, ok := ports[0].(map[string]any)
+	require.True(t, ok)
+	portNumber, ok := port0["portNumber"].(map[string]any)
+	require.True(t, ok, "expected nested portNumber")
+	assert.Equal(t, "TCP", portNumber["protocol"])
+	assert.EqualValues(t, 443, portNumber["port"])
+
+	// Egress rule: Pass action, networks + domainNames on the peer.
+	egress, ok := spec["egress"].([]any)
+	require.True(t, ok)
+	require.Len(t, egress, 1)
+	eRule, ok := egress[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "Pass", eRule["action"])
+	to, ok := eRule["to"].([]any)
+	require.True(t, ok)
+	require.Len(t, to, 1)
+	peer0, ok := to[0].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, peer0, "networks")
+	assert.Contains(t, peer0, "domainNames")
+}
+
+func TestConvertToApplyObject_AWSClusterNetworkPolicyPriorityZero(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:   "cnp-prio-zero",
+		Name: "prio-zero",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{
+				Priority: new(int32(0)),
+				Tier:     "Admin",
+			},
+		},
+	}
+
+	obj, _, err := ConvertToApplyObject(data, "networking.k8s.aws", "v1alpha1")
+	require.NoError(t, err)
+
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+
+	prio, present := spec["priority"]
+	require.True(t, present, "priority=0 must be present, not dropped by protojson")
+	assert.EqualValues(t, 0, prio)
+}
+
+func TestExtractResourceName_AWSClusterNetworkPolicy(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{},
+		},
+	}
+
+	name, err := ExtractResourceName(data)
+	require.NoError(t, err)
+	assert.Equal(t, "clusternetworkpolicies", name)
+}
+
+func TestExtractResourceName_AWSApplicationNetworkPolicy(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{
+			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{},
+		},
+	}
+
+	_, err := ExtractResourceName(data)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported")
+}
+
+func TestConvertToApplyObject_AWSApplicationNetworkPolicy(t *testing.T) {
+	data := &pb.ConfiguredKubernetesObjectData{
+		Id:        "anp-1",
+		Name:      "test-anp",
+		Namespace: new("team-a"),
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{
+			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{},
+		},
+	}
+
+	_, _, err := ConvertToApplyObject(data, "networking.k8s.aws", "v1alpha1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported")
+}
+
 func TestConvertToApplyObject_NilData(t *testing.T) {
 	_, _, err := ConvertToApplyObject(nil, "cilium.io", "v2")
 	require.Error(t, err)

@@ -15,9 +15,11 @@ var ManagedResourceNames = []string{
 	"ciliumcidrgroups",
 	"ciliumclusterwidenetworkpolicies",
 	"ciliumnetworkpolicies",
+	"clusternetworkpolicies",
 }
 
 var resourceList = slices.Concat(ManagedResourceNames, []string{
+	"applicationnetworkpolicies",
 	"cronjobs",
 	"customresourcedefinitions",
 	"daemonsets",

@@ -4,6 +4,7 @@ syntax = "proto3";
 
 package illumio.cloud.k8sclustersync.v1;
 
+import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
 
@@ -51,6 +52,8 @@ message KubernetesObjectData {
     KubernetesCiliumNetworkPolicyData cilium_network_policy = 104;
     KubernetesCiliumClusterwideNetworkPolicyData cilium_clusterwide_network_policy = 105;
     KubernetesCiliumCIDRGroupData cilium_cidr_group = 106;
+    KubernetesAWSClusterNetworkPolicyData aws_cluster_network_policy = 107;
+    KubernetesAWSApplicationNetworkPolicyData aws_application_network_policy = 108;
   }
 }
 
@@ -352,6 +355,193 @@ message CiliumPolicyPort {
   // Protocol for this port rule:
   // https://github.com/cilium/cilium/blob/40fafc202f3c16dfa287af9eb4dc3f3e72a120f3/pkg/policy/api/l4.go#L9-L28
   optional string protocol = 3;
+}
+
+// Note: Cluster-scoped policy enforced by the AWS VPC CNI network policy controller on
+// EKS. The operator ingests customer-authored policies and applies CloudSecure
+// authored ones. Field names match the CRD so protojson (camelCase) output maps
+// directly. Schema pinned to:
+// https://github.com/aws/amazon-network-policy-controller-k8s/blob/59b675390bf78a3303e4e60be71a5d057845e61e/api/v1alpha1/clusternetworkpolicy_types.go
+
+// KubernetesAWSClusterNetworkPolicyData contains data specific to an AWS
+// ClusterNetworkPolicy object.
+message KubernetesAWSClusterNetworkPolicyData {
+  // Evaluation order within a tier (0-1000); lower is higher precedence.
+  // Optional so an explicit priority of 0 (valid, highest precedence) is
+  // preserved through protojson instead of being dropped as a zero value.
+  optional int32 priority = 1;
+  // Tier categorizes the policy: "Admin" or "Baseline".
+  string tier = 2;
+  // Subject selects the pods/namespaces this policy applies to.
+  AWSNetworkPolicySubject subject = 3;
+  // Ingress rules define incoming traffic decisions.
+  repeated AWSNetworkPolicyIngressRule ingress = 4;
+  // Egress rules define outgoing traffic decisions.
+  repeated AWSNetworkPolicyEgressRule egress = 5;
+}
+
+// AWSNetworkPolicySubject selects the workloads a ClusterNetworkPolicy applies to.
+// Exactly one of pods or namespaces is set.
+message AWSNetworkPolicySubject {
+  // Selects pods by namespace and pod labels.
+  AWSNetworkPolicyPodSelector pods = 1;
+  // Selects entire namespaces by label.
+  LabelSelector namespaces = 2;
+}
+
+// AWSNetworkPolicyPodSelector selects pods by namespace selector and pod selector.
+message AWSNetworkPolicyPodSelector {
+  // Selects namespaces by label.
+  LabelSelector namespace_selector = 1;
+  // Selects pods within the matched namespaces by label.
+  LabelSelector pod_selector = 2;
+}
+
+// AWSNetworkPolicyIngressRule is a single ingress rule.
+message AWSNetworkPolicyIngressRule {
+  // Optional author-given rule name (<=100 chars).
+  optional string name = 1;
+  // Action: "Accept", "Deny", or "Pass".
+  string action = 2;
+  // Ports restricts the rule to specific ports/protocols. Empty matches all.
+  repeated AWSNetworkPolicyPort ports = 3;
+  // From lists the ingress sources.
+  repeated AWSNetworkPolicyIngressPeer from = 4;
+}
+
+// AWSNetworkPolicyEgressRule is a single egress rule.
+message AWSNetworkPolicyEgressRule {
+  // Optional author-given rule name (<=100 chars).
+  optional string name = 1;
+  // Action: "Accept", "Deny", or "Pass".
+  string action = 2;
+  // Ports restricts the rule to specific ports/protocols. Empty matches all.
+  repeated AWSNetworkPolicyPort ports = 3;
+  // To lists the egress destinations.
+  repeated AWSNetworkPolicyEgressPeer to = 4;
+}
+
+// AWSNetworkPolicyPort selects a port; exactly one form is set, mirroring the
+// CRD's port {portNumber | portRange | namedPort}.
+message AWSNetworkPolicyPort {
+  AWSNetworkPolicyPortNumber port_number = 1;
+  AWSNetworkPolicyPortRange port_range = 2;
+  optional string named_port = 3;
+}
+
+// AWSNetworkPolicyPortNumber is a single port number with its protocol.
+message AWSNetworkPolicyPortNumber {
+  // IP protocol: "TCP", "UDP", or "SCTP" (default "TCP").
+  string protocol = 1;
+  // Port number (1-65535).
+  int32 port = 2;
+}
+
+// AWSNetworkPolicyPortRange is an inclusive port range with its protocol.
+message AWSNetworkPolicyPortRange {
+  // IP protocol: "TCP", "UDP", or "SCTP" (default "TCP").
+  string protocol = 1;
+  // Start of the port range (1-65535).
+  int32 start = 2;
+  // End of the port range (1-65535).
+  int32 end = 3;
+}
+
+// AWSNetworkPolicyIngressPeer identifies an ingress source.
+// Ingress peers may select by namespaces or pods only.
+message AWSNetworkPolicyIngressPeer {
+  // Selects pods by namespace and pod labels.
+  AWSNetworkPolicyPodSelector pods = 1;
+  // Selects entire namespaces by label.
+  LabelSelector namespaces = 2;
+}
+
+// AWSNetworkPolicyEgressPeer identifies an egress destination.
+// Egress peers additionally allow CIDR networks and FQDN domain names.
+message AWSNetworkPolicyEgressPeer {
+  // Selects pods by namespace and pod labels.
+  AWSNetworkPolicyPodSelector pods = 1;
+  // Selects entire namespaces by label.
+  LabelSelector namespaces = 2;
+  // Networks lists CIDR blocks (max 25).
+  repeated string networks = 3;
+  // DomainNames lists FQDN peers, wildcard-capable (max 25); valid only with
+  // the "Accept" action.
+  repeated string domain_names = 4;
+}
+
+// Note: Namespaced policy with standard Kubernetes NetworkPolicy semantics plus FQDN
+// (domainNames) egress peers. Reuses the generic LabelSelector, IPBlock, and
+// Port primitives; the rule and peer types are AWS-specific so the shared
+// NetworkPolicy types stay untouched.
+// Schema pinned to:
+// https://github.com/aws/amazon-network-policy-controller-k8s/blob/59b675390bf78a3303e4e60be71a5d057845e61e/api/v1alpha1/applicationnetworkpolicy_types.go
+
+// KubernetesAWSApplicationNetworkPolicyData contains data specific to an AWS
+// ApplicationNetworkPolicy object.
+message KubernetesAWSApplicationNetworkPolicyData {
+  // Selects the pods this policy applies to.
+  LabelSelector pod_selector = 1;
+  // Policy types the policy declares: "Ingress" and/or "Egress".
+  repeated string policy_types = 2;
+  // Ingress rules (standard NetworkPolicy semantics; peers carry no FQDNs).
+  repeated AWSApplicationNetworkPolicyIngressRule ingress = 3;
+  // Egress rules; peers may include FQDN domain names.
+  repeated AWSApplicationNetworkPolicyEgressRule egress = 4;
+}
+
+// AWSApplicationNetworkPolicyIngressRule mirrors a CRD ingress rule. Sources are
+// listed under `from`.
+message AWSApplicationNetworkPolicyIngressRule {
+  // Sources allowed by this rule (rule.from). Empty matches all.
+  repeated AWSApplicationNetworkPolicyIngressPeer from = 1;
+  // Ports restricts the rule to specific ports/protocols. Empty matches all.
+  repeated AWSApplicationNetworkPolicyPort ports = 2;
+}
+
+// AWSApplicationNetworkPolicyEgressRule mirrors a CRD egress rule. Destinations
+// are listed under `to`.
+message AWSApplicationNetworkPolicyEgressRule {
+  // Destinations allowed by this rule (rule.to). Empty matches all.
+  repeated AWSApplicationNetworkPolicyEgressPeer to = 1;
+  // Ports restricts the rule to specific ports/protocols. Empty matches all.
+  repeated AWSApplicationNetworkPolicyPort ports = 2;
+}
+
+// AWSApplicationNetworkPolicyIngressPeer identifies an ingress source. Ingress
+// peers may select by pods, namespaces, or IP block only — never FQDNs.
+message AWSApplicationNetworkPolicyIngressPeer {
+  // Selects pods by label within the matched namespaces.
+  LabelSelector pod_selector = 1;
+  // Selects namespaces by label.
+  LabelSelector namespace_selector = 2;
+  // IP block (CIDR with optional exceptions).
+  IPBlock ip_block = 3;
+}
+
+// AWSApplicationNetworkPolicyEgressPeer identifies an egress destination. Egress
+// peers additionally allow FQDN domain names.
+message AWSApplicationNetworkPolicyEgressPeer {
+  // Selects pods by label within the matched namespaces.
+  LabelSelector pod_selector = 1;
+  // Selects namespaces by label.
+  LabelSelector namespace_selector = 2;
+  // IP block (CIDR with optional exceptions).
+  IPBlock ip_block = 3;
+  // FQDN peers, wildcard-capable.
+  repeated string domain_names = 4;
+}
+
+// AWSApplicationNetworkPolicyPort mirrors upstream networking.v1 NetworkPolicyPort.
+// `port` is a google.protobuf.Value so it serializes to either a bare JSON number
+// (numeric port) or string (named port), matching the CRD's intstr.IntOrString.
+message AWSApplicationNetworkPolicyPort {
+  // IP protocol: "TCP" (default), "UDP", or "SCTP".
+  optional string protocol = 1;
+  // Port number or named port; omitted matches all ports.
+  google.protobuf.Value port = 2;
+  // End of a port range (inclusive); requires port to be numeric.
+  optional int32 end_port = 3;
 }
 
 // LabelSelector selects a k8s resource (e.g., a pod or namespace) by its labels.
@@ -795,6 +985,8 @@ message ConfiguredKubernetesObjectData {
     KubernetesCiliumNetworkPolicyData cilium_network_policy = 100;
     KubernetesCiliumClusterwideNetworkPolicyData cilium_clusterwide_network_policy = 101;
     KubernetesCiliumCIDRGroupData cilium_cidr_group = 102;
+    KubernetesAWSClusterNetworkPolicyData aws_cluster_network_policy = 103;
+    KubernetesAWSApplicationNetworkPolicyData aws_application_network_policy = 104;
   }
 }
 
