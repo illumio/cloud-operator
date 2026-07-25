@@ -161,16 +161,24 @@ func TestResourceListCiliumDispatchConsistency(t *testing.T) {
 }
 
 func TestResourceListAWSDispatchConsistency(t *testing.T) {
+	// Both AWS policy resources are watched (ingested) and routed to the AWS converter.
 	awsResources := []string{"clusternetworkpolicies", "applicationnetworkpolicies"}
 
 	for _, name := range awsResources {
 		assert.True(t, slices.Contains(resourceList, name),
-			"%s must be in resourceList", name)
-		assert.True(t, slices.Contains(ManagedResourceNames, name),
-			"%s must be in ManagedResourceNames", name)
+			"%s must be in resourceList (ingested)", name)
 		assert.True(t, convert.IsAWSResource(name),
 			"%s must be recognized by IsAWSResource", name)
 	}
+
+	// ClusterNetworkPolicy is enforced/reconciled, so it must be in ManagedResourceNames.
+	assert.True(t, slices.Contains(ManagedResourceNames, "clusternetworkpolicies"),
+		"clusternetworkpolicies must be in ManagedResourceNames (enforced)")
+
+	// ApplicationNetworkPolicy is ingest-only (never enforced), so it must NOT be in
+	// ManagedResourceNames, otherwise the reconciler would try to apply/delete it.
+	assert.False(t, slices.Contains(ManagedResourceNames, "applicationnetworkpolicies"),
+		"applicationnetworkpolicies must NOT be in ManagedResourceNames (ingest-only)")
 
 	// Cilium resources must not be misrouted to the AWS converter.
 	for _, resource := range resourceList {

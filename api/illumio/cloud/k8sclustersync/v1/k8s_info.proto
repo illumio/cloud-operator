@@ -980,13 +980,17 @@ message ConfiguredKubernetesObjectData {
   string name = 4;
   // Kubernetes namespace for the object. Empty for clusterwide resources.
   optional string namespace = 5;
+  // Field 104 (aws_application_network_policy) is reserved: ApplicationNetworkPolicy
+  // is ingest-only (see KubernetesObjectData field 108) and is never enforced/reconciled,
+  // so CloudSecure does not send it as a configured (desired-state) object.
+  reserved 104;
+  reserved "aws_application_network_policy";
   // Type-specific data for the Kubernetes resource kind.
   oneof kind_specific {
     KubernetesCiliumNetworkPolicyData cilium_network_policy = 100;
     KubernetesCiliumClusterwideNetworkPolicyData cilium_clusterwide_network_policy = 101;
     KubernetesCiliumCIDRGroupData cilium_cidr_group = 102;
     KubernetesAWSClusterNetworkPolicyData aws_cluster_network_policy = 103;
-    KubernetesAWSApplicationNetworkPolicyData aws_application_network_policy = 104;
   }
 }
 

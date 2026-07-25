@@ -188,7 +188,6 @@ func newTestReconciler(t *testing.T, configObjects, runtimeObjects map[string]*p
 		"ciliumclusterwidenetworkpolicies": {Group: "cilium.io", Version: "v2"},
 		"ciliumcidrgroups":                 {Group: "cilium.io", Version: "v2alpha1"},
 		"clusternetworkpolicies":           {Group: "networking.k8s.aws", Version: "v1alpha1"},
-		"applicationnetworkpolicies":       {Group: "networking.k8s.aws", Version: "v1alpha1"},
 	}
 
 	return r, client
@@ -332,55 +331,6 @@ func TestReconcileObject_DeletesOrphanedAWSClusterNetworkPolicy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, client.applyCalls, "Should not apply orphaned AWS object")
 	assert.Equal(t, 1, client.deleteCalls, "Should delete orphaned AWS runtime object")
-}
-
-func TestReconcileObject_AppliesAWSApplicationNetworkPolicyWhenDifferent(t *testing.T) {
-	configObj := &pb.ConfiguredKubernetesObjectData{
-		Id:        "anp-1",
-		Name:      "allow-egress",
-		Namespace: new("team-a"),
-		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{
-			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{PolicyTypes: []string{"Egress"}},
-		},
-	}
-	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:        "anp-1",
-		Name:      "allow-egress",
-		Namespace: new("team-a"),
-		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{
-			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{PolicyTypes: []string{"Ingress"}},
-		},
-	}
-
-	r, client := newTestReconciler(t,
-		map[string]*pb.ConfiguredKubernetesObjectData{"anp-1": configObj},
-		map[string]*pb.ConfiguredKubernetesObjectData{"anp-1": runtimeObj},
-	)
-
-	err := r.reconcileObject(context.Background(), "anp-1")
-	require.NoError(t, err)
-	assert.Equal(t, 1, client.applyCalls, "Should apply ANP when config and runtime differ")
-}
-
-func TestReconcileObject_DeletesOrphanedAWSApplicationNetworkPolicy(t *testing.T) {
-	runtimeObj := &pb.ConfiguredKubernetesObjectData{
-		Id:        "anp-1",
-		Name:      "orphaned",
-		Namespace: new("team-a"),
-		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{
-			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{PolicyTypes: []string{"Ingress"}},
-		},
-	}
-
-	r, client := newTestReconciler(t,
-		nil,
-		map[string]*pb.ConfiguredKubernetesObjectData{"anp-1": runtimeObj},
-	)
-
-	err := r.reconcileObject(context.Background(), "anp-1")
-	require.NoError(t, err)
-	assert.Equal(t, 0, client.applyCalls, "Should not apply orphaned ANP object")
-	assert.Equal(t, 1, client.deleteCalls, "Should delete orphaned ANP runtime object")
 }
 
 func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {

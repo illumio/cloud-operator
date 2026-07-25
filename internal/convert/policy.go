@@ -49,8 +49,6 @@ func ExtractResourceName(data *pb.ConfiguredKubernetesObjectData) (string, error
 		return "ciliumcidrgroups", nil
 	case *pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy:
 		return "clusternetworkpolicies", nil
-	case *pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy:
-		return "applicationnetworkpolicies", nil
 	default:
 		return "", fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
 	}
@@ -96,8 +94,6 @@ func setConfiguredKindSpecific(configured *pb.ConfiguredKubernetesObjectData, so
 		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{CiliumCidrGroup: ks.CiliumCidrGroup}
 	case *pb.KubernetesObjectData_AwsClusterNetworkPolicy:
 		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{AwsClusterNetworkPolicy: ks.AwsClusterNetworkPolicy}
-	case *pb.KubernetesObjectData_AwsApplicationNetworkPolicy:
-		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{AwsApplicationNetworkPolicy: ks.AwsApplicationNetworkPolicy}
 	case nil:
 		return nil
 	default:
@@ -211,16 +207,6 @@ func marshalConfiguredObjectSpecs(data *pb.ConfiguredKubernetesObjectData) (stri
 		var specMap map[string]any
 
 		specMap, err = protoToMap(ks.AwsClusterNetworkPolicy)
-		if err == nil {
-			specFields = map[string]any{"spec": specMap}
-		}
-
-	case *pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy:
-		kind = "ApplicationNetworkPolicy"
-
-		var specMap map[string]any
-
-		specMap, err = protoToMap(ks.AwsApplicationNetworkPolicy)
 		if err == nil {
 			specFields = map[string]any{"spec": specMap}
 		}
