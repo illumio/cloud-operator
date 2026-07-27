@@ -199,6 +199,9 @@
         "openshift": {
             "type": "object",
             "properties": {
+                "createAnyuidSccRoleBinding": {
+                    "type": "boolean"
+                },
                 "ovnkNamespace": {
                     "type": "string"
                 },

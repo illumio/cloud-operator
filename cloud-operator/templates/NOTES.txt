@@ -9,6 +9,8 @@ Copyright 2026 Illumio, Inc. All Rights Reserved.
 Release Name: {{ .Release.Name }}
 Namespace: {{ .Release.Namespace }}
 
+(On OpenShift, use `oc` in place of `kubectl` in the commands below.)
+
 ### Next Steps:
 
 - To view the application logs, run:

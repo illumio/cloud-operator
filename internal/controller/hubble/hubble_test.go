@@ -510,6 +510,19 @@ func (suite *HubbleSuite) TestConnectToHubbleRelay() {
 	}
 }
 
+// TestHubbleKeepaliveParamsRespectServerMinTime guards the constraint that our
+// client keepalive interval stays >= Hubble Relay's default server-side
+// enforcement MinTime (5m). A smaller Time would earn ping strikes and get the
+// connection closed with GOAWAY "too_many_pings" on an idle flow stream.
+func (suite *HubbleSuite) TestHubbleKeepaliveParamsRespectServerMinTime() {
+	const relayDefaultMinTime = 5 * time.Minute
+
+	suite.GreaterOrEqual(hubbleKeepaliveParams.Time, relayDefaultMinTime,
+		"keepalive Time must be >= Relay's default MinTime to avoid GOAWAY too_many_pings")
+	suite.Positive(hubbleKeepaliveParams.Timeout, "keepalive Timeout must be set so a dead connection is detected")
+	suite.True(hubbleKeepaliveParams.PermitWithoutStream, "keepalive should probe even without an active stream")
+}
+
 func (suite *HubbleSuite) TestGenerateTransportCredentials() {
 	tests := map[string]struct {
 		disableALPN   bool

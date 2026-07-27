@@ -510,8 +510,19 @@ func (m *mockObserverClient) GetNamespaces(_ context.Context, _ *observer.GetNam
 	return nil, nil //nolint:nilnil // stub method not used in tests
 }
 
-func (m *mockObserverClient) ServerStatus(_ context.Context, _ *observer.ServerStatusRequest, _ ...grpc.CallOption) (*observer.ServerStatusResponse, error) {
-	return nil, nil //nolint:nilnil // stub method not used in tests
+func (m *mockObserverClient) ServerStatus(ctx context.Context, in *observer.ServerStatusRequest, opts ...grpc.CallOption) (*observer.ServerStatusResponse, error) {
+	// Fall back to a nil stub when no expectation is registered so existing
+	// tests that never poll ServerStatus keep working unchanged.
+	if len(m.ExpectedCalls) == 0 {
+		return nil, nil //nolint:nilnil // stub method not used in these tests
+	}
+
+	args := m.Called(ctx, in, opts)
+	if resp, ok := args.Get(0).(*observer.ServerStatusResponse); ok {
+		return resp, args.Error(1)
+	}
+
+	return nil, args.Error(1)
 }
 
 // mockGetFlowsClient mocks the observer.Observer_GetFlowsClient stream.

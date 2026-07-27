@@ -76,6 +76,17 @@ openshift:
   # OpenShift with OVN-k, because port 4739 is not open in that case.
   workerNodeCidrs: []
 
+  # The cloud-operator container runs as a fixed non-root UID (65532), which is
+  # outside the UID range allowed by OpenShift's default "restricted" SCC, so
+  # the pod is rejected on OpenShift unless its service account is granted the
+  # "anyuid" SCC. When true (the default), the chart creates a RoleBinding to
+  # the "system:openshift:scc:anyuid" ClusterRole so this works automatically.
+  # The RoleBinding is only rendered when the SCC API is present (i.e. on
+  # OpenShift), so leaving this enabled is safe on non-OpenShift clusters.
+  # Set to false to manage the SCC assignment yourself (e.g. via
+  # `oc adm policy add-scc-to-user anyuid -z <sa> -n <namespace>`).
+  createAnyuidSccRoleBinding: true
+
 falco:
   enabled: false
   namespace: falco
