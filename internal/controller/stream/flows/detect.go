@@ -13,7 +13,6 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/awsvpccni"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cilium"
-	"github.com/illumio/cloud-operator/internal/controller/stream/flows/falco"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/ovnk"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
@@ -148,15 +147,12 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 		})
 	}
 
-	// Default to Falco
-	config.Logger.Info("Using Falco flow collector")
+	// No supported CNI detected. Flow collection is disabled: the operator does not
+	// fall back to any collector. A nil factory signals the caller not to register a
+	// flow-collector stream. The reported type is FLOW_COLLECTOR_DISABLED so the
+	// backend can surface the lack of flow visibility.
+	config.Logger.Warn("No supported CNI detected; network flow collection is disabled. " +
+		"Configure a supported CNI (Cilium+Hubble, OVN-Kubernetes, or AWS VPC CNI) to enable flow visibility.")
 
-	factory := &falco.Factory{
-		Logger:   config.Logger,
-		FlowSink: flowSink,
-	}
-
-	return pb.FlowCollector_FLOW_COLLECTOR_FALCO, "Falco", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
-		return factory.NewCollector(ctx)
-	})
+	return pb.FlowCollector_FLOW_COLLECTOR_DISABLED, "None", nil
 }
