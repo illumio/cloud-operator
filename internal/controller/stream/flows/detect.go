@@ -147,12 +147,12 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 		})
 	}
 
-	// No supported CNI detected. Flow collection is disabled: the operator does not
+	// No supported flow exporter detected. Flow collection is disabled: the operator does not
 	// fall back to any collector. A nil factory signals the caller not to register a
 	// flow-collector stream. The reported type is FLOW_COLLECTOR_DISABLED so the
 	// backend can surface the lack of flow visibility.
-	config.Logger.Warn("No supported CNI detected; network flow collection is disabled. " +
-		"Configure a supported CNI (Cilium+Hubble, OVN-Kubernetes, or AWS VPC CNI) to enable flow visibility.")
+	config.Logger.Warn("No supported flow exporter detected; network flow collection is disabled. " +
+		"Configure a supported CNI plugin (Cilium+Hubble, OVN-Kubernetes, or AWS VPC CNI) to enable flow visibility.")
 
 	return pb.FlowCollector_FLOW_COLLECTOR_DISABLED, "None", nil
 }
