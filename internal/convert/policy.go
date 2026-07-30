@@ -28,6 +28,9 @@ const (
 
 	// ManagedByValue is the value used for the managed-by label.
 	ManagedByValue = "illumio-cloud-operator"
+
+	// specField is the "spec" key used in Kubernetes object maps.
+	specField = "spec"
 )
 
 // protoJSONMarshaler is configured for Kubernetes Server-Side Apply:
@@ -194,7 +197,7 @@ func marshalConfiguredObjectSpecs(data *pb.ConfiguredKubernetesObjectData) (stri
 
 		specMap, err = protoToMap(spec)
 		if err == nil {
-			specFields = map[string]any{"spec": specMap}
+			specFields = map[string]any{specField: specMap}
 		}
 
 	default:
@@ -223,7 +226,7 @@ func marshalPolicySpecs(specs []*pb.CiliumPolicyRule) (map[string]any, error) {
 
 		normalizeProtojsonForCilium(specMap)
 
-		return map[string]any{"spec": specMap}, nil
+		return map[string]any{specField: specMap}, nil
 	}
 
 	specsList := make([]any, 0, len(specs))
