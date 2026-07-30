@@ -97,10 +97,6 @@ func setConfiguredKindSpecific(configured *pb.ConfiguredKubernetesObjectData, so
 		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{CiliumCidrGroup: ks.CiliumCidrGroup}
 	case *pb.KubernetesObjectData_AwsClusterNetworkPolicy:
 		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{AwsClusterNetworkPolicy: ks.AwsClusterNetworkPolicy}
-	case *pb.KubernetesObjectData_AwsApplicationNetworkPolicy:
-		// ApplicationNetworkPolicy is ingest-only: stream to CloudSecure but do not
-		// carry it into the configured/reconciled state.
-		configured.KindSpecific = nil
 	case nil:
 		return nil
 	default:

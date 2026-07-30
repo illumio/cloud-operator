@@ -310,33 +310,6 @@ func TestExtractResourceName_AWSClusterNetworkPolicy(t *testing.T) {
 	assert.Equal(t, "clusternetworkpolicies", name)
 }
 
-func TestExtractResourceName_AWSApplicationNetworkPolicy(t *testing.T) {
-	data := &pb.ConfiguredKubernetesObjectData{
-		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{
-			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{},
-		},
-	}
-
-	_, err := ExtractResourceName(data)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported")
-}
-
-func TestConvertToApplyObject_AWSApplicationNetworkPolicy(t *testing.T) {
-	data := &pb.ConfiguredKubernetesObjectData{
-		Id:        "anp-1",
-		Name:      "test-anp",
-		Namespace: new("team-a"),
-		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{
-			AwsApplicationNetworkPolicy: &pb.KubernetesAWSApplicationNetworkPolicyData{},
-		},
-	}
-
-	_, _, err := ConvertToApplyObject(data, "networking.k8s.aws", "v1alpha1")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported")
-}
-
 func TestConvertToApplyObject_NilData(t *testing.T) {
 	_, _, err := ConvertToApplyObject(nil, "cilium.io", "v2")
 	require.Error(t, err)

@@ -6085,7 +6085,6 @@ type ConfiguredKubernetesObjectData struct {
 	//	*ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy
 	//	*ConfiguredKubernetesObjectData_CiliumCidrGroup
 	//	*ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy
-	//	*ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy
 	KindSpecific  isConfiguredKubernetesObjectData_KindSpecific `protobuf_oneof:"kind_specific"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -6199,15 +6198,6 @@ func (x *ConfiguredKubernetesObjectData) GetAwsClusterNetworkPolicy() *Kubernete
 	return nil
 }
 
-func (x *ConfiguredKubernetesObjectData) GetAwsApplicationNetworkPolicy() *KubernetesAWSApplicationNetworkPolicyData {
-	if x != nil {
-		if x, ok := x.KindSpecific.(*ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy); ok {
-			return x.AwsApplicationNetworkPolicy
-		}
-	}
-	return nil
-}
-
 type isConfiguredKubernetesObjectData_KindSpecific interface {
 	isConfiguredKubernetesObjectData_KindSpecific()
 }
@@ -6228,10 +6218,6 @@ type ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy struct {
 	AwsClusterNetworkPolicy *KubernetesAWSClusterNetworkPolicyData `protobuf:"bytes,103,opt,name=aws_cluster_network_policy,json=awsClusterNetworkPolicy,proto3,oneof"`
 }
 
-type ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy struct {
-	AwsApplicationNetworkPolicy *KubernetesAWSApplicationNetworkPolicyData `protobuf:"bytes,104,opt,name=aws_application_network_policy,json=awsApplicationNetworkPolicy,proto3,oneof"`
-}
-
 func (*ConfiguredKubernetesObjectData_CiliumNetworkPolicy) isConfiguredKubernetesObjectData_KindSpecific() {
 }
 
@@ -6242,9 +6228,6 @@ func (*ConfiguredKubernetesObjectData_CiliumCidrGroup) isConfiguredKubernetesObj
 }
 
 func (*ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy) isConfiguredKubernetesObjectData_KindSpecific() {
-}
-
-func (*ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy) isConfiguredKubernetesObjectData_KindSpecific() {
 }
 
 // Configured Kubernetes object reference for delete operations.
@@ -6996,7 +6979,7 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\rConfiguration\x12F\n" +
 	"\tlog_level\x18\x01 \x01(\x0e2).illumio.cloud.k8sclustersync.v1.LogLevelR\blogLevelB\n" +
 	"\n" +
-	"\bresponse\"\xfb\b\n" +
+	"\bresponse\"\x8d\b\n" +
 	"\x1eConfiguredKubernetesObjectData\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12r\n" +
 	"\vannotations\x18\x02 \x03(\v2P.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.AnnotationsEntryR\vannotations\x12c\n" +
@@ -7006,8 +6989,7 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x15cilium_network_policy\x18d \x01(\v2B.illumio.cloud.k8sclustersync.v1.KubernetesCiliumNetworkPolicyDataH\x00R\x13ciliumNetworkPolicy\x12\x9a\x01\n" +
 	"!cilium_clusterwide_network_policy\x18e \x01(\v2M.illumio.cloud.k8sclustersync.v1.KubernetesCiliumClusterwideNetworkPolicyDataH\x00R\x1eciliumClusterwideNetworkPolicy\x12l\n" +
 	"\x11cilium_cidr_group\x18f \x01(\v2>.illumio.cloud.k8sclustersync.v1.KubernetesCiliumCIDRGroupDataH\x00R\x0fciliumCidrGroup\x12\x85\x01\n" +
-	"\x1aaws_cluster_network_policy\x18g \x01(\v2F.illumio.cloud.k8sclustersync.v1.KubernetesAWSClusterNetworkPolicyDataH\x00R\x17awsClusterNetworkPolicy\x12\x91\x01\n" +
-	"\x1eaws_application_network_policy\x18h \x01(\v2J.illumio.cloud.k8sclustersync.v1.KubernetesAWSApplicationNetworkPolicyDataH\x00R\x1bawsApplicationNetworkPolicy\x1a>\n" +
+	"\x1aaws_cluster_network_policy\x18g \x01(\v2F.illumio.cloud.k8sclustersync.v1.KubernetesAWSClusterNetworkPolicyDataH\x00R\x17awsClusterNetworkPolicy\x1a>\n" +
 	"\x10AnnotationsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a9\n" +
@@ -7016,7 +6998,7 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0f\n" +
 	"\rkind_specificB\f\n" +
 	"\n" +
-	"_namespace\"2\n" +
+	"_namespaceJ\x04\bh\x10iR\x1eaws_application_network_policy\"2\n" +
 	" DeleteConfiguredKubernetesObject\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\",\n" +
 	"*ConfiguredKubernetesObjectSnapshotComplete\"\x9a\x02\n" +
@@ -7326,23 +7308,22 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	14,  // 142: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.cilium_clusterwide_network_policy:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesCiliumClusterwideNetworkPolicyData
 	15,  // 143: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.cilium_cidr_group:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesCiliumCIDRGroupData
 	33,  // 144: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.aws_cluster_network_policy:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesAWSClusterNetworkPolicyData
-	43,  // 145: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.aws_application_network_policy:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesAWSApplicationNetworkPolicyData
-	84,  // 146: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation.create_or_update_object:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData
-	85,  // 147: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation.delete_object:type_name -> illumio.cloud.k8sclustersync.v1.DeleteConfiguredKubernetesObject
-	4,   // 148: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration.log_level:type_name -> illumio.cloud.k8sclustersync.v1.LogLevel
-	59,  // 149: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest
-	77,  // 150: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest
-	80,  // 151: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:input_type -> illumio.cloud.k8sclustersync.v1.SendLogsRequest
-	82,  // 152: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.GetConfigurationUpdates:input_type -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesRequest
-	61,  // 153: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesResponse
-	78,  // 154: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsResponse
-	81,  // 155: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:output_type -> illumio.cloud.k8sclustersync.v1.SendLogsResponse
-	83,  // 156: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.GetConfigurationUpdates:output_type -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse
-	153, // [153:157] is the sub-list for method output_type
-	149, // [149:153] is the sub-list for method input_type
-	149, // [149:149] is the sub-list for extension type_name
-	149, // [149:149] is the sub-list for extension extendee
-	0,   // [0:149] is the sub-list for field type_name
+	84,  // 145: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation.create_or_update_object:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData
+	85,  // 146: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation.delete_object:type_name -> illumio.cloud.k8sclustersync.v1.DeleteConfiguredKubernetesObject
+	4,   // 147: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration.log_level:type_name -> illumio.cloud.k8sclustersync.v1.LogLevel
+	59,  // 148: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest
+	77,  // 149: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest
+	80,  // 150: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:input_type -> illumio.cloud.k8sclustersync.v1.SendLogsRequest
+	82,  // 151: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.GetConfigurationUpdates:input_type -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesRequest
+	61,  // 152: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesResponse
+	78,  // 153: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsResponse
+	81,  // 154: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:output_type -> illumio.cloud.k8sclustersync.v1.SendLogsResponse
+	83,  // 155: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.GetConfigurationUpdates:output_type -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse
+	152, // [152:156] is the sub-list for method output_type
+	148, // [148:152] is the sub-list for method input_type
+	148, // [148:148] is the sub-list for extension type_name
+	148, // [148:148] is the sub-list for extension extendee
+	0,   // [0:148] is the sub-list for field type_name
 }
 
 func init() { file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() }
@@ -7440,7 +7421,6 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() {
 		(*ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy)(nil),
 		(*ConfiguredKubernetesObjectData_CiliumCidrGroup)(nil),
 		(*ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy)(nil),
-		(*ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy)(nil),
 	}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[81].OneofWrappers = []any{
 		(*ConfiguredKubernetesObjectMutation_CreateOrUpdateObject)(nil),

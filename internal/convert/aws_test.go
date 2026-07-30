@@ -12,8 +12,6 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-
-	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 func TestIsAWSResource(t *testing.T) {
@@ -481,62 +479,6 @@ func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_EgressDomainN
 
 	assert.Equal(t, []string{"*.s3.us-east-1.amazonaws.com", "api.example.com"}, peers[0].GetDomainNames())
 	assert.Equal(t, "prod", peers[1].GetNamespaceSelector().GetMatchLabels()["env"])
-}
-
-func TestConvertUnstructuredToAWSResource_ApplicationNetworkPolicy_RoundTrip(t *testing.T) {
-	// ApplicationNetworkPolicy is ingest-only: it converts to proto and streams
-	// to CloudSecure, but it is not routed through the enforce path.
-	inputSpec := map[string]any{
-		"podSelector": map[string]any{}, // empty {} = all pods in namespace
-		"policyTypes": []any{"Ingress", "Egress"},
-		"ingress": []any{
-			map[string]any{
-				"ports": []any{
-					map[string]any{"port": int64(5432), "protocol": "TCP"}, // numeric port
-					map[string]any{"port": "https"},                        // named port
-				},
-				"from": []any{
-					map[string]any{"podSelector": map[string]any{}}, // empty {} = all pods
-					map[string]any{"namespaceSelector": map[string]any{"matchLabels": map[string]any{"env": "prod"}}},
-					map[string]any{"ipBlock": map[string]any{"cidr": "10.0.0.0/8", "except": []any{"10.1.0.0/16"}}},
-				},
-			},
-		},
-		"egress": []any{
-			map[string]any{
-				"to": []any{
-					map[string]any{"domainNames": []any{"*.amazonaws.com"}},
-				},
-			},
-		},
-	}
-
-	obj := newANP("rt-anp", "team-a", inputSpec)
-
-	// CRD → proto.
-	meta, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
-	require.NoError(t, err)
-
-	anp := meta.GetAwsApplicationNetworkPolicy()
-	require.NotNil(t, anp)
-	assert.ElementsMatch(t, []string{"Ingress", "Egress"}, anp.GetPolicyTypes())
-	assert.Equal(t, "rt-anp", meta.GetName())
-
-	// proto (metadata) → proto (configured) should leave ANP out of the
-	// configured object; it is not reconciled.
-	configured, err := BuildConfiguredFromMetadata("rt-id", meta)
-	require.NoError(t, err)
-	assert.Nil(t, configured.GetAwsApplicationNetworkPolicy())
-	assert.Nil(t, configured.GetKindSpecific())
-
-	// ConvertToApplyObject should reject ANP because it is no longer in the
-	// enforce path.
-	configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_AwsApplicationNetworkPolicy{
-		AwsApplicationNetworkPolicy: anp,
-	}
-	_, _, err = ConvertToApplyObject(configured, "networking.k8s.aws", "v1alpha1")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported")
 }
 
 func TestConvertUnstructuredToAWSResource_ClusterNetworkPolicy_RoundTrip(t *testing.T) {

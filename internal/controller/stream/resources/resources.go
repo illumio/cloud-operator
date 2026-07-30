@@ -18,6 +18,7 @@ var ManagedResourceNames = []string{
 	"clusternetworkpolicies",
 }
 
+// ApplicationNetworkPolicy is intentionally excluded: it is ingest-only.
 var resourceList = slices.Concat(ManagedResourceNames, []string{
 	"applicationnetworkpolicies",
 	"cronjobs",

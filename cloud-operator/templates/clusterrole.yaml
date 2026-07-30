@@ -28,7 +28,8 @@ rules:
 - apiGroups: ["networking.k8s.aws"]
   resources: ["clusternetworkpolicies"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-# ApplicationNetworkPolicy is ingested (watched/streamed) but not reconciled.
+# ApplicationNetworkPolicy is ingest-only (streamed to CloudSecure for visibility);
+# it is never enforced/reconciled, so read-only verbs suffice.
 - apiGroups: ["networking.k8s.aws"]
   resources: ["applicationnetworkpolicies"]
   verbs: ["get", "list", "watch"]
