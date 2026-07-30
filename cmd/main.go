@@ -264,52 +264,60 @@ func main() {
 	})
 
 	// Create factory config with all stream factories
-	factoryConfig := stream.FactoryConfig{
-		Factories: []stream.ManagedFactory{
-			{
-				Factory: &config.Factory{
-					Logger:             logger,
-					VerboseDebugging:   viper.GetBool("verbose_debugging"),
-					BufferedGrpcSyncer: bufferedGrpcSyncer,
-					Stats:              stats,
-					Cache:              configuredObjectCache,
-				},
-				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_configuration"),
+	factories := []stream.ManagedFactory{
+		{
+			Factory: &config.Factory{
+				Logger:             logger,
+				VerboseDebugging:   viper.GetBool("verbose_debugging"),
+				BufferedGrpcSyncer: bufferedGrpcSyncer,
+				Stats:              stats,
+				Cache:              configuredObjectCache,
 			},
-			{
-				Factory: &logs.Factory{
-					Logger:             logger,
-					BufferedGrpcSyncer: bufferedGrpcSyncer,
-				},
-				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_logs"),
-			},
-			{
-				Factory: &resources.Factory{
-					Logger:            logger,
-					Stats:             stats,
-					K8sClient:         k8sClient,
-					FlowCollectorType: flowCollectorType,
-					ClusterName:       envConfig.ClusterName,
-					Cache:             runtimeCache,
-				},
-				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
-			},
-			{
-				Factory: &flows.NetworkFlowsFactory{
-					Logger:    logger,
-					FlowCache: flowCache,
-					Stats:     stats,
-				},
-				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_network_flows"),
-			},
-			{
-				Factory: &flows.FlowCollectorStreamFactory{
-					Factory:       flowCollectorFactory,
-					CollectorName: flowCollectorName,
-				},
-				KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_network_flows"),
-			},
+			KeepalivePeriod: viper.GetDuration("stream_keepalive_period_configuration"),
 		},
+		{
+			Factory: &logs.Factory{
+				Logger:             logger,
+				BufferedGrpcSyncer: bufferedGrpcSyncer,
+			},
+			KeepalivePeriod: viper.GetDuration("stream_keepalive_period_logs"),
+		},
+		{
+			Factory: &resources.Factory{
+				Logger:            logger,
+				Stats:             stats,
+				K8sClient:         k8sClient,
+				FlowCollectorType: flowCollectorType,
+				ClusterName:       envConfig.ClusterName,
+				Cache:             runtimeCache,
+			},
+			KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_resources"),
+		},
+		{
+			Factory: &flows.NetworkFlowsFactory{
+				Logger:    logger,
+				FlowCache: flowCache,
+				Stats:     stats,
+			},
+			KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_network_flows"),
+		},
+	}
+
+	// Only register a flow-collector stream when a supported CNI was detected.
+	// A nil factory means no collector is available (flow collection disabled);
+	// in that case we skip the stream entirely rather than falling back.
+	if flowCollectorFactory != nil {
+		factories = append(factories, stream.ManagedFactory{
+			Factory: &flows.FlowCollectorStreamFactory{
+				Factory:       flowCollectorFactory,
+				CollectorName: flowCollectorName,
+			},
+			KeepalivePeriod: viper.GetDuration("stream_keepalive_period_kubernetes_network_flows"),
+		})
+	}
+
+	factoryConfig := stream.FactoryConfig{
+		Factories:      factories,
 		Stats:          stats,
 		SuccessPeriods: envConfig.SuccessPeriods,
 		StatsLogPeriod: envConfig.StatsLogPeriod,
