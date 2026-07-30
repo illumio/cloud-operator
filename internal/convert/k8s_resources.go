@@ -33,8 +33,69 @@ func NewCoreResourceConverter(clientset kubernetes.Interface, logger *zap.Logger
 
 		gvk := obj.GroupVersionKind()
 
-		return ConvertMetaObjectToMetadata(ctx, *objMeta, clientset, gvk.Kind, gvk.Group, gvk.Version), nil
+		metadata := ConvertMetaObjectToMetadata(ctx, *objMeta, clientset, gvk.Kind, gvk.Group, gvk.Version)
+
+		// Enrich workload controllers with the labels applied to the pods they create.
+		// These kinds have no case in ConvertMetaObjectToMetadata, so KindSpecific is
+		// still nil here and safe to set.
+		if workload := extractWorkloadData(obj, gvk.Kind, logger); workload != nil {
+			metadata.KindSpecific = &pb.KubernetesObjectData_Workload{Workload: workload}
+		}
+
+		return metadata, nil
 	}
+}
+
+// workloadKinds is the set of controller kinds whose pod-template labels we send.
+var workloadKinds = map[string]struct{}{
+	"Deployment":  {},
+	"ReplicaSet":  {},
+	"StatefulSet": {},
+	"DaemonSet":   {},
+	"Job":         {},
+	"CronJob":     {},
+}
+
+// extractWorkloadData reads the pod-template labels and pod selector matchLabels
+// directly from the unstructured spec. It returns nil for non-workload kinds or
+// when neither is present. CronJob nests the pod template one level deeper under
+// spec.jobTemplate; Job and CronJob have no user-facing selector.
+func extractWorkloadData(obj *unstructured.Unstructured, kind string, logger *zap.Logger) *pb.KubernetesWorkloadData {
+	if _, ok := workloadKinds[kind]; !ok {
+		return nil
+	}
+
+	specPath := []string{"spec"}
+	if kind == "CronJob" {
+		specPath = []string{"spec", "jobTemplate", "spec"}
+	}
+
+	templateLabels, foundTemplate, err := unstructured.NestedStringMap(
+		obj.Object, append(append([]string{}, specPath...), "template", "metadata", "labels")...)
+	if err != nil {
+		logger.Debug("Failed to read template labels", zap.String("kind", kind), zap.Error(err))
+	}
+
+	selectorLabels, foundSelector, err := unstructured.NestedStringMap(
+		obj.Object, append(append([]string{}, specPath...), "selector", "matchLabels")...)
+	if err != nil {
+		logger.Debug("Failed to read selector matchLabels", zap.String("kind", kind), zap.Error(err))
+	}
+
+	if !foundTemplate && !foundSelector {
+		return nil
+	}
+
+	data := &pb.KubernetesWorkloadData{}
+	if foundTemplate {
+		data.TemplateLabels = templateLabels
+	}
+
+	if foundSelector {
+		data.SelectorMatchLabels = selectorLabels
+	}
+
+	return data
 }
 
 // convertObjectToMetadata extracts the ObjectMeta from a metav1.Object interface.
