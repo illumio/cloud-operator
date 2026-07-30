@@ -19,6 +19,9 @@ const (
 	// FieldManager identifies cloud-operator as the owner of fields in Server-Side Apply.
 	// It is also used by the watcher to check managedFields ownership on K8s objects.
 	FieldManager = "illumio-cloud-operator"
+
+	// specField is the "spec" key used in Kubernetes object maps.
+	specField = "spec"
 )
 
 // protoJSONMarshaler is configured for Kubernetes Server-Side Apply:
