@@ -51,6 +51,7 @@ message KubernetesObjectData {
     KubernetesCiliumNetworkPolicyData cilium_network_policy = 104;
     KubernetesCiliumClusterwideNetworkPolicyData cilium_clusterwide_network_policy = 105;
     KubernetesCiliumCIDRGroupData cilium_cidr_group = 106;
+    KubernetesWorkloadData workload = 107;
   }
 }
 
@@ -92,6 +93,19 @@ message KubernetesNodeData {
 // A Pod may be allocated at most 1 value for each of IPv4 and IPv6. This list is empty if no IPs have been allocated yet.
 message KubernetesPodData {
   repeated string ip_addresses = 1;
+}
+
+// KubernetesWorkloadData contains labels common to workload controller objects
+// (Deployment, ReplicaSet, StatefulSet, DaemonSet, Job, CronJob): the labels
+// given to the pods they create, so the backend can correlate pods to their
+// owning workload by labels.
+message KubernetesWorkloadData {
+  // Pod-template labels (spec.template.metadata.labels; for CronJob,
+  // spec.jobTemplate.spec.template.metadata.labels).
+  map<string, string> template_labels = 1;
+  // Controller pod selector labels (spec.selector.matchLabels).
+  // Absent for Job and CronJob, which have no user-facing selector.
+  map<string, string> selector_match_labels = 2;
 }
 
 // KubernetesNetworkPolicyData contains information specific to a NetworkPolicy object.

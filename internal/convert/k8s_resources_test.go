@@ -110,6 +110,205 @@ func TestNewCoreResourceConverter_MissingMetadata(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot get metadata from resource")
 }
 
+func TestNewCoreResourceConverter_WorkloadLabels(t *testing.T) {
+	// podTemplate builds a spec.template with the given pod labels.
+	podTemplate := func(labels map[string]any) map[string]any {
+		return map[string]any{
+			"template": map[string]any{
+				"metadata": map[string]any{
+					"labels": labels,
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name            string
+		apiVersion      string
+		kind            string
+		spec            map[string]any
+		wantTemplate    map[string]string
+		wantSelector    map[string]string
+		wantWorkloadNil bool
+	}{
+		{
+			name:       "Deployment sends template and selector labels",
+			apiVersion: "apps/v1",
+			kind:       "Deployment",
+			spec: map[string]any{
+				"selector": map[string]any{
+					"matchLabels": map[string]any{"app": "web"},
+				},
+				"template": map[string]any{
+					"metadata": map[string]any{
+						"labels": map[string]any{"app": "web", "tier": "frontend"},
+					},
+				},
+			},
+			wantTemplate: map[string]string{"app": "web", "tier": "frontend"},
+			wantSelector: map[string]string{"app": "web"},
+		},
+		{
+			name:       "StatefulSet sends template and selector labels",
+			apiVersion: "apps/v1",
+			kind:       "StatefulSet",
+			spec: map[string]any{
+				"selector": map[string]any{
+					"matchLabels": map[string]any{"app": "db"},
+				},
+				"template": map[string]any{
+					"metadata": map[string]any{
+						"labels": map[string]any{"app": "db"},
+					},
+				},
+			},
+			wantTemplate: map[string]string{"app": "db"},
+			wantSelector: map[string]string{"app": "db"},
+		},
+		{
+			name:       "DaemonSet sends template and selector labels",
+			apiVersion: "apps/v1",
+			kind:       "DaemonSet",
+			spec: map[string]any{
+				"selector": map[string]any{
+					"matchLabels": map[string]any{"app": "agent"},
+				},
+				"template": map[string]any{
+					"metadata": map[string]any{
+						"labels": map[string]any{"app": "agent"},
+					},
+				},
+			},
+			wantTemplate: map[string]string{"app": "agent"},
+			wantSelector: map[string]string{"app": "agent"},
+		},
+		{
+			name:       "ReplicaSet sends template and selector labels",
+			apiVersion: "apps/v1",
+			kind:       "ReplicaSet",
+			spec: map[string]any{
+				"selector": map[string]any{
+					"matchLabels": map[string]any{"app": "web"},
+				},
+				"template": map[string]any{
+					"metadata": map[string]any{
+						"labels": map[string]any{"app": "web"},
+					},
+				},
+			},
+			wantTemplate: map[string]string{"app": "web"},
+			wantSelector: map[string]string{"app": "web"},
+		},
+		{
+			name:         "Job sends template labels only",
+			apiVersion:   "batch/v1",
+			kind:         "Job",
+			spec:         podTemplate(map[string]any{"job-name": "backup"}),
+			wantTemplate: map[string]string{"job-name": "backup"},
+			wantSelector: nil,
+		},
+		{
+			name:       "CronJob reads template from nested jobTemplate",
+			apiVersion: "batch/v1",
+			kind:       "CronJob",
+			spec: map[string]any{
+				"jobTemplate": map[string]any{
+					"spec": podTemplate(map[string]any{"app": "cron"}),
+				},
+			},
+			wantTemplate: map[string]string{"app": "cron"},
+			wantSelector: nil,
+		},
+		{
+			name:            "Workload without template yields nil workload",
+			apiVersion:      "apps/v1",
+			kind:            "Deployment",
+			spec:            map[string]any{},
+			wantWorkloadNil: true,
+		},
+		{
+			// Non-string label values make NestedStringMap return an error, which is
+			// logged and skipped (found=false), leaving that map empty.
+			name:       "Malformed label values are skipped, not fatal",
+			apiVersion: "apps/v1",
+			kind:       "Deployment",
+			spec: map[string]any{
+				"selector": map[string]any{
+					"matchLabels": map[string]any{"app": int64(5)},
+				},
+				"template": map[string]any{
+					"metadata": map[string]any{
+						"labels": map[string]any{"app": int64(7)},
+					},
+				},
+			},
+			wantWorkloadNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clientset := k8sfake.NewSimpleClientset()
+			converter := NewCoreResourceConverter(clientset, zap.NewNop())
+
+			obj := &unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": tt.apiVersion,
+					"kind":       tt.kind,
+					"metadata": map[string]any{
+						"name":      "my-workload",
+						"namespace": "prod",
+						"labels":    map[string]any{"top-level": "yes"},
+					},
+					"spec": tt.spec,
+				},
+			}
+
+			result, err := converter(context.Background(), obj)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+
+			// Top-level labels must always survive.
+			assert.Equal(t, "yes", result.GetLabels()["top-level"])
+
+			if tt.wantWorkloadNil {
+				assert.Nil(t, result.GetWorkload())
+
+				return
+			}
+
+			workload := result.GetWorkload()
+			require.NotNil(t, workload)
+			assert.Equal(t, tt.wantTemplate, workload.GetTemplateLabels())
+			assert.Equal(t, tt.wantSelector, workload.GetSelectorMatchLabels())
+		})
+	}
+}
+
+func TestNewCoreResourceConverter_NonWorkloadHasNilWorkload(t *testing.T) {
+	clientset := k8sfake.NewSimpleClientset()
+	converter := NewCoreResourceConverter(clientset, zap.NewNop())
+
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata": map[string]any{
+				"name":      "cfg",
+				"namespace": "prod",
+				"labels":    map[string]any{"app": "web"},
+			},
+		},
+	}
+
+	result, err := converter(context.Background(), obj)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assert.Nil(t, result.GetWorkload())
+	assert.Equal(t, "web", result.GetLabels()["app"])
+}
+
 func TestGetObjectMetadataFromRuntimeObject(t *testing.T) {
 	// A successful case with a valid Kubernetes object.
 	pod := &v1.Pod{
