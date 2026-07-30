@@ -876,8 +876,8 @@ func (x *KubernetesPodData) GetIpAddresses() []string {
 
 // KubernetesWorkloadData contains labels common to workload controller objects
 // (Deployment, ReplicaSet, StatefulSet, DaemonSet, Job, CronJob): the labels
-// stamped onto the pods they create, so the backend can correlate pods to their
-// owning workload by label.
+// given to the pods they create, so the backend can correlate pods to their
+// owning workload by labels.
 type KubernetesWorkloadData struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Pod-template labels (spec.template.metadata.labels; for CronJob,

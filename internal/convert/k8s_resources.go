@@ -48,12 +48,12 @@ func NewCoreResourceConverter(clientset kubernetes.Interface, logger *zap.Logger
 
 // workloadKinds is the set of controller kinds whose pod-template labels we send.
 var workloadKinds = map[string]struct{}{
+	"CronJob":     {},
+	"DaemonSet":   {},
 	"Deployment":  {},
+	"Job":         {},
 	"ReplicaSet":  {},
 	"StatefulSet": {},
-	"DaemonSet":   {},
-	"Job":         {},
-	"CronJob":     {},
 }
 
 // extractWorkloadData reads the pod-template labels and pod selector matchLabels
