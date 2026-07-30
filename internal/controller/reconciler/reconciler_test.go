@@ -615,6 +615,7 @@ func TestReplaceAllDoesNotDeadlockWhenReconcilerStarved(t *testing.T) {
 	runReturned := make(chan struct{})
 	go func() {
 		defer close(runReturned)
+
 		r.Run(ctx)
 	}()
 
@@ -677,6 +678,7 @@ func TestReplaceAllDoesNotDeadlockWhenConfigCacheStarved(t *testing.T) {
 	runReturned := make(chan struct{})
 	go func() {
 		defer close(runReturned)
+
 		r.Run(ctx)
 	}()
 

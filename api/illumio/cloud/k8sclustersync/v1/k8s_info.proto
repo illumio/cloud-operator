@@ -780,6 +780,8 @@ message GetConfigurationUpdatesResponse {
 
 // Configured object data for snapshot or create/update operations.
 message ConfiguredKubernetesObjectData {
+  reserved 1;
+  reserved "id";
   // Kubernetes annotations to apply to this object.
   map<string, string> annotations = 2;
   // Kubernetes labels to apply to this object.
@@ -799,9 +801,11 @@ message ConfiguredKubernetesObjectData {
 // Configured Kubernetes object reference for delete operations.
 // The kind, namespace, and name uniquely identify the object to delete from the cluster.
 message DeleteConfiguredKubernetesObject {
-  string kind = 1;
-  optional string namespace = 2;
-  string name = 3;
+  reserved 1;
+  reserved "id";
+  string kind = 2;
+  optional string namespace = 3;
+  string name = 4;
 }
 
 // Empty on purpose since this type is just expected when configured object snapshot is done.

@@ -73,15 +73,20 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "failed to start envtest: %v\n", err)
 		os.Exit(1)
 	}
-	defer testEnv.Stop() //nolint:errcheck
 
 	testClient, err = k8sclient.NewClientFromConfig(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create k8s client: %v\n", err)
+		_ = testEnv.Stop()
 		os.Exit(1)
 	}
 
-	m.Run()
+	// Capture the test result before stopping the env: os.Exit skips deferred
+	// calls, so Stop() must run explicitly, and the code must propagate so a
+	// failing suite doesn't exit 0.
+	code := m.Run()
+	_ = testEnv.Stop()
+	os.Exit(code)
 }
 
 func testdataDir() string {

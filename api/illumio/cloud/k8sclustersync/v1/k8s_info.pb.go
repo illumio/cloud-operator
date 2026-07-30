@@ -5054,9 +5054,9 @@ func (*ConfiguredKubernetesObjectData_CiliumCidrGroup) isConfiguredKubernetesObj
 // The kind, namespace, and name uniquely identify the object to delete from the cluster.
 type DeleteConfiguredKubernetesObject struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
-	Namespace     *string                `protobuf:"bytes,2,opt,name=namespace,proto3,oneof" json:"namespace,omitempty"`
-	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	Namespace     *string                `protobuf:"bytes,3,opt,name=namespace,proto3,oneof" json:"namespace,omitempty"`
+	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5721,7 +5721,7 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\rConfiguration\x12F\n" +
 	"\tlog_level\x18\x01 \x01(\x0e2).illumio.cloud.k8sclustersync.v1.LogLevelR\blogLevelB\n" +
 	"\n" +
-	"\bresponse\"\xcf\x06\n" +
+	"\bresponse\"\xd9\x06\n" +
 	"\x1eConfiguredKubernetesObjectData\x12r\n" +
 	"\vannotations\x18\x02 \x03(\v2P.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.AnnotationsEntryR\vannotations\x12c\n" +
 	"\x06labels\x18\x03 \x03(\v2K.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.LabelsEntryR\x06labels\x12\x12\n" +
@@ -5738,13 +5738,13 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0f\n" +
 	"\rkind_specificB\f\n" +
 	"\n" +
-	"_namespace\"{\n" +
+	"_namespaceJ\x04\b\x01\x10\x02R\x02id\"\x85\x01\n" +
 	" DeleteConfiguredKubernetesObject\x12\x12\n" +
-	"\x04kind\x18\x01 \x01(\tR\x04kind\x12!\n" +
-	"\tnamespace\x18\x02 \x01(\tH\x00R\tnamespace\x88\x01\x01\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04nameB\f\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12!\n" +
+	"\tnamespace\x18\x03 \x01(\tH\x00R\tnamespace\x88\x01\x01\x12\x12\n" +
+	"\x04name\x18\x04 \x01(\tR\x04nameB\f\n" +
 	"\n" +
-	"_namespace\",\n" +
+	"_namespaceJ\x04\b\x01\x10\x02R\x02id\",\n" +
 	"*ConfiguredKubernetesObjectSnapshotComplete\"\x9a\x02\n" +
 	"\"ConfiguredKubernetesObjectMutation\x12x\n" +
 	"\x17create_or_update_object\x18\x01 \x01(\v2?.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectDataH\x00R\x14createOrUpdateObject\x12h\n" +

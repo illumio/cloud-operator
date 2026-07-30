@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
-	"google.golang.org/protobuf/proto"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
@@ -306,7 +305,7 @@ func TestReplaceAllDoesNotBlockWithoutConsumer(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	snapshot := map[string]*pb.ConfiguredKubernetesObjectData{
-		"CiliumNetworkPolicy/default/policy-1": {Name: "policy-1", Namespace: proto.String("default")},
+		"CiliumNetworkPolicy/default/policy-1": {Name: "policy-1", Namespace: new("default")},
 	}
 
 	// Call ReplaceAll several times with nothing draining ResourceChanged.
@@ -359,13 +358,13 @@ func TestReplaceAllSupersedesQueuedPerIDSignal(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	// Queue a per-ID notification with nothing draining.
-	require.NoError(t, cache.Insert(ctx, "CiliumNetworkPolicy/default/policy-1", &pb.ConfiguredKubernetesObjectData{Name: "policy-1", Namespace: proto.String("default")}))
+	require.NoError(t, cache.Insert(ctx, "CiliumNetworkPolicy/default/policy-1", &pb.ConfiguredKubernetesObjectData{Name: "policy-1", Namespace: new("default")}))
 
 	// ReplaceAll must not block and must leave SnapshotReplaced queued.
 	done := make(chan error, 1)
 	go func() {
 		done <- cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-			"CiliumNetworkPolicy/default/policy-2": {Name: "policy-2", Namespace: proto.String("default")},
+			"CiliumNetworkPolicy/default/policy-2": {Name: "policy-2", Namespace: new("default")},
 		})
 	}()
 
@@ -393,7 +392,7 @@ func TestReplaceAllCancelledContext(t *testing.T) {
 	cache := NewConfiguredObjectCache()
 
 	err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
-		"CiliumNetworkPolicy/default/policy-1": {Name: "policy-1", Namespace: proto.String("default")},
+		"CiliumNetworkPolicy/default/policy-1": {Name: "policy-1", Namespace: new("default")},
 	})
 	assert.ErrorIs(t, err, context.Canceled)
 }
@@ -1003,4 +1002,3 @@ func TestReplaceAll_ReconnectResnapshotAfterDrain(t *testing.T) {
 		t.Fatal("reconnect SnapshotReplaced notification was lost")
 	}
 }
-
