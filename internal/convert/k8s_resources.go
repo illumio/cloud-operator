@@ -65,9 +65,9 @@ func extractWorkloadData(obj *unstructured.Unstructured, kind string, logger *za
 		return nil
 	}
 
-	specPath := []string{"spec"}
+	specPath := []string{specField}
 	if kind == "CronJob" {
-		specPath = []string{"spec", "jobTemplate", "spec"}
+		specPath = []string{specField, "jobTemplate", specField}
 	}
 
 	templateLabels, foundTemplate, err := unstructured.NestedStringMap(
