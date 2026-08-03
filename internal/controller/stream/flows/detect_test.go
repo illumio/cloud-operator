@@ -9,9 +9,30 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	runtimescheme "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
+	"k8s.io/client-go/kubernetes"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
+
+// fakeK8sClientGetter implements collector.K8sClientGetter for testing detection.
+type fakeK8sClientGetter struct {
+	clientset kubernetes.Interface
+	dynamic   dynamic.Interface
+	discovery discovery.DiscoveryInterface
+}
+
+func (f *fakeK8sClientGetter) GetClientset() kubernetes.Interface  { return f.clientset }
+func (f *fakeK8sClientGetter) GetDynamicClient() dynamic.Interface { return f.dynamic }
+func (f *fakeK8sClientGetter) GetDiscoveryClient() discovery.DiscoveryInterface {
+	return f.discovery
+}
 
 // mockCollector implements Collector for testing.
 type mockCollector struct {
@@ -148,10 +169,32 @@ func TestCollectorFactoryFunc(t *testing.T) {
 	})
 }
 
-// Note: DetectFlowCollector tests are more complex as they require:
-// - Fake K8s clientset with specific namespaces/resources
-// - Mocking IsCiliumAvailable (requires Hubble relay connection)
-// - Mocking IsOVNKDeployed (simpler, just checks namespace)
-// Full detection logic tests should inject the detection functions
-// or use integration tests. See collector/cilium_test.go and
-// collector/ovnk_test.go for unit tests of the detection helpers.
+// TestDetectFlowCollector_NoSupportedCNI verifies that when no supported CNI is
+// detected the operator does NOT fall back to any collector: it reports
+// FLOW_COLLECTOR_DISABLED and returns a nil factory so main.go skips registering
+// a flow-collector stream.
+func TestDetectFlowCollector_NoSupportedCNI(t *testing.T) {
+	// Empty clientset: no Hubble Relay service (Cilium unavailable), no OVN-K
+	// namespace, no aws-node pods (AWS VPC CNI unavailable) -> falls through.
+	getter := &fakeK8sClientGetter{
+		clientset: k8sfake.NewClientset(),
+		dynamic:   dynamicfake.NewSimpleDynamicClient(runtimescheme.NewScheme()),
+	}
+
+	flowCollectorType, name, factory := DetectFlowCollector(context.Background(), CollectorConfig{
+		Logger:           zap.NewNop(),
+		K8sClient:        getter,
+		CiliumNamespaces: []string{"kube-system"},
+		OVNKNamespace:    "openshift-ovn-kubernetes",
+	})
+
+	assert.Equal(t, pb.FlowCollector_FLOW_COLLECTOR_DISABLED, flowCollectorType,
+		"no supported CNI should report FLOW_COLLECTOR_DISABLED")
+	assert.Equal(t, "None", name)
+	assert.Nil(t, factory, "no supported CNI should return a nil factory (no fallback)")
+}
+
+// Note: the positive DetectFlowCollector paths (Cilium/OVN-K/AWS VPC CNI) are
+// harder to unit test as they require a fake Hubble Relay connection and
+// resource fixtures. See collector/cilium_test.go and collector/ovnk_test.go
+// for unit tests of the individual detection helpers.

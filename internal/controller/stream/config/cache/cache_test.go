@@ -294,6 +294,109 @@ func TestReplaceAll(t *testing.T) {
 	assert.Equal(t, "policy-2", cache.Get("id-2").GetName())
 }
 
+// TestReplaceAllDoesNotBlockWithoutConsumer verifies that ReplaceAll never
+// blocks even when no goroutine is draining ResourceChanged, including when it
+// is called repeatedly before the consumer starts (e.g. across stream
+// reconnects while the reconciler is still waiting on the other cache to become
+// ready). This is the startup/reconnect deadlock the buffered, non-blocking
+// notification is meant to prevent.
+func TestReplaceAllDoesNotBlockWithoutConsumer(t *testing.T) {
+	ctx := context.Background()
+	cache := NewConfiguredObjectCache()
+
+	snapshot := map[string]*pb.ConfiguredKubernetesObjectData{
+		"id-1": {Id: "id-1", Name: "policy-1"},
+	}
+
+	// Call ReplaceAll several times with nothing draining ResourceChanged.
+	// Each call must return promptly: it drains any stale queued value and
+	// re-enqueues SnapshotReplaced rather than blocking on the full buffer.
+	// Errors are sent back to the main goroutine — *testing.T and testify
+	// helpers are not safe to use concurrently.
+	errCh := make(chan error, 1)
+
+	go func() {
+		for range 3 {
+			if err := cache.ReplaceAll(ctx, snapshot); err != nil {
+				errCh <- err
+
+				return
+			}
+		}
+
+		close(errCh)
+	}()
+
+	select {
+	case err, ok := <-errCh:
+		if ok {
+			t.Fatalf("ReplaceAll returned an unexpected error: %v", err)
+		}
+		// Channel closed with no error — all calls returned, no deadlock.
+	case <-time.After(5 * time.Second):
+		t.Fatal("ReplaceAll blocked without a consumer draining ResourceChanged")
+	}
+
+	assert.True(t, isReady(cache))
+	assert.Equal(t, 1, cache.Len())
+
+	// A pending notification is still available for the consumer.
+	select {
+	case id := <-cache.ResourceChanged():
+		assert.Equal(t, SnapshotReplaced, id)
+	default:
+		t.Fatal("expected a coalesced SnapshotReplaced notification to be queued")
+	}
+}
+
+// TestReplaceAllSupersedesQueuedPerIDSignal verifies that when a per-ID
+// notification is already queued and no consumer is draining, ReplaceAll drains
+// it and enqueues SnapshotReplaced instead — a full resync supersedes the stale
+// per-ID signal, and the snapshot notification is never lost or blocked.
+func TestReplaceAllSupersedesQueuedPerIDSignal(t *testing.T) {
+	ctx := context.Background()
+	cache := NewConfiguredObjectCache()
+
+	// Queue a per-ID notification with nothing draining.
+	require.NoError(t, cache.Insert(ctx, "id-1", &pb.ConfiguredKubernetesObjectData{Id: "id-1"}))
+
+	// ReplaceAll must not block and must leave SnapshotReplaced queued.
+	done := make(chan error, 1)
+	go func() {
+		done <- cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
+			"id-2": {Id: "id-2"},
+		})
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("ReplaceAll blocked when a per-ID signal was already queued")
+	}
+
+	select {
+	case id := <-cache.ResourceChanged():
+		assert.Equal(t, SnapshotReplaced, id, "queued per-ID signal should be superseded by SnapshotReplaced")
+	default:
+		t.Fatal("expected SnapshotReplaced to be queued after ReplaceAll")
+	}
+}
+
+// TestReplaceAllCancelledContext verifies that a cancelled context is reported
+// deterministically, rather than being masked by the non-blocking notification.
+func TestReplaceAllCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	cache := NewConfiguredObjectCache()
+
+	err := cache.ReplaceAll(ctx, map[string]*pb.ConfiguredKubernetesObjectData{
+		"id-1": {Id: "id-1", Name: "policy-1"},
+	})
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
 func TestReplaceAllWithEmptyMap(t *testing.T) {
 	ctx := context.Background()
 	cache := NewConfiguredObjectCache()
