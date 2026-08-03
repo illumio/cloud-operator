@@ -417,7 +417,9 @@ func TestConvertUnstructuredToCiliumResource_WithAWSGroups(t *testing.T) {
 	assert.Equal(t, "production", awsGroup.GetLabels()["env"])
 	assert.ElementsMatch(t, []string{"sg-12345", "sg-67890"}, awsGroup.GetSecurityGroupIds())
 	assert.ElementsMatch(t, []string{"web-sg", "api-sg"}, awsGroup.GetSecurityGroupNames())
-	assert.Equal(t, "us-west-2", awsGroup.GetRegion())
+	// Region is deprecated in cilium 1.20 ("Region is unused") and no longer converted;
+	// it stays unset even when present in the CRD.
+	assert.Empty(t, awsGroup.GetRegion())
 }
 
 func TestConvertUnstructuredToCiliumResource_WithNodeSelectors(t *testing.T) {
@@ -1315,7 +1317,8 @@ func TestConvertUnstructuredToCiliumResource_EgressToGroups(t *testing.T) {
 	require.NotNil(t, awsGroup)
 	assert.Equal(t, "staging", awsGroup.GetLabels()["env"])
 	assert.ElementsMatch(t, []string{"sg-abcde"}, awsGroup.GetSecurityGroupIds())
-	assert.Equal(t, "eu-west-1", awsGroup.GetRegion())
+	// Region is deprecated in cilium 1.20 ("Region is unused") and no longer converted.
+	assert.Empty(t, awsGroup.GetRegion())
 }
 
 func TestConvertUnstructuredToCiliumResource_EmptyPolicy(t *testing.T) {
