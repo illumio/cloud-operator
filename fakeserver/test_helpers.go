@@ -160,7 +160,10 @@ func (h *FakeServerTestHarness) DialGRPC(t *testing.T) *grpc.ClientConn {
 	t.Helper()
 
 	tlsCreds := credentials.NewTLS(&tls.Config{
-		InsecureSkipVerify: true, //nolint:gosec // test-only
+		// Test-only: dials the in-process fakeserver's self-signed cert, so cert
+		// verification is intentionally skipped. MinVersion pinned to satisfy TLS policy.
+		InsecureSkipVerify: true, //nolint:gosec // test-only // nosemgrep
+		MinVersion:         tls.VersionTLS13,
 	})
 
 	conn, err := grpc.NewClient(
