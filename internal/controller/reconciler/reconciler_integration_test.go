@@ -3441,22 +3441,28 @@ func TestReconciler_ApplyCountBoundedUnderExternalLabel(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Observe for a window with no further external input. If a self-sustaining loop existed
-	// (each apply triggering a watch event triggering the next apply), applyObject
-	// would be called repeatedly and the count would climb over this window.
+	// The external label edit makes runtimeObj differ from configObj (it gained the
+	// "team" label the operator doesn't own), so the reconciler re-applies once to
+	// reassert its owned fields. That apply reasserts operator ownership, which can
+	// itself bump managedFields/resourceVersion and fire one more watch event → at
+	// most one additional apply. After that, an apply changes nothing, K8s emits no
+	// further event, and the loop terminates. So a small, bounded number of extra
+	// applies is expected; an unbounded, self-sustaining loop is the failure.
+	//
+	// Give the reconciler time to perform (and settle) those applies before sampling.
 	time.Sleep(3 * time.Second)
 
 	countAfterPatch := appliedCount()
 
-	// The external label edit may cause at most one additional reconcile/apply,
-	// because the runtime cache entry genuinely changed (gained the "team" label).
-	// After that single apply, the loop must stop.
-	assert.LessOrEqual(t, countAfterPatch-countAfterCreate, 1,
-		"a third-party label edit must cause at most one extra apply, not a hot loop "+
+	// The external label edit must cause only a small, bounded number of extra applies.
+	assert.LessOrEqual(t, countAfterPatch-countAfterCreate, 2,
+		"a third-party label edit must cause a bounded number of extra applies, not a hot loop "+
 			"(applies after create=%d, after patch+wait=%d)", countAfterCreate, countAfterPatch)
 
-	// Sample again after another window: the count must be completely stable now
-	// (no external input → zero additional applies until the next timer tick).
+	// The real hot-loop detector: with no further external input, the count must be
+	// completely stable across a sustained window. A self-sustaining loop (each apply
+	// triggering the next) would keep incrementing here and fail this assertion; the
+	// bounded-settle above tolerates the harmless one-off re-apply.
 	stableStart := appliedCount()
 	time.Sleep(2 * time.Second)
 	assert.Equal(t, stableStart, appliedCount(),
