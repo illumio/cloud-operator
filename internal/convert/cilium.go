@@ -540,14 +540,13 @@ func convertGroups(groups []ciliumPolicy.Groups) []*pb.CiliumPolicyGroup {
 			continue
 		}
 
+		// Note: cilium 1.20 deprecated Groups.AWS.Region ("Region is unused"), so it is
+		// no longer read here. The proto CiliumPolicyAWSGroup.region field is retained for
+		// wire compatibility but is left unset.
 		awsGroup := &pb.CiliumPolicyAWSGroup{
 			Labels:             g.AWS.Labels,
 			SecurityGroupIds:   g.AWS.SecurityGroupsIds,
 			SecurityGroupNames: g.AWS.SecurityGroupsNames,
-		}
-
-		if g.AWS.Region != "" {
-			awsGroup.Region = &g.AWS.Region
 		}
 
 		result = append(result, &pb.CiliumPolicyGroup{
