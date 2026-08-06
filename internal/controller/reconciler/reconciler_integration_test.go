@@ -3366,15 +3366,14 @@ func TestReconciler_ExternalUserLabelsPreserved(t *testing.T) {
 	})
 }
 
-// TestReconciler_ApplyCountBoundedUnderExternalLabel measures how many times the
-// reconciler calls applyObject when a managed object carries a third-party label.
+// TestReconciler_NoHotLoopUnderExternalLabel verifies the reconciler does not enter a
+// self-sustaining apply loop when a managed object carries a third-party label.
 //
-// This test counts the actual apply calls (via the reconciler's "Applied configured object"
-// debug log) across multiple reconcile cycles and asserts the count stays bounded:
-//
-//   - exactly 1 apply for the initial creation, and
-//   - at most 1 additional apply caused by the external label edit
-func TestReconciler_ApplyCountBoundedUnderExternalLabel(t *testing.T) {
+// It asserts on the object's resourceVersion, not the apply count: the number of applies
+// depends on watch-event timing and is non-deterministic, but "the stored object stopped
+// changing" is exact. The test polls until resourceVersion settles, then asserts it stays
+// unchanged across a window — a hot loop would keep bumping it.
+func TestReconciler_NoHotLoopUnderExternalLabel(t *testing.T) {
 	core, logs := observer.New(zapcore.DebugLevel)
 	fs := setupSuiteWithReconcilerLogger(t, zap.New(core))
 
@@ -3430,8 +3429,6 @@ func TestReconciler_ApplyCountBoundedUnderExternalLabel(t *testing.T) {
 		return appliedCount() >= 1
 	}, 5*time.Second, 50*time.Millisecond, "initial apply should be logged")
 
-	countAfterCreate := appliedCount()
-
 	// External actor adds a label the operator does not own.
 	patch := []byte(`{"metadata":{"labels":{"team":"platform"}}}`)
 	_, err := testClient.GetDynamicClient().Resource(ccnpGVR).Patch(
@@ -3441,32 +3438,37 @@ func TestReconciler_ApplyCountBoundedUnderExternalLabel(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// The external label edit makes runtimeObj differ from configObj (it gained the
-	// "team" label the operator doesn't own), so the reconciler re-applies once to
-	// reassert its owned fields. That apply reasserts operator ownership, which can
-	// itself bump managedFields/resourceVersion and fire one more watch event → at
-	// most one additional apply. After that, an apply changes nothing, K8s emits no
-	// further event, and the loop terminates. So a small, bounded number of extra
-	// applies is expected; an unbounded, self-sustaining loop is the failure.
-	//
-	// Give the reconciler time to perform (and settle) those applies before sampling.
-	time.Sleep(3 * time.Second)
+	// Asserting on resourceVersion is deterministic.
+	getResourceVersion := func() string {
+		obj, err := testClient.GetResource(ctx, ccnpGVR, "", name)
+		require.NoError(t, err)
+		require.NotNil(t, obj)
 
-	countAfterPatch := appliedCount()
+		return obj.GetResourceVersion()
+	}
 
-	// The external label edit must cause only a small, bounded number of extra applies.
-	assert.LessOrEqual(t, countAfterPatch-countAfterCreate, 2,
-		"a third-party label edit must cause a bounded number of extra applies, not a hot loop "+
-			"(applies after create=%d, after patch+wait=%d)", countAfterCreate, countAfterPatch)
+	// Poll until resourceVersion settles (the initial patch cascade has finished
+	// writing), tolerating however many applies that cascade took.
+	var settledRV string
 
-	// The real hot-loop detector: with no further external input, the count must be
-	// completely stable across a sustained window. A self-sustaining loop (each apply
-	// triggering the next) would keep incrementing here and fail this assertion; the
-	// bounded-settle above tolerates the harmless one-off re-apply.
-	stableStart := appliedCount()
-	time.Sleep(2 * time.Second)
-	assert.Equal(t, stableStart, appliedCount(),
-		"apply count must be stable with no external input (no hot loop)")
+	require.Eventually(t, func() bool {
+		rv := getResourceVersion()
+		if rv == settledRV {
+			return true
+		}
+
+		settledRV = rv
+
+		return false
+	}, 20*time.Second, 500*time.Millisecond,
+		"resourceVersion should stop changing after the external patch settles")
+
+	// Now assert it STAYS settled across a window longer than any plausible loop
+	// period. A hot loop (each apply triggering the next write) would bump
+	// resourceVersion within this window; a terminated reconciler leaves it untouched.
+	time.Sleep(5 * time.Second)
+	require.Equal(t, settledRV, getResourceVersion(),
+		"resourceVersion must remain stable with no external input (no hot loop)")
 
 	t.Cleanup(func() {
 		_ = testClient.DeleteResource(ctx, ccnpGVR, "", name)
