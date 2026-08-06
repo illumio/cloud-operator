@@ -116,6 +116,28 @@ falco:
         output: "illumio_network_traffic (time=%evt.time.iso8601 srcip=%fd.cip dstip=%fd.sip srcport=%fd.cport dstport=%fd.sport proto=%fd.l4proto procname=%proc.name ipversion=%fd.type)"
         priority: WARNING
 
+awsVpcCni:
+  # EKS Auto Mode Network Policy Agent log collection.
+  #
+  # On EKS Auto Mode the VPC CNI and its Network Policy Agent are AWS-managed and
+  # are NOT exposed as pods, so the standard aws-node pod-log collector cannot see
+  # them. The operator reads each Auto Mode node's node-local agent log
+  # (aws-routed-eni/network-policy-agent.log) through the kubelet node-proxy
+  # endpoint (GET /api/v1/nodes/{node}/proxy/logs/...) by polling on an interval.
+  #
+  # It uses only the operator service account and Kubernetes RBAC (the read-only
+  # `nodes/proxy` get permission). The collector activates automatically only on
+  # clusters with EKS Auto Mode nodes (node label
+  # eks.amazonaws.com/compute-type=auto); on all other clusters it stays dormant.
+  autoModeNodeProxyLogCollection:
+    # Interval between polls of each node's agent log.
+    pollInterval: "10s"
+    # Maximum number of nodes polled concurrently, to bound load on kubelets.
+    maxConcurrentNodePolls: 10
+    # Node-local path (relative to the kubelet log root) of the Network Policy
+    # Agent log. Overridable in case a future AWS agent version relocates the file.
+    logPath: "aws-routed-eni/network-policy-agent.log"
+
 env:
   # Flow cache settings for network flow aggregation before sending to CloudSecure.
   flowCache:

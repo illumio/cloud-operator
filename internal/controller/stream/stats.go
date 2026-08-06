@@ -17,6 +17,10 @@ type Stats struct {
 	flowsSentToClusterSync    atomic.Uint64
 	resourceMutations         atomic.Uint64
 	configuredObjectMutations atomic.Uint64
+
+	// EKS Auto Mode node-proxy log collection counters.
+	autoModeNodesObserved atomic.Uint64 // last observed count of Auto Mode nodes (gauge-like)
+	autoModePollErrors    atomic.Uint64 // per-node / list poll errors since last report
 }
 
 // NewStats creates a new Stats instance.
@@ -44,12 +48,36 @@ func (s *Stats) IncrementConfiguredObjectMutations() {
 	s.configuredObjectMutations.Add(1)
 }
 
+// SetAutoModeNodesObserved records the most recent count of EKS Auto Mode nodes
+// seen in a poll cycle. It is a gauge (overwritten), not a running total.
+func (s *Stats) SetAutoModeNodesObserved(n int) {
+	if n < 0 {
+		n = 0
+	}
+
+	s.autoModeNodesObserved.Store(uint64(n))
+}
+
+// IncrementAutoModePollErrors increments the count of EKS Auto Mode poll errors.
+func (s *Stats) IncrementAutoModePollErrors() {
+	s.autoModePollErrors.Add(1)
+}
+
 // GetAndResetStats returns the current stats and resets all counters to zero.
 func (s *Stats) GetAndResetStats() (flowsReceived, flowsSent, resourceMutations, configuredObjectMutations uint64) {
 	flowsReceived = s.flowsReceived.Swap(0)
 	flowsSent = s.flowsSentToClusterSync.Swap(0)
 	resourceMutations = s.resourceMutations.Swap(0)
 	configuredObjectMutations = s.configuredObjectMutations.Swap(0)
+
+	return
+}
+
+// GetAndResetAutoModeStats returns the EKS Auto Mode counters. The node count is
+// a gauge (read without reset); the poll-error count is reset to zero.
+func (s *Stats) GetAndResetAutoModeStats() (nodesObserved, pollErrors uint64) {
+	nodesObserved = s.autoModeNodesObserved.Load()
+	pollErrors = s.autoModePollErrors.Swap(0)
 
 	return
 }
@@ -80,12 +108,15 @@ func StartStatsLogger(ctx context.Context, logger *zap.Logger, stats *Stats, per
 				return
 			case <-ticker.C:
 				flowsReceived, flowsSent, resourceMutations, configuredObjectMutations := stats.GetAndResetStats()
+				autoModeNodes, autoModePollErrors := stats.GetAndResetAutoModeStats()
 				logger.Info("Stream statistics",
 					zap.Duration("period", period),
 					zap.Uint64("flows_received", flowsReceived),
 					zap.Uint64("flows_sent_to_cluster_sync", flowsSent),
 					zap.Uint64("resource_mutations", resourceMutations),
 					zap.Uint64("configured_object_mutations", configuredObjectMutations),
+					zap.Uint64("eks_auto_mode_nodes_observed", autoModeNodes),
+					zap.Uint64("eks_auto_mode_poll_errors", autoModePollErrors),
 				)
 			}
 		}

@@ -5,6 +5,28 @@
         "affinity": {
             "type": "object"
         },
+        "awsVpcCni": {
+            "type": "object",
+            "properties": {
+                "autoModeNodeProxyLogCollection": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "pollInterval": {
+                            "type": "string"
+                        },
+                        "maxConcurrentNodePolls": {
+                            "type": "integer"
+                        },
+                        "logPath": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "cilium": {
             "type": "object",
             "properties": {

@@ -26,6 +26,14 @@ rules:
 - apiGroups: ["networking.k8s.aws"]
   resources: ["clusternetworkpolicies"]
   verbs: ["create"]
+# EKS Auto Mode - operator reads the AWS-managed Network Policy Agent log via the
+# kubelet node-proxy endpoint (GET /api/v1/nodes/{node}/proxy/logs/...). This grants
+# only the minimal read-only nodes/proxy get permission. The collector activates
+# only when Auto Mode is detected (compute-type=auto node label), so on non-Auto-Mode
+# clusters this permission is present but unused.
+- apiGroups: [""]
+  resources: ["nodes/proxy"]
+  verbs: ["get"]
 - apiGroups: ["apiextensions.k8s.io"]
   resources: ["customresourcedefinitions"]
   verbs: ["get", "list", "watch"]

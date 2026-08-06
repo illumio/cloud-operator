@@ -11,6 +11,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/collector"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/awsautomode"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/awsvpccni"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cilium"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/ovnk"
@@ -143,6 +144,30 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 		}
 
 		return pb.FlowCollector_FLOW_COLLECTOR_AWS_VPC_CNI, "AWS-VPC-CNI", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
+			return factory.NewCollector(ctx)
+		})
+	}
+	// Check for EKS Auto Mode (node-proxy log polling).
+	// Auto Mode has no aws-node DaemonSet, so IsAWSVPCCNIAvailable above is false;
+	// the Network Policy Agent is AWS-managed and only its node-local log file is
+	// reachable, through the kubelet node-proxy endpoint. This path activates only
+	// when at least one node carries the eks.amazonaws.com/compute-type=auto label,
+	// so we never infer Auto Mode from the mere absence of aws-node.
+	if collector.IsEKSAutoModeAvailable(ctx, config.Logger, clientset) {
+		config.Logger.Info("Using EKS Auto Mode flow collector (node-proxy log polling)")
+
+		factory := &awsautomode.Factory{
+			Logger:                 config.Logger,
+			FlowSink:               flowSink,
+			K8sClient:              clientset,
+			PollInterval:           config.AutoModePollInterval,
+			MaxConcurrentNodePolls: config.AutoModeMaxConcurrentNodePolls,
+			LogPath:                config.AutoModeLogPath,
+			StatsAutoModeNodes:     config.Stats.SetAutoModeNodesObserved,
+			StatsAutoModeErrors:    config.Stats.IncrementAutoModePollErrors,
+		}
+
+		return pb.FlowCollector_FLOW_COLLECTOR_AWS_VPC_CNI, "EKS-Auto-Mode", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
 			return factory.NewCollector(ctx)
 		})
 	}

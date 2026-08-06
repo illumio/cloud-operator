@@ -30,6 +30,7 @@ import (
 	"k8s.io/klog/v2"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller/collector"
 	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 	"github.com/illumio/cloud-operator/internal/controller/logging"
 	"github.com/illumio/cloud-operator/internal/controller/reconciler"
@@ -83,6 +84,36 @@ func bindEnv(logger *zap.Logger, key, envVar string) {
 	}
 }
 
+// logStartupConfig emits the resolved runtime configuration at startup. It is
+// split out of main() to keep that function's size manageable.
+func logStartupConfig(logger *zap.Logger, envConfig stream.Config) {
+	logger.Info("Starting application",
+		zap.Strings("cilium_namespaces", viper.GetStringSlice("cilium_namespaces")),
+		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
+		zap.String("cluster_name", envConfig.ClusterName),
+		zap.String("https_proxy", envConfig.HttpsProxy),
+		zap.String("ipfix_collector_port", viper.GetString("ipfix_collector_port")),
+		zap.String("onboarding_client_id", envConfig.OnboardingClientID),
+		zap.String("onboarding_endpoint", envConfig.OnboardingEndpoint),
+		zap.String("ovnk_namespace", viper.GetString("ovnk_namespace")),
+		zap.String("pod_namespace", envConfig.PodNamespace),
+		zap.Duration("stats_log_period", envConfig.StatsLogPeriod),
+		zap.Duration("stream_keepalive_period_configuration", viper.GetDuration("stream_keepalive_period_configuration")),
+		zap.Duration("stream_keepalive_period_kubernetes_network_flows", viper.GetDuration("stream_keepalive_period_kubernetes_network_flows")),
+		zap.Duration("stream_keepalive_period_kubernetes_resources", viper.GetDuration("stream_keepalive_period_kubernetes_resources")),
+		zap.Duration("stream_keepalive_period_logs", viper.GetDuration("stream_keepalive_period_logs")),
+		zap.Duration("stream_success_period_auth", envConfig.SuccessPeriods.Auth),
+		zap.Duration("stream_success_period_connect", envConfig.SuccessPeriods.Connect),
+		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
+		zap.String("token_endpoint", envConfig.TokenEndpoint),
+		zap.Bool("verbose_debugging", viper.GetBool("verbose_debugging")),
+		zap.Duration("aws_vpc_cni_logs_polling_interval", viper.GetDuration("aws_vpc_cni_logs_polling_interval")),
+		zap.Duration("eks_auto_mode_poll_interval", viper.GetDuration("eks_auto_mode_poll_interval")),
+		zap.Int("eks_auto_mode_max_concurrent_node_polls", viper.GetInt("eks_auto_mode_max_concurrent_node_polls")),
+		zap.String("eks_auto_mode_log_path", viper.GetString("eks_auto_mode_log_path")),
+	)
+}
+
 func main() {
 	// Create a buffered grpc write syncer without a valid gRPC connection initially
 	// Using nil for the `pb.KubernetesInfoService_KubernetesLogsClient`.
@@ -125,6 +156,9 @@ func main() {
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "verbose_debugging", "VERBOSE_DEBUGGING")
 	bindEnv(logger, "aws_vpc_cni_logs_polling_interval", "AWS_VPC_CNI_LOGS_POLLING_INTERVAL")
+	bindEnv(logger, "eks_auto_mode_poll_interval", "EKS_AUTO_MODE_POLL_INTERVAL")
+	bindEnv(logger, "eks_auto_mode_max_concurrent_node_polls", "EKS_AUTO_MODE_MAX_CONCURRENT_NODE_POLLS")
+	bindEnv(logger, "eks_auto_mode_log_path", "EKS_AUTO_MODE_LOG_PATH")
 
 	// Set default values
 	viper.SetDefault("cilium_namespaces", []string{"kube-system", "gke-managed-dpv2-observability"})
@@ -149,6 +183,9 @@ func main() {
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("verbose_debugging", false)
 	viper.SetDefault("aws_vpc_cni_logs_polling_interval", "1s")
+	viper.SetDefault("eks_auto_mode_poll_interval", "10s")
+	viper.SetDefault("eks_auto_mode_max_concurrent_node_polls", 10)
+	viper.SetDefault("eks_auto_mode_log_path", collector.DefaultNetworkPolicyAgentLogPath)
 
 	if viper.GetBool("grpc_internal_logging") {
 		logging.SetupGRPCInternalLogging(logger)
@@ -171,28 +208,7 @@ func main() {
 		TokenEndpoint: viper.GetString("token_endpoint"),
 	}
 
-	logger.Info("Starting application",
-		zap.Strings("cilium_namespaces", viper.GetStringSlice("cilium_namespaces")),
-		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
-		zap.String("cluster_name", envConfig.ClusterName),
-		zap.String("https_proxy", envConfig.HttpsProxy),
-		zap.String("ipfix_collector_port", viper.GetString("ipfix_collector_port")),
-		zap.String("onboarding_client_id", envConfig.OnboardingClientID),
-		zap.String("onboarding_endpoint", envConfig.OnboardingEndpoint),
-		zap.String("ovnk_namespace", viper.GetString("ovnk_namespace")),
-		zap.String("pod_namespace", envConfig.PodNamespace),
-		zap.Duration("stats_log_period", envConfig.StatsLogPeriod),
-		zap.Duration("stream_keepalive_period_configuration", viper.GetDuration("stream_keepalive_period_configuration")),
-		zap.Duration("stream_keepalive_period_kubernetes_network_flows", viper.GetDuration("stream_keepalive_period_kubernetes_network_flows")),
-		zap.Duration("stream_keepalive_period_kubernetes_resources", viper.GetDuration("stream_keepalive_period_kubernetes_resources")),
-		zap.Duration("stream_keepalive_period_logs", viper.GetDuration("stream_keepalive_period_logs")),
-		zap.Duration("stream_success_period_auth", envConfig.SuccessPeriods.Auth),
-		zap.Duration("stream_success_period_connect", envConfig.SuccessPeriods.Connect),
-		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
-		zap.String("token_endpoint", envConfig.TokenEndpoint),
-		zap.Bool("verbose_debugging", viper.GetBool("verbose_debugging")),
-		zap.Duration("aws_vpc_cni_logs_polling_interval", viper.GetDuration("aws_vpc_cni_logs_polling_interval")),
-	)
+	logStartupConfig(logger, envConfig)
 
 	// Start the gops agent
 	if err := agent.Listen(agent.Options{}); err != nil {
@@ -261,6 +277,10 @@ func main() {
 		OVNKNamespace:            viper.GetString("ovnk_namespace"),
 		TlsAuthProps:             tlsAuthProps,
 		AWSVPCCNIPollingInterval: viper.GetDuration("aws_vpc_cni_logs_polling_interval"),
+
+		AutoModePollInterval:           viper.GetDuration("eks_auto_mode_poll_interval"),
+		AutoModeMaxConcurrentNodePolls: viper.GetInt("eks_auto_mode_max_concurrent_node_polls"),
+		AutoModeLogPath:                viper.GetString("eks_auto_mode_log_path"),
 	})
 
 	// Create factory config with all stream factories

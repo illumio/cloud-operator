@@ -108,6 +108,30 @@ func TestStats_GetAndResetStats_EmptyStats(t *testing.T) {
 	assert.Equal(t, uint64(0), configuredObjectMutations)
 }
 
+func TestStats_AutoModeCounters(t *testing.T) {
+	stats := NewStats()
+
+	stats.SetAutoModeNodesObserved(12)
+
+	for range 3 {
+		stats.IncrementAutoModePollErrors()
+	}
+
+	nodes, pollErrors := stats.GetAndResetAutoModeStats()
+	assert.Equal(t, uint64(12), nodes)
+	assert.Equal(t, uint64(3), pollErrors)
+
+	// Node count is a gauge (not reset); poll errors reset to zero.
+	nodes, pollErrors = stats.GetAndResetAutoModeStats()
+	assert.Equal(t, uint64(12), nodes)
+	assert.Equal(t, uint64(0), pollErrors)
+
+	// Negative node counts are clamped to zero.
+	stats.SetAutoModeNodesObserved(-5)
+	nodes, _ = stats.GetAndResetAutoModeStats()
+	assert.Equal(t, uint64(0), nodes)
+}
+
 func TestStats_ConcurrentAccess(t *testing.T) {
 	stats := NewStats()
 
