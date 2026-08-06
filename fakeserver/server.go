@@ -1,6 +1,6 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 
-package main
+package fakeserver
 
 import (
 	"context"
@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -52,17 +53,29 @@ var kasp = keepalive.ServerParameters{
 }
 
 type FakeServer struct {
-	address      string
-	httpAddress  string
+	pb.UnimplementedKubernetesInfoServiceServer
+
+	Address      string
+	HTTPAddress  string
 	server       *grpc.Server
 	httpServer   *http.Server
 	listener     net.Listener
 	httpListener net.Listener
-	state        *ServerState
-	stopChan     chan struct{}
-	token        string
-	logger       *zap.Logger
+	State        *ServerState
+	StopChan     chan struct{}
+	Token        string
+	Logger       *zap.Logger
 	authService  *AuthService // OAuth2 AuthService to handle the /authenticate and /onboard endpoints
+
+	configMu sync.Mutex // guards configDone's close+re-arm in DisconnectConfigStream
+
+	// ConfigResponses carries config responses to the active stream. Never closed:
+	// closing a channel senders write to would panic. Shutdown is signalled via configDone.
+	ConfigResponses chan *pb.GetConfigurationUpdatesResponse
+
+	// configDone is closed by DisconnectConfigStream to stop the current stream, then
+	// re-armed for the next one. Safe to close because nobody sends on it.
+	configDone chan struct{}
 }
 
 // RecordCiliumFlow increments the Cilium flow counter.
@@ -80,11 +93,6 @@ func (s *ServerState) RecordFiveTupleFlow() {
 
 	s.FiveTupleFlowsReceived++
 }
-
-var (
-	serverState *ServerState
-	logger      *zap.Logger
-)
 
 type LogEntry map[string]any
 
@@ -115,15 +123,11 @@ func (l LogEntry) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
-type server struct {
-	pb.UnimplementedKubernetesInfoServiceServer
-}
-
-func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKubernetesResourcesServer) error {
+func (fs *FakeServer) SendKubernetesResources(stream pb.KubernetesInfoService_SendKubernetesResourcesServer) error {
 	for {
 		req, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
-			logger.Info("Client has closed the KubernetesResources stream")
+			fs.Logger.Info("Client has closed the KubernetesResources stream")
 
 			return nil
 		}
@@ -134,30 +138,27 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 
 		switch req.GetRequest().(type) {
 		case *pb.SendKubernetesResourcesRequest_Keepalive:
-			logger.Info("Received Keepalive for resources stream")
+			fs.Logger.Info("Received Keepalive for resources stream")
 		case *pb.SendKubernetesResourcesRequest_ClusterMetadata:
-			logger.Info("Cluster metadata received")
+			fs.Logger.Info("Cluster metadata received")
 
-			serverState.ResourcesReceived++
+			fs.State.IncrementResourcesReceived()
 		case *pb.SendKubernetesResourcesRequest_ResourceData:
-			logger.Info("Initial inventory data")
+			fs.Logger.Info("Initial inventory data")
 
-			serverState.ResourcesReceived++
+			fs.State.IncrementResourcesReceived()
 		case *pb.SendKubernetesResourcesRequest_ResourceSnapshotComplete:
-			logger.Info("Initial inventory complete")
+			fs.Logger.Info("Initial inventory complete")
 
-			if serverState.BadIntialCommit {
-				serverState.BadIntialCommit = false
-
+			if fs.State.CheckAndClearBadInitialCommit() {
 				return io.EOF
 			}
 
-			serverState.ConnectionSuccessful = true
-			serverState.ResourceSnapshotComplete = true
+			fs.State.RecordResourceSnapshot()
 		case *pb.SendKubernetesResourcesRequest_KubernetesResourceMutation:
-			logger.Info("Mutation Detected")
+			fs.Logger.Info("Mutation Detected")
 
-			serverState.ResourcesReceived++
+			fs.State.IncrementResourcesReceived()
 		}
 
 		if err := stream.Send(&pb.SendKubernetesResourcesResponse{}); err != nil {
@@ -166,12 +167,12 @@ func (s *server) SendKubernetesResources(stream pb.KubernetesInfoService_SendKub
 	}
 }
 
-func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error {
+func (fs *FakeServer) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error {
 	for {
 		req, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
 			// The client has closed the stream
-			logger.Info("Client has closed the logs stream")
+			fs.Logger.Info("Client has closed the logs stream")
 
 			return nil
 		}
@@ -184,9 +185,9 @@ func (s *server) SendLogs(stream pb.KubernetesInfoService_SendLogsServer) error 
 		case *pb.SendLogsRequest_LogEntry:
 			logEntry := req.GetLogEntry()
 
-			err = logReceivedLogEntry(logEntry, logger)
+			err = logReceivedLogEntry(logEntry, fs.Logger)
 			if err != nil {
-				logger.Error("Error recording logs from operator", zap.Error(err))
+				fs.Logger.Error("Error recording logs from operator", zap.Error(err))
 			}
 		default:
 			// Ignore other types.
@@ -226,67 +227,55 @@ func logReceivedLogEntry(log *pb.LogEntry, logger *zap.Logger) error {
 	return nil
 }
 
-func (s *server) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConfigurationUpdatesServer) error {
-	logger.Info("GetConfigurationUpdates stream started")
+func (fs *FakeServer) GetConfigurationUpdates(stream pb.KubernetesInfoService_GetConfigurationUpdatesServer) error {
+	fs.Logger.Info("GetConfigurationUpdates stream started")
 
-	// Send initial configuration with log level
-	configResp := &pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
-			UpdateConfiguration: &pb.GetConfigurationUpdatesResponse_Configuration{
-				LogLevel: pb.LogLevel_LOG_LEVEL_INFO,
-			},
-		},
-	}
+	// Read keepalives in the background so the stream stays alive.
+	go func() {
+		for {
+			req, err := stream.Recv()
+			if err != nil {
+				return
+			}
 
-	if err := stream.Send(configResp); err != nil {
-		logger.Error("Failed to send initial configuration", zap.Error(err))
+			switch req.GetRequest().(type) {
+			case *pb.GetConfigurationUpdatesRequest_Keepalive:
+				fs.Logger.Info("Received GetConfigurationUpdates keepalive request")
+			default:
+				// Ignore other types.
+			}
+		}
+	}()
 
-		return err
-	}
-
-	// Send configured object snapshot complete
-	snapshotResp := &pb.GetConfigurationUpdatesResponse{
-		Response: &pb.GetConfigurationUpdatesResponse_ResourceSnapshotComplete{
-			ResourceSnapshotComplete: &pb.ConfiguredKubernetesObjectSnapshotComplete{},
-		},
-	}
-
-	if err := stream.Send(snapshotResp); err != nil {
-		logger.Error("Failed to send configured object snapshot complete", zap.Error(err))
-
-		return err
-	}
+	// Snapshot the data channel and this stream's done signal under the lock so a concurrent
+	// DisconnectConfigStream re-arm can't redirect them mid-stream.
+	fs.configMu.Lock()
+	ch := fs.ConfigResponses
+	done := fs.configDone
+	fs.configMu.Unlock()
 
 	for {
-		req, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			// The client has closed the stream
-			logger.Info("Client has closed the ConfigurationUpdates stream")
-
+		select {
+		case <-done:
 			return nil
-		}
+		case resp := <-ch:
+			if err := stream.Send(resp); err != nil {
+				fs.Logger.Error("Failed to send config response", zap.Error(err))
 
-		if err != nil {
-			return err
-		}
-
-		switch req.GetRequest().(type) {
-		case *pb.GetConfigurationUpdatesRequest_Keepalive:
-			logger.Info("Received GetConfigurationUpdates keepalive request")
-		default:
-			// Ignore other types.
+				return err
+			}
 		}
 	}
 }
 
-func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
-	logger.Info("SendKubernetesNetworkFlows stream started")
+func (fs *FakeServer) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_SendKubernetesNetworkFlowsServer) error {
+	fs.Logger.Info("SendKubernetesNetworkFlows stream started")
 
 	for {
 		req, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
 			// The client has closed the stream
-			logger.Info("Client has closed the flows stream")
+			fs.Logger.Info("Client has closed the flows stream")
 
 			return nil
 		}
@@ -297,13 +286,13 @@ func (s *server) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService_Send
 
 		switch req.GetRequest().(type) {
 		case *pb.SendKubernetesNetworkFlowsRequest_Keepalive:
-			logger.Info("Received Keepalive for flows stream")
+			fs.Logger.Info("Received Keepalive for flows stream")
 		case *pb.SendKubernetesNetworkFlowsRequest_CiliumFlow:
-			serverState.RecordCiliumFlow()
-			logger.Info("Received CiliumFlow")
+			fs.State.RecordCiliumFlow()
+			fs.Logger.Info("Received CiliumFlow")
 		case *pb.SendKubernetesNetworkFlowsRequest_FiveTupleFlow:
-			serverState.RecordFiveTupleFlow()
-			logger.Info("Received FiveTupleFlow")
+			fs.State.RecordFiveTupleFlow()
+			fs.Logger.Info("Received FiveTupleFlow")
 		}
 	}
 }
@@ -324,27 +313,64 @@ func tokenAuthStreamInterceptor(expectedToken string) grpc.StreamServerIntercept
 	}
 }
 
-func (fs *FakeServer) start() error {
-	logger = fs.logger
-	logger.Info("Starting FakeServer", zap.String("address", fs.address), zap.String("httpAddress", fs.httpAddress), zap.String("token", fs.token))
+// SendConfig sends a response to the active config stream.
+func (fs *FakeServer) SendConfig(resp *pb.GetConfigurationUpdatesResponse) {
+	fs.configMu.Lock()
+	ch := fs.ConfigResponses
+	done := fs.configDone
+	fs.configMu.Unlock()
+
+	select {
+	case ch <- resp:
+	case <-done:
+	}
+}
+
+// DisconnectConfigStream ends the active stream (client sees EOF) by closing configDone,
+// then re-arms it for the next stream. The data channel is never closed, so an in-flight
+// SendConfig can't panic. Locked so it can't race the snapshot in SendConfig/handler.
+func (fs *FakeServer) DisconnectConfigStream() {
+	fs.configMu.Lock()
+	defer fs.configMu.Unlock()
+
+	close(fs.configDone)
+	fs.configDone = make(chan struct{})
+}
+
+// GRPCAddress returns the actual address the gRPC server is listening on.
+// Useful when the server is started with ":0" to get the OS-assigned port.
+func (fs *FakeServer) GRPCAddress() string {
+	if fs.listener != nil {
+		return fs.listener.Addr().String()
+	}
+
+	return fs.Address
+}
+
+func (fs *FakeServer) Start() error {
+	fs.Logger.Info("Starting FakeServer", zap.String("address", fs.Address), zap.String("httpAddress", fs.HTTPAddress), zap.String("token", fs.Token))
+
+	fs.configMu.Lock()
+	fs.configDone = make(chan struct{})
+	fs.configMu.Unlock()
 
 	// Start gRPC server
 	var err error
 
 	var listenerConfig net.ListenConfig
 
-	fs.listener, err = listenerConfig.Listen(context.Background(), "tcp", fs.address)
+	fs.listener, err = listenerConfig.Listen(context.Background(), "tcp", fs.Address)
 	if err != nil {
-		logger.Error("Failed to start gRPC listener", zap.String("address", fs.address), zap.Error(err))
+		fs.Logger.Error("Failed to start gRPC listener", zap.String("address", fs.Address), zap.Error(err))
 
 		return err
 	}
 
-	logger.Info("gRPC listener started", zap.String("address", fs.listener.Addr().String()))
+	fs.Logger.Info("gRPC listener started", zap.String("address", fs.listener.Addr().String()))
 
 	creds, err := generateSelfSignedCert()
 	if err != nil {
-		logger.Error("Failed to generate self-signed certificate", zap.Error(err))
+		fs.Logger.Error("Failed to generate self-signed certificate", zap.Error(err))
 
 		return err
 	}
@@ -354,39 +380,38 @@ func (fs *FakeServer) start() error {
 			Certificates: []tls.Certificate{creds},
 			MinVersion:   tls.VersionTLS12,
 		})
-	serverState = fs.state
-	fs.server = grpc.NewServer(grpc.Creds(credsTLS), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor(fs.token)))
-	pb.RegisterKubernetesInfoServiceServer(fs.server, &server{})
+	fs.server = grpc.NewServer(grpc.Creds(credsTLS), grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp), grpc.StreamInterceptor(tokenAuthStreamInterceptor(fs.Token)))
+	pb.RegisterKubernetesInfoServiceServer(fs.server, fs)
 
 	// Handle termination signals for graceful shutdown
 	go fs.handleSignals()
 
 	go func() {
-		logger.Info("Starting gRPC server", zap.String("address", fs.address))
+		fs.Logger.Info("Starting gRPC server", zap.String("address", fs.Address))
 
 		if err := fs.server.Serve(fs.listener); err != nil {
-			fs.logger.Fatal("Failed to start gRPC server", zap.Error(err))
+			fs.Logger.Fatal("Failed to start gRPC server", zap.Error(err))
 		}
 	}()
 
 	// Create and initialize the AuthService (OAuth2)
 	fs.authService = &AuthService{
-		logger:       fs.logger,
+		logger:       fs.Logger,
 		clientID:     DefaultClientID,
 		clientSecret: DefaultClientSecret,
-		token:        fs.token,
+		token:        fs.Token,
 	}
 
 	// Start the OAuth2 HTTP server
-	fs.httpServer = startHTTPServer(fs.httpAddress, creds, fs.authService)
+	fs.httpServer = startHTTPServer(fs.HTTPAddress, creds, fs.authService)
 
-	logger.Info("HTTP server started", zap.String("httpAddress", fs.httpAddress))
+	fs.Logger.Info("HTTP server started", zap.String("httpAddress", fs.HTTPAddress))
 
 	return nil
 }
 
-func (fs *FakeServer) stop() {
-	logger.Info("Stopping FakeServer")
+func (fs *FakeServer) Stop() {
+	fs.Logger.Info("Stopping FakeServer")
 
 	defer func() {
 		_ = recover() // Ignore the returned value of recover()
@@ -394,60 +419,60 @@ func (fs *FakeServer) stop() {
 
 	// Shutdown gRPC server
 	if fs.server != nil {
-		logger.Info("Stopping gRPC server")
+		fs.Logger.Info("Stopping gRPC server")
 		fs.server.Stop()
 	} else {
-		logger.Warn("gRPC server was nil during shutdown")
+		fs.Logger.Warn("gRPC server was nil during shutdown")
 	}
 
 	if fs.listener != nil {
-		logger.Info("Closing gRPC listener")
+		fs.Logger.Info("Closing gRPC listener")
 
 		err := fs.listener.Close()
 		if err != nil {
-			logger.Error("Error closing gRPC listener", zap.Error(err))
+			fs.Logger.Error("Error closing gRPC listener", zap.Error(err))
 		}
 	} else {
-		logger.Warn("gRPC listener was nil during shutdown")
+		fs.Logger.Warn("gRPC listener was nil during shutdown")
 	}
 
 	// Shutdown HTTP server (if any)
 	if fs.httpServer != nil {
-		logger.Info("Shutting down HTTP server")
+		fs.Logger.Info("Shutting down HTTP server")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		err := fs.httpServer.Shutdown(ctx)
 		if err != nil {
-			logger.Error("Failed to gracefully shut down HTTP server", zap.Error(err))
+			fs.Logger.Error("Failed to gracefully shut down HTTP server", zap.Error(err))
 		}
 	} else {
-		logger.Warn("HTTP server was nil during shutdown")
+		fs.Logger.Warn("HTTP server was nil during shutdown")
 	}
 
 	if fs.httpListener != nil {
-		logger.Info("Closing HTTP listener")
+		fs.Logger.Info("Closing HTTP listener")
 
 		err := fs.httpListener.Close()
 		if err != nil {
-			logger.Error("Error closing HTTP listener", zap.Error(err))
+			fs.Logger.Error("Error closing HTTP listener", zap.Error(err))
 		}
 	} else {
-		logger.Warn("HTTP listener was nil during shutdown")
+		fs.Logger.Warn("HTTP listener was nil during shutdown")
 	}
 
 	// Reset HTTP handlers before restarting the server
 	http.DefaultServeMux = http.NewServeMux()
 
-	if fs.stopChan != nil {
-		logger.Info("Closing stop channel")
-		close(fs.stopChan)
+	if fs.StopChan != nil {
+		fs.Logger.Info("Closing stop channel")
+		close(fs.StopChan)
 	} else {
-		logger.Warn("Stop channel was nil during shutdown")
+		fs.Logger.Warn("Stop channel was nil during shutdown")
 	}
 
-	logger.Info("FakeServer stopped successfully")
+	fs.Logger.Info("FakeServer stopped successfully")
 }
 
 func generateSelfSignedCert() (tls.Certificate, error) {
@@ -497,7 +522,7 @@ func (fs *FakeServer) handleSignals() {
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
 
 	<-signalChan
-	logger.Info("Received termination signal, shutting down FakeServer")
-	fs.stop()
+	fs.Logger.Info("Received termination signal, shutting down FakeServer")
+	fs.Stop()
 	os.Exit(0)
 }

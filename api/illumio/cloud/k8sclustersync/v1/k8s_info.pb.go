@@ -4989,8 +4989,6 @@ func (*GetConfigurationUpdatesResponse_ResourceMutation) isGetConfigurationUpdat
 // Configured object data for snapshot or create/update operations.
 type ConfiguredKubernetesObjectData struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Unique identifier for tracking this object.
-	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Kubernetes annotations to apply to this object.
 	Annotations map[string]string `protobuf:"bytes,2,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Kubernetes labels to apply to this object.
@@ -5039,13 +5037,6 @@ func (x *ConfiguredKubernetesObjectData) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ConfiguredKubernetesObjectData.ProtoReflect.Descriptor instead.
 func (*ConfiguredKubernetesObjectData) Descriptor() ([]byte, []int) {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{62}
-}
-
-func (x *ConfiguredKubernetesObjectData) GetId() string {
-	if x != nil {
-		return x.Id
-	}
-	return ""
 }
 
 func (x *ConfiguredKubernetesObjectData) GetAnnotations() map[string]string {
@@ -5136,12 +5127,12 @@ func (*ConfiguredKubernetesObjectData_CiliumCidrGroup) isConfiguredKubernetesObj
 }
 
 // Configured Kubernetes object reference for delete operations.
-// Only the ID is needed because the full ConfiguredKubernetesObjectData is stored in memory,
-// which contains all fields required to delete from the cluster.
+// The kind, namespace, and name uniquely identify the object to delete from the cluster.
 type DeleteConfiguredKubernetesObject struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Unique identifier for tracking this object.
-	Id            string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	Namespace     *string                `protobuf:"bytes,3,opt,name=namespace,proto3,oneof" json:"namespace,omitempty"`
+	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5176,9 +5167,23 @@ func (*DeleteConfiguredKubernetesObject) Descriptor() ([]byte, []int) {
 	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{63}
 }
 
-func (x *DeleteConfiguredKubernetesObject) GetId() string {
+func (x *DeleteConfiguredKubernetesObject) GetKind() string {
 	if x != nil {
-		return x.Id
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *DeleteConfiguredKubernetesObject) GetNamespace() string {
+	if x != nil && x.Namespace != nil {
+		return *x.Namespace
+	}
+	return ""
+}
+
+func (x *DeleteConfiguredKubernetesObject) GetName() string {
+	if x != nil {
+		return x.Name
 	}
 	return ""
 }
@@ -5802,9 +5807,8 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\rConfiguration\x12F\n" +
 	"\tlog_level\x18\x01 \x01(\x0e2).illumio.cloud.k8sclustersync.v1.LogLevelR\blogLevelB\n" +
 	"\n" +
-	"\bresponse\"\xdf\x06\n" +
-	"\x1eConfiguredKubernetesObjectData\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12r\n" +
+	"\bresponse\"\xd9\x06\n" +
+	"\x1eConfiguredKubernetesObjectData\x12r\n" +
 	"\vannotations\x18\x02 \x03(\v2P.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.AnnotationsEntryR\vannotations\x12c\n" +
 	"\x06labels\x18\x03 \x03(\v2K.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.LabelsEntryR\x06labels\x12\x12\n" +
 	"\x04name\x18\x04 \x01(\tR\x04name\x12!\n" +
@@ -5820,9 +5824,13 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0f\n" +
 	"\rkind_specificB\f\n" +
 	"\n" +
-	"_namespace\"2\n" +
-	" DeleteConfiguredKubernetesObject\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\",\n" +
+	"_namespaceJ\x04\b\x01\x10\x02R\x02id\"\x85\x01\n" +
+	" DeleteConfiguredKubernetesObject\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12!\n" +
+	"\tnamespace\x18\x03 \x01(\tH\x00R\tnamespace\x88\x01\x01\x12\x12\n" +
+	"\x04name\x18\x04 \x01(\tR\x04nameB\f\n" +
+	"\n" +
+	"_namespaceJ\x04\b\x01\x10\x02R\x02id\",\n" +
 	"*ConfiguredKubernetesObjectSnapshotComplete\"\x9a\x02\n" +
 	"\"ConfiguredKubernetesObjectMutation\x12x\n" +
 	"\x17create_or_update_object\x18\x01 \x01(\v2?.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectDataH\x00R\x14createOrUpdateObject\x12h\n" +
@@ -6185,6 +6193,7 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() {
 		(*ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy)(nil),
 		(*ConfiguredKubernetesObjectData_CiliumCidrGroup)(nil),
 	}
+	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[63].OneofWrappers = []any{}
 	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[65].OneofWrappers = []any{
 		(*ConfiguredKubernetesObjectMutation_CreateOrUpdateObject)(nil),
 		(*ConfiguredKubernetesObjectMutation_DeleteObject)(nil),

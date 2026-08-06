@@ -7,9 +7,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/watch"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -271,4 +274,33 @@ func (s *ResourcesClientTestSuite) TestCreateMutationObject_Error() {
 	mutation := s.client.CreateMutationObject(metadata, watch.Error)
 
 	s.Nil(mutation)
+}
+
+func TestHasFieldManager(t *testing.T) {
+	tests := []struct {
+		name     string
+		managers []string
+		check    string
+		want     bool
+	}{
+		{"present among multiple", []string{"illumio-cloud-operator", "kubectl"}, "illumio-cloud-operator", true},
+		{"absent", []string{"kubectl", "helm"}, "illumio-cloud-operator", false},
+		{"empty managed fields", nil, "illumio-cloud-operator", false},
+		{"sole manager", []string{"illumio-cloud-operator"}, "illumio-cloud-operator", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			obj := &unstructured.Unstructured{}
+
+			var fields []metav1.ManagedFieldsEntry
+			for _, m := range tt.managers {
+				fields = append(fields, metav1.ManagedFieldsEntry{Manager: m})
+			}
+
+			obj.SetManagedFields(fields)
+
+			assert.Equal(t, tt.want, hasFieldManager(obj, tt.check))
+		})
+	}
 }
