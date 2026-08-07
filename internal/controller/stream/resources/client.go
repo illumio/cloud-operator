@@ -77,6 +77,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 		return convert.ConvertUnstructuredToCiliumResource(obj)
 	}
+	awsConverter := convert.NewAWSResourceConverter(c.logger)
 
 	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
 	sharedLimiter := rate.NewLimiter(1, 5)
@@ -99,6 +100,11 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 		if convert.IsCiliumResource(resource) {
 			converter = ciliumConverter
+			handler = runtimeCacheHandler
+		}
+
+		if convert.IsAWSResource(resource) {
+			converter = awsConverter
 			handler = runtimeCacheHandler
 		}
 
