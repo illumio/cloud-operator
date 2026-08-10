@@ -50,6 +50,8 @@ func kindMappingFor(data *pb.ConfiguredKubernetesObjectData) (kindMapping, error
 		return kindMapping{kind: "CiliumClusterwideNetworkPolicy", resourceName: "ciliumclusterwidenetworkpolicies"}, nil
 	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
 		return kindMapping{kind: "CiliumCIDRGroup", resourceName: "ciliumcidrgroups"}, nil
+	case *pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy:
+		return kindMapping{kind: "ClusterNetworkPolicy", resourceName: "clusternetworkpolicies"}, nil
 	default:
 		return kindMapping{}, fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
 	}
@@ -120,6 +122,8 @@ func setConfiguredKindSpecific(configured *pb.ConfiguredKubernetesObjectData, so
 		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy{CiliumClusterwideNetworkPolicy: ks.CiliumClusterwideNetworkPolicy}
 	case *pb.KubernetesObjectData_CiliumCidrGroup:
 		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_CiliumCidrGroup{CiliumCidrGroup: ks.CiliumCidrGroup}
+	case *pb.KubernetesObjectData_AwsClusterNetworkPolicy:
+		configured.KindSpecific = &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{AwsClusterNetworkPolicy: ks.AwsClusterNetworkPolicy}
 	case nil:
 		return nil
 	default:
@@ -208,6 +212,14 @@ func marshalConfiguredObjectSpecs(data *pb.ConfiguredKubernetesObjectData) (stri
 		var specMap map[string]any
 
 		specMap, err = protoToMap(spec)
+		if err == nil {
+			specFields = map[string]any{specField: specMap}
+		}
+
+	case *pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy:
+		var specMap map[string]any
+
+		specMap, err = protoToMap(ks.AwsClusterNetworkPolicy)
 		if err == nil {
 			specFields = map[string]any{specField: specMap}
 		}

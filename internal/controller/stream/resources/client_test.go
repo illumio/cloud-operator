@@ -17,6 +17,8 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 // mockResourcesStream mocks the stream.KubernetesResourcesStream interface.
@@ -62,6 +64,7 @@ func (s *ResourcesClientTestSuite) SetupTest() {
 		logger:        s.logger,
 		stats:         s.stats,
 		flowCollector: pb.FlowCollector_FLOW_COLLECTOR_CILIUM,
+		runtimeCache:  cache.NewConfiguredObjectCache(),
 	}
 }
 
@@ -121,6 +124,51 @@ func (s *ResourcesClientTestSuite) TestSendKeepalive_AfterClose() {
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "stream closed")
+}
+
+func (s *ResourcesClientTestSuite) TestRuntimeCacheHandler_ExcludesUnownedCNP() {
+	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
+	handler := s.client.newRuntimeCacheHandler(pendingSnapshot)
+
+	// A CNP the operator does not own (no operator field-manager entry) and is not
+	// already tracked must not enter the runtime cache.
+	obj := &unstructured.Unstructured{}
+	obj.SetManagedFields([]metav1.ManagedFieldsEntry{{Manager: "kubectl"}})
+
+	unownedCNP := &pb.KubernetesObjectData{
+		Name: "illumio-cloud-operator-flow-logging",
+		Kind: "ClusterNetworkPolicy",
+		KindSpecific: &pb.KubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Tier: "Baseline"},
+		},
+	}
+
+	err := handler(context.Background(), "", obj, unownedCNP)
+	s.Require().NoError(err)
+	s.Empty(pendingSnapshot, "a CNP the operator does not own must not enter the runtime cache")
+}
+
+func (s *ResourcesClientTestSuite) TestRuntimeCacheHandler_IncludesManagedCNP() {
+	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
+	handler := s.client.newRuntimeCacheHandler(pendingSnapshot)
+
+	// A CNP the operator owns (its field manager is present in managedFields) must
+	// enter the runtime cache so the reconciler can track and reconcile it.
+	obj := &unstructured.Unstructured{}
+	obj.SetManagedFields([]metav1.ManagedFieldsEntry{{Manager: convert.FieldManager}})
+
+	managedCNP := &pb.KubernetesObjectData{
+		Name: "cloudsecure-policy",
+		Kind: "ClusterNetworkPolicy",
+		KindSpecific: &pb.KubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Tier: "Admin"},
+		},
+	}
+
+	err := handler(context.Background(), "", obj, managedCNP)
+	s.Require().NoError(err)
+	s.Len(pendingSnapshot, 1, "a CNP the operator owns must enter the runtime cache")
+	s.Contains(pendingSnapshot, convert.CacheKey("ClusterNetworkPolicy", "", "cloudsecure-policy"))
 }
 
 func (s *ResourcesClientTestSuite) TestClose() {

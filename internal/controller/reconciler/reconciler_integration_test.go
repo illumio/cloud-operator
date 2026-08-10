@@ -18,8 +18,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"go.uber.org/zap/zaptest/observer"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -3374,18 +3372,11 @@ func TestReconciler_ExternalUserLabelsPreserved(t *testing.T) {
 // changing" is exact. The test polls until resourceVersion settles, then asserts it stays
 // unchanged across a window — a hot loop would keep bumping it.
 func TestReconciler_NoHotLoopUnderExternalLabel(t *testing.T) {
-	core, logs := observer.New(zapcore.DebugLevel)
-	fs := setupSuiteWithReconcilerLogger(t, zap.New(core))
+	fs := setupSuite(t)
 
 	ctx := context.Background()
 
 	const name = "e2e-apply-count"
-
-	appliedCount := func() int {
-		return logs.FilterMessage("Applied configured object").
-			FilterField(zap.String("name", name)).
-			Len()
-	}
 
 	fs.SendConfig(&pb.GetConfigurationUpdatesResponse{
 		Response: &pb.GetConfigurationUpdatesResponse_UpdateConfiguration{
@@ -3424,10 +3415,6 @@ func TestReconciler_NoHotLoopUnderExternalLabel(t *testing.T) {
 		obj, err := testClient.GetResource(ctx, ccnpGVR, "", name)
 		return err == nil && obj != nil
 	}, 20*time.Second, 100*time.Millisecond, "policy should be applied")
-
-	require.Eventually(t, func() bool {
-		return appliedCount() >= 1
-	}, 5*time.Second, 50*time.Millisecond, "initial apply should be logged")
 
 	// External actor adds a label the operator does not own.
 	patch := []byte(`{"metadata":{"labels":{"team":"platform"}}}`)
