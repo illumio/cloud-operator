@@ -11,16 +11,13 @@
                 "autoModeNodeProxyLogCollection": {
                     "type": "object",
                     "properties": {
-                        "enabled": {
-                            "type": "boolean"
-                        },
-                        "pollInterval": {
+                        "logPath": {
                             "type": "string"
                         },
                         "maxConcurrentNodePolls": {
                             "type": "integer"
                         },
-                        "logPath": {
+                        "pollInterval": {
                             "type": "string"
                         }
                     }
