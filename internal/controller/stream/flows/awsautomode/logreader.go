@@ -69,6 +69,9 @@ func reconcile(cp *nodeLogCheckpoint, data []byte, nodeUID types.UID) logSlice {
 		ByteOffset:       cp.ByteOffset,
 		LastObservedSize: len(data),
 		LastRecordHash:   cp.LastRecordHash,
+		// LastRotationID is owned by the rotation-recovery path, not by active-file
+		// reconcile; carry it through unchanged so a normal poll never clears it.
+		LastRotationID: cp.LastRotationID,
 	}
 
 	if reset {

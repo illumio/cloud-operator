@@ -117,19 +117,50 @@ func TestStats_AutoModeCounters(t *testing.T) {
 		stats.IncrementAutoModePollErrors()
 	}
 
-	nodes, pollErrors := stats.GetAndResetAutoModeStats()
-	assert.Equal(t, uint64(12), nodes)
-	assert.Equal(t, uint64(3), pollErrors)
+	am := stats.GetAndResetAutoModeStats()
+	assert.Equal(t, uint64(12), am.NodesObserved)
+	assert.Equal(t, uint64(3), am.PollErrors)
 
 	// Node count is a gauge (not reset); poll errors reset to zero.
-	nodes, pollErrors = stats.GetAndResetAutoModeStats()
-	assert.Equal(t, uint64(12), nodes)
-	assert.Equal(t, uint64(0), pollErrors)
+	am = stats.GetAndResetAutoModeStats()
+	assert.Equal(t, uint64(12), am.NodesObserved)
+	assert.Equal(t, uint64(0), am.PollErrors)
 
 	// Negative node counts are clamped to zero.
 	stats.SetAutoModeNodesObserved(-5)
-	nodes, _ = stats.GetAndResetAutoModeStats()
-	assert.Equal(t, uint64(0), nodes)
+	am = stats.GetAndResetAutoModeStats()
+	assert.Equal(t, uint64(0), am.NodesObserved)
+}
+
+func TestStats_AutoModeRotationCounters(t *testing.T) {
+	stats := NewStats()
+
+	// Active flag is off by default.
+	assert.False(t, stats.autoModeActive.Load())
+	stats.SetAutoModeActive()
+	assert.True(t, stats.autoModeActive.Load())
+
+	stats.AddAutoModeRotationsDetected(3)
+	stats.AddAutoModeRotationsDetected(0)  // no-op
+	stats.AddAutoModeRotationsDetected(-2) // no-op
+
+	stats.IncrementAutoModeRotationRecoveries()
+	stats.IncrementAutoModeRotationRecoveries()
+	stats.IncrementAutoModeRotationRecoveryErrors()
+	stats.IncrementAutoModeRotationGaps()
+
+	am := stats.GetAndResetAutoModeStats()
+	assert.Equal(t, uint64(3), am.RotationsDetected)
+	assert.Equal(t, uint64(2), am.RotationRecoveries)
+	assert.Equal(t, uint64(1), am.RotationRecoveryErrors)
+	assert.Equal(t, uint64(1), am.RotationGaps)
+
+	// All rotation counters reset each report.
+	am = stats.GetAndResetAutoModeStats()
+	assert.Equal(t, uint64(0), am.RotationsDetected)
+	assert.Equal(t, uint64(0), am.RotationRecoveries)
+	assert.Equal(t, uint64(0), am.RotationRecoveryErrors)
+	assert.Equal(t, uint64(0), am.RotationGaps)
 }
 
 func TestStats_ConcurrentAccess(t *testing.T) {

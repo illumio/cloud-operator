@@ -3,8 +3,10 @@
 package awsautomode
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -39,10 +41,26 @@ func (m *mockFlowSink) IncrementFlowsReceived() {
 
 // scriptedFetcher returns a queued sequence of responses per node, so tests can
 // simulate a poll sequence (append, truncation, rotation, restart, errors).
+//
+// list/open default to "no rotations present": list returns an empty slice and
+// open returns errRotatedFileNotFound, so existing active-file tests exercise the
+// normal (no-rotation) path unchanged. Rotation-aware tests set rotationsByNode /
+// rotatedData explicitly.
 type scriptedFetcher struct {
 	mu        sync.Mutex
 	responses map[string][]fetchResult
 	calls     map[string]int
+
+	// rotationsByNode is the directory listing returned by list() per node. When a
+	// test needs the listing to change across polls, it can queue slices here and
+	// they are consumed one per list() call (last one repeats).
+	rotationsByNode map[string][][]RotatedFile
+	listCalls       map[string]int
+
+	// rotatedData maps "node|filename" to the raw bytes open() streams for that
+	// rotated file. Missing entries make open() return errRotatedFileNotFound.
+	rotatedData map[string][]byte
+	openCalls   map[string]int
 }
 
 type fetchResult struct {
@@ -52,8 +70,12 @@ type fetchResult struct {
 
 func newScriptedFetcher() *scriptedFetcher {
 	return &scriptedFetcher{
-		responses: make(map[string][]fetchResult),
-		calls:     make(map[string]int),
+		responses:       make(map[string][]fetchResult),
+		calls:           make(map[string]int),
+		rotationsByNode: make(map[string][][]RotatedFile),
+		listCalls:       make(map[string]int),
+		rotatedData:     make(map[string][]byte),
+		openCalls:       make(map[string]int),
 	}
 }
 
@@ -62,6 +84,23 @@ func (f *scriptedFetcher) queue(node string, data []byte, err error) {
 	defer f.mu.Unlock()
 
 	f.responses[node] = append(f.responses[node], fetchResult{data: data, err: err})
+}
+
+// queueRotations appends one directory listing to be returned by the next list()
+// call for a node. Successive calls consume successive listings (last repeats).
+func (f *scriptedFetcher) queueRotations(node string, files []RotatedFile) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.rotationsByNode[node] = append(f.rotationsByNode[node], files)
+}
+
+// setRotatedData registers the bytes open() streams for a node's rotated file.
+func (f *scriptedFetcher) setRotatedData(node, filename string, data []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.rotatedData[node+"|"+filename] = data
 }
 
 func (f *scriptedFetcher) fetch(_ context.Context, nodeName string) ([]byte, error) {
@@ -82,6 +121,39 @@ func (f *scriptedFetcher) fetch(_ context.Context, nodeName string) ([]byte, err
 	}
 
 	return resps[idx].data, resps[idx].err
+}
+
+func (f *scriptedFetcher) list(_ context.Context, nodeName string) ([]RotatedFile, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	listings := f.rotationsByNode[nodeName]
+	if len(listings) == 0 {
+		return nil, nil
+	}
+
+	idx := f.listCalls[nodeName]
+	f.listCalls[nodeName]++
+
+	if idx >= len(listings) {
+		idx = len(listings) - 1
+	}
+
+	return listings[idx], nil
+}
+
+func (f *scriptedFetcher) open(_ context.Context, nodeName, filename string) (io.ReadCloser, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.openCalls[nodeName+"|"+filename]++
+
+	data, ok := f.rotatedData[nodeName+"|"+filename]
+	if !ok {
+		return nil, errRotatedFileNotFound
+	}
+
+	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
 const (

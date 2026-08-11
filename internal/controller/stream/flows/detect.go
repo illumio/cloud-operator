@@ -156,15 +156,23 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 	if collector.IsEKSAutoModeAvailable(ctx, config.Logger, clientset) {
 		config.Logger.Info("Using EKS Auto Mode flow collector (node-proxy log polling)")
 
+		// Mark Auto Mode active so the eks_auto_mode_* stats are logged (they are
+		// suppressed on other collectors, where they would always be zero).
+		config.Stats.SetAutoModeActive()
+
 		factory := &awsautomode.Factory{
-			Logger:                 config.Logger,
-			FlowSink:               flowSink,
-			K8sClient:              clientset,
-			PollInterval:           config.AutoModePollInterval,
-			MaxConcurrentNodePolls: config.AutoModeMaxConcurrentNodePolls,
-			LogPath:                config.AutoModeLogPath,
-			StatsAutoModeNodes:     config.Stats.SetAutoModeNodesObserved,
-			StatsAutoModeErrors:    config.Stats.IncrementAutoModePollErrors,
+			Logger:                   config.Logger,
+			FlowSink:                 flowSink,
+			K8sClient:                clientset,
+			PollInterval:             config.AutoModePollInterval,
+			MaxConcurrentNodePolls:   config.AutoModeMaxConcurrentNodePolls,
+			LogPath:                  config.AutoModeLogPath,
+			StatsAutoModeNodes:       config.Stats.SetAutoModeNodesObserved,
+			StatsAutoModeErrors:      config.Stats.IncrementAutoModePollErrors,
+			StatsRotationsDetected:   config.Stats.AddAutoModeRotationsDetected,
+			StatsRotationRecovered:   config.Stats.IncrementAutoModeRotationRecoveries,
+			StatsRotationRecoveryErr: config.Stats.IncrementAutoModeRotationRecoveryErrors,
+			StatsRotationGap:         config.Stats.IncrementAutoModeRotationGaps,
 		}
 
 		return pb.FlowCollector_FLOW_COLLECTOR_AWS_VPC_CNI, "EKS-Auto-Mode", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {

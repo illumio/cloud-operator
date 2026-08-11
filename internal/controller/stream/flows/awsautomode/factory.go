@@ -44,6 +44,16 @@ type Factory struct {
 	// per-node or list error. Both are optional (nil-safe).
 	StatsAutoModeNodes  func(int)
 	StatsAutoModeErrors func()
+
+	// Rotation-recovery stats callbacks (all optional / nil-safe):
+	//   StatsRotationsDetected(n) - n unseen rotated generations detected on a poll.
+	//   StatsRotationRecovered()  - a rotated generation's tail was recovered.
+	//   StatsRotationRecoveryErr()- a rotated generation failed to recover.
+	//   StatsRotationGap()        - a rotated generation was gone before recovery.
+	StatsRotationsDetected   func(int)
+	StatsRotationRecovered   func()
+	StatsRotationRecoveryErr func()
+	StatsRotationGap         func()
 }
 
 // NewCollector creates a new EKS Auto Mode flow collector.
@@ -59,14 +69,18 @@ func (f *Factory) NewCollector(_ context.Context) (flowCollector, error) {
 	}
 
 	return &autoModeClient{
-		logger:              f.Logger,
-		flowSink:            f.FlowSink,
-		k8sClient:           f.K8sClient,
-		fetcher:             &restLogFetcher{k8sClient: f.K8sClient, logPath: f.LogPath, logger: f.Logger},
-		pollInterval:        pollInterval,
-		maxConcurrentPolls:  maxConcurrent,
-		checkpoints:         newCheckpointStore(),
-		statsAutoModeNodes:  f.StatsAutoModeNodes,
-		statsAutoModeErrors: f.StatsAutoModeErrors,
+		logger:                   f.Logger,
+		flowSink:                 f.FlowSink,
+		k8sClient:                f.K8sClient,
+		fetcher:                  &restLogFetcher{k8sClient: f.K8sClient, logPath: f.LogPath, logger: f.Logger},
+		pollInterval:             pollInterval,
+		maxConcurrentPolls:       maxConcurrent,
+		checkpoints:              newCheckpointStore(),
+		statsAutoModeNodes:       f.StatsAutoModeNodes,
+		statsAutoModeErrors:      f.StatsAutoModeErrors,
+		statsRotationsDetected:   f.StatsRotationsDetected,
+		statsRotationRecovered:   f.StatsRotationRecovered,
+		statsRotationRecoveryErr: f.StatsRotationRecoveryErr,
+		statsRotationGap:         f.StatsRotationGap,
 	}, nil
 }

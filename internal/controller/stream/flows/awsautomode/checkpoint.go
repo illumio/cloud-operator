@@ -35,6 +35,17 @@ type nodeLogCheckpoint struct {
 	// (rotation without shrinking) and we reprocess from 0. It also lets us drop a
 	// duplicate final record if a rotation re-emits it.
 	LastRecordHash [sha256.Size]byte
+	// LastRotationID is the newest rotated Lumberjack generation that has been
+	// fully processed (its ID is the lumberjack backup timestamp, e.g.
+	// "2026-08-07T15-04-05.000"). It is the primary rotation detector: on each
+	// poll the collector lists the log directory and recovers any rotated
+	// generation whose ID is greater than this. Empty means no rotation has been
+	// recovered yet (set at bootstrap to the newest generation already present so
+	// historical backups are not replayed). ByteOffset is an UNCOMPRESSED offset
+	// into the current active file; when the active file rotates it becomes the
+	// oldest unseen generation, and only that first generation is resumed from the
+	// stored ByteOffset (later generations are read whole from 0).
+	LastRotationID string
 }
 
 // hashRecord returns the SHA-256 of a log line for checkpoint comparison.
