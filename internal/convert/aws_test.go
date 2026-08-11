@@ -526,7 +526,7 @@ func TestConvertUnstructuredToAWSResource_ClusterNetworkPolicy_RoundTrip(t *test
 	require.NoError(t, err)
 
 	// proto (metadata) → proto (configured), as done before reconcile apply.
-	configured, err := BuildConfiguredFromMetadata("rt-cnp-id", meta)
+	configured, err := BuildConfiguredFromMetadata(meta)
 	require.NoError(t, err)
 
 	// proto → applied CRD.
@@ -555,7 +555,7 @@ func TestConvertUnstructuredToAWSResource_ClusterNetworkPolicy_PriorityUnset(t *
 	meta, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
 	require.NoError(t, err)
 
-	configured, err := BuildConfiguredFromMetadata("no-priority-id", meta)
+	configured, err := BuildConfiguredFromMetadata(meta)
 	require.NoError(t, err)
 
 	apply, _, err := ConvertToApplyObject(configured, "networking.k8s.aws", "v1alpha1")
