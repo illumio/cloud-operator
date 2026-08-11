@@ -22,10 +22,17 @@ rules:
 - apiGroups: ["cilium.io"]
   resources: ["ciliumcidrgroups", "ciliumnetworkpolicies", "ciliumclusterwidenetworkpolicies"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-# AWS VPC CNI - operator creates ClusterNetworkPolicy for flow logging when VPC CNI is detected
+# AWS VPC CNI - operator creates a ClusterNetworkPolicy for flow logging and
+# ingests/reconciles ClusterNetworkPolicy resources for policy support.
+# NOTE: delete only applies to policies from CloudSecure.
 - apiGroups: ["networking.k8s.aws"]
   resources: ["clusternetworkpolicies"]
-  verbs: ["create"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# ApplicationNetworkPolicy is ingest-only (streamed to CloudSecure for visibility);
+# it is never enforced/reconciled, so read-only verbs suffice.
+- apiGroups: ["networking.k8s.aws"]
+  resources: ["applicationnetworkpolicies"]
+  verbs: ["get", "list", "watch"]
 # EKS Auto Mode - operator reads the AWS-managed Network Policy Agent log via the
 # kubelet node-proxy endpoint (GET /api/v1/nodes/{node}/proxy/logs/...). This grants
 # only the minimal read-only nodes/proxy get permission. The collector activates

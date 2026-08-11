@@ -7,13 +7,18 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/watch"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 // mockResourcesStream mocks the stream.KubernetesResourcesStream interface.
@@ -59,6 +64,7 @@ func (s *ResourcesClientTestSuite) SetupTest() {
 		logger:        s.logger,
 		stats:         s.stats,
 		flowCollector: pb.FlowCollector_FLOW_COLLECTOR_CILIUM,
+		runtimeCache:  cache.NewConfiguredObjectCache(),
 	}
 }
 
@@ -118,6 +124,54 @@ func (s *ResourcesClientTestSuite) TestSendKeepalive_AfterClose() {
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "stream closed")
+}
+
+func (s *ResourcesClientTestSuite) TestRuntimeCacheHandler_ExcludesUnownedCNP() {
+	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
+	handler := s.client.newRuntimeCacheHandler(pendingSnapshot)
+
+	// A CNP the operator does not own (no operator field-manager entry) and is not
+	// already tracked must not enter the runtime cache.
+	obj := &unstructured.Unstructured{}
+	obj.SetManagedFields([]metav1.ManagedFieldsEntry{{Manager: "kubectl"}})
+
+	unownedCNP := &pb.KubernetesObjectData{
+		Name: "illumio-cloud-operator-flow-logging",
+		Kind: "ClusterNetworkPolicy",
+		KindSpecific: &pb.KubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Tier: "Baseline"},
+		},
+	}
+
+	err := handler(context.Background(), "", obj, unownedCNP)
+	s.Require().NoError(err)
+	s.Empty(pendingSnapshot, "a CNP the operator does not own must not enter the runtime cache")
+}
+
+func (s *ResourcesClientTestSuite) TestRuntimeCacheHandler_IncludesManagedCNP() {
+	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
+	handler := s.client.newRuntimeCacheHandler(pendingSnapshot)
+
+	// A CNP the operator owns (it SSA-applies the main resource under its field
+	// manager) must enter the runtime cache so the reconciler can track and reconcile it.
+	obj := &unstructured.Unstructured{}
+	obj.SetManagedFields([]metav1.ManagedFieldsEntry{{
+		Manager:   convert.FieldManager,
+		Operation: metav1.ManagedFieldsOperationApply,
+	}})
+
+	managedCNP := &pb.KubernetesObjectData{
+		Name: "cloudsecure-policy",
+		Kind: "ClusterNetworkPolicy",
+		KindSpecific: &pb.KubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Tier: "Admin"},
+		},
+	}
+
+	err := handler(context.Background(), "", obj, managedCNP)
+	s.Require().NoError(err)
+	s.Len(pendingSnapshot, 1, "a CNP the operator owns must enter the runtime cache")
+	s.Contains(pendingSnapshot, convert.CacheKey("ClusterNetworkPolicy", "", "cloudsecure-policy"))
 }
 
 func (s *ResourcesClientTestSuite) TestClose() {
@@ -271,4 +325,43 @@ func (s *ResourcesClientTestSuite) TestCreateMutationObject_Error() {
 	mutation := s.client.CreateMutationObject(metadata, watch.Error)
 
 	s.Nil(mutation)
+}
+
+func TestHasFieldManager(t *testing.T) {
+	const op = "illumio-cloud-operator"
+
+	apply := func(manager string) metav1.ManagedFieldsEntry {
+		return metav1.ManagedFieldsEntry{Manager: manager, Operation: metav1.ManagedFieldsOperationApply}
+	}
+
+	tests := []struct {
+		name   string
+		fields []metav1.ManagedFieldsEntry
+		check  string
+		want   bool
+	}{
+		{"apply present among multiple", []metav1.ManagedFieldsEntry{apply(op), apply("kubectl")}, op, true},
+		{"sole apply manager", []metav1.ManagedFieldsEntry{apply(op)}, op, true},
+		{"absent", []metav1.ManagedFieldsEntry{apply("kubectl"), apply("helm")}, op, false},
+		{"empty managed fields", nil, op, false},
+		{
+			"manager present but only Update op",
+			[]metav1.ManagedFieldsEntry{{Manager: op, Operation: metav1.ManagedFieldsOperationUpdate}},
+			op, false,
+		},
+		{
+			"manager present but on subresource",
+			[]metav1.ManagedFieldsEntry{{Manager: op, Operation: metav1.ManagedFieldsOperationApply, Subresource: "status"}},
+			op, false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			obj := &unstructured.Unstructured{}
+			obj.SetManagedFields(tt.fields)
+
+			assert.Equal(t, tt.want, hasFieldManager(obj, tt.check))
+		})
+	}
 }

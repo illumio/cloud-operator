@@ -1,7 +1,7 @@
 // Copyright 2024 Illumio, Inc. All Rights Reserved.
 // Simplified to focus on HTTP CONNECT tunneling, with Hijack buffering fix.
 
-package main
+package fakeserver
 
 import (
 	"context"
