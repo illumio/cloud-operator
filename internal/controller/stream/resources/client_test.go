@@ -152,10 +152,13 @@ func (s *ResourcesClientTestSuite) TestRuntimeCacheHandler_IncludesManagedCNP() 
 	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
 	handler := s.client.newRuntimeCacheHandler(pendingSnapshot)
 
-	// A CNP the operator owns (its field manager is present in managedFields) must
-	// enter the runtime cache so the reconciler can track and reconcile it.
+	// A CNP the operator owns (it SSA-applies the main resource under its field
+	// manager) must enter the runtime cache so the reconciler can track and reconcile it.
 	obj := &unstructured.Unstructured{}
-	obj.SetManagedFields([]metav1.ManagedFieldsEntry{{Manager: convert.FieldManager}})
+	obj.SetManagedFields([]metav1.ManagedFieldsEntry{{
+		Manager:   convert.FieldManager,
+		Operation: metav1.ManagedFieldsOperationApply,
+	}})
 
 	managedCNP := &pb.KubernetesObjectData{
 		Name: "cloudsecure-policy",
@@ -325,28 +328,38 @@ func (s *ResourcesClientTestSuite) TestCreateMutationObject_Error() {
 }
 
 func TestHasFieldManager(t *testing.T) {
+	const op = "illumio-cloud-operator"
+
+	apply := func(manager string) metav1.ManagedFieldsEntry {
+		return metav1.ManagedFieldsEntry{Manager: manager, Operation: metav1.ManagedFieldsOperationApply}
+	}
+
 	tests := []struct {
-		name     string
-		managers []string
-		check    string
-		want     bool
+		name   string
+		fields []metav1.ManagedFieldsEntry
+		check  string
+		want   bool
 	}{
-		{"present among multiple", []string{"illumio-cloud-operator", "kubectl"}, "illumio-cloud-operator", true},
-		{"absent", []string{"kubectl", "helm"}, "illumio-cloud-operator", false},
-		{"empty managed fields", nil, "illumio-cloud-operator", false},
-		{"sole manager", []string{"illumio-cloud-operator"}, "illumio-cloud-operator", true},
+		{"apply present among multiple", []metav1.ManagedFieldsEntry{apply(op), apply("kubectl")}, op, true},
+		{"sole apply manager", []metav1.ManagedFieldsEntry{apply(op)}, op, true},
+		{"absent", []metav1.ManagedFieldsEntry{apply("kubectl"), apply("helm")}, op, false},
+		{"empty managed fields", nil, op, false},
+		{
+			"manager present but only Update op",
+			[]metav1.ManagedFieldsEntry{{Manager: op, Operation: metav1.ManagedFieldsOperationUpdate}},
+			op, false,
+		},
+		{
+			"manager present but on subresource",
+			[]metav1.ManagedFieldsEntry{{Manager: op, Operation: metav1.ManagedFieldsOperationApply, Subresource: "status"}},
+			op, false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			obj := &unstructured.Unstructured{}
-
-			var fields []metav1.ManagedFieldsEntry
-			for _, m := range tt.managers {
-				fields = append(fields, metav1.ManagedFieldsEntry{Manager: m})
-			}
-
-			obj.SetManagedFields(fields)
+			obj.SetManagedFields(tt.fields)
 
 			assert.Equal(t, tt.want, hasFieldManager(obj, tt.check))
 		})

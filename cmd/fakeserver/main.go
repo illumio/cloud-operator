@@ -35,7 +35,7 @@ func main() {
 	// nosemgrep: jwt.hardcoded-jwt-key
 	signedToken, err := jwtToken.SignedString(mySigningKey)
 	if err != nil {
-		logger.Error("Token could not be signed with fake secret key")
+		logger.Fatal("Token could not be signed with fake secret key", zap.Error(err))
 	}
 
 	fs := &fakeserver.FakeServer{

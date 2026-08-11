@@ -76,6 +76,10 @@ type FakeServer struct {
 	// configDone is closed by DisconnectConfigStream to stop the current stream, then
 	// re-armed for the next one. Safe to close because nobody sends on it.
 	configDone chan struct{}
+
+	// stopOnce guards Stop so it is idempotent: callers may both defer Stop and
+	// wait on StopChan without double-closing StopChan (which would panic).
+	stopOnce sync.Once
 }
 
 // RecordCiliumFlow increments the Cilium flow counter.
@@ -411,11 +415,11 @@ func (fs *FakeServer) Start() error {
 }
 
 func (fs *FakeServer) Stop() {
-	fs.Logger.Info("Stopping FakeServer")
+	fs.stopOnce.Do(fs.stop)
+}
 
-	defer func() {
-		_ = recover() // Ignore the returned value of recover()
-	}()
+func (fs *FakeServer) stop() {
+	fs.Logger.Info("Stopping FakeServer")
 
 	// Shutdown gRPC server
 	if fs.server != nil {

@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/watch"
 
@@ -318,15 +319,10 @@ func (c *resourcesClient) CreateMutationObject(metadata *pb.KubernetesObjectData
 // into pendingSnapshot for later ReplaceAll — the cache is not modified directly.
 func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.ConfiguredKubernetesObjectData) RuntimeCacheHandler {
 	return func(ctx context.Context, eventType watch.EventType, obj *unstructured.Unstructured, metadata *pb.KubernetesObjectData) error {
-		configured, err := convert.BuildConfiguredFromMetadata(metadata)
-		if err != nil {
-			return nil //nolint:nilerr // unsupported kinds are silently skipped
-		}
-
-		key, err := convert.CacheKeyForObject(configured)
-		if err != nil {
-			return nil //nolint:nilerr // unsupported kinds are silently skipped
-		}
+		// Build the cache key directly from the raw metadata (kind/namespace/name),
+		// avoiding the more expensive proto conversion below. This matches the key
+		// CacheKeyForObject produces because both derive the kind from the same value.
+		key := convert.CacheKey(metadata.GetKind(), metadata.GetNamespace(), metadata.GetName())
 
 		// Determine operator ownership via managedFields, falling back to cache membership.
 		// A non-SSA write (e.g. MergePatch by an external actor) can transfer ownership of
@@ -335,8 +331,23 @@ func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.
 		// membership check ensures we still track the modified state so the reconciler can
 		// detect the drift and restore it.
 		// (https://kubernetes.io/docs/reference/using-api/server-side-apply/#clearing-managedfields)
+		//
+		// This ownership check runs before the proto conversion so the common case — a
+		// watch event for an object the operator neither owns nor tracks — costs only a
+		// managedFields scan and a cache lookup, not a full BuildConfiguredFromMetadata.
 		if !hasFieldManager(obj, convert.FieldManager) && c.runtimeCache.Get(key) == nil {
 			return nil
+		}
+
+		configured, err := convert.BuildConfiguredFromMetadata(metadata)
+		if err != nil {
+			// Unsupported kinds are watched but not reconciled; skip without error.
+			c.logger.Debug("Skipping unsupported kind in runtime cache handler",
+				zap.String("kind", metadata.GetKind()),
+				zap.String("name", metadata.GetName()),
+				zap.Error(err))
+
+			return nil //nolint:nilerr // unsupported kinds are silently skipped
 		}
 
 		if eventType == "" {
@@ -361,10 +372,18 @@ func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.
 	}
 }
 
-// hasFieldManager reports whether the object's managedFields includes the given manager.
+// hasFieldManager reports whether the operator server-side-applies (and thus owns)
+// the object's main resource under the given manager.
+//
+// Matching on the manager name alone is not enough: SSA can leave several managedFields
+// entries under one manager name — e.g. a stale Operation: Update entry, or an entry for
+// a subresource such as status. We only own the object when there is an Apply operation on
+// the main resource (empty subresource), so we require both.
 func hasFieldManager(obj *unstructured.Unstructured, manager string) bool {
 	for _, mf := range obj.GetManagedFields() {
-		if mf.Manager == manager {
+		if mf.Manager == manager &&
+			mf.Operation == metav1.ManagedFieldsOperationApply &&
+			mf.Subresource == "" {
 			return true
 		}
 	}

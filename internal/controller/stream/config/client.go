@@ -89,7 +89,9 @@ func (c *configClient) handleConfigUpdate(ctx context.Context, resp *pb.GetConfi
 
 		key, err := convert.CacheKeyForObject(update.ResourceData)
 		if err != nil {
-			c.logger.Warn("Skipping unsupported resource type",
+			// An unsupported kind is expected (e.g. a newer server sending a kind this
+			// operator version doesn't reconcile), not degraded operation. Log at Debug.
+			c.logger.Debug("Skipping unsupported resource type",
 				zap.String("name", update.ResourceData.GetName()),
 				zap.Error(err))
 
@@ -133,7 +135,8 @@ func (c *configClient) handleConfigUpdate(ctx context.Context, resp *pb.GetConfi
 
 			key, err = convert.CacheKeyForObject(m.CreateOrUpdateObject)
 			if err != nil {
-				c.logger.Warn("Skipping unsupported create/update mutation",
+				// An unsupported kind is expected, not degraded operation. Log at Debug.
+				c.logger.Debug("Skipping unsupported create/update mutation",
 					zap.String("name", m.CreateOrUpdateObject.GetName()),
 					zap.Error(err))
 
