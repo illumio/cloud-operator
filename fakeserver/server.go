@@ -77,9 +77,11 @@ type FakeServer struct {
 	// re-armed for the next one. Safe to close because nobody sends on it.
 	configDone chan struct{}
 
-	// stopOnce guards Stop so it is idempotent: callers may both defer Stop and
-	// wait on StopChan without double-closing StopChan (which would panic).
-	stopOnce sync.Once
+	// stopChanOnce guards the close of StopChan so callers may both defer Stop and
+	// wait on StopChan without double-closing it (which would panic). Only the channel
+	// close is guarded: Stop itself must stay re-runnable so a server can be restarted
+	// (Start/Stop/Start/Stop on the same struct, as the reconnect test does).
+	stopChanOnce sync.Once
 }
 
 // RecordCiliumFlow increments the Cilium flow counter.
@@ -415,10 +417,6 @@ func (fs *FakeServer) Start() error {
 }
 
 func (fs *FakeServer) Stop() {
-	fs.stopOnce.Do(fs.stop)
-}
-
-func (fs *FakeServer) stop() {
 	fs.Logger.Info("Stopping FakeServer")
 
 	// Shutdown gRPC server
@@ -470,8 +468,10 @@ func (fs *FakeServer) stop() {
 	http.DefaultServeMux = http.NewServeMux()
 
 	if fs.StopChan != nil {
-		fs.Logger.Info("Closing stop channel")
-		close(fs.StopChan)
+		fs.stopChanOnce.Do(func() {
+			fs.Logger.Info("Closing stop channel")
+			close(fs.StopChan)
+		})
 	} else {
 		fs.Logger.Warn("Stop channel was nil during shutdown")
 	}

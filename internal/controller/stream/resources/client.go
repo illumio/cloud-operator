@@ -331,10 +331,7 @@ func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.
 		// membership check ensures we still track the modified state so the reconciler can
 		// detect the drift and restore it.
 		// (https://kubernetes.io/docs/reference/using-api/server-side-apply/#clearing-managedfields)
-		//
-		// This ownership check runs before the proto conversion so the common case — a
-		// watch event for an object the operator neither owns nor tracks — costs only a
-		// managedFields scan and a cache lookup, not a full BuildConfiguredFromMetadata.
+
 		if !hasFieldManager(obj, convert.FieldManager) && c.runtimeCache.Get(key) == nil {
 			return nil
 		}
@@ -347,7 +344,7 @@ func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.
 				zap.String("name", metadata.GetName()),
 				zap.Error(err))
 
-			return nil //nolint:nilerr // unsupported kinds are silently skipped
+			return nil
 		}
 
 		if eventType == "" {
@@ -374,11 +371,6 @@ func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.
 
 // hasFieldManager reports whether the operator server-side-applies (and thus owns)
 // the object's main resource under the given manager.
-//
-// Matching on the manager name alone is not enough: SSA can leave several managedFields
-// entries under one manager name — e.g. a stale Operation: Update entry, or an entry for
-// a subresource such as status. We only own the object when there is an Apply operation on
-// the main resource (empty subresource), so we require both.
 func hasFieldManager(obj *unstructured.Unstructured, manager string) bool {
 	for _, mf := range obj.GetManagedFields() {
 		if mf.Manager == manager &&
