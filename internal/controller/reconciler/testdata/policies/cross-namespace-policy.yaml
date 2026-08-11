@@ -1,0 +1,14 @@
+# From: https://github.com/cilium/cilium/blob/main/examples/policies/kubernetes/namespace/namespace-policy.yaml
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: cross-namespace-policy
+spec:
+  endpointSelector:
+    matchLabels:
+      name: leia
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: ns2
+            name: luke

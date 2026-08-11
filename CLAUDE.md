@@ -7,9 +7,14 @@ Kubernetes operator that streams cluster resources, logs, and network flows to I
 ```bash
 make build              # Build the operator binary
 make test               # Run all unit tests
+make test-envtest       # Run envtest integration tests (downloads Cilium CRDs, uses pinned k8s version)
 make lint               # Run golangci-lint
 go test ./... -v        # Run tests with verbose output
 go test -run '^TestName$' ./path/to/pkg  # Run single test
+
+# The integration tests live behind the `envtest` build tag and need setup-envtest
+# assets. Prefer `make test-envtest`; to run them directly:
+ENVTEST_K8S_VERSION=1.36.0 go test -tags envtest ./internal/controller/reconciler/ -v
 ```
 
 ## Project Structure
