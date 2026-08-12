@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"regexp"
-	"strconv"
 
 	"go.uber.org/zap"
 	"k8s.io/client-go/kubernetes"
@@ -204,56 +203,6 @@ func (f *restLogFetcher) open(ctx context.Context, nodeName, filename string) (i
 	}
 
 	return io.NopCloser(bytes.NewReader(raw)), nil
-}
-
-// rangeResult is the outcome of a Range request against the active file.
-type rangeResult struct {
-	// statusCode is the HTTP status (206 partial, 200 full, 416 unsatisfiable).
-	statusCode int
-	// data is the response body.
-	data []byte
-	// partial is true only when the server honored the Range (HTTP 206).
-	partial bool
-}
-
-// fetchRange requests the active file starting at offset via an HTTP Range header.
-// It is a transport capability for a future incremental-read optimization; the
-// poll path deliberately does NOT use it, because reconcile's shrink/hash
-// reset-detection needs the whole file. Callers must treat 200 as "Range ignored,
-// full body returned" and fall back to whole-file reconcile, and 416 as "offset
-// past end" (no new data). Range is never used for gzip recovery, where the
-// uncompressed checkpoint offset does not map to a compressed byte position.
-func (f *restLogFetcher) fetchRange(ctx context.Context, nodeName string, offset int) (rangeResult, error) {
-	req := f.k8sClient.CoreV1().RESTClient().
-		Get().
-		Resource("nodes").
-		Name(nodeName).
-		SubResource("proxy").
-		Suffix(f.activeSegments()...).
-		SetHeader("Range", "bytes="+strconv.Itoa(offset)+"-")
-
-	result := req.Do(ctx)
-
-	statusCode := 0
-	result.StatusCode(&statusCode)
-
-	raw, err := result.Raw()
-
-	// A 416 (Range Not Satisfiable) is not an application error for us: it means
-	// the offset is at/after the end, i.e. no new bytes. Surface it as a result.
-	if statusCode == 416 {
-		return rangeResult{statusCode: statusCode, data: nil, partial: false}, nil
-	}
-
-	if err != nil {
-		return rangeResult{statusCode: statusCode}, err
-	}
-
-	return rangeResult{
-		statusCode: statusCode,
-		data:       raw,
-		partial:    statusCode == 206,
-	}, nil
 }
 
 // truncateBody caps a response body so a large error page (or log file) does not
