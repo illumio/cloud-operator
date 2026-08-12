@@ -191,17 +191,17 @@ func TestProcessMutation_SendsCorrectMutationTypes(t *testing.T) {
 	ch := make(chan *pb.KubernetesResourceMutation, 3)
 
 	u1 := newUnstructuredNamespace("n1", "10")
-	if _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u1}, ch); err != nil {
+	if _, _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u1}, ch); err != nil {
 		t.Fatalf("processMutation(Add) error: %v", err)
 	}
 
 	u2 := newUnstructuredNamespace("n1", "11")
-	if _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Modified, Object: u2}, ch); err != nil {
+	if _, _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Modified, Object: u2}, ch); err != nil {
 		t.Fatalf("processMutation(Modify) error: %v", err)
 	}
 
 	u3 := newUnstructuredNamespace("n1", "12")
-	if _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Deleted, Object: u3}, ch); err != nil {
+	if _, _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Deleted, Object: u3}, ch); err != nil {
 		t.Fatalf("processMutation(Delete) error: %v", err)
 	}
 
@@ -236,7 +236,7 @@ func TestProcessMutation_RespectsContextCancellation(t *testing.T) {
 	ch := make(chan *pb.KubernetesResourceMutation)
 	u := newUnstructuredNamespace("n1", "10")
 
-	_, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u}, ch)
+	_, _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u}, ch)
 	if err == nil {
 		t.Fatalf("expected context error, got nil")
 	}
@@ -268,15 +268,15 @@ func TestProcessMutation_ConstructsMetadataCorrectly(t *testing.T) {
 	u2 := newUnstructuredNamespace("n1", "11")
 	u3 := newUnstructuredNamespace("n1", "12")
 
-	if _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u1}, ch); err != nil {
+	if _, _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u1}, ch); err != nil {
 		t.Fatalf("processMutation(Add) error: %v", err)
 	}
 
-	if _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Modified, Object: u2}, ch); err != nil {
+	if _, _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Modified, Object: u2}, ch); err != nil {
 		t.Fatalf("processMutation(Modify) error: %v", err)
 	}
 
-	if _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Deleted, Object: u3}, ch); err != nil {
+	if _, _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Deleted, Object: u3}, ch); err != nil {
 		t.Fatalf("processMutation(Delete) error: %v", err)
 	}
 
@@ -347,7 +347,7 @@ func TestProcessMutation_BookmarkSendsNilMutation(t *testing.T) {
 
 	u := newUnstructuredNamespace("n1", "99")
 
-	rv, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Bookmark, Object: u}, ch)
+	rv, _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Bookmark, Object: u}, ch)
 	if err != nil {
 		t.Fatalf("processMutation(Bookmark) error: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestProcessMutation_ErrorEventSendsNilMutation(t *testing.T) {
 	ch := make(chan *pb.KubernetesResourceMutation, 1)
 
 	u := newUnstructuredNamespace("n1", "10")
-	_, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Error, Object: u}, ch)
+	_, _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Error, Object: u}, ch)
 
 	// Error event doesn't return error, it sends nil mutation
 	if err != nil {
@@ -404,7 +404,7 @@ func TestProcessMutation_NilObject(t *testing.T) {
 
 	ch := make(chan *pb.KubernetesResourceMutation, 1)
 
-	_, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: nil}, ch)
+	_, _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: nil}, ch)
 	if err == nil {
 		t.Fatalf("expected error for nil object, got nil")
 	}
@@ -427,7 +427,7 @@ func TestProcessMutation_CiliumPolicy(t *testing.T) {
 
 	ciliumObj := newUnstructuredCiliumPolicy("test-policy", "default", "500")
 
-	rv, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: ciliumObj}, ch)
+	rv, _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: ciliumObj}, ch)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -472,7 +472,7 @@ func TestProcessMutation_TypeAssertionFailure(t *testing.T) {
 		},
 	}
 
-	_, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: obj}, ch)
+	_, _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: obj}, ch)
 	if err == nil {
 		t.Fatalf("expected error for non-unstructured object, got nil")
 	}
@@ -1134,7 +1134,7 @@ func TestProcessMutation_ConverterError(t *testing.T) {
 
 	u := newUnstructuredPod("test-pod", "10")
 
-	_, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u}, ch)
+	_, _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: u}, ch)
 	if err == nil {
 		t.Fatalf("expected error from failing converter, got nil")
 	}
@@ -1283,7 +1283,7 @@ func TestProcessMutation_CiliumClusterwidePolicy(t *testing.T) {
 
 	ciliumObj := newUnstructuredCiliumClusterwidePolicy("cluster-policy", "600")
 
-	rv, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: ciliumObj}, ch)
+	rv, _, _, err := rm.processMutation(ctx, watch.Event{Type: watch.Added, Object: ciliumObj}, ch)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
