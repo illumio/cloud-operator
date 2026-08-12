@@ -108,7 +108,7 @@ func TestUnseenRotations(t *testing.T) {
 }
 
 func TestNewestRotationID(t *testing.T) {
-	assert.Equal(t, "", newestRotationID(nil))
+	assert.Empty(t, newestRotationID(nil))
 
 	files := []RotatedFile{
 		{ID: "2026-08-07T10-00-00.000", Filename: "a.log.gz", Compressed: true},

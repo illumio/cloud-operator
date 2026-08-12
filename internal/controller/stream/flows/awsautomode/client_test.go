@@ -88,6 +88,8 @@ func (f *scriptedFetcher) queue(node string, data []byte, err error) {
 
 // queueRotations appends one directory listing to be returned by the next list()
 // call for a node. Successive calls consume successive listings (last repeats).
+//
+//nolint:unparam // node is kept for symmetry with queue/setRotatedData and multi-node tests
 func (f *scriptedFetcher) queueRotations(node string, files []RotatedFile) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -96,6 +98,8 @@ func (f *scriptedFetcher) queueRotations(node string, files []RotatedFile) {
 }
 
 // setRotatedData registers the bytes open() streams for a node's rotated file.
+//
+//nolint:unparam // node is kept for symmetry with queue/queueRotations and multi-node tests
 func (f *scriptedFetcher) setRotatedData(node, filename string, data []byte) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

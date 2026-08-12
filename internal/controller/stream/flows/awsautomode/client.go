@@ -376,6 +376,7 @@ func (c *autoModeClient) recoverRotatedFile(ctx context.Context, nodeName string
 	if err != nil {
 		return false, err
 	}
+
 	defer func() { _ = rc.Close() }()
 
 	var reader io.Reader = rc
@@ -490,7 +491,11 @@ func (c *autoModeClient) processLine(ctx context.Context, line []byte, logger *z
 
 	flow, err := collector.ParseAWSVPCCNIFlowLog(string(line))
 	if err != nil {
-		return false, nil
+		// A parse failure is expected and not an error: the Network Policy Agent
+		// log interleaves non-flow housekeeping lines with flow records. Only a
+		// context error (handled above) should stop processing; a non-flow line is
+		// simply skipped. See the doc comment for the return-value contract.
+		return false, nil //nolint:nilerr // non-flow lines are intentionally skipped, not errors
 	}
 
 	if err := c.flowSink.CacheFlow(ctx, flow); err != nil {

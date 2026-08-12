@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"context"
 	"io"
+	"strings"
 
 	"github.com/stretchr/testify/mock"
 	"k8s.io/apimachinery/pkg/types"
@@ -24,12 +25,13 @@ func gzipBytes(s string) []byte {
 }
 
 func flowLines(flows ...string) string {
-	out := ""
+	var out strings.Builder
 	for _, f := range flows {
-		out += f + "\n"
+		out.WriteString(f)
+		out.WriteString("\n")
 	}
 
-	return out
+	return out.String()
 }
 
 // TestBootstrap_NoRotations: brand-new node, empty dir listing -> read active file
@@ -45,8 +47,9 @@ func (s *AutoModeClientTestSuite) TestBootstrap_NoRotations() {
 	s.Require().NoError(c.pollNode(ctx, "node-a", types.UID("uid-a"), s.logger))
 
 	s.mockSink.AssertNumberOfCalls(s.T(), "CacheFlow", 2)
+
 	cp := c.checkpoints.get("node-a")
-	s.Equal("", cp.LastRotationID)
+	s.Empty(cp.LastRotationID)
 	s.Equal(types.UID("uid-a"), cp.NodeUID)
 }
 
@@ -120,6 +123,7 @@ func (s *AutoModeClientTestSuite) TestSingleRotation_GzipRecoveryUsesOffset() {
 	// Now the file rotated: the old active file (prefix + a NEW tail flow3) became
 	// R11.gz, and a fresh active file (flow with only flow1 again) exists.
 	rotatedContent := activePrefix + flowLines(oldFmtFlow3) // tail flow3 was never read
+
 	s.fetcher.queueRotations("node-a", []RotatedFile{
 		{ID: "2026-08-07T11-00-00.000", Filename: "network-policy-agent-2026-08-07T11-00-00.000.log.gz", Compressed: true},
 	})
@@ -256,6 +260,7 @@ func (s *AutoModeClientTestSuite) TestNodeUIDChange_Rebootstraps() {
 
 	// Only the fresh active flow2; the rotation is recorded, not replayed.
 	s.mockSink.AssertNumberOfCalls(s.T(), "CacheFlow", 2)
+
 	cp := c.checkpoints.get("node-a")
 	s.Equal(types.UID("uid-b"), cp.NodeUID)
 	s.Equal("2026-08-07T11-00-00.000", cp.LastRotationID)
@@ -283,7 +288,7 @@ func (s *AutoModeClientTestSuite) TestGzipCorruption_DoesNotAdvance() {
 	s.Require().Error(err)
 
 	// LastRotationID unchanged (still bootstrap's "").
-	s.Equal("", c.checkpoints.get("node-a").LastRotationID)
+	s.Empty(c.checkpoints.get("node-a").LastRotationID)
 }
 
 // TestListError_DoesNotAdvance: a directory list failure on a normal poll returns
