@@ -88,9 +88,13 @@ func bindEnv(logger *zap.Logger, key, envVar string) {
 // split out of main() to keep that function's size manageable.
 func logStartupConfig(logger *zap.Logger, envConfig stream.Config) {
 	logger.Info("Starting application",
+		zap.Duration("aws_vpc_cni_logs_polling_interval", viper.GetDuration("aws_vpc_cni_logs_polling_interval")),
 		zap.Strings("cilium_namespaces", viper.GetStringSlice("cilium_namespaces")),
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
 		zap.String("cluster_name", envConfig.ClusterName),
+		zap.String("eks_auto_mode_log_path", viper.GetString("eks_auto_mode_log_path")),
+		zap.Int("eks_auto_mode_max_concurrent_node_polls", viper.GetInt("eks_auto_mode_max_concurrent_node_polls")),
+		zap.Duration("eks_auto_mode_poll_interval", viper.GetDuration("eks_auto_mode_poll_interval")),
 		zap.String("https_proxy", envConfig.HttpsProxy),
 		zap.String("ipfix_collector_port", viper.GetString("ipfix_collector_port")),
 		zap.String("onboarding_client_id", envConfig.OnboardingClientID),
@@ -107,10 +111,6 @@ func logStartupConfig(logger *zap.Logger, envConfig stream.Config) {
 		zap.Bool("tls_skip_verify", envConfig.TlsSkipVerify),
 		zap.String("token_endpoint", envConfig.TokenEndpoint),
 		zap.Bool("verbose_debugging", viper.GetBool("verbose_debugging")),
-		zap.Duration("aws_vpc_cni_logs_polling_interval", viper.GetDuration("aws_vpc_cni_logs_polling_interval")),
-		zap.Duration("eks_auto_mode_poll_interval", viper.GetDuration("eks_auto_mode_poll_interval")),
-		zap.Int("eks_auto_mode_max_concurrent_node_polls", viper.GetInt("eks_auto_mode_max_concurrent_node_polls")),
-		zap.String("eks_auto_mode_log_path", viper.GetString("eks_auto_mode_log_path")),
 	)
 }
 
@@ -131,9 +131,13 @@ func main() {
 	viper.AutomaticEnv()
 
 	// Bind specific environment variables to keys
+	bindEnv(logger, "aws_vpc_cni_logs_polling_interval", "AWS_VPC_CNI_LOGS_POLLING_INTERVAL")
 	bindEnv(logger, "cilium_namespaces", "CILIUM_NAMESPACES")
 	bindEnv(logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
 	bindEnv(logger, "cluster_name", "CLUSTER_NAME")
+	bindEnv(logger, "eks_auto_mode_log_path", "EKS_AUTO_MODE_LOG_PATH")
+	bindEnv(logger, "eks_auto_mode_max_concurrent_node_polls", "EKS_AUTO_MODE_MAX_CONCURRENT_NODE_POLLS")
+	bindEnv(logger, "eks_auto_mode_poll_interval", "EKS_AUTO_MODE_POLL_INTERVAL")
 	bindEnv(logger, "flow_cache_active_timeout", "FLOW_CACHE_ACTIVE_TIMEOUT")
 	bindEnv(logger, "flow_cache_channel_buffer_size", "FLOW_CACHE_CHANNEL_BUFFER_SIZE")
 	bindEnv(logger, "flow_cache_max_size", "FLOW_CACHE_MAX_SIZE")
@@ -155,14 +159,14 @@ func main() {
 	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "verbose_debugging", "VERBOSE_DEBUGGING")
-	bindEnv(logger, "aws_vpc_cni_logs_polling_interval", "AWS_VPC_CNI_LOGS_POLLING_INTERVAL")
-	bindEnv(logger, "eks_auto_mode_poll_interval", "EKS_AUTO_MODE_POLL_INTERVAL")
-	bindEnv(logger, "eks_auto_mode_max_concurrent_node_polls", "EKS_AUTO_MODE_MAX_CONCURRENT_NODE_POLLS")
-	bindEnv(logger, "eks_auto_mode_log_path", "EKS_AUTO_MODE_LOG_PATH")
 
 	// Set default values
+	viper.SetDefault("aws_vpc_cni_logs_polling_interval", "1s")
 	viper.SetDefault("cilium_namespaces", []string{"kube-system", "gke-managed-dpv2-observability"})
 	viper.SetDefault("cluster_creds", "clustercreds")
+	viper.SetDefault("eks_auto_mode_log_path", collector.DefaultNetworkPolicyAgentLogPath)
+	viper.SetDefault("eks_auto_mode_max_concurrent_node_polls", 10)
+	viper.SetDefault("eks_auto_mode_poll_interval", "10s")
 	viper.SetDefault("flow_cache_active_timeout", defaultFlowCacheActiveTimeout)
 	viper.SetDefault("flow_cache_channel_buffer_size", defaultFlowCacheChannelBuffSize)
 	viper.SetDefault("flow_cache_max_size", defaultFlowCacheMaxSize)
@@ -182,10 +186,6 @@ func main() {
 	viper.SetDefault("tls_skip_verify", false)
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("verbose_debugging", false)
-	viper.SetDefault("aws_vpc_cni_logs_polling_interval", "1s")
-	viper.SetDefault("eks_auto_mode_poll_interval", "10s")
-	viper.SetDefault("eks_auto_mode_max_concurrent_node_polls", 10)
-	viper.SetDefault("eks_auto_mode_log_path", collector.DefaultNetworkPolicyAgentLogPath)
 
 	if viper.GetBool("grpc_internal_logging") {
 		logging.SetupGRPCInternalLogging(logger)
@@ -268,19 +268,18 @@ func main() {
 
 	// Detect flow collector type at startup
 	flowCollectorType, flowCollectorName, flowCollectorFactory := flows.DetectFlowCollector(ctx, flows.CollectorConfig{
-		Logger:                   logger,
-		FlowCache:                flowCache,
-		Stats:                    stats,
-		K8sClient:                k8sClient,
-		CiliumNamespaces:         viper.GetStringSlice("cilium_namespaces"),
-		IPFIXCollectorPort:       viper.GetString("ipfix_collector_port"),
-		OVNKNamespace:            viper.GetString("ovnk_namespace"),
-		TlsAuthProps:             tlsAuthProps,
-		AWSVPCCNIPollingInterval: viper.GetDuration("aws_vpc_cni_logs_polling_interval"),
-
-		AutoModePollInterval:           viper.GetDuration("eks_auto_mode_poll_interval"),
-		AutoModeMaxConcurrentNodePolls: viper.GetInt("eks_auto_mode_max_concurrent_node_polls"),
+		AWSVPCCNIPollingInterval:       viper.GetDuration("aws_vpc_cni_logs_polling_interval"),
 		AutoModeLogPath:                viper.GetString("eks_auto_mode_log_path"),
+		AutoModeMaxConcurrentNodePolls: viper.GetInt("eks_auto_mode_max_concurrent_node_polls"),
+		AutoModePollInterval:           viper.GetDuration("eks_auto_mode_poll_interval"),
+		CiliumNamespaces:               viper.GetStringSlice("cilium_namespaces"),
+		FlowCache:                      flowCache,
+		IPFIXCollectorPort:             viper.GetString("ipfix_collector_port"),
+		K8sClient:                      k8sClient,
+		Logger:                         logger,
+		OVNKNamespace:                  viper.GetString("ovnk_namespace"),
+		Stats:                          stats,
+		TlsAuthProps:                   tlsAuthProps,
 	})
 
 	// Create factory config with all stream factories
