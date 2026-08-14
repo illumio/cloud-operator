@@ -93,6 +93,15 @@ func (c *FlowCache) Run(ctx context.Context, logger *zap.Logger) error {
 				continue
 			}
 
+			if c.isOutsideTimeWindow(flow) {
+				logger.Debug("Dropping flow with timestamp outside the active time window",
+					zap.Time("flow_timestamp", flow.StartTimestamp()),
+					zap.Duration("active_timeout", c.activeTimeout),
+				)
+
+				continue
+			}
+
 			if c.shouldEvictOldest() {
 				if err := c.evictOldestFlow(ctx, logger); err != nil {
 					return err
@@ -146,6 +155,19 @@ func (c *FlowCache) shouldSkipFlow(flow pb.Flow) bool {
 	_, alreadyCached := c.cache[flow.Key()]
 
 	return alreadyCached
+}
+
+// isOutsideTimeWindow reports whether the flow's timestamp is too far in the
+// past to be relevant, i.e. older than the cache's active time window. Such a
+// flow (e.g. from a stream reconnect replaying buffered flows, or a skewed
+// exporter clock) would otherwise be cached and then evicted on the next timer
+// tick, sending it to CloudSecure with a stale, backdated timestamp. Dropping it
+// before it enters the cache keeps it out of OutFlows entirely. The cutoff
+// mirrors the eviction cutoff in evictExpiredFlows.
+func (c *FlowCache) isOutsideTimeWindow(flow pb.Flow) bool {
+	cutoff := time.Now().UTC().Add(-c.activeTimeout)
+
+	return !flow.StartTimestamp().After(cutoff)
 }
 
 func (c *FlowCache) shouldEvictOldest() bool {

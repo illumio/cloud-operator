@@ -105,6 +105,21 @@ func TestFlowCache_ShouldSkipFlow(t *testing.T) {
 	assert.True(t, c.shouldSkipFlow(flow))
 }
 
+func TestFlowCache_IsOutsideTimeWindow(t *testing.T) {
+	outFlows := make(chan pb.Flow, 10)
+	c := NewFlowCache(10*time.Second, 100, outFlows)
+
+	now := time.Now()
+
+	// Within the active window: kept.
+	assert.False(t, c.isOutsideTimeWindow(&MockFlow{startTimestamp: now, key: "fresh"}))
+	assert.False(t, c.isOutsideTimeWindow(&MockFlow{startTimestamp: now.Add(-5 * time.Second), key: "recent"}))
+
+	// At or beyond the window boundary: dropped as too far in the past.
+	assert.True(t, c.isOutsideTimeWindow(&MockFlow{startTimestamp: now.Add(-15 * time.Second), key: "stale"}))
+	assert.True(t, c.isOutsideTimeWindow(&MockFlow{startTimestamp: now.Add(-5 * time.Minute), key: "ancient"}))
+}
+
 func TestFlowCache_ShouldEvictOldest(t *testing.T) {
 	outFlows := make(chan pb.Flow, 10)
 	c := NewFlowCache(10*time.Second, 100, outFlows)
