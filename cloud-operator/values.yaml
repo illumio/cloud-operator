@@ -135,7 +135,10 @@ awsVpcCni:
     # Maximum number of nodes polled concurrently, to bound load on kubelets.
     maxConcurrentNodePolls: 10
     # Node-local path (relative to the kubelet log root) of the Network Policy
-    # Agent log. Overridable in case a future AWS agent version relocates the file.
+    # Agent log. This is the active log file AND the filename prefix used to
+    # discover its rotated generations (e.g. network-policy-agent-<timestamp>.log.gz),
+    # not the only filename queried. Overridable in case a future AWS agent
+    # version relocates the file.
     logPath: "aws-routed-eni/network-policy-agent.log"
 
 env:
