@@ -4,6 +4,7 @@ package awsautomode
 
 import (
 	"bytes"
+	"crypto/md5" //nolint:gosec // non-cryptographic use: same-file continuation check, no security requirement
 
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -117,7 +118,7 @@ func reconcile(cp *nodeLogCheckpoint, data []byte, nodeUID types.UID) logSlice {
 // recordEndingAtMatches reports whether the log record that ends at byte index
 // end (end points just past a '\n') hashes to want. This confirms the file we
 // just fetched is a continuation of the one behind the stored offset.
-func recordEndingAtMatches(data []byte, end int, want [32]byte) bool {
+func recordEndingAtMatches(data []byte, end int, want [md5.Size]byte) bool {
 	if end <= 0 || end > len(data) {
 		return false
 	}

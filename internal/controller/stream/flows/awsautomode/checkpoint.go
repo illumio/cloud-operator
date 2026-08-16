@@ -3,7 +3,8 @@
 package awsautomode
 
 import (
-	"crypto/sha256"
+	"crypto/md5" //nolint:gosec // non-cryptographic use: same-file continuation check, no security requirement
+	"maps"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -29,12 +30,12 @@ type nodeLogCheckpoint struct {
 	// was fetched. If a later fetch returns fewer bytes than this, the file was
 	// truncated or rotated and the offset must be reset to 0.
 	LastObservedSize int
-	// LastRecordHash is the SHA-256 of the last fully-processed line. On the next
+	// LastRecordHash is the MD5 of the last fully-processed line. On the next
 	// fetch, if the byte at ByteOffset still hashes to this value the file is the
 	// same underlying file and we resume after it; if not, the file was replaced
 	// (rotation without shrinking) and we reprocess from 0. It also lets us drop a
 	// duplicate final record if a rotation re-emits it.
-	LastRecordHash [sha256.Size]byte
+	LastRecordHash [md5.Size]byte
 	// LastRotationID is the newest rotated Lumberjack generation that has been
 	// fully processed (its ID is the lumberjack backup timestamp, e.g.
 	// "2026-08-07T15-04-05.000"). It is the primary rotation detector: on each
@@ -48,9 +49,12 @@ type nodeLogCheckpoint struct {
 	LastRotationID string
 }
 
-// hashRecord returns the SHA-256 of a log line for checkpoint comparison.
-func hashRecord(line []byte) [sha256.Size]byte {
-	return sha256.Sum256(line)
+// hashRecord returns the MD5 of a log line for checkpoint comparison. MD5 is
+// used only to detect whether the record at a stored offset is unchanged across
+// polls; it carries no security requirement, so the weaker-but-faster hash is
+// fine here.
+func hashRecord(line []byte) [md5.Size]byte {
+	return md5.Sum(line) //nolint:gosec // non-cryptographic use: same-file continuation check
 }
 
 // checkpointStore holds per-node checkpoints. It is safe for concurrent use by
@@ -99,12 +103,15 @@ func (s *checkpointStore) retain(activeNodes map[string]bool) []string {
 
 	var removed []string
 
-	for name := range s.checkpoints {
+	maps.DeleteFunc(s.checkpoints, func(name string, _ *nodeLogCheckpoint) bool {
 		if !activeNodes[name] {
-			delete(s.checkpoints, name)
 			removed = append(removed, name)
+
+			return true
 		}
-	}
+
+		return false
+	})
 
 	return removed
 }
