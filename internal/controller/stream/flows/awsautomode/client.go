@@ -479,32 +479,17 @@ func (c *autoModeClient) processLines(ctx context.Context, lines [][]byte, logge
 	return nil
 }
 
-// processLine parses a single log line and, if it is a flow record, caches it.
+// processLine parses a single log line and, if it is a flow record within the
+// stream time window, caches it. Delegates to collector.CacheFlowLine, the shared
+// parse -> stale-filter -> cache path used by both AWS VPC CNI collectors, passing
+// a rolling notBefore so flows older than the window are dropped rather than sent
+// (on restart the whole active log is re-read, so the tail can be far in the past).
+//
 // Returns cached=true when a flow was cached. A parse failure is not an error
 // (non-flow housekeeping lines are common); only a context error is propagated so
-// the caller can stop without advancing the checkpoint. A CacheFlow error is
-// logged and skipped, matching the prior best-effort behavior.
+// the caller can stop without advancing the checkpoint.
 func (c *autoModeClient) processLine(ctx context.Context, line []byte, logger *zap.Logger) (bool, error) {
-	if err := ctx.Err(); err != nil {
-		return false, err
-	}
+	notBefore := time.Now().Add(-collector.MaxFlowAge)
 
-	flow, err := collector.ParseAWSVPCCNIFlowLog(string(line))
-	if err != nil {
-		// A parse failure is expected and not an error: the Network Policy Agent
-		// log interleaves non-flow housekeeping lines with flow records. Only a
-		// context error (handled above) should stop processing; a non-flow line is
-		// simply skipped. See the doc comment for the return-value contract.
-		return false, nil //nolint:nilerr // non-flow lines are intentionally skipped, not errors
-	}
-
-	if err := c.flowSink.CacheFlow(ctx, flow); err != nil {
-		logger.Debug("EKS Auto Mode failed to cache flow", zap.Error(err))
-
-		return false, nil
-	}
-
-	c.flowSink.IncrementFlowsReceived()
-
-	return true, nil
+	return collector.CacheFlowLine(ctx, c.flowSink, string(line), notBefore, logger)
 }

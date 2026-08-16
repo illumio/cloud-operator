@@ -160,10 +160,16 @@ func (f *scriptedFetcher) open(_ context.Context, nodeName, filename string) (io
 	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
-const (
-	oldFmtFlow1 = `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.1.1","Src Port":80,"Dest IP":"10.0.1.2","Dest Port":443,"Proto":"TCP","Verdict":"ACCEPT"}`
-	oldFmtFlow2 = `{"level":"info","ts":"2024-09-23T12:36:54.562Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.1.3","Src Port":8080,"Dest IP":"10.0.1.4","Dest Port":53,"Proto":"UDP","Verdict":"ACCEPT"}`
-	oldFmtFlow3 = `{"level":"info","ts":"2024-09-23T12:36:55.562Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.1.5","Src Port":1234,"Dest IP":"10.0.1.6","Dest Port":80,"Proto":"TCP","Verdict":"ACCEPT"}`
+// recentTS is a timestamp within the stream time window, so flows built with it
+// are not dropped by the MaxFlowAge stale-flow filter in collector.CacheFlowLine.
+// It is fixed once at package init to a value close to test-run time.
+var recentTS = time.Now().Add(-time.Minute).UTC().Format("2006-01-02T15:04:05.000Z")
+
+// Flow log fixtures use recentTS so the collector's stale-flow filter keeps them.
+var (
+	oldFmtFlow1 = `{"level":"info","ts":"` + recentTS + `","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.1.1","Src Port":80,"Dest IP":"10.0.1.2","Dest Port":443,"Proto":"TCP","Verdict":"ACCEPT"}`
+	oldFmtFlow2 = `{"level":"info","ts":"` + recentTS + `","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.1.3","Src Port":8080,"Dest IP":"10.0.1.4","Dest Port":53,"Proto":"UDP","Verdict":"ACCEPT"}`
+	oldFmtFlow3 = `{"level":"info","ts":"` + recentTS + `","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.1.5","Src Port":1234,"Dest IP":"10.0.1.6","Dest Port":80,"Proto":"TCP","Verdict":"ACCEPT"}`
 )
 
 type AutoModeClientTestSuite struct {
@@ -225,6 +231,23 @@ func (s *AutoModeClientTestSuite) TestPollNode_ParsesFlows() {
 	s.Require().NoError(err)
 	s.mockSink.AssertNumberOfCalls(s.T(), "CacheFlow", 2)
 	s.mockSink.AssertNumberOfCalls(s.T(), "IncrementFlowsReceived", 2)
+}
+
+func (s *AutoModeClientTestSuite) TestPollNode_DropsStaleFlows() {
+	ctx := context.Background()
+
+	// A flow well outside the stream time window must be parsed but not cached.
+	staleFlow := `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.1.1","Src Port":80,"Dest IP":"10.0.1.2","Dest Port":443,"Proto":"TCP","Verdict":"ACCEPT"}`
+	s.fetcher.queue("node-a", []byte(staleFlow+"\n"), nil)
+
+	c := s.newClient()
+	err := c.pollNode(ctx, "node-a", types.UID("uid-a"), s.logger)
+
+	s.Require().NoError(err)
+	s.mockSink.AssertNotCalled(s.T(), "CacheFlow")
+	s.mockSink.AssertNotCalled(s.T(), "IncrementFlowsReceived")
+	// The checkpoint still advances past the stale (but valid) line.
+	s.NotZero(c.checkpoints.get("node-a").ByteOffset)
 }
 
 func (s *AutoModeClientTestSuite) TestPollNode_IncrementalAppendEmitsOnlyNew() {
