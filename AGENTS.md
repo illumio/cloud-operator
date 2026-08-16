@@ -26,7 +26,7 @@ internal/controller/
 │   ├── config/        # Configuration stream (factory and client)
 │   │   └── cache/     # Configuration/policy cache
 │   ├── flows/         # Network flows stream
-│   │   ├── cache/       # Flow aggregation and eviction
+│   │   ├── cache/       # Flow aggregation
 │   │   ├── cilium/      # Cilium/Hubble collector
 │   │   ├── falco/       # Falco collector
 │   │   ├── ovnk/        # OVN-Kubernetes collector
@@ -35,7 +35,7 @@ internal/controller/
 │   ├── logs/          # Log stream (factory and client)
 │   └── resources/     # Kubernetes resources stream
 ├── reconciler/        # Policy reconciliation and field ownership
-├── ovn_template_sets/ # OVN-K policy template set binaries
+├── ovn_template_sets/ # OVN-K IPFIX template set binaries
 ├── k8sclient/         # Kubernetes client wrapper
 ├── logging/           # Buffered gRPC logging and internal logging
 ├── hubble/            # Cilium Hubble client
@@ -58,6 +58,8 @@ Flow collector interfaces in `stream/flows/interfaces.go`:
 
 Collector detection occurs at startup through `DetectFlowCollector()`. The selected factory is passed to `ConnectStreams()`, and `ManageStream()` creates and runs its client.
 
+Collectors that track progress through a log (for example the polling collectors) must not silently advance their checkpoints after a downstream processing failure: prefer re-reading and duplicate delivery over skipping unprocessed records.
+
 ## Code Style
 
 - Group imports as standard library, external packages, then internal packages; use `gofmt`.
@@ -66,7 +68,6 @@ Collector detection occurs at startup through `DetectFlowCollector()`. The selec
 - Keep unit tests beside their source in `*_test.go` files.
 - Mock external dependencies and Kubernetes clients where practical.
 - Preserve context cancellation through blocking calls and goroutines.
-- Do not silently advance polling checkpoints after downstream processing failures.
 
 ## Key Entry Points
 
