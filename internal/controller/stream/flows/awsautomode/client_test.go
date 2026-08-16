@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -107,7 +108,20 @@ func (f *scriptedFetcher) setRotatedData(node, filename string, data []byte) {
 	f.rotatedData[node+"|"+filename] = data
 }
 
-func (f *scriptedFetcher) fetch(_ context.Context, nodeName string) ([]byte, error) {
+// fetchActive simulates a Range-capable node-proxy server over the queued active
+// file for a node. Each call consumes one queued entry (the "current" active file),
+// repeating the last entry once the script is exhausted, mirroring a file that stops
+// changing. Given that entry's bytes it answers like a real server:
+//
+//   - rangeStart <= 0            -> 200, whole file from offset 0.
+//   - 0 < rangeStart < len       -> 206, tail from rangeStart (bodyStart=rangeStart).
+//   - rangeStart >= len          -> 416, no body (range past EOF: shrink/rotation).
+//
+// A reset (streamActive needReset) makes the client re-fetch from 0 within the same
+// poll, consuming a second entry; because the script repeats its last entry, a reset
+// that is the final scripted poll re-reads identical bytes. Tests that queue further
+// polls AFTER a reset should account for that extra consumption.
+func (f *scriptedFetcher) fetchActive(_ context.Context, nodeName string, rangeStart int64) (*activeStream, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -115,16 +129,33 @@ func (f *scriptedFetcher) fetch(_ context.Context, nodeName string) ([]byte, err
 	f.calls[nodeName]++
 
 	resps := f.responses[nodeName]
-	if idx >= len(resps) {
-		// Past the script: return the last response repeated, or empty.
-		if len(resps) == 0 {
-			return nil, nil
-		}
 
-		return resps[len(resps)-1].data, resps[len(resps)-1].err
+	var res fetchResult
+
+	switch {
+	case len(resps) == 0:
+		res = fetchResult{}
+	case idx >= len(resps):
+		res = resps[len(resps)-1]
+	default:
+		res = resps[idx]
 	}
 
-	return resps[idx].data, resps[idx].err
+	if res.err != nil {
+		return nil, res.err
+	}
+
+	data := res.data
+	n := int64(len(data))
+
+	switch {
+	case rangeStart <= 0:
+		return &activeStream{statusCode: http.StatusOK, bodyStart: 0, Body: io.NopCloser(bytes.NewReader(data))}, nil
+	case rangeStart >= n:
+		return &activeStream{statusCode: http.StatusRequestedRangeNotSatisfiable}, nil
+	default:
+		return &activeStream{statusCode: http.StatusPartialContent, bodyStart: rangeStart, Body: io.NopCloser(bytes.NewReader(data[rangeStart:]))}, nil
+	}
 }
 
 func (f *scriptedFetcher) list(_ context.Context, nodeName string) ([]RotatedFile, error) {
@@ -266,6 +297,49 @@ func (s *AutoModeClientTestSuite) TestPollNode_IncrementalAppendEmitsOnlyNew() {
 	s.fetcher.queue("node-a", []byte(oldFmtFlow1+"\n"+oldFmtFlow2+"\n"+oldFmtFlow3+"\n"), nil)
 	s.Require().NoError(c.pollNode(ctx, "node-a", types.UID("uid-a"), s.logger))
 	s.mockSink.AssertNumberOfCalls(s.T(), "CacheFlow", 3)
+}
+
+// TestPollNode_LargeFileRangeContinuation drives the steady-state OOM-fix path
+// end-to-end: an active file larger than validationOverlap so the second poll issues
+// a real Range request (HTTP 206 from the scripted server) instead of reading the
+// whole file. It asserts the checkpoint's boundary record is re-validated and only
+// the newly-appended flows are emitted — the prior >1 MiB prefix is not re-sent.
+func (s *AutoModeClientTestSuite) TestPollNode_LargeFileRangeContinuation() {
+	ctx := context.Background()
+	s.mockSink.On("CacheFlow", ctx, mock.Anything).Return(nil)
+	s.mockSink.On("IncrementFlowsReceived").Return()
+
+	c := s.newClient()
+
+	// Build a prefix strictly larger than validationOverlap so the next poll's
+	// rangeStart (ByteOffset - validationOverlap) is > 0 and a 206 is served.
+	line := oldFmtFlow1 + "\n"
+	nPrefix := validationOverlap/len(line) + 100
+
+	var prefix bytes.Buffer
+	for range nPrefix {
+		prefix.WriteString(line)
+	}
+
+	s.Require().Greater(prefix.Len(), validationOverlap)
+
+	// First poll: whole large file streamed from 0 (bootstrap). Every line cached.
+	s.fetcher.queue("node-a", prefix.Bytes(), nil)
+	s.Require().NoError(c.pollNode(ctx, "node-a", types.UID("uid-a"), s.logger))
+	s.mockSink.AssertNumberOfCalls(s.T(), "CacheFlow", nPrefix)
+
+	offset := c.checkpoints.get("node-a").ByteOffset
+	s.Equal(prefix.Len(), offset)
+	s.Greater(offset, validationOverlap) // guarantees the next poll uses a Range
+
+	// Second poll: same prefix plus two new flows. The Range request re-reads only
+	// the overlap tail; the boundary record validates; only the two new flows emit.
+	appended := prefix.String() + oldFmtFlow2 + "\n" + oldFmtFlow3 + "\n"
+	s.fetcher.queue("node-a", []byte(appended), nil)
+	s.Require().NoError(c.pollNode(ctx, "node-a", types.UID("uid-a"), s.logger))
+	s.mockSink.AssertNumberOfCalls(s.T(), "CacheFlow", nPrefix+2)
+
+	s.Equal(len(appended), c.checkpoints.get("node-a").ByteOffset)
 }
 
 func (s *AutoModeClientTestSuite) TestPollNode_FetchErrorDoesNotAdvanceOffset() {

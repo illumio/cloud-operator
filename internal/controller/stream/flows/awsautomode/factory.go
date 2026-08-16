@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	// DefaultPollInterval is the default node-proxy log poll interval. The
-	// endpoint returns the whole file each request, so this is intentionally
-	// slower than the pod-log collector's default to limit load on kubelets.
+	// DefaultPollInterval is the default node-proxy log poll interval. Steady-state
+	// polls issue an HTTP Range request and stream only the small tail after the
+	// per-node checkpoint, but this is still intentionally slower than the pod-log
+	// collector's default to limit load on the apiserver and kubelets.
 	DefaultPollInterval = 10 * time.Second
 
 	// DefaultMaxConcurrentNodePolls bounds how many nodes are polled at once so a

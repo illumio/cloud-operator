@@ -14,9 +14,13 @@ import (
 // Network Policy Agent log. It is used to fetch only new bytes on each poll and
 // to detect log rotation, truncation, and node (kubelet) restarts.
 //
-// The kubelet node-proxy log endpoint returns the whole file on each request and
-// does not support range reads, so "incremental" consumption is emulated: we
-// fetch the file, then skip the bytes we have already processed (ByteOffset).
+// Each poll issues an HTTP Range request beginning slightly before ByteOffset (a
+// small validation overlap), so only the tail after the checkpoint is streamed. The
+// overlap lets the record ending at ByteOffset be re-read and re-hashed to confirm
+// the file is the same one before any newer record is emitted. If the server ignores
+// the Range (HTTP 200) the whole file is streamed and the already-processed prefix
+// is skipped instead; if the offset is past the file (HTTP 416) or the boundary hash
+// differs, the file is reprocessed from 0.
 type nodeLogCheckpoint struct {
 	// NodeName is the Kubernetes node name (used to build the proxy request path).
 	NodeName string

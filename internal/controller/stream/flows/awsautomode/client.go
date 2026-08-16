@@ -23,11 +23,11 @@ package awsautomode
 
 import (
 	"bufio"
-	"bytes"
 	"compress/gzip"
 	"context"
 	"errors"
 	"io"
+	"net/http"
 	"sync"
 	"time"
 
@@ -44,15 +44,25 @@ import (
 // bufio.Scanner buffer allocation. Records far exceed no realistic flow log line.
 const maxRecoveryScanLine = 1 << 20 // 1 MiB
 
+// validationOverlap is how many bytes BEFORE the saved ByteOffset the active-file
+// Range request starts, so the record ending at ByteOffset is re-read and its hash
+// re-validated before any newer record is emitted. It must comfortably exceed the
+// longest single flow record so the boundary record always falls fully inside the
+// overlap; if it did not, streamActive would be unable to confirm continuation and
+// would conservatively reprocess the file from 0.
+const validationOverlap = 1 << 20 // 1 MiB
+
 // nodeLogFetcher fetches the Network Policy Agent log for a node through the
 // kubelet node-proxy endpoint. Abstracted so tests can back it with httptest.
 //
-//   - fetch returns the whole active log file.
+//   - fetchActive issues a ranged, streaming GET for the active log starting at
+//     rangeStart and returns an activeStream (206 partial, 200 whole, or 416
+//     range-not-satisfiable). It never buffers the whole file.
 //   - list returns the rotated generations present in the log directory.
 //   - open streams a single rotated file's raw (still-compressed when .gz) bytes,
 //     returning errRotatedFileNotFound on 404 (lumberjack compression race).
 type nodeLogFetcher interface {
-	fetch(ctx context.Context, nodeName string) ([]byte, error)
+	fetchActive(ctx context.Context, nodeName string, rangeStart int64) (*activeStream, error)
 	list(ctx context.Context, nodeName string) ([]RotatedFile, error)
 	open(ctx context.Context, nodeName, filename string) (io.ReadCloser, error)
 }
@@ -169,8 +179,8 @@ func (c *autoModeClient) pollAllNodes(ctx context.Context) {
 //   - rotation recovery: unseen rotated generations exist (the active file rotated
 //     since the last poll). Drain each rotated generation oldest-to-newest, then
 //     read the fresh active file.
-//   - normal: no unseen rotations; reconcile the active file against the checkpoint
-//     and process only newly-appended complete records.
+//   - normal: no unseen rotations; stream the active file from just before the
+//     checkpoint and process only newly-appended complete records.
 //
 // The checkpoint is advanced ONLY after records are successfully processed, so a
 // mid-cycle failure never skips unprocessed records; duplicate replay is preferred
@@ -204,25 +214,14 @@ func (c *autoModeClient) pollNode(ctx context.Context, nodeName string, nodeUID 
 		return c.recoverRotations(ctx, nodeName, nodeUID, unseen, logger)
 	}
 
-	// Normal path: no unseen rotations. Reconcile the active file.
-	data, err := c.fetcher.fetch(ctx, nodeName)
+	// Normal path: no unseen rotations. Stream the active file from just before the
+	// checkpoint and emit only newly-appended complete records.
+	next, err := c.processActive(ctx, nodeName, nodeUID, cp, logger)
 	if err != nil {
 		return err
 	}
 
-	slice := reconcile(cp, data, nodeUID)
-	if slice.reset {
-		logger.Debug("EKS Auto Mode detected log reset (truncation/replacement); reprocessing active file from start")
-	}
-
-	// Process the new complete records. The offset is only advanced (persisted)
-	// after processing, so a mid-cycle failure never skips unprocessed records.
-	if err := c.processLines(ctx, slice.lines, logger); err != nil {
-		return err
-	}
-
-	next := slice.next
-	c.checkpoints.set(nodeName, &next)
+	c.checkpoints.set(nodeName, next)
 
 	return nil
 }
@@ -250,20 +249,13 @@ func (c *autoModeClient) bootstrapNode(ctx context.Context, nodeName string, nod
 		LastRotationID: startRotationID,
 	}
 
-	data, err := c.fetcher.fetch(ctx, nodeName)
+	next, err := c.processActive(ctx, nodeName, nodeUID, cp, logger)
 	if err != nil {
 		return err
 	}
 
-	slice := reconcile(cp, data, nodeUID)
-
-	if err := c.processLines(ctx, slice.lines, logger); err != nil {
-		return err
-	}
-
-	next := slice.next
 	next.LastRotationID = startRotationID
-	c.checkpoints.set(nodeName, &next)
+	c.checkpoints.set(nodeName, next)
 
 	return nil
 }
@@ -313,22 +305,16 @@ func (c *autoModeClient) recoverRotations(ctx context.Context, nodeName string, 
 		})
 	}
 
-	// After draining rotations, read the fresh active file from the beginning.
-	data, err := c.fetcher.fetch(ctx, nodeName)
+	// After draining rotations, read the fresh active file from the beginning. Its
+	// checkpoint was committed at ByteOffset 0 in the loop above.
+	activeCP := c.checkpoints.get(nodeName)
+
+	next, err := c.processActive(ctx, nodeName, nodeUID, activeCP, logger)
 	if err != nil {
 		return err
 	}
 
-	activeCP := c.checkpoints.get(nodeName)
-
-	slice := reconcile(activeCP, data, nodeUID)
-
-	if err := c.processLines(ctx, slice.lines, logger); err != nil {
-		return err
-	}
-
-	next := slice.next
-	c.checkpoints.set(nodeName, &next)
+	c.checkpoints.set(nodeName, next)
 
 	return nil
 }
@@ -447,36 +433,101 @@ func (c *autoModeClient) processReader(ctx context.Context, r io.Reader, logger 
 	return nil
 }
 
-// processLines parses each already-buffered log line and caches any flows found.
-// It shares the per-line parse/cache path with processReader via processLine.
-func (c *autoModeClient) processLines(ctx context.Context, lines [][]byte, logger *zap.Logger) error {
+// processActive streams the active log for a node and returns the checkpoint to
+// persist AFTER the emitted records have been cached. It issues a Range request
+// starting validationOverlap bytes before the saved ByteOffset so the boundary
+// record is re-read and its hash re-validated before any newer record is emitted;
+// only the small tail after the checkpoint crosses the wire on a steady-state poll.
+//
+// When the server ignores the Range (HTTP 200) the whole file is streamed instead,
+// and streamActive still skips the already-processed prefix. When the file no
+// longer contains the checkpoint (HTTP 416, or a boundary hash mismatch — the file
+// was truncated, shrank, or was replaced) the active file is reprocessed from
+// offset 0. Because streamActive emits nothing until the continuation is validated,
+// a reset never double-sends records.
+func (c *autoModeClient) processActive(ctx context.Context, nodeName string, nodeUID types.UID, cp *nodeLogCheckpoint, logger *zap.Logger) (*nodeLogCheckpoint, error) {
+	rangeStart := int64(0)
+	if cp.ByteOffset > validationOverlap {
+		rangeStart = int64(cp.ByteOffset - validationOverlap)
+	}
+
+	res, err := c.readActiveOnce(ctx, nodeName, cp, rangeStart, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	if res.needReset {
+		logger.Debug("EKS Auto Mode detected log reset (truncation/replacement); reprocessing active file from start")
+
+		// Reprocess the whole file from offset 0 against a fresh checkpoint. The
+		// prior LastRotationID is preserved: a reset is a same-generation shrink, not
+		// a rotation (rotations are handled before ever reaching processActive).
+		fresh := &nodeLogCheckpoint{
+			NodeName:       nodeName,
+			NodeUID:        nodeUID,
+			LastRotationID: cp.LastRotationID,
+		}
+
+		res, err = c.readActiveOnce(ctx, nodeName, fresh, 0, logger)
+		if err != nil {
+			return nil, err
+		}
+
+		cp = fresh
+	}
+
+	next := *cp
+	next.NodeUID = nodeUID
+	next.ByteOffset = res.newOffset
+	next.LastObservedSize = res.observedSize
+	next.LastRecordHash = res.lastHash
+
+	return &next, nil
+}
+
+// readActiveOnce performs one streaming active-log fetch at rangeStart and pipes
+// each complete record through the shared parse/cache path, never buffering the
+// whole file. A 416 (range beyond the current file) is reported as needReset so the
+// caller reprocesses from 0. The response body is always closed.
+func (c *autoModeClient) readActiveOnce(ctx context.Context, nodeName string, cp *nodeLogCheckpoint, rangeStart int64, logger *zap.Logger) (streamActiveResult, error) {
+	stream, err := c.fetcher.fetchActive(ctx, nodeName, rangeStart)
+	if err != nil {
+		return streamActiveResult{}, err
+	}
+
+	// 416: the requested range is past the current active file (it shrank below the
+	// checkpoint). No body to close. Signal a reset so the caller re-reads from 0.
+	if stream.statusCode == http.StatusRequestedRangeNotSatisfiable {
+		return streamActiveResult{needReset: true}, nil
+	}
+
+	defer func() { _ = stream.Body.Close() }()
+
 	flowCount := 0
 
-	for _, line := range lines {
-		// Defensively split on any embedded newlines (should not happen).
-		scanner := bufio.NewScanner(bytes.NewReader(line))
-		for scanner.Scan() {
-			b := scanner.Bytes()
-			if len(b) == 0 {
-				continue
-			}
-
-			cached, err := c.processLine(ctx, b, logger)
-			if err != nil {
-				return err
-			}
-
-			if cached {
-				flowCount++
-			}
+	emit := func(rec []byte) error {
+		cached, e := c.processLine(ctx, rec, logger)
+		if e != nil {
+			return e
 		}
+
+		if cached {
+			flowCount++
+		}
+
+		return nil
+	}
+
+	res, err := streamActive(int(stream.bodyStart), stream.Body, cp, emit)
+	if err != nil {
+		return res, err
 	}
 
 	if flowCount > 0 {
 		logger.Debug("EKS Auto Mode parsed flows from node", zap.Int("flow_count", flowCount))
 	}
 
-	return nil
+	return res, nil
 }
 
 // processLine parses a single log line and, if it is a flow record within the

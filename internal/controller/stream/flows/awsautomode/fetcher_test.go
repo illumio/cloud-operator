@@ -4,8 +4,10 @@ package awsautomode
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -17,6 +19,22 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
+
+// readActiveStream drains and closes an activeStream body, returning its bytes.
+func readActiveStream(t *testing.T, s *activeStream) string {
+	t.Helper()
+
+	if s.Body == nil {
+		return ""
+	}
+
+	defer func() { _ = s.Body.Close() }()
+
+	b, err := io.ReadAll(s.Body)
+	require.NoError(t, err)
+
+	return string(b)
+}
 
 // newTestClientset builds a kubernetes.Interface whose REST client is backed by
 // the given httptest.Server, so restLogFetcher exercises the real request path
@@ -41,10 +59,11 @@ func TestRestLogFetcher_BuildsNodeProxyPath(t *testing.T) {
 	defer srv.Close()
 
 	f := &restLogFetcher{k8sClient: newTestClientset(t, srv)}
-	data, err := f.fetch(context.Background(), "node-a")
+	stream, err := f.fetchActive(context.Background(), "node-a", 0)
 
 	require.NoError(t, err)
-	assert.Equal(t, "log-bytes", string(data))
+	assert.Equal(t, http.StatusOK, stream.statusCode)
+	assert.Equal(t, "log-bytes", readActiveStream(t, stream))
 	assert.Equal(t,
 		"/api/v1/nodes/node-a/proxy/logs/aws-routed-eni/network-policy-agent.log",
 		gotPath,
@@ -63,10 +82,11 @@ func TestRestLogFetcher_LogsRequestURL(t *testing.T) {
 	core, logs := observer.New(zap.DebugLevel)
 
 	f := &restLogFetcher{k8sClient: newTestClientset(t, srv), logger: zap.New(core)}
-	_, err := f.fetch(context.Background(), "node-a")
+	stream, err := f.fetchActive(context.Background(), "node-a", 0)
 	require.NoError(t, err)
+	_ = readActiveStream(t, stream)
 
-	entries := logs.FilterMessage("EKS Auto Mode fetching node-proxy log").All()
+	entries := logs.FilterMessage("EKS Auto Mode node-proxy GET").All()
 	require.Len(t, entries, 1)
 
 	fields := entries[0].ContextMap()
@@ -84,9 +104,10 @@ func TestRestLogFetcher_HonorsCustomLogPath(t *testing.T) {
 	defer srv.Close()
 
 	f := &restLogFetcher{k8sClient: newTestClientset(t, srv), logPath: "custom/agent.log"}
-	_, err := f.fetch(context.Background(), "node-b")
-
+	stream, err := f.fetchActive(context.Background(), "node-b", 0)
 	require.NoError(t, err)
+	_ = readActiveStream(t, stream)
+
 	assert.Equal(t, "/api/v1/nodes/node-b/proxy/logs/custom/agent.log", gotPath)
 }
 
@@ -97,9 +118,76 @@ func TestRestLogFetcher_PropagatesHTTPError(t *testing.T) {
 	defer srv.Close()
 
 	f := &restLogFetcher{k8sClient: newTestClientset(t, srv)}
-	_, err := f.fetch(context.Background(), "node-a")
+	_, err := f.fetchActive(context.Background(), "node-a", 0)
 
 	assert.Error(t, err)
+}
+
+// TestRestLogFetcher_RangeRequestStreamsPartialContent verifies the fetcher sends a
+// "bytes=<start>-" Range header, parses the Content-Range start from a 206, and
+// streams only the requested tail rather than the whole file.
+func TestRestLogFetcher_RangeRequestStreamsPartialContent(t *testing.T) {
+	const whole = "0123456789abcdef"
+
+	const start = 10
+
+	var gotRange string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotRange = r.Header.Get("Range")
+
+		tail := whole[start:]
+		w.Header().Set("Content-Range", "bytes "+strconv.Itoa(start)+"-"+strconv.Itoa(len(whole)-1)+"/"+strconv.Itoa(len(whole)))
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write([]byte(tail))
+	}))
+	defer srv.Close()
+
+	f := &restLogFetcher{k8sClient: newTestClientset(t, srv)}
+	stream, err := f.fetchActive(context.Background(), "node-a", start)
+
+	require.NoError(t, err)
+	assert.Equal(t, "bytes=10-", gotRange)
+	assert.Equal(t, http.StatusPartialContent, stream.statusCode)
+	assert.Equal(t, int64(start), stream.bodyStart)
+	assert.Equal(t, whole[start:], readActiveStream(t, stream))
+}
+
+// TestRestLogFetcher_RangeIgnoredFallsBackToWholeFile verifies that when the server
+// ignores the Range header and answers 200, the fetcher reports bodyStart 0 and
+// streams the whole file (still streamed, never buffered by the fetcher).
+func TestRestLogFetcher_RangeIgnoredFallsBackToWholeFile(t *testing.T) {
+	const whole = "0123456789abcdef"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Ignore the Range header entirely: answer 200 with the whole body.
+		_, _ = w.Write([]byte(whole))
+	}))
+	defer srv.Close()
+
+	f := &restLogFetcher{k8sClient: newTestClientset(t, srv)}
+	stream, err := f.fetchActive(context.Background(), "node-a", 8)
+
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, stream.statusCode)
+	assert.Equal(t, int64(0), stream.bodyStart)
+	assert.Equal(t, whole, readActiveStream(t, stream))
+}
+
+// TestRestLogFetcher_RangeNotSatisfiableReturns416 verifies a 416 is surfaced as an
+// activeStream with no body (the caller treats it as a truncation/rotation signal).
+func TestRestLogFetcher_RangeNotSatisfiableReturns416(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "range not satisfiable", http.StatusRequestedRangeNotSatisfiable)
+	}))
+	defer srv.Close()
+
+	f := &restLogFetcher{k8sClient: newTestClientset(t, srv)}
+	stream, err := f.fetchActive(context.Background(), "node-a", 999999)
+
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusRequestedRangeNotSatisfiable, stream.statusCode)
+	assert.Nil(t, stream.Body)
 }
 
 // TestIntegration_PollSequence drives a full poll sequence through the real REST

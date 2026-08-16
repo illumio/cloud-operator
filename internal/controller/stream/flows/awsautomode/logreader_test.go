@@ -3,154 +3,228 @@
 package awsautomode
 
 import (
+	"bufio"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"k8s.io/apimachinery/pkg/types"
 )
 
-// linesToStrings is a test helper to compare returned [][]byte as strings.
-func linesToStrings(lines [][]byte) []string {
-	out := make([]string, 0, len(lines))
-	for _, l := range lines {
-		out = append(out, string(l))
+// collectEmit returns an emit func that appends each record (as a string) to out.
+func collectEmit(out *[]string) func([]byte) error {
+	return func(rec []byte) error {
+		*out = append(*out, string(rec))
+
+		return nil
 	}
-
-	return out
 }
 
-func TestReconcile_FirstFetchReturnsAllCompleteLines(t *testing.T) {
+func TestStreamActive_FirstReadEmitsAllRecords(t *testing.T) {
 	cp := &nodeLogCheckpoint{NodeName: "n1"}
-	data := []byte("a\nb\nc\n")
+	data := "a\nb\nc\n"
 
-	slice := reconcile(cp, data, types.UID("uid-1"))
+	var got []string
 
-	assert.False(t, slice.reset)
-	assert.Equal(t, []string{"a", "b", "c"}, linesToStrings(slice.lines))
-	assert.Equal(t, len(data), slice.next.ByteOffset)
-	assert.Equal(t, len(data), slice.next.LastObservedSize)
-	assert.Equal(t, types.UID("uid-1"), slice.next.NodeUID)
-	assert.Equal(t, hashRecord([]byte("c")), slice.next.LastRecordHash)
+	res, err := streamActive(0, strings.NewReader(data), cp, collectEmit(&got))
+	require.NoError(t, err)
+
+	assert.False(t, res.needReset)
+	assert.True(t, res.validated)
+	assert.Equal(t, []string{"a", "b", "c"}, got)
+	assert.Equal(t, len(data), res.newOffset)
+	assert.Equal(t, len(data), res.observedSize)
+	assert.Equal(t, hashRecord([]byte("c")), res.lastHash)
 }
 
-func TestReconcile_TrailingPartialLineHeldBack(t *testing.T) {
+func TestStreamActive_TrailingPartialHeldBack(t *testing.T) {
 	cp := &nodeLogCheckpoint{NodeName: "n1"}
-	data := []byte("a\nb\npartial")
+	data := "a\nb\npartial"
 
-	slice := reconcile(cp, data, types.UID("uid-1"))
+	var got []string
 
-	// Only complete lines; "partial" is not returned and offset stops at last newline.
-	assert.Equal(t, []string{"a", "b"}, linesToStrings(slice.lines))
-	assert.Equal(t, 4, slice.next.ByteOffset) // after "a\nb\n"
-	assert.Equal(t, len(data), slice.next.LastObservedSize)
+	res, err := streamActive(0, strings.NewReader(data), cp, collectEmit(&got))
+	require.NoError(t, err)
+
+	// "partial" has no terminating newline: not emitted, offset stops after "a\nb\n".
+	assert.Equal(t, []string{"a", "b"}, got)
+	assert.Equal(t, 4, res.newOffset)
+	assert.Equal(t, len(data), res.observedSize)
+	assert.False(t, res.needReset)
 }
 
-func TestReconcile_IncrementalAppendReturnsOnlyNew(t *testing.T) {
-	data1 := []byte("a\nb\nc\n")
+func TestStreamActive_WholeFileIncrementalAppendEmitsOnlyNew(t *testing.T) {
+	// First read establishes the checkpoint.
+	first := "a\nb\nc\n"
+
+	var got1 []string
+
+	r1, err := streamActive(0, strings.NewReader(first), &nodeLogCheckpoint{NodeName: "n1"}, collectEmit(&got1))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "b", "c"}, got1)
+
+	cp := &nodeLogCheckpoint{NodeName: "n1", ByteOffset: r1.newOffset, LastRecordHash: r1.lastHash}
+
+	// Second read (HTTP 200 whole file): same prefix plus two new records.
+	second := "a\nb\nc\nd\ne\n"
+
+	var got2 []string
+
+	r2, err := streamActive(0, strings.NewReader(second), cp, collectEmit(&got2))
+	require.NoError(t, err)
+
+	assert.False(t, r2.needReset)
+	assert.True(t, r2.validated)
+	assert.Equal(t, []string{"d", "e"}, got2)
+	assert.Equal(t, len(second), r2.newOffset)
+	assert.Equal(t, hashRecord([]byte("e")), r2.lastHash)
+}
+
+func TestStreamActive_RangeContinuationEmitsOnlyNew(t *testing.T) {
+	// Full file is "x\ny\nz\n" (offset 6). A 206 begins mid-file at bodyStart=2 (the
+	// start of "y"), overlapping the boundary record "z" so it can be re-validated.
+	cp := &nodeLogCheckpoint{NodeName: "n1", ByteOffset: 6, LastRecordHash: hashRecord([]byte("z"))}
+
+	body := "y\nz\nd\n" // bytes 2.. of "x\ny\nz\nd\n"
+
+	var got []string
+
+	res, err := streamActive(2, strings.NewReader(body), cp, collectEmit(&got))
+	require.NoError(t, err)
+
+	assert.False(t, res.needReset)
+	assert.True(t, res.validated)
+	assert.Equal(t, []string{"d"}, got)
+	assert.Equal(t, 8, res.newOffset)
+	assert.Equal(t, hashRecord([]byte("d")), res.lastHash)
+}
+
+func TestStreamActive_RangeBoundaryMismatchResets(t *testing.T) {
+	// The record ending at the checkpoint no longer hashes to LastRecordHash (the
+	// file was replaced by rotation). Reset without emitting anything.
+	cp := &nodeLogCheckpoint{NodeName: "n1", ByteOffset: 6, LastRecordHash: hashRecord([]byte("z"))}
+
+	body := "y\nZ\nd\n" // boundary record is "Z", not "z"
+
+	var got []string
+
+	res, err := streamActive(2, strings.NewReader(body), cp, collectEmit(&got))
+	require.NoError(t, err)
+
+	assert.True(t, res.needReset)
+	assert.Empty(t, got)
+}
+
+func TestStreamActive_ShrinkBelowOffsetResets(t *testing.T) {
+	// Whole-file (200) read of a file that shrank below the checkpoint offset: the
+	// boundary record is never re-read, so reset without emitting.
+	cp := &nodeLogCheckpoint{NodeName: "n1", ByteOffset: 6, LastRecordHash: hashRecord([]byte("z"))}
+
+	var got []string
+
+	res, err := streamActive(0, strings.NewReader("a\n"), cp, collectEmit(&got))
+	require.NoError(t, err)
+
+	assert.True(t, res.needReset)
+	assert.Empty(t, got)
+}
+
+func TestStreamActive_OverlapTooSmallResets(t *testing.T) {
+	// bodyStart lands so far into the file that the first newline is already past the
+	// checkpoint offset: the boundary record cannot be validated, so reset.
+	full := "aaa\nbbbbbbb\n" // "aaa" ends at offset 4; "bbbbbbb" spans 4..12
+	cp := &nodeLogCheckpoint{NodeName: "n1", ByteOffset: 4, LastRecordHash: hashRecord([]byte("aaa"))}
+
+	body := full[5:] // "bbbbbb\n": first record ends past offset 4
+
+	var got []string
+
+	res, err := streamActive(5, strings.NewReader(body), cp, collectEmit(&got))
+	require.NoError(t, err)
+
+	assert.True(t, res.needReset)
+	assert.Empty(t, got)
+}
+
+func TestStreamActive_NoNewDataEmitsNothing(t *testing.T) {
+	cp := &nodeLogCheckpoint{NodeName: "n1", ByteOffset: 4, LastRecordHash: hashRecord([]byte("b"))}
+
+	// Whole file unchanged since last poll: boundary validates, nothing new.
+	var got []string
+
+	res, err := streamActive(0, strings.NewReader("a\nb\n"), cp, collectEmit(&got))
+	require.NoError(t, err)
+
+	assert.False(t, res.needReset)
+	assert.True(t, res.validated)
+	assert.Empty(t, got)
+	assert.Equal(t, 4, res.newOffset)
+}
+
+func TestStreamActive_EmptyBody(t *testing.T) {
 	cp := &nodeLogCheckpoint{NodeName: "n1"}
-	s1 := reconcile(cp, data1, types.UID("uid-1"))
-	next := s1.next
 
-	// Second fetch: same content plus new lines.
-	data2 := []byte("a\nb\nc\nd\ne\n")
-	s2 := reconcile(&next, data2, types.UID("uid-1"))
+	var got []string
 
-	assert.False(t, s2.reset)
-	assert.Equal(t, []string{"d", "e"}, linesToStrings(s2.lines))
-	assert.Equal(t, len(data2), s2.next.ByteOffset)
-	assert.Equal(t, hashRecord([]byte("e")), s2.next.LastRecordHash)
+	res, err := streamActive(0, strings.NewReader(""), cp, collectEmit(&got))
+	require.NoError(t, err)
+
+	assert.False(t, res.needReset)
+	assert.Empty(t, got)
+	assert.Equal(t, 0, res.newOffset)
+	assert.Equal(t, 0, res.observedSize)
 }
 
-func TestReconcile_PartialLineCompletedNextFetch(t *testing.T) {
+func TestStreamActive_EmitErrorPropagates(t *testing.T) {
 	cp := &nodeLogCheckpoint{NodeName: "n1"}
-	s1 := reconcile(cp, []byte("a\nb\npar"), types.UID("uid-1"))
-	assert.Equal(t, []string{"a", "b"}, linesToStrings(s1.lines))
-	next := s1.next
 
-	// The partial "par" is now completed to "partial\n".
-	s2 := reconcile(&next, []byte("a\nb\npartial\n"), types.UID("uid-1"))
-	assert.False(t, s2.reset)
-	assert.Equal(t, []string{"partial"}, linesToStrings(s2.lines))
+	sentinel := io.ErrClosedPipe
+	emit := func([]byte) error { return sentinel }
+
+	_, err := streamActive(0, strings.NewReader("a\nb\n"), cp, emit)
+	assert.ErrorIs(t, err, sentinel)
 }
 
-func TestReconcile_TruncationResetsOffset(t *testing.T) {
-	data1 := []byte("a\nb\nc\nd\n")
-	cp := &nodeLogCheckpoint{NodeName: "n1"}
-	s1 := reconcile(cp, data1, types.UID("uid-1"))
-	next := s1.next
+func TestScanRecord_SplitsRecordsAndTracksOffsets(t *testing.T) {
+	br := bufio.NewReader(strings.NewReader("ab\ncde\nf"))
 
-	// File shrank (truncated/rotated to smaller). Reprocess from start.
-	data2 := []byte("x\ny\n")
-	s2 := reconcile(&next, data2, types.UID("uid-1"))
+	rec, consumed, hasNL, err := scanRecord(br)
+	require.NoError(t, err)
+	assert.Equal(t, "ab", string(rec))
+	assert.Equal(t, 3, consumed)
+	assert.True(t, hasNL)
 
-	assert.True(t, s2.reset)
-	assert.Equal(t, []string{"x", "y"}, linesToStrings(s2.lines))
-	assert.Equal(t, len(data2), s2.next.ByteOffset)
+	rec, consumed, hasNL, err = scanRecord(br)
+	require.NoError(t, err)
+	assert.Equal(t, "cde", string(rec))
+	assert.Equal(t, 4, consumed)
+	assert.True(t, hasNL)
+
+	// Trailing fragment with no newline: reported with hasNL=false and io.EOF.
+	rec, consumed, hasNL, err = scanRecord(br)
+	require.ErrorIs(t, err, io.EOF)
+	assert.Equal(t, "f", string(rec))
+	assert.Equal(t, 1, consumed)
+	assert.False(t, hasNL)
 }
 
-func TestReconcile_RotationWithoutShrinkResetsOffset(t *testing.T) {
-	data1 := []byte("a\nb\nc\n")
-	cp := &nodeLogCheckpoint{NodeName: "n1"}
-	s1 := reconcile(cp, data1, types.UID("uid-1"))
-	next := s1.next
+func TestScanRecord_OversizeRecordConsumedButDropped(t *testing.T) {
+	// A record longer than maxRecoveryScanLine is consumed (offset stays correct) but
+	// its bytes are dropped so no unbounded allocation occurs.
+	big := strings.Repeat("x", maxRecoveryScanLine+10)
+	br := bufio.NewReader(strings.NewReader(big + "\n" + "ok\n"))
 
-	// Same or larger size, but content at the boundary differs: rotation replaced
-	// the file. The record ending at the stored offset no longer matches the hash.
-	data2 := []byte("w\nx\ny\nz\n")
-	s2 := reconcile(&next, data2, types.UID("uid-1"))
+	rec, consumed, hasNL, err := scanRecord(br)
+	require.NoError(t, err)
+	assert.True(t, hasNL)
+	assert.Nil(t, rec)
+	assert.Equal(t, len(big)+1, consumed)
 
-	assert.True(t, s2.reset)
-	assert.Equal(t, []string{"w", "x", "y", "z"}, linesToStrings(s2.lines))
-}
-
-func TestReconcile_NodeUIDChangeResetsOffset(t *testing.T) {
-	data1 := []byte("a\nb\nc\n")
-	cp := &nodeLogCheckpoint{NodeName: "n1"}
-	s1 := reconcile(cp, data1, types.UID("uid-1"))
-	next := s1.next
-
-	// Node object replaced (new UID). Even with identical bytes, reprocess.
-	s2 := reconcile(&next, data1, types.UID("uid-2"))
-
-	assert.True(t, s2.reset)
-	assert.Equal(t, []string{"a", "b", "c"}, linesToStrings(s2.lines))
-	assert.Equal(t, types.UID("uid-2"), s2.next.NodeUID)
-}
-
-func TestReconcile_NoNewDataReturnsNoLines(t *testing.T) {
-	data1 := []byte("a\nb\n")
-	cp := &nodeLogCheckpoint{NodeName: "n1"}
-	s1 := reconcile(cp, data1, types.UID("uid-1"))
-	next := s1.next
-
-	// Identical fetch: nothing new.
-	s2 := reconcile(&next, data1, types.UID("uid-1"))
-
-	assert.False(t, s2.reset)
-	assert.Empty(t, s2.lines)
-	assert.Equal(t, next.ByteOffset, s2.next.ByteOffset)
-}
-
-func TestReconcile_EmptyData(t *testing.T) {
-	cp := &nodeLogCheckpoint{NodeName: "n1"}
-	s := reconcile(cp, nil, types.UID("uid-1"))
-
-	assert.False(t, s.reset)
-	assert.Empty(t, s.lines)
-	assert.Equal(t, 0, s.next.ByteOffset)
-}
-
-func TestRecordEndingAtMatches(t *testing.T) {
-	data := []byte("a\nbb\nccc\n")
-	// record "bb" ends at index 5 (data[4]=='\n', end==5).
-	require.Equal(t, byte('\n'), data[4])
-	assert.True(t, recordEndingAtMatches(data, 5, hashRecord([]byte("bb"))))
-	assert.False(t, recordEndingAtMatches(data, 5, hashRecord([]byte("xx"))))
-	// end not at a newline boundary.
-	assert.False(t, recordEndingAtMatches(data, 4, hashRecord([]byte("bb"))))
-	// out of range.
-	assert.False(t, recordEndingAtMatches(data, 100, hashRecord([]byte("bb"))))
+	rec, _, hasNL, err = scanRecord(br)
+	require.NoError(t, err)
+	assert.True(t, hasNL)
+	assert.Equal(t, "ok", string(rec))
 }
 
 func TestCheckpointStore_RetainAndGet(t *testing.T) {

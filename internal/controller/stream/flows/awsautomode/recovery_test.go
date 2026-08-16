@@ -319,8 +319,8 @@ type listErrFetcher struct {
 	inner nodeLogFetcher
 }
 
-func (l *listErrFetcher) fetch(ctx context.Context, n string) ([]byte, error) {
-	return l.inner.fetch(ctx, n)
+func (l *listErrFetcher) fetchActive(ctx context.Context, n string, rangeStart int64) (*activeStream, error) {
+	return l.inner.fetchActive(ctx, n, rangeStart)
 }
 
 func (l *listErrFetcher) list(context.Context, string) ([]RotatedFile, error) {
