@@ -27,6 +27,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"sync"
 	"time"
@@ -503,17 +504,20 @@ func (c *autoModeClient) readActiveOnce(ctx context.Context, nodeName string, cp
 
 	defer func() { _ = stream.Body.Close() }()
 
-	// bodyStart comes from the server's Content-Range as an int64; guard the
-	// narrowing to int so a malformed or implausibly large start cannot overflow
-	// on a 32-bit platform. Such a start cannot be a valid continuation of our
+	// bodyStart comes from the server's Content-Range as an int64; bound-check it
+	// BEFORE narrowing to int so a malformed or implausibly large start cannot
+	// overflow on a 32-bit platform. The check is written pre-conversion (rather
+	// than as a round-trip after) so static analysis recognizes it as a valid
+	// upper-bound guard. Such a start cannot be a valid continuation of our
 	// checkpoint anyway, so treat it as a reset and reprocess from the beginning.
-	bodyStart := int(stream.bodyStart)
-	if int64(bodyStart) != stream.bodyStart {
+	if stream.bodyStart < 0 || stream.bodyStart > math.MaxInt {
 		logger.Debug("EKS Auto Mode implausible Content-Range start; reprocessing active file from start",
 			zap.Int64("body_start", stream.bodyStart))
 
 		return streamActiveResult{needReset: true}, nil
 	}
+
+	bodyStart := int(stream.bodyStart)
 
 	flowCount := 0
 
