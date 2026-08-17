@@ -43,7 +43,7 @@ type streamActiveResult struct {
 // one record at a time, validates that it continues the file behind cp, and calls
 // emit for each complete record at or beyond cp.ByteOffset. It never buffers the
 // whole file: at most one record (bounded by maxRecoveryScanLine) is held at a
-// time, so a ~200MB active file no longer has to be materialized in memory.
+// time, so a ~200MB active file doesn't have to be materialized in memory.
 //
 // bodyStart is the absolute file offset at which the body begins: cp.ByteOffset
 // minus the validation overlap for a Range hit (HTTP 206), or 0 when the whole

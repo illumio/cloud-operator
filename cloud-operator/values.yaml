@@ -128,11 +128,11 @@ awsVpcCni:
   # It uses only the operator service account and Kubernetes RBAC (a read-only
   # get on the kubelet log endpoint). The collector activates automatically only
   # on clusters with EKS Auto Mode nodes (node label
-  # eks.amazonaws.com/compute-type=auto); on all other clusters it stays dormant.
+  # eks.amazonaws.com/compute-type=auto); on all other clusters it is disabled.
   autoModeNodeProxyLogCollection:
     # Interval between polls of each node's agent log.
     pollInterval: "10s"
-    # Maximum number of nodes polled concurrently, to bound load on kubelets.
+    # Maximum number of nodes polled concurrently, to bound load on apiserver.
     maxConcurrentNodePolls: 10
     # Also grant the broad `nodes/proxy` RBAC permission for the node-proxy log
     # read, in addition to the always-granted fine-grained `nodes/log`.
