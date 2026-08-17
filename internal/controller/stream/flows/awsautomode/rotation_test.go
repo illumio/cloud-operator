@@ -43,6 +43,11 @@ func TestParseRotationFilename(t *testing.T) {
 		// An empty rotation ID is rejected: "network-policy-agent-.log" has the
 		// prefix and extension but no timestamp between them.
 		{name: "empty id", file: "network-policy-agent-.log", wantOK: false},
+		// A non-timestamp suffix is rejected: it must parse as lumberjack's
+		// backup timestamp, else a stray file like this ("debug") would sort
+		// lexically after real timestamps and stall rotation detection.
+		{name: "non-timestamp id", file: "network-policy-agent-debug.log", wantOK: false},
+		{name: "malformed timestamp id", file: "network-policy-agent-2026-08-07.log", wantOK: false},
 	}
 
 	for _, tc := range tests {

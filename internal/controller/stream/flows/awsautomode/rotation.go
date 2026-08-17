@@ -5,7 +5,13 @@ package awsautomode
 import (
 	"sort"
 	"strings"
+	"time"
 )
+
+// lumberjackBackupTimeFormat is lumberjack's fixed backupTimeFormat, the layout of
+// the <timestamp> in a rotated file name (network-policy-agent-<timestamp>.log).
+// It is fixed-width, so IDs sort lexically in chronological order.
+const lumberjackBackupTimeFormat = "2006-01-02T15-04-05.000"
 
 // RotatedFile is a single rotated generation of the Network Policy Agent log as
 // produced by lumberjack. lumberjack rotates by size: when the active file
@@ -69,7 +75,13 @@ func parseRotationFilename(name, activeBase string) (RotatedFile, bool) {
 	}
 
 	id := strings.TrimSuffix(rest, ext)
-	if id == "" {
+
+	// The ID must be a valid lumberjack backup timestamp, not merely non-empty.
+	// Accepting any suffix would let a stray file (e.g. "network-policy-agent-
+	// debug.log" -> ID "debug") produce an ID that sorts lexically AFTER real
+	// digit-leading timestamps, which would make every genuine rotation appear
+	// already seen and silently stall rotation recovery.
+	if _, err := time.Parse(lumberjackBackupTimeFormat, id); err != nil {
 		return RotatedFile{}, false
 	}
 
