@@ -325,8 +325,10 @@ func (c *autoModeClient) recoverRotations(ctx context.Context, nodeName string, 
 // recoverRotatedFile streams a single rotated generation, skipping the first
 // `skip` UNCOMPRESSED bytes (already processed while the file was active), and
 // processes the remaining complete records through the shared parse/cache path.
-// Handles the lumberjack compression race (a ".log" that 404s after being renamed
-// to ".log.gz") by re-listing and re-resolving the same rotation ID.
+// dedupRotations prefers the uncompressed ".log" while it exists (the ".log.gz"
+// may still be mid-compression and truncated); if that ".log" has already been
+// compressed away and 404s, this re-lists and falls back to the ".log.gz" for the
+// same rotation ID.
 //
 // Returns recovered=true when the generation's bytes were processed, or false when
 // it was a recovery gap (the generation was gone before it could be read). A gap is

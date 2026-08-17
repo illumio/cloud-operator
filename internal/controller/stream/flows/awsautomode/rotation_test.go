@@ -67,11 +67,13 @@ func TestParseRotationFilename(t *testing.T) {
 	}
 }
 
-func TestDedupRotations_PrefersGzipAndSorts(t *testing.T) {
+func TestDedupRotations_PrefersUncompressedAndSorts(t *testing.T) {
 	in := []RotatedFile{
 		{ID: "2026-08-07T12-00-00.000", Filename: "network-policy-agent-2026-08-07T12-00-00.000.log", Compressed: false},
 		{ID: "2026-08-07T10-00-00.000", Filename: "network-policy-agent-2026-08-07T10-00-00.000.log.gz", Compressed: true},
-		// Same ID as the first, compressed form should win.
+		// Same ID as the first; the uncompressed ".log" should win because both
+		// present means compression is still in progress and the ".gz" may be
+		// truncated.
 		{ID: "2026-08-07T12-00-00.000", Filename: "network-policy-agent-2026-08-07T12-00-00.000.log.gz", Compressed: true},
 	}
 
@@ -81,8 +83,8 @@ func TestDedupRotations_PrefersGzipAndSorts(t *testing.T) {
 	// Sorted oldest -> newest.
 	assert.Equal(t, "2026-08-07T10-00-00.000", out[0].ID)
 	assert.Equal(t, "2026-08-07T12-00-00.000", out[1].ID)
-	// Compressed form preferred for the duplicated ID.
-	assert.True(t, out[1].Compressed)
+	// Uncompressed ".log" preferred for the duplicated ID.
+	assert.False(t, out[1].Compressed)
 }
 
 func TestUnseenRotations(t *testing.T) {
@@ -127,8 +129,8 @@ func TestFindRotationByID(t *testing.T) {
 
 	got, ok := findRotationByID(files, "2026-08-07T10-00-00.000")
 	require.True(t, ok)
-	// Dedup prefers the compressed form.
-	assert.True(t, got.Compressed)
+	// Dedup prefers the uncompressed ".log" form when both are present.
+	assert.False(t, got.Compressed)
 
 	_, ok = findRotationByID(files, "missing")
 	assert.False(t, ok)

@@ -207,6 +207,44 @@ func (s *AutoModeClientTestSuite) TestCompressionRace_LogRenamedToGz() {
 	s.Equal("2026-08-07T11-00-00.000", c.checkpoints.get("node-a").LastRotationID)
 }
 
+// TestBothPresent_PrefersUncompressedLog: when a rotation's ".log" and ".log.gz"
+// are both listed (lumberjack still mid-compression), the uncompressed ".log" is
+// read and the ".log.gz" is never opened, because the ".gz" may still be truncated
+// until compression completes and lumberjack removes the ".log".
+func (s *AutoModeClientTestSuite) TestBothPresent_PrefersUncompressedLog() {
+	ctx := context.Background()
+	s.mockSink.On("CacheFlow", ctx, mock.Anything).Return(nil)
+	s.mockSink.On("IncrementFlowsReceived").Return()
+
+	c := s.newClient()
+
+	// Bootstrap with an empty active file so offset is 0.
+	s.fetcher.queue("node-a", []byte(""), nil)
+	s.Require().NoError(c.pollNode(ctx, "node-a", types.UID("uid-a"), s.logger))
+
+	logName := "network-policy-agent-2026-08-07T11-00-00.000.log"
+	gzName := "network-policy-agent-2026-08-07T11-00-00.000.log.gz"
+
+	// Both forms of the same generation are present (compression in progress).
+	s.fetcher.queueRotations("node-a", []RotatedFile{
+		{ID: "2026-08-07T11-00-00.000", Filename: logName, Compressed: false},
+		{ID: "2026-08-07T11-00-00.000", Filename: gzName, Compressed: true},
+	})
+	// The ".log" holds the complete data; the ".gz" is registered with DIFFERENT
+	// data so that a mistaken read of the ".gz" would change the observed result.
+	s.fetcher.setRotatedData("node-a", logName, []byte(flowLines(oldFmtFlow1)))
+	s.fetcher.setRotatedData("node-a", gzName, gzipBytes(flowLines(oldFmtFlow2, oldFmtFlow3)))
+	s.fetcher.queue("node-a", []byte(""), nil) // fresh active empty
+
+	s.Require().NoError(c.pollNode(ctx, "node-a", types.UID("uid-a"), s.logger))
+
+	// Exactly one flow (from the ".log") is processed; the ".gz" is never opened.
+	s.mockSink.AssertNumberOfCalls(s.T(), "CacheFlow", 1)
+	s.Equal(1, s.fetcher.openCalls["node-a|"+logName])
+	s.Equal(0, s.fetcher.openCalls["node-a|"+gzName])
+	s.Equal("2026-08-07T11-00-00.000", c.checkpoints.get("node-a").LastRotationID)
+}
+
 // TestMissingRotation_RecoveryGap: a rotation is listed but neither .log nor .gz
 // is fetchable (retention deleted it). Recovery must not error or claim success;
 // it advances past the gap and continues.

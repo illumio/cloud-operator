@@ -90,9 +90,13 @@ func parseRotationFilename(name, activeBase string) (RotatedFile, bool) {
 
 // dedupRotations collapses multiple entries with the same rotation ID (the
 // transient ".log" and the final ".log.gz" of one lumberjack generation) into a
-// single RotatedFile per ID. When both are present the compressed ".gz" is
-// preferred, since it is the final, stable form; the uncompressed one may be
-// mid-compression and disappear (see the compression race in recoverRotatedFile).
+// single RotatedFile per ID. When both are present the uncompressed ".log" is
+// preferred: seeing both means lumberjack has not finished compressing, so the
+// ".log" is still the complete, readable source while the ".log.gz" is only
+// partially written and may be truncated. Once compression finishes lumberjack
+// removes the ".log", leaving just the ".log.gz" as the only choice. The race
+// where the ".log" disappears between listing and reading is handled in
+// recoverRotatedFile by re-listing and falling back to the ".gz".
 func dedupRotations(files []RotatedFile) []RotatedFile {
 	byID := make(map[string]RotatedFile, len(files))
 
@@ -103,8 +107,10 @@ func dedupRotations(files []RotatedFile) []RotatedFile {
 
 			continue
 		}
-		// Prefer the compressed form when both exist for the same ID.
-		if f.Compressed && !existing.Compressed {
+		// Prefer the uncompressed ".log" when both exist for the same ID: the
+		// ".log.gz" is still being written and may be truncated until compression
+		// completes and the ".log" is removed.
+		if !f.Compressed && existing.Compressed {
 			byID[f.ID] = f
 		}
 	}
@@ -155,9 +161,9 @@ func newestRotationID(files []RotatedFile) string {
 	return deduped[len(deduped)-1].ID
 }
 
-// findRotationByID returns the (deduped, .gz-preferred) rotation with the given
+// findRotationByID returns the (deduped, .log-preferred) rotation with the given
 // ID from a fresh listing, used to re-resolve a generation after a compression
-// race turned its ".log" into ".log.gz".
+// race removed its ".log" and left only the ".log.gz".
 func findRotationByID(files []RotatedFile, id string) (RotatedFile, bool) {
 	for _, f := range dedupRotations(files) {
 		if f.ID == id {
