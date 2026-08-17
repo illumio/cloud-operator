@@ -63,6 +63,11 @@ func hashRecord(line []byte) [md5.Size]byte {
 
 // checkpointStore holds per-node checkpoints. It is safe for concurrent use by
 // the per-node poll workers.
+//
+// TODO: key this map by node UID rather than node name. The name is the stable
+// API identity we use to build proxy paths and to reconcile against the node
+// list, and a UID change is already handled (it triggers a bootstrap reset), so
+// name is correct today; UID keying would just be a cleaner index. Not a blocker.
 type checkpointStore struct {
 	mu          sync.Mutex
 	checkpoints map[string]*nodeLogCheckpoint
