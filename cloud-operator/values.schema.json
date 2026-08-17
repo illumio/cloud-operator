@@ -11,6 +11,9 @@
                 "autoModeNodeProxyLogCollection": {
                     "type": "object",
                     "properties": {
+                        "grantNodesProxy": {
+                            "type": "boolean"
+                        },
                         "logPath": {
                             "type": "string"
                         },

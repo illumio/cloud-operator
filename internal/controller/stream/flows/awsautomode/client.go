@@ -17,8 +17,10 @@
 //
 // The node-proxy log endpoint is polled rather than streamed. It uses only the
 // operator service account, in-cluster API server access, and Kubernetes RBAC
-// (nodes + nodes/proxy). It never connects to node IPs directly, mounts host
-// paths, runs privileged, or uses AWS credentials/SDKs.
+// (nodes + the read-only kubelet log endpoint: nodes/log on k8s >=1.33 with
+// fine-grained kubelet authorization, else nodes/proxy). It never connects to
+// node IPs directly, mounts host paths, runs privileged, or uses AWS
+// credentials/SDKs.
 package awsautomode
 
 import (
