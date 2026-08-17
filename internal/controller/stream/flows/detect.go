@@ -147,6 +147,7 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 			return factory.NewCollector(ctx)
 		})
 	}
+
 	// Check for EKS Auto Mode (node-proxy log polling).
 	// Auto Mode has no aws-node DaemonSet, so IsAWSVPCCNIAvailable above is false;
 	// the Network Policy Agent is AWS-managed and only its node-local log file is

@@ -40,19 +40,15 @@ func TestParseRotationFilename(t *testing.T) {
 		{name: "unrelated file", file: "ipamd.log", wantOK: false},
 		{name: "unrelated prefix", file: "other-agent-2026-08-07T15-04-05.000.log", wantOK: false},
 		{name: "wrong extension", file: "network-policy-agent-2026-08-07T15-04-05.000.txt", wantOK: false},
-		{name: "empty id", file: "network-policy-agent-.log", wantOK: true, wantID: "", wantGzip: false},
+		// An empty rotation ID is rejected: "network-policy-agent-.log" has the
+		// prefix and extension but no timestamp between them.
+		{name: "empty id", file: "network-policy-agent-.log", wantOK: false},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			rf, ok := parseRotationFilename(tc.file, activeBase)
 			if !tc.wantOK {
-				assert.False(t, ok)
-
-				return
-			}
-			// The "empty id" case is rejected because id == "".
-			if tc.wantID == "" {
 				assert.False(t, ok)
 
 				return
