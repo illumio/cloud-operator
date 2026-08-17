@@ -31,10 +31,11 @@ const (
 	// MaxFlowAge bounds how far in the past an AWS VPC CNI flow may be and still be
 	// worth sending. Both collectors re-read a pod/daemon's whole agent log on their
 	// first scrape after a restart (the read position is not persisted), so the log
-	// can contain flows far older than the backend's stream time window. The backend
-	// discards flows outside that window anyway, so CacheFlowLine filters any flow
-	// whose timestamp is older than MaxFlowAge before it is cached and sent.
-	MaxFlowAge = 1 * time.Hour
+	// can contain flows far older than the backend's aggregation window. The backend
+	// aggregates on a 1-minute window plus a 1-minute grace period and discards
+	// anything older, so CacheFlowLine filters any flow whose timestamp is older than
+	// MaxFlowAge before it is cached and sent.
+	MaxFlowAge = 2 * time.Minute
 )
 
 // AWS VPC CNI flow log errors.
