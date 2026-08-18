@@ -33,6 +33,29 @@ rules:
 - apiGroups: ["networking.k8s.aws"]
   resources: ["applicationnetworkpolicies"]
   verbs: ["get", "list", "watch"]
+# EKS Auto Mode - operator reads the AWS-managed Network Policy Agent log via the
+# kubelet node-proxy endpoint (GET /api/v1/nodes/{node}/proxy/logs/...). The
+# collector activates only when Auto Mode is detected (compute-type=auto node
+# label), so on non-Auto-Mode clusters these permissions are present but unused.
+#
+# Fine-grained kubelet authorization (KubeletFineGrainedAuthz; beta/on-by-default
+# in k8s 1.33, GA in 1.36) maps the /logs/ request path to the `nodes/log`
+# subresource, so `nodes/log` alone authorizes the read and avoids the far broader
+# `nodes/proxy` (which also authorizes exec/attach/portforward - remote code
+# execution). `nodes/log` is always granted; it is harmless (simply unused) on
+# clusters where the feature gate is off.
+- apiGroups: [""]
+  resources: ["nodes/log"]
+  verbs: ["get"]
+{{- if .Values.awsVpcCni.autoModeNodeProxyLogCollection.grantNodesProxy }}
+# On k8s <1.33 fine-grained authz is unavailable, so `nodes/proxy` is required to
+# reach the log endpoint. Granted by default for backward compatibility; set
+# awsVpcCni.autoModeNodeProxyLogCollection.grantNodesProxy=false to drop this
+# broad permission on clusters running k8s >=1.33.
+- apiGroups: [""]
+  resources: ["nodes/proxy"]
+  verbs: ["get"]
+{{- end }}
 - apiGroups: ["apiextensions.k8s.io"]
   resources: ["customresourcedefinitions"]
   verbs: ["get", "list", "watch"]
