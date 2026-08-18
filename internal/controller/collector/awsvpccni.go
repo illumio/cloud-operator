@@ -27,6 +27,15 @@ const (
 	AWSNodeNamespace = "kube-system"
 	// AWSEksNodeagentContainer is the name of the container that has flow logs.
 	AWSEksNodeagentContainer = "aws-eks-nodeagent"
+
+	// MaxFlowAge bounds how far in the past an AWS VPC CNI flow may be and still be
+	// worth sending. Both collectors re-read a pod/daemon's whole agent log on their
+	// first scrape after a restart (the read position is not persisted), so the log
+	// can contain flows far older than the backend's aggregation window. The backend
+	// aggregates on a 1-minute window plus a 1-minute grace period and discards
+	// anything older, so CacheFlowLine filters any flow whose timestamp is older than
+	// MaxFlowAge before it is cached and sent.
+	MaxFlowAge = 2 * time.Minute
 )
 
 // AWS VPC CNI flow log errors.
@@ -191,6 +200,53 @@ func ParseAWSVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 	}
 
 	return flow, nil
+}
+
+// CacheFlowLine is the shared parse -> stale-filter -> cache path for the AWS VPC
+// CNI Network Policy Agent flow log format. It is used by BOTH the standard
+// aws-node pod-log collector and the EKS Auto Mode node-proxy log collector so the
+// two share identical flow handling.
+//
+// notBefore drops flows that fall outside the backend's stream time window.
+// Neither collector persists its read position across restarts, so the first
+// scrape of a pod/daemon re-reads the whole (up to ~200 MiB) active log; many of
+// those records are far in the past. The backend discards flows outside its time
+// window anyway, so sending them wastes the whole path from the operator onward.
+// Dropping any flow whose log timestamp is before notBefore avoids that. Callers
+// pass a ROLLING bound (typically time.Now().Add(-MaxFlowAge)) recomputed each
+// poll, not a fixed startup time. A zero notBefore disables the filter (all flows
+// pass).
+//
+// Returns cached=true when a flow was cached. A parse failure is not an error: the
+// agent log interleaves non-flow housekeeping lines with flow records, so only a
+// context error is returned, letting the caller stop without advancing its
+// checkpoint. A CacheFlow error is logged and skipped (best-effort delivery).
+func CacheFlowLine(ctx context.Context, sink FlowSink, line string, notBefore time.Time, logger *zap.Logger) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+
+	flow, err := ParseAWSVPCCNIFlowLog(line)
+	if err != nil {
+		// Non-flow line: expected, not an error. See the return-value contract above.
+		return false, nil //nolint:nilerr // non-flow lines are intentionally skipped, not errors
+	}
+
+	if !notBefore.IsZero() && flow.StartTimestamp().Before(notBefore) {
+		// Flow predates the stream time window; drop it rather than sending a stale
+		// record the backend would discard.
+		return false, nil
+	}
+
+	if err := sink.CacheFlow(ctx, flow); err != nil {
+		logger.Debug("failed to cache AWS VPC CNI flow", zap.Error(err))
+
+		return false, nil
+	}
+
+	sink.IncrementFlowsReceived()
+
+	return true, nil
 }
 
 // isIPv6 checks if the given address is an IPv6 address.

@@ -64,6 +64,12 @@ spec:
             - name: CLUSTER_NAME
               value: "{{ .Values.cluster.name }}"
             {{- end }}
+            - name: EKS_AUTO_MODE_LOG_PATH
+              value: "{{ .Values.awsVpcCni.autoModeNodeProxyLogCollection.logPath }}"
+            - name: EKS_AUTO_MODE_MAX_CONCURRENT_NODE_POLLS
+              value: "{{ .Values.awsVpcCni.autoModeNodeProxyLogCollection.maxConcurrentNodePolls }}"
+            - name: EKS_AUTO_MODE_POLL_INTERVAL
+              value: "{{ .Values.awsVpcCni.autoModeNodeProxyLogCollection.pollInterval }}"
             - name: FLOW_CACHE_ACTIVE_TIMEOUT
               value: "{{ .Values.env.flowCache.activeTimeout }}"
             - name: FLOW_CACHE_CHANNEL_BUFFER_SIZE

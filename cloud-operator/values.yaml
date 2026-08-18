@@ -116,6 +116,45 @@ falco:
         output: "illumio_network_traffic (time=%evt.time.iso8601 srcip=%fd.cip dstip=%fd.sip srcport=%fd.cport dstport=%fd.sport proto=%fd.l4proto procname=%proc.name ipversion=%fd.type)"
         priority: WARNING
 
+awsVpcCni:
+  # EKS Auto Mode Network Policy Agent log collection.
+  #
+  # On EKS Auto Mode the VPC CNI and its Network Policy Agent are AWS-managed and
+  # are NOT exposed as pods, so the standard aws-node pod-log collector cannot see
+  # them. The operator reads each Auto Mode node's node-local agent log
+  # (aws-routed-eni/network-policy-agent.log) through the kubelet node-proxy
+  # endpoint (GET /api/v1/nodes/{node}/proxy/logs/...) by polling on an interval.
+  #
+  # It uses only the operator service account and Kubernetes RBAC (a read-only
+  # get on the kubelet log endpoint). The collector activates automatically only
+  # on clusters with EKS Auto Mode nodes (node label
+  # eks.amazonaws.com/compute-type=auto); on all other clusters it is disabled.
+  autoModeNodeProxyLogCollection:
+    # Interval between polls of each node's agent log.
+    pollInterval: "10s"
+    # Maximum number of nodes polled concurrently, to bound load on apiserver.
+    maxConcurrentNodePolls: 10
+    # Also grant the broad `nodes/proxy` RBAC permission for the node-proxy log
+    # read, in addition to the always-granted fine-grained `nodes/log`.
+    #
+    # `nodes/proxy` is very broad - it also authorizes exec/attach/portforward
+    # (remote code execution on nodes). Fine-grained kubelet authorization
+    # (KubeletFineGrainedAuthz; beta/on-by-default in k8s 1.33, GA in 1.36) maps
+    # the /logs/ path to the narrow `nodes/log` subresource, which is all the
+    # operator needs. On k8s <1.33 that subresource is unavailable, so
+    # `nodes/proxy` is required to reach the log endpoint.
+    #
+    # Defaults to true for backward compatibility with k8s <1.33. Set to false on
+    # clusters running k8s >=1.33 to drop the broad permission and rely solely on
+    # `nodes/log`.
+    grantNodesProxy: true
+    # Node-local path (relative to the kubelet log root) of the Network Policy
+    # Agent log. This is the active log file AND the filename prefix used to
+    # discover its rotated generations (e.g. network-policy-agent-<timestamp>.log.gz),
+    # not the only filename queried. Overridable in case a future AWS agent
+    # version relocates the file.
+    logPath: "aws-routed-eni/network-policy-agent.log"
+
 env:
   # Flow cache settings for network flow aggregation before sending to CloudSecure.
   flowCache:

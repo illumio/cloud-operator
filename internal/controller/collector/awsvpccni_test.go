@@ -6,11 +6,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 func TestParseAWSVPCCNIFlowLog(t *testing.T) {
@@ -509,5 +512,106 @@ func TestIsAWSVPCCNIAvailable(t *testing.T) {
 				t.Errorf("IsAWSVPCCNIAvailable() = %v, want %v", result, tt.expected)
 			}
 		})
+	}
+}
+
+// countingSink records how many flows were cached, to assert CacheFlowLine's
+// parse -> stale-filter -> cache behavior.
+type countingSink struct {
+	cached   int
+	received int
+	err      error
+}
+
+func (s *countingSink) CacheFlow(_ context.Context, _ pb.Flow) error {
+	if s.err != nil {
+		return s.err
+	}
+
+	s.cached++
+
+	return nil
+}
+
+func (s *countingSink) IncrementFlowsReceived() { s.received++ }
+
+func flowLineAt(ts string) string {
+	return `{"level":"info","ts":"` + ts + `","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.1.1","Src Port":80,"Dest IP":"10.0.1.2","Dest Port":443,"Proto":"TCP","Verdict":"ACCEPT"}`
+}
+
+func TestCacheFlowLine(t *testing.T) {
+	logger := zap.NewNop()
+	recent := time.Now().Add(-time.Minute).UTC().Format("2006-01-02T15:04:05.000Z")
+	stale := "2024-09-23T12:36:53.562Z"
+	notBefore := time.Now().Add(-MaxFlowAge)
+
+	tests := []struct {
+		name         string
+		line         string
+		notBefore    time.Time
+		sinkErr      error
+		wantCached   bool
+		wantReceived int
+	}{
+		{
+			name:         "recent flow is cached",
+			line:         flowLineAt(recent),
+			notBefore:    notBefore,
+			wantCached:   true,
+			wantReceived: 1,
+		},
+		{
+			name:      "stale flow is dropped",
+			line:      flowLineAt(stale),
+			notBefore: notBefore,
+		},
+		{
+			name:      "non-flow line is skipped",
+			line:      `{"level":"info","ts":"` + recent + `","logger":"other","msg":"housekeeping"}`,
+			notBefore: notBefore,
+		},
+		{
+			name:       "zero notBefore disables the filter",
+			line:       flowLineAt(stale),
+			notBefore:  time.Time{},
+			wantCached: true, wantReceived: 1,
+		},
+		{
+			name:      "cache error is swallowed (best-effort)",
+			line:      flowLineAt(recent),
+			notBefore: notBefore,
+			sinkErr:   errors.New("cache full"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sink := &countingSink{err: tt.sinkErr}
+
+			cached, err := CacheFlowLine(context.Background(), sink, tt.line, tt.notBefore, logger)
+			if err != nil {
+				t.Fatalf("CacheFlowLine() unexpected error: %v", err)
+			}
+
+			if cached != tt.wantCached {
+				t.Errorf("cached = %v, want %v", cached, tt.wantCached)
+			}
+
+			if sink.received != tt.wantReceived {
+				t.Errorf("IncrementFlowsReceived calls = %d, want %d", sink.received, tt.wantReceived)
+			}
+		})
+	}
+}
+
+func TestCacheFlowLine_ContextCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	sink := &countingSink{}
+
+	_, err := CacheFlowLine(ctx, sink, flowLineAt("2024-09-23T12:36:53.562Z"), time.Time{}, zap.NewNop())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("CacheFlowLine() error = %v, want context.Canceled", err)
 	}
 }
