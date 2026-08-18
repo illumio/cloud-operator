@@ -474,8 +474,10 @@ func convertServicePortsToPorts(servicePorts []v1.ServicePort) []*pb.KubernetesS
 		}
 
 		port := &pb.KubernetesServiceData_ServicePort{
-			Port:     uint32(sp.Port), //nolint:gosec
-			Protocol: protocol,
+			Port:       uint32(sp.Port), //nolint:gosec
+			Protocol:   protocol,
+			TargetPort: sp.TargetPort.String(),
+			Name:       sp.Name,
 		}
 		if sp.NodePort > 0 {
 			port.NodePort = int32ToUint32(&sp.NodePort)
@@ -547,6 +549,8 @@ func convertToKubernetesServiceData(ctx context.Context, serviceName string, cli
 			Port:              np.GetPort(),
 			Protocol:          np.GetProtocol(),
 			LoadBalancerPorts: np.GetLoadBalancerPorts(),
+			TargetPort:        np.GetTargetPort(),
+			Name:              np.GetName(),
 		}
 	}
 
@@ -556,6 +560,7 @@ func convertToKubernetesServiceData(ctx context.Context, serviceName string, cli
 		Type:              string(service.Spec.Type),
 		ExternalName:      &service.Spec.ExternalName,
 		LoadBalancerClass: service.Spec.LoadBalancerClass,
+		Selector:          service.Spec.Selector,
 	}, nil
 }
 
