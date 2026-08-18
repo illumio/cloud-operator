@@ -150,27 +150,26 @@ func (c *vpccniClient) parseLogs(ctx context.Context, logs []byte, logger *zap.L
 	scanner := bufio.NewScanner(bytes.NewReader(logs))
 	flowCount := 0
 
+	// Drop flows older than the stream time window rather than sending stale
+	// records the backend would discard. Rolling bound recomputed per batch so it
+	// tracks wall-clock rather than a fixed startup time.
+	notBefore := time.Now().Add(-collector.MaxFlowAge)
+
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
 			continue
 		}
 
-		flow, err := collector.ParseAWSVPCCNIFlowLog(string(line))
+		cached, err := collector.CacheFlowLine(ctx, c.flowSink, string(line), notBefore, logger)
 		if err != nil {
-			continue
+			// Only a context error stops the batch.
+			return
 		}
 
-		if err := c.flowSink.CacheFlow(ctx, flow); err != nil {
-			logger.Debug("AWS VPC CNI failed to cache flow",
-				zap.Error(err))
-
-			continue
+		if cached {
+			flowCount++
 		}
-
-		c.flowSink.IncrementFlowsReceived()
-
-		flowCount++
 	}
 
 	if flowCount > 0 {

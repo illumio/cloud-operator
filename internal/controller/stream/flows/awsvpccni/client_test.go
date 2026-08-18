@@ -65,9 +65,15 @@ func (s *VPCCNIClientTestSuite) TestClient_Fields() {
 	s.NotNil(s.client.lastPollTime)
 }
 
+// recentTS formats a timestamp within the stream time window so parse tests are
+// not dropped by the MaxFlowAge stale-flow filter in CacheFlowLine.
+func recentTS() string {
+	return time.Now().Add(-time.Minute).UTC().Format("2006-01-02T15:04:05.000Z")
+}
+
 func (s *VPCCNIClientTestSuite) TestParseLogs_ValidOldFormat() {
 	ctx := context.Background()
-	logs := `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.141.167","Src Port":39197,"Dest IP":"172.20.0.10","Dest Port":53,"Proto":"TCP","Verdict":"ACCEPT"}`
+	logs := `{"level":"info","ts":"` + recentTS() + `","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.141.167","Src Port":39197,"Dest IP":"172.20.0.10","Dest Port":53,"Proto":"TCP","Verdict":"ACCEPT"}`
 
 	s.mockSink.On("CacheFlow", ctx, mock.Anything).Return(nil)
 	s.mockSink.On("IncrementFlowsReceived").Return()
@@ -80,7 +86,7 @@ func (s *VPCCNIClientTestSuite) TestParseLogs_ValidOldFormat() {
 
 func (s *VPCCNIClientTestSuite) TestParseLogs_ValidNewFormat() {
 	ctx := context.Background()
-	logs := `{"level":"debug","ts":"2026-04-13T21:18:46.888Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress"}`
+	logs := `{"level":"debug","ts":"` + recentTS() + `","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress"}`
 
 	s.mockSink.On("CacheFlow", ctx, mock.Anything).Return(nil)
 	s.mockSink.On("IncrementFlowsReceived").Return()
@@ -89,6 +95,17 @@ func (s *VPCCNIClientTestSuite) TestParseLogs_ValidNewFormat() {
 
 	s.mockSink.AssertNumberOfCalls(s.T(), "CacheFlow", 1)
 	s.mockSink.AssertNumberOfCalls(s.T(), "IncrementFlowsReceived", 1)
+}
+
+func (s *VPCCNIClientTestSuite) TestParseLogs_DropsStaleFlow() {
+	ctx := context.Background()
+	// A flow well outside the stream time window must not be cached or counted.
+	logs := `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.141.167","Src Port":39197,"Dest IP":"172.20.0.10","Dest Port":53,"Proto":"TCP","Verdict":"ACCEPT"}`
+
+	s.client.parseLogs(ctx, []byte(logs), s.logger)
+
+	s.mockSink.AssertNotCalled(s.T(), "CacheFlow")
+	s.mockSink.AssertNotCalled(s.T(), "IncrementFlowsReceived")
 }
 
 func (s *VPCCNIClientTestSuite) TestParseLogs_EmptyLogs() {
@@ -112,8 +129,9 @@ func (s *VPCCNIClientTestSuite) TestParseLogs_NonFlowLog() {
 
 func (s *VPCCNIClientTestSuite) TestParseLogs_MultipleLines() {
 	ctx := context.Background()
-	logs := `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.1.1","Src Port":80,"Dest IP":"10.0.1.2","Dest Port":443,"Proto":"TCP","Verdict":"ACCEPT"}
-{"level":"info","ts":"2024-09-23T12:36:54.562Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.1.3","Src Port":8080,"Dest IP":"10.0.1.4","Dest Port":53,"Proto":"UDP","Verdict":"ACCEPT"}`
+	ts := recentTS()
+	logs := `{"level":"info","ts":"` + ts + `","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.1.1","Src Port":80,"Dest IP":"10.0.1.2","Dest Port":443,"Proto":"TCP","Verdict":"ACCEPT"}
+{"level":"info","ts":"` + ts + `","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.1.3","Src Port":8080,"Dest IP":"10.0.1.4","Dest Port":53,"Proto":"UDP","Verdict":"ACCEPT"}`
 
 	s.mockSink.On("CacheFlow", ctx, mock.Anything).Return(nil)
 	s.mockSink.On("IncrementFlowsReceived").Return()
