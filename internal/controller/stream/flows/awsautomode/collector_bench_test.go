@@ -30,12 +30,39 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/collector"
 )
 
-// Benchmark scenario constants: a worst-case 200-node EKS Auto Mode fleet whose
-// active Network Policy Agent log is ~180 MiB per node. These exercise the REAL
-// restLogFetcher + autoModeClient code paths (node discovery, directory listing,
-// ranged/streaming active-file reads, checkpoint continuation) against an
-// httptest.Server that generates log bytes lazily, so neither the collector nor the
-// mock server ever materializes a 180 MiB buffer.
+// These benchmarks exercise the REAL restLogFetcher + autoModeClient code paths
+// (node discovery, directory listing, ranged/streaming active-file reads, checkpoint
+// continuation) against an httptest.Server that generates log bytes lazily from a
+// bounded tile, so neither the collector nor the mock server ever materializes a
+// 180 MiB buffer. The fleet size is benchNumNodes (below); every node's active
+// Network Policy Agent log is ~180 MiB.
+//
+// Measured results (darwin/arm64, Apple M4 Pro; every node has a 180 MiB active
+// file; node concurrency capped at 10 = DefaultMaxConcurrentNodePolls):
+//
+// Steady-state tailing (checkpoint near EOF -> Range-fetch only the ~2 MiB tail):
+//
+//	Nodes  Poll duration  Transferred/node  Total/op  Max concurrent  Peak heap
+//	   50         123 ms             2 MiB   105 MiB              10    16.0 MiB
+//	  100         239 ms             2 MiB   210 MiB              10    15.5 MiB
+//	  150         375 ms             2 MiB   315 MiB              10    22.4 MiB
+//	  200         466 ms             2 MiB   419 MiB              10    19.5 MiB
+//	 1000        2.10 s              2 MiB   2.0 GiB             10    24.6 MiB
+//
+// Poll duration scales linearly (~2.1 ms/node); transferred/node and peak heap stay
+// flat -- retained memory is bounded by concurrency, not fleet size or file size.
+//
+// OOM worst case (server ignores Range, streams the whole 180 MiB/node): at 200
+// nodes ~37.7 GB crossed the wire yet peak heap stayed 15.5 MiB -- nowhere near the
+// ~1.8 GiB (10 x 180 MiB) a buffering collector would need. Proves the collector
+// streams instead of allocating a per-request 180 MiB buffer.
+//
+// Rotation dedup at scale: the newer generation's ".log.gz" is fetched 0 times
+// (uncompressed ".log" preferred); the older ".gz"-only generation is streamed and
+// gunzipped.
+//
+// NOTE: peak heap is measured in-process (collector + mock share one process), so it
+// is a safe UPPER BOUND on the collector's retained memory, not an isolated pod RSS.
 const (
 	benchNumNodes = 1000
 
@@ -359,9 +386,9 @@ func benchClientset(b *testing.B, srv *httptest.Server) kubernetes.Interface {
 	b.Helper()
 
 	// QPS < 0 disables client-go's client-side rate limiter. Without this the
-	// benchmark measures the limiter (200 node LIST + directory-list requests queued
-	// behind the default 5 QPS) rather than the collector's streaming path. A real
-	// deployment tunes QPS for its fleet size; the raw active/rotated GETs already
+	// benchmark measures the limiter (the fleet's node LIST + directory-list requests
+	// queued behind the default 5 QPS) rather than the collector's streaming path. A
+	// real deployment tunes QPS for its fleet size; the raw active/rotated GETs already
 	// bypass the limiter by design (see restLogFetcher).
 	cs, err := kubernetes.NewForConfig(&rest.Config{Host: srv.URL, QPS: -1})
 	if err != nil {
@@ -471,12 +498,12 @@ func reportBench(b *testing.B, mock *mockNodeProxy, peakHeap uint64) {
 	b.ReportMetric(float64(peakHeap)/(1<<20), "peak-heap-MiB")
 }
 
-// BenchmarkAutoModeCollector200Nodes measures a full steady-state 200-node poll:
-// each node's checkpoint sits near the end of its 180 MiB active file, so the
-// collector issues an HTTP Range request and streams only the ~2 MiB validation
-// overlap + new tail per node — proving memory does not scale as maxConcurrentPolls
-// x 180 MiB.
-func BenchmarkAutoModeCollector200Nodes(b *testing.B) {
+// BenchmarkAutoModeCollectorSteadyState measures a full steady-state poll of a
+// benchNumNodes fleet: each node's checkpoint sits near the end of its 180 MiB
+// active file, so the collector issues an HTTP Range request and streams only the
+// ~2 MiB validation overlap + new tail per node — proving memory does not scale as
+// maxConcurrentPolls x 180 MiB.
+func BenchmarkAutoModeCollectorSteadyState(b *testing.B) {
 	tile, record := benchTile()
 
 	mock := &mockNodeProxy{
@@ -493,11 +520,10 @@ func BenchmarkAutoModeCollector200Nodes(b *testing.B) {
 	ctx := context.Background()
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	sampler := startHeapSampler()
 
-	for range b.N {
+	for b.Loop() {
 		// Re-seed so every iteration is an identical steady-state poll (the prior poll
 		// advanced offsets to EOF). Excluded from the timer.
 		b.StopTimer()
@@ -514,12 +540,13 @@ func BenchmarkAutoModeCollector200Nodes(b *testing.B) {
 	assertBenchPoll(b, mock, sink, benchNewRecords)
 }
 
-// BenchmarkAutoModeCollector200NodesRangeIgnored is the OOM worst case: the server
-// ignores the Range header and streams the whole 180 MiB file (200 OK) for every
-// node, so ~36 GiB crosses the wire per iteration. The collector must stream and
-// skip to the checkpoint tail WITHOUT allocating a 180 MiB buffer per request. Run
-// it deliberately (e.g. -benchtime=1x) — it is far heavier than the Range variant.
-func BenchmarkAutoModeCollector200NodesRangeIgnored(b *testing.B) {
+// BenchmarkAutoModeCollectorRangeIgnored is the OOM worst case: the server ignores
+// the Range header and streams the whole 180 MiB file (HTTP 200) for every node, so
+// benchNumNodes x 180 MiB crosses the wire per iteration (~180 GiB at the default
+// 1000 nodes). The collector must stream and skip to the checkpoint tail WITHOUT
+// allocating a 180 MiB buffer per request. Run it deliberately (e.g. -benchtime=1x
+// -timeout=30m) — it is far heavier than the Range variant.
+func BenchmarkAutoModeCollectorRangeIgnored(b *testing.B) {
 	tile, record := benchTile()
 
 	mock := &mockNodeProxy{
@@ -537,11 +564,10 @@ func BenchmarkAutoModeCollector200NodesRangeIgnored(b *testing.B) {
 	ctx := context.Background()
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	sampler := startHeapSampler()
 
-	for range b.N {
+	for b.Loop() {
 		b.StopTimer()
 
 		c.checkpoints = seedSteadyStateCheckpoints(record)
@@ -556,9 +582,9 @@ func BenchmarkAutoModeCollector200NodesRangeIgnored(b *testing.B) {
 	peak := sampler.stopAndPeak()
 	reportBench(b, mock, peak)
 
-	// The headline proof: while 180 MiB/node (~36 GiB total) streamed across the
-	// wire, the retained heap stayed bounded — nowhere near maxConcurrentPolls x
-	// 180 MiB (~1.8 GiB). Assert it strictly.
+	// The headline proof: while 180 MiB/node (benchNumNodes x 180 MiB total) streamed
+	// across the wire, the retained heap stayed bounded — nowhere near
+	// maxConcurrentPolls x 180 MiB (~1.8 GiB). Assert it strictly.
 	if peakMiB := float64(peak) / (1 << 20); peakMiB > 512 {
 		b.Fatalf("peak heap %.0f MiB while streaming whole files; streaming appears broken (expected < 512 MiB)", peakMiB)
 	}
@@ -571,10 +597,10 @@ func BenchmarkAutoModeCollector200NodesRangeIgnored(b *testing.B) {
 	assertBenchConcurrency(b, mock)
 
 	// Emit count: identical to the Range variant (the checkpoint skips the already-
-	// seen prefix even on a 200), so only the transferred bytes differ. This is a
-	// 36 GiB loopback stress run, so tolerate a small delivery shortfall from rare
-	// connection hiccups — but never silently: log the exact numbers and fail if the
-	// shortfall is large enough to indicate a real regression rather than a hiccup.
+	// seen prefix even on an HTTP 200), so only the transferred bytes differ. This is
+	// a multi-GiB loopback stress run, so tolerate a small delivery shortfall from
+	// rare connection hiccups — but never silently: log the exact numbers and fail if
+	// the shortfall is large enough to indicate a real regression rather than a hiccup.
 	want := int64(benchNewRecords) * benchNumNodes * int64(b.N)
 
 	got := sink.cached.Load()
@@ -583,7 +609,7 @@ func BenchmarkAutoModeCollector200NodesRangeIgnored(b *testing.B) {
 	}
 
 	if got < want {
-		b.Logf("delivery shortfall under 36 GiB stress: cached %d/%d flows (%.2f%%); %d records short",
+		b.Logf("delivery shortfall under loopback stress: cached %d/%d flows (%.2f%%); %d records short",
 			got, want, 100*float64(got)/float64(want), want-got)
 	}
 
@@ -592,13 +618,13 @@ func BenchmarkAutoModeCollector200NodesRangeIgnored(b *testing.B) {
 	}
 }
 
-// BenchmarkAutoModeCollector200NodesRotation exercises rotation recovery at scale:
-// every node's directory lists an older generation present only as ".log.gz"
-// (streamed + gunzipped) and a newer generation present as BOTH ".log" and
-// ".log.gz" (the corrected behavior: prefer the uncompressed ".log", never open the
-// ".gz"). Rotated files are modest so the benchmark stays bounded; the active file
-// is tiny here because rotation recovery, not steady-state tailing, is under test.
-func BenchmarkAutoModeCollector200NodesRotation(b *testing.B) {
+// BenchmarkAutoModeCollectorRotation exercises rotation recovery at scale: every
+// node's directory lists an older generation present only as ".log.gz" (streamed +
+// gunzipped) and a newer generation present as BOTH ".log" and ".log.gz" (the
+// corrected behavior: prefer the uncompressed ".log", never open the ".gz").
+// Rotated files are modest so the benchmark stays bounded; the active file is tiny
+// here because rotation recovery, not steady-state tailing, is under test.
+func BenchmarkAutoModeCollectorRotation(b *testing.B) {
 	tile, _ := benchTile()
 
 	const (
@@ -631,11 +657,10 @@ func BenchmarkAutoModeCollector200NodesRotation(b *testing.B) {
 	ctx := context.Background()
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	sampler := startHeapSampler()
 
-	for range b.N {
+	for b.Loop() {
 		// Re-seed with an empty LastRotationID so both generations are "unseen" and
 		// recovered each iteration; NodeUID is set so this is recovery, not bootstrap.
 		b.StopTimer()
