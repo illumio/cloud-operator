@@ -864,7 +864,7 @@ func (suite *ConvertTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 30000, Port: 80, Protocol: v1.ProtocolTCP},
 			},
 			expectedResult: []*pb.KubernetesServiceData_ServicePort{
-				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
+				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP", TargetPort: "0"},
 			},
 		},
 		"multiple service ports with node ports": {
@@ -873,8 +873,8 @@ func (suite *ConvertTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 30001, Port: 443, Protocol: v1.ProtocolTCP},
 			},
 			expectedResult: []*pb.KubernetesServiceData_ServicePort{
-				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
-				{NodePort: int32ToUint32(&nodePort2), Port: 443, Protocol: "TCP"},
+				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP", TargetPort: "0"},
+				{NodePort: int32ToUint32(&nodePort2), Port: 443, Protocol: "TCP", TargetPort: "0"},
 			},
 		},
 		"service port without node port": {
@@ -882,7 +882,7 @@ func (suite *ConvertTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 0, Port: 80, Protocol: v1.ProtocolTCP},
 			},
 			expectedResult: []*pb.KubernetesServiceData_ServicePort{
-				{Port: 80, Protocol: "TCP"},
+				{Port: 80, Protocol: "TCP", TargetPort: "0"},
 			},
 		},
 		"single service port without protocol": {
@@ -890,7 +890,7 @@ func (suite *ConvertTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 30000, Port: 80},
 			},
 			expectedResult: []*pb.KubernetesServiceData_ServicePort{
-				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
+				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP", TargetPort: "0"},
 			},
 		},
 		"mix of service ports with and without node ports": {
@@ -899,8 +899,32 @@ func (suite *ConvertTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 0, Port: 443, Protocol: v1.ProtocolTCP},
 			},
 			expectedResult: []*pb.KubernetesServiceData_ServicePort{
-				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
-				{Port: 443, Protocol: "TCP"},
+				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP", TargetPort: "0"},
+				{Port: 443, Protocol: "TCP", TargetPort: "0"},
+			},
+		},
+		"service port with target port and name": {
+			servicePorts: []v1.ServicePort{
+				{Port: 80, Protocol: v1.ProtocolTCP, Name: "http", TargetPort: intstr.FromInt(8080)},
+			},
+			expectedResult: []*pb.KubernetesServiceData_ServicePort{
+				{Port: 80, Protocol: "TCP", TargetPort: "8080", Name: "http"},
+			},
+		},
+		"service port with named target port": {
+			servicePorts: []v1.ServicePort{
+				{Port: 80, Protocol: v1.ProtocolTCP, TargetPort: intstr.FromString("http")},
+			},
+			expectedResult: []*pb.KubernetesServiceData_ServicePort{
+				{Port: 80, Protocol: "TCP", TargetPort: "http"},
+			},
+		},
+		"service port with zero target port": {
+			servicePorts: []v1.ServicePort{
+				{Port: 80, Protocol: v1.ProtocolTCP, TargetPort: intstr.FromInt(0)},
+			},
+			expectedResult: []*pb.KubernetesServiceData_ServicePort{
+				{Port: 80, Protocol: "TCP", TargetPort: "0"},
 			},
 		},
 		"empty service ports": {
@@ -990,18 +1014,21 @@ func (suite *ConvertTestSuite) TestConvertToKubernetesServiceData() {
 					ClusterIPs:     []string{},
 					ExternalIPs:    []string{"192.168.1.1"},
 					LoadBalancerIP: "34.123.45.67",
+					Selector:       map[string]string{"app": "web"},
 					Ports: []v1.ServicePort{
 						{
-							Name:     "port1",
-							NodePort: 30001,
-							Port:     8080,
-							Protocol: v1.ProtocolTCP,
+							Name:       "port1",
+							NodePort:   30001,
+							Port:       8080,
+							Protocol:   v1.ProtocolTCP,
+							TargetPort: intstr.FromInt(8080),
 						},
 						{
-							Name:     "port2",
-							NodePort: 30002,
-							Port:     443,
-							Protocol: v1.ProtocolTCP,
+							Name:       "port2",
+							NodePort:   30002,
+							Port:       443,
+							Protocol:   v1.ProtocolTCP,
+							TargetPort: intstr.FromInt(8443),
 						},
 					},
 					Type: v1.ServiceTypeLoadBalancer,
@@ -1019,19 +1046,106 @@ func (suite *ConvertTestSuite) TestConvertToKubernetesServiceData() {
 				// IpAddresses: []string{}, // Ignored in this test case
 				Ports: []*pb.KubernetesServiceData_ServicePort{
 					{
-						NodePort: new(uint32(30001)),
-						Port:     8080,
-						Protocol: "TCP",
+						NodePort:   new(uint32(30001)),
+						Port:       8080,
+						Protocol:   "TCP",
+						TargetPort: "8080",
+						Name:       "port1",
 					},
 					{
-						NodePort: new(uint32(30002)),
-						Port:     443,
-						Protocol: "TCP",
+						NodePort:   new(uint32(30002)),
+						Port:       443,
+						Protocol:   "TCP",
+						TargetPort: "8443",
+						Name:       "port2",
 					},
 				},
 				Type:              "LoadBalancer",
 				ExternalName:      new(""),
 				LoadBalancerClass: nil,
+				Selector:          map[string]string{"app": "web"},
+			},
+			expectedError: nil,
+		},
+		"ClusterIP service with selector": {
+			service: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service",
+					Namespace: "default",
+				},
+				Spec: v1.ServiceSpec{
+					Type:     v1.ServiceTypeClusterIP,
+					Selector: map[string]string{"app": "api", "tier": "backend"},
+					Ports: []v1.ServicePort{
+						{
+							Name:       "http",
+							Port:       80,
+							Protocol:   v1.ProtocolTCP,
+							TargetPort: intstr.FromInt(8080),
+						},
+					},
+				},
+			},
+			expectedResult: &pb.KubernetesServiceData{
+				Ports: []*pb.KubernetesServiceData_ServicePort{
+					{
+						Port:       80,
+						Protocol:   "TCP",
+						TargetPort: "8080",
+						Name:       "http",
+					},
+				},
+				Type:         "ClusterIP",
+				ExternalName: new(""),
+				Selector:     map[string]string{"app": "api", "tier": "backend"},
+			},
+			expectedError: nil,
+		},
+		"headless service without selector": {
+			service: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service",
+					Namespace: "default",
+				},
+				Spec: v1.ServiceSpec{
+					Type:      v1.ServiceTypeClusterIP,
+					ClusterIP: "None",
+					Ports: []v1.ServicePort{
+						{
+							Port:     80,
+							Protocol: v1.ProtocolTCP,
+						},
+					},
+				},
+			},
+			expectedResult: &pb.KubernetesServiceData{
+				Ports: []*pb.KubernetesServiceData_ServicePort{
+					{
+						Port:       80,
+						Protocol:   "TCP",
+						TargetPort: "80",
+					},
+				},
+				Type:         "ClusterIP",
+				ExternalName: new(""),
+			},
+			expectedError: nil,
+		},
+		"ExternalName service": {
+			service: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service",
+					Namespace: "default",
+				},
+				Spec: v1.ServiceSpec{
+					Type:         v1.ServiceTypeExternalName,
+					ExternalName: "my.database.example.com",
+				},
+			},
+			expectedResult: &pb.KubernetesServiceData{
+				Ports:        []*pb.KubernetesServiceData_ServicePort{},
+				Type:         "ExternalName",
+				ExternalName: new("my.database.example.com"),
 			},
 			expectedError: nil,
 		},
@@ -1041,13 +1155,13 @@ func (suite *ConvertTestSuite) TestConvertToKubernetesServiceData() {
 		suite.Run(name, func() {
 			ctx := context.TODO()
 
-			// Ensure the service is deleted before running the test
-			if tt.service == nil {
-				err := suite.clientset.CoreV1().Services("default").Delete(ctx, "test-service", metav1.DeleteOptions{})
-				if err != nil && !k8sErrors.IsNotFound(err) {
-					suite.T().Fatal("Failed to delete service: " + err.Error())
-				}
+			// Clean up any existing service before each subtest
+			err := suite.clientset.CoreV1().Services("default").Delete(ctx, "test-service", metav1.DeleteOptions{})
+			if err != nil && !k8sErrors.IsNotFound(err) {
+				suite.T().Fatal("Failed to delete service: " + err.Error())
+			}
 
+			if tt.service == nil {
 				time.Sleep(100 * time.Millisecond) // Wait for deletion to propagate
 			}
 
@@ -1075,6 +1189,7 @@ func assertEqualKubernetesServiceData(t *testing.T, expected, actual *pb.Kuberne
 	assert.Equal(t, expected.GetType(), actual.GetType())
 	assert.Equal(t, expected.GetExternalName(), actual.GetExternalName())
 	assert.Equal(t, expected.GetLoadBalancerClass(), actual.GetLoadBalancerClass())
+	assert.Equal(t, expected.GetSelector(), actual.GetSelector())
 }
 
 func TestConvertNetworkPolicyEgressRuleToProto(t *testing.T) {

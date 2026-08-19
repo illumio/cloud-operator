@@ -736,8 +736,10 @@ type KubernetesServiceData struct {
 	ExternalName *string `protobuf:"bytes,4,opt,name=external_name,json=externalName,proto3,oneof" json:"external_name,omitempty"`
 	// The class of the load balancer implementation this Service belongs to
 	LoadBalancerClass *string `protobuf:"bytes,5,opt,name=load_balancer_class,json=loadBalancerClass,proto3,oneof" json:"load_balancer_class,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Label selector that determines which pods are targeted by this service
+	Selector      map[string]string `protobuf:"bytes,6,rep,name=selector,proto3" json:"selector,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *KubernetesServiceData) Reset() {
@@ -803,6 +805,13 @@ func (x *KubernetesServiceData) GetLoadBalancerClass() string {
 		return *x.LoadBalancerClass
 	}
 	return ""
+}
+
+func (x *KubernetesServiceData) GetSelector() map[string]string {
+	if x != nil {
+		return x.Selector
+	}
+	return nil
 }
 
 // KubernetesNodeData contains information specific to a Node Object.
@@ -6417,13 +6426,17 @@ type KubernetesServiceData_ServicePort struct {
 	Protocol string `protobuf:"bytes,3,opt,name=protocol,proto3" json:"protocol,omitempty"`
 	// List of ports exposing the service via a load balancer
 	LoadBalancerPorts []string `protobuf:"bytes,4,rep,name=load_balancer_ports,json=loadBalancerPorts,proto3" json:"load_balancer_ports,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Number or name of the port to access on the pods targeted by the service
+	TargetPort string `protobuf:"bytes,5,opt,name=target_port,json=targetPort,proto3" json:"target_port,omitempty"`
+	// The name of this port within the service
+	Name          string `protobuf:"bytes,6,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *KubernetesServiceData_ServicePort) Reset() {
 	*x = KubernetesServiceData_ServicePort{}
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[84]
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6435,7 +6448,7 @@ func (x *KubernetesServiceData_ServicePort) String() string {
 func (*KubernetesServiceData_ServicePort) ProtoMessage() {}
 
 func (x *KubernetesServiceData_ServicePort) ProtoReflect() protoreflect.Message {
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[84]
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6448,7 +6461,7 @@ func (x *KubernetesServiceData_ServicePort) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use KubernetesServiceData_ServicePort.ProtoReflect.Descriptor instead.
 func (*KubernetesServiceData_ServicePort) Descriptor() ([]byte, []int) {
-	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{2, 0}
+	return file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP(), []int{2, 1}
 }
 
 func (x *KubernetesServiceData_ServicePort) GetNodePort() uint32 {
@@ -6479,6 +6492,20 @@ func (x *KubernetesServiceData_ServicePort) GetLoadBalancerPorts() []string {
 	return nil
 }
 
+func (x *KubernetesServiceData_ServicePort) GetTargetPort() string {
+	if x != nil {
+		return x.TargetPort
+	}
+	return ""
+}
+
+func (x *KubernetesServiceData_ServicePort) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
 type GetConfigurationUpdatesResponse_Configuration struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The operator's log level.
@@ -6489,7 +6516,7 @@ type GetConfigurationUpdatesResponse_Configuration struct {
 
 func (x *GetConfigurationUpdatesResponse_Configuration) Reset() {
 	*x = GetConfigurationUpdatesResponse_Configuration{}
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[90]
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6501,7 +6528,7 @@ func (x *GetConfigurationUpdatesResponse_Configuration) String() string {
 func (*GetConfigurationUpdatesResponse_Configuration) ProtoMessage() {}
 
 func (x *GetConfigurationUpdatesResponse_Configuration) ProtoReflect() protoreflect.Message {
-	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[90]
+	mi := &file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6562,18 +6589,25 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0f\n" +
 	"\rkind_specificB\f\n" +
 	"\n" +
-	"_namespace\"\xd1\x03\n" +
+	"_namespace\"\xa5\x05\n" +
 	"\x15KubernetesServiceData\x12!\n" +
 	"\fip_addresses\x18\x01 \x03(\tR\vipAddresses\x12X\n" +
 	"\x05ports\x18\x02 \x03(\v2B.illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ServicePortR\x05ports\x12\x12\n" +
 	"\x04type\x18\x03 \x01(\tR\x04type\x12(\n" +
 	"\rexternal_name\x18\x04 \x01(\tH\x00R\fexternalName\x88\x01\x01\x123\n" +
-	"\x13load_balancer_class\x18\x05 \x01(\tH\x01R\x11loadBalancerClass\x88\x01\x01\x1a\x9d\x01\n" +
+	"\x13load_balancer_class\x18\x05 \x01(\tH\x01R\x11loadBalancerClass\x88\x01\x01\x12`\n" +
+	"\bselector\x18\x06 \x03(\v2D.illumio.cloud.k8sclustersync.v1.KubernetesServiceData.SelectorEntryR\bselector\x1a;\n" +
+	"\rSelectorEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a\xd2\x01\n" +
 	"\vServicePort\x12 \n" +
 	"\tnode_port\x18\x01 \x01(\rH\x00R\bnodePort\x88\x01\x01\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\rR\x04port\x12\x1a\n" +
 	"\bprotocol\x18\x03 \x01(\tR\bprotocol\x12.\n" +
-	"\x13load_balancer_ports\x18\x04 \x03(\tR\x11loadBalancerPortsB\f\n" +
+	"\x13load_balancer_ports\x18\x04 \x03(\tR\x11loadBalancerPorts\x12\x1f\n" +
+	"\vtarget_port\x18\x05 \x01(\tR\n" +
+	"targetPort\x12\x12\n" +
+	"\x04name\x18\x06 \x01(\tR\x04nameB\f\n" +
 	"\n" +
 	"_node_portB\x10\n" +
 	"\x0e_external_nameB\x16\n" +
@@ -7065,7 +7099,7 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDescGZIP() []byte {
 }
 
 var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes = make([]protoimpl.MessageInfo, 93)
+var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes = make([]protoimpl.MessageInfo, 94)
 var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_goTypes = []any{
 	(FlowCollector)(0),                                   // 0: illumio.cloud.k8sclustersync.v1.FlowCollector
 	(TrafficDirection)(0),                                // 1: illumio.cloud.k8sclustersync.v1.TrafficDirection
@@ -7157,22 +7191,23 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_goTypes = []any{
 	(*ConfiguredKubernetesObjectMutation)(nil),           // 87: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation
 	nil, // 88: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.AnnotationsEntry
 	nil, // 89: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.LabelsEntry
-	(*KubernetesServiceData_ServicePort)(nil), // 90: illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ServicePort
-	nil, // 91: illumio.cloud.k8sclustersync.v1.KubernetesWorkloadData.TemplateLabelsEntry
-	nil, // 92: illumio.cloud.k8sclustersync.v1.KubernetesWorkloadData.SelectorMatchLabelsEntry
-	nil, // 93: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.LabelsEntry
-	nil, // 94: illumio.cloud.k8sclustersync.v1.CiliumPolicyAWSGroup.LabelsEntry
-	nil, // 95: illumio.cloud.k8sclustersync.v1.LabelSelector.MatchLabelsEntry
-	(*GetConfigurationUpdatesResponse_Configuration)(nil), // 96: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration
-	nil,                           // 97: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.AnnotationsEntry
-	nil,                           // 98: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.LabelsEntry
-	(*timestamppb.Timestamp)(nil), // 99: google.protobuf.Timestamp
-	(*structpb.Value)(nil),        // 100: google.protobuf.Value
-	(*wrapperspb.BoolValue)(nil),  // 101: google.protobuf.BoolValue
+	nil, // 90: illumio.cloud.k8sclustersync.v1.KubernetesServiceData.SelectorEntry
+	(*KubernetesServiceData_ServicePort)(nil), // 91: illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ServicePort
+	nil, // 92: illumio.cloud.k8sclustersync.v1.KubernetesWorkloadData.TemplateLabelsEntry
+	nil, // 93: illumio.cloud.k8sclustersync.v1.KubernetesWorkloadData.SelectorMatchLabelsEntry
+	nil, // 94: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.LabelsEntry
+	nil, // 95: illumio.cloud.k8sclustersync.v1.CiliumPolicyAWSGroup.LabelsEntry
+	nil, // 96: illumio.cloud.k8sclustersync.v1.LabelSelector.MatchLabelsEntry
+	(*GetConfigurationUpdatesResponse_Configuration)(nil), // 97: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration
+	nil,                           // 98: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.AnnotationsEntry
+	nil,                           // 99: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.LabelsEntry
+	(*timestamppb.Timestamp)(nil), // 100: google.protobuf.Timestamp
+	(*structpb.Value)(nil),        // 101: google.protobuf.Value
+	(*wrapperspb.BoolValue)(nil),  // 102: google.protobuf.BoolValue
 }
 var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	88,  // 0: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.annotations:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData.AnnotationsEntry
-	99,  // 1: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.creation_timestamp:type_name -> google.protobuf.Timestamp
+	100, // 1: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.creation_timestamp:type_name -> google.protobuf.Timestamp
 	89,  // 2: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.labels:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData.LabelsEntry
 	57,  // 3: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.owner_references:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesOwnerReference
 	10,  // 4: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.pod:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesPodData
@@ -7185,153 +7220,154 @@ var file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_depIdxs = []int32{
 	11,  // 11: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.workload:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesWorkloadData
 	33,  // 12: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.aws_cluster_network_policy:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesAWSClusterNetworkPolicyData
 	43,  // 13: illumio.cloud.k8sclustersync.v1.KubernetesObjectData.aws_application_network_policy:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesAWSApplicationNetworkPolicyData
-	90,  // 14: illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ports:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ServicePort
-	91,  // 15: illumio.cloud.k8sclustersync.v1.KubernetesWorkloadData.template_labels:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesWorkloadData.TemplateLabelsEntry
-	92,  // 16: illumio.cloud.k8sclustersync.v1.KubernetesWorkloadData.selector_match_labels:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesWorkloadData.SelectorMatchLabelsEntry
-	49,  // 17: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	56,  // 18: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.ingress_rules:type_name -> illumio.cloud.k8sclustersync.v1.NetworkPolicyRule
-	56,  // 19: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.egress_rules:type_name -> illumio.cloud.k8sclustersync.v1.NetworkPolicyRule
-	17,  // 20: illumio.cloud.k8sclustersync.v1.KubernetesCiliumNetworkPolicyData.specs:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyRule
-	17,  // 21: illumio.cloud.k8sclustersync.v1.KubernetesCiliumClusterwideNetworkPolicyData.specs:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyRule
-	16,  // 22: illumio.cloud.k8sclustersync.v1.KubernetesCiliumCIDRGroupData.spec:type_name -> illumio.cloud.k8sclustersync.v1.CiliumCIDRGroup
-	49,  // 23: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.endpoint_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	49,  // 24: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.node_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	93,  // 25: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.labels:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.LabelsEntry
-	18,  // 26: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.enable_default_deny:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyDefaultDeny
-	19,  // 27: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.ingress:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule
-	20,  // 28: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.egress:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule
-	19,  // 29: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.ingress_deny:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule
-	20,  // 30: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.egress_deny:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule
-	50,  // 31: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.from_endpoints:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelectorList
-	21,  // 32: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.from_cidr_set:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyCIDRSet
-	22,  // 33: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.from_groups:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyGroup
-	49,  // 34: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.from_nodes:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	31,  // 35: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.to_ports:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyPortRule
-	24,  // 36: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.icmps:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyICMPRule
-	26,  // 37: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.authentication:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyAuthentication
-	50,  // 38: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.to_endpoints:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelectorList
-	21,  // 39: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.to_cidr_set:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyCIDRSet
-	27,  // 40: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.to_fqdns:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyFQDNSelector
-	28,  // 41: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.to_services:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyService
-	22,  // 42: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.to_groups:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyGroup
-	49,  // 43: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.to_nodes:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	31,  // 44: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.to_ports:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyPortRule
-	24,  // 45: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.icmps:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyICMPRule
-	26,  // 46: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.authentication:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyAuthentication
-	49,  // 47: illumio.cloud.k8sclustersync.v1.CiliumPolicyCIDRSet.cidr_group_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	23,  // 48: illumio.cloud.k8sclustersync.v1.CiliumPolicyGroup.aws:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyAWSGroup
-	94,  // 49: illumio.cloud.k8sclustersync.v1.CiliumPolicyAWSGroup.labels:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyAWSGroup.LabelsEntry
-	25,  // 50: illumio.cloud.k8sclustersync.v1.CiliumPolicyICMPRule.fields:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyICMPField
-	29,  // 51: illumio.cloud.k8sclustersync.v1.CiliumPolicyService.k8s_service_selector:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyK8sServiceSelector
-	30,  // 52: illumio.cloud.k8sclustersync.v1.CiliumPolicyService.k8s_service:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyK8sService
-	49,  // 53: illumio.cloud.k8sclustersync.v1.CiliumPolicyK8sServiceSelector.selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	32,  // 54: illumio.cloud.k8sclustersync.v1.CiliumPolicyPortRule.ports:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyPort
-	34,  // 55: illumio.cloud.k8sclustersync.v1.KubernetesAWSClusterNetworkPolicyData.subject:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicySubject
-	36,  // 56: illumio.cloud.k8sclustersync.v1.KubernetesAWSClusterNetworkPolicyData.ingress:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressRule
-	37,  // 57: illumio.cloud.k8sclustersync.v1.KubernetesAWSClusterNetworkPolicyData.egress:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressRule
-	35,  // 58: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicySubject.pods:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPodSelector
-	49,  // 59: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicySubject.namespaces:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	49,  // 60: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPodSelector.namespace_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	49,  // 61: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPodSelector.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	38,  // 62: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressRule.ports:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPort
-	41,  // 63: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressRule.from:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressPeer
-	38,  // 64: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressRule.ports:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPort
-	42,  // 65: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressRule.to:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressPeer
-	39,  // 66: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPort.port_number:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPortNumber
-	40,  // 67: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPort.port_range:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPortRange
-	35,  // 68: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressPeer.pods:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPodSelector
-	49,  // 69: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressPeer.namespaces:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	35,  // 70: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressPeer.pods:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPodSelector
-	49,  // 71: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressPeer.namespaces:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	49,  // 72: illumio.cloud.k8sclustersync.v1.KubernetesAWSApplicationNetworkPolicyData.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	44,  // 73: illumio.cloud.k8sclustersync.v1.KubernetesAWSApplicationNetworkPolicyData.ingress:type_name -> illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyIngressRule
-	45,  // 74: illumio.cloud.k8sclustersync.v1.KubernetesAWSApplicationNetworkPolicyData.egress:type_name -> illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyEgressRule
-	46,  // 75: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyIngressRule.from:type_name -> illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyIngressPeer
-	48,  // 76: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyIngressRule.ports:type_name -> illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyPort
-	47,  // 77: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyEgressRule.to:type_name -> illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyEgressPeer
-	48,  // 78: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyEgressRule.ports:type_name -> illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyPort
-	49,  // 79: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyIngressPeer.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	49,  // 80: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyIngressPeer.namespace_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	52,  // 81: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyIngressPeer.ip_block:type_name -> illumio.cloud.k8sclustersync.v1.IPBlock
-	49,  // 82: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyEgressPeer.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	49,  // 83: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyEgressPeer.namespace_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	52,  // 84: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyEgressPeer.ip_block:type_name -> illumio.cloud.k8sclustersync.v1.IPBlock
-	100, // 85: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyPort.port:type_name -> google.protobuf.Value
-	95,  // 86: illumio.cloud.k8sclustersync.v1.LabelSelector.match_labels:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector.MatchLabelsEntry
-	51,  // 87: illumio.cloud.k8sclustersync.v1.LabelSelector.match_expressions:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelectorRequirement
-	49,  // 88: illumio.cloud.k8sclustersync.v1.LabelSelectorList.items:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	52,  // 89: illumio.cloud.k8sclustersync.v1.Peer.ip_block:type_name -> illumio.cloud.k8sclustersync.v1.IPBlock
-	54,  // 90: illumio.cloud.k8sclustersync.v1.Peer.pods:type_name -> illumio.cloud.k8sclustersync.v1.PeerSelector
-	49,  // 91: illumio.cloud.k8sclustersync.v1.PeerSelector.namespace_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	49,  // 92: illumio.cloud.k8sclustersync.v1.PeerSelector.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
-	5,   // 93: illumio.cloud.k8sclustersync.v1.Port.protocol:type_name -> illumio.cloud.k8sclustersync.v1.Port.Protocol
-	53,  // 94: illumio.cloud.k8sclustersync.v1.NetworkPolicyRule.peers:type_name -> illumio.cloud.k8sclustersync.v1.Peer
-	55,  // 95: illumio.cloud.k8sclustersync.v1.NetworkPolicyRule.ports:type_name -> illumio.cloud.k8sclustersync.v1.Port
-	0,   // 96: illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadata.flow_collector:type_name -> illumio.cloud.k8sclustersync.v1.FlowCollector
-	6,   // 97: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
-	58,  // 98: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.cluster_metadata:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadata
-	7,   // 99: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.resource_data:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
-	60,  // 100: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.resource_snapshot_complete:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesResourceSnapshotComplete
-	62,  // 101: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.kubernetes_resource_mutation:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation
-	7,   // 102: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation.create_resource:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
-	7,   // 103: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation.update_resource:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
-	7,   // 104: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation.delete_resource:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
-	66,  // 105: illumio.cloud.k8sclustersync.v1.FiveTupleFlow.layer3:type_name -> illumio.cloud.k8sclustersync.v1.IP
-	67,  // 106: illumio.cloud.k8sclustersync.v1.FiveTupleFlow.layer4:type_name -> illumio.cloud.k8sclustersync.v1.Layer4
-	99,  // 107: illumio.cloud.k8sclustersync.v1.FiveTupleFlow.timestamp:type_name -> google.protobuf.Timestamp
-	99,  // 108: illumio.cloud.k8sclustersync.v1.CiliumFlow.time:type_name -> google.protobuf.Timestamp
-	1,   // 109: illumio.cloud.k8sclustersync.v1.CiliumFlow.traffic_direction:type_name -> illumio.cloud.k8sclustersync.v1.TrafficDirection
-	2,   // 110: illumio.cloud.k8sclustersync.v1.CiliumFlow.verdict:type_name -> illumio.cloud.k8sclustersync.v1.Verdict
-	66,  // 111: illumio.cloud.k8sclustersync.v1.CiliumFlow.layer3:type_name -> illumio.cloud.k8sclustersync.v1.IP
-	67,  // 112: illumio.cloud.k8sclustersync.v1.CiliumFlow.layer4:type_name -> illumio.cloud.k8sclustersync.v1.Layer4
-	101, // 113: illumio.cloud.k8sclustersync.v1.CiliumFlow.is_reply:type_name -> google.protobuf.BoolValue
-	74,  // 114: illumio.cloud.k8sclustersync.v1.CiliumFlow.source_endpoint:type_name -> illumio.cloud.k8sclustersync.v1.Endpoint
-	74,  // 115: illumio.cloud.k8sclustersync.v1.CiliumFlow.destination_endpoint:type_name -> illumio.cloud.k8sclustersync.v1.Endpoint
-	65,  // 116: illumio.cloud.k8sclustersync.v1.CiliumFlow.destination_service:type_name -> illumio.cloud.k8sclustersync.v1.Service
-	76,  // 117: illumio.cloud.k8sclustersync.v1.CiliumFlow.egress_allowed_by:type_name -> illumio.cloud.k8sclustersync.v1.Policy
-	76,  // 118: illumio.cloud.k8sclustersync.v1.CiliumFlow.ingress_allowed_by:type_name -> illumio.cloud.k8sclustersync.v1.Policy
-	76,  // 119: illumio.cloud.k8sclustersync.v1.CiliumFlow.egress_denied_by:type_name -> illumio.cloud.k8sclustersync.v1.Policy
-	76,  // 120: illumio.cloud.k8sclustersync.v1.CiliumFlow.ingress_denied_by:type_name -> illumio.cloud.k8sclustersync.v1.Policy
-	3,   // 121: illumio.cloud.k8sclustersync.v1.IP.ip_version:type_name -> illumio.cloud.k8sclustersync.v1.IPVersion
-	68,  // 122: illumio.cloud.k8sclustersync.v1.Layer4.tcp:type_name -> illumio.cloud.k8sclustersync.v1.TCP
-	70,  // 123: illumio.cloud.k8sclustersync.v1.Layer4.udp:type_name -> illumio.cloud.k8sclustersync.v1.UDP
-	72,  // 124: illumio.cloud.k8sclustersync.v1.Layer4.icmpv4:type_name -> illumio.cloud.k8sclustersync.v1.ICMPv4
-	73,  // 125: illumio.cloud.k8sclustersync.v1.Layer4.icmpv6:type_name -> illumio.cloud.k8sclustersync.v1.ICMPv6
-	71,  // 126: illumio.cloud.k8sclustersync.v1.Layer4.sctp:type_name -> illumio.cloud.k8sclustersync.v1.SCTP
-	69,  // 127: illumio.cloud.k8sclustersync.v1.TCP.flags:type_name -> illumio.cloud.k8sclustersync.v1.TCPFlags
-	75,  // 128: illumio.cloud.k8sclustersync.v1.Endpoint.workloads:type_name -> illumio.cloud.k8sclustersync.v1.Workload
-	6,   // 129: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
-	64,  // 130: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.cilium_flow:type_name -> illumio.cloud.k8sclustersync.v1.CiliumFlow
-	63,  // 131: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.five_tuple_flow:type_name -> illumio.cloud.k8sclustersync.v1.FiveTupleFlow
-	6,   // 132: illumio.cloud.k8sclustersync.v1.SendLogsRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
-	79,  // 133: illumio.cloud.k8sclustersync.v1.SendLogsRequest.log_entry:type_name -> illumio.cloud.k8sclustersync.v1.LogEntry
-	6,   // 134: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
-	96,  // 135: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.update_configuration:type_name -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration
-	84,  // 136: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.resource_data:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData
-	86,  // 137: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.resource_snapshot_complete:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectSnapshotComplete
-	87,  // 138: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.resource_mutation:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation
-	97,  // 139: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.annotations:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.AnnotationsEntry
-	98,  // 140: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.labels:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.LabelsEntry
-	13,  // 141: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.cilium_network_policy:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesCiliumNetworkPolicyData
-	14,  // 142: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.cilium_clusterwide_network_policy:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesCiliumClusterwideNetworkPolicyData
-	15,  // 143: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.cilium_cidr_group:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesCiliumCIDRGroupData
-	33,  // 144: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.aws_cluster_network_policy:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesAWSClusterNetworkPolicyData
-	84,  // 145: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation.create_or_update_object:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData
-	85,  // 146: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation.delete_object:type_name -> illumio.cloud.k8sclustersync.v1.DeleteConfiguredKubernetesObject
-	4,   // 147: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration.log_level:type_name -> illumio.cloud.k8sclustersync.v1.LogLevel
-	59,  // 148: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest
-	77,  // 149: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest
-	80,  // 150: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:input_type -> illumio.cloud.k8sclustersync.v1.SendLogsRequest
-	82,  // 151: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.GetConfigurationUpdates:input_type -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesRequest
-	61,  // 152: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesResponse
-	78,  // 153: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsResponse
-	81,  // 154: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:output_type -> illumio.cloud.k8sclustersync.v1.SendLogsResponse
-	83,  // 155: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.GetConfigurationUpdates:output_type -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse
-	152, // [152:156] is the sub-list for method output_type
-	148, // [148:152] is the sub-list for method input_type
-	148, // [148:148] is the sub-list for extension type_name
-	148, // [148:148] is the sub-list for extension extendee
-	0,   // [0:148] is the sub-list for field type_name
+	91,  // 14: illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ports:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesServiceData.ServicePort
+	90,  // 15: illumio.cloud.k8sclustersync.v1.KubernetesServiceData.selector:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesServiceData.SelectorEntry
+	92,  // 16: illumio.cloud.k8sclustersync.v1.KubernetesWorkloadData.template_labels:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesWorkloadData.TemplateLabelsEntry
+	93,  // 17: illumio.cloud.k8sclustersync.v1.KubernetesWorkloadData.selector_match_labels:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesWorkloadData.SelectorMatchLabelsEntry
+	49,  // 18: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	56,  // 19: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.ingress_rules:type_name -> illumio.cloud.k8sclustersync.v1.NetworkPolicyRule
+	56,  // 20: illumio.cloud.k8sclustersync.v1.KubernetesNetworkPolicyData.egress_rules:type_name -> illumio.cloud.k8sclustersync.v1.NetworkPolicyRule
+	17,  // 21: illumio.cloud.k8sclustersync.v1.KubernetesCiliumNetworkPolicyData.specs:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyRule
+	17,  // 22: illumio.cloud.k8sclustersync.v1.KubernetesCiliumClusterwideNetworkPolicyData.specs:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyRule
+	16,  // 23: illumio.cloud.k8sclustersync.v1.KubernetesCiliumCIDRGroupData.spec:type_name -> illumio.cloud.k8sclustersync.v1.CiliumCIDRGroup
+	49,  // 24: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.endpoint_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	49,  // 25: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.node_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	94,  // 26: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.labels:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.LabelsEntry
+	18,  // 27: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.enable_default_deny:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyDefaultDeny
+	19,  // 28: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.ingress:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule
+	20,  // 29: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.egress:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule
+	19,  // 30: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.ingress_deny:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule
+	20,  // 31: illumio.cloud.k8sclustersync.v1.CiliumPolicyRule.egress_deny:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule
+	50,  // 32: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.from_endpoints:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelectorList
+	21,  // 33: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.from_cidr_set:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyCIDRSet
+	22,  // 34: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.from_groups:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyGroup
+	49,  // 35: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.from_nodes:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	31,  // 36: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.to_ports:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyPortRule
+	24,  // 37: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.icmps:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyICMPRule
+	26,  // 38: illumio.cloud.k8sclustersync.v1.CiliumPolicyIngressRule.authentication:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyAuthentication
+	50,  // 39: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.to_endpoints:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelectorList
+	21,  // 40: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.to_cidr_set:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyCIDRSet
+	27,  // 41: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.to_fqdns:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyFQDNSelector
+	28,  // 42: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.to_services:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyService
+	22,  // 43: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.to_groups:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyGroup
+	49,  // 44: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.to_nodes:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	31,  // 45: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.to_ports:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyPortRule
+	24,  // 46: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.icmps:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyICMPRule
+	26,  // 47: illumio.cloud.k8sclustersync.v1.CiliumPolicyEgressRule.authentication:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyAuthentication
+	49,  // 48: illumio.cloud.k8sclustersync.v1.CiliumPolicyCIDRSet.cidr_group_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	23,  // 49: illumio.cloud.k8sclustersync.v1.CiliumPolicyGroup.aws:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyAWSGroup
+	95,  // 50: illumio.cloud.k8sclustersync.v1.CiliumPolicyAWSGroup.labels:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyAWSGroup.LabelsEntry
+	25,  // 51: illumio.cloud.k8sclustersync.v1.CiliumPolicyICMPRule.fields:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyICMPField
+	29,  // 52: illumio.cloud.k8sclustersync.v1.CiliumPolicyService.k8s_service_selector:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyK8sServiceSelector
+	30,  // 53: illumio.cloud.k8sclustersync.v1.CiliumPolicyService.k8s_service:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyK8sService
+	49,  // 54: illumio.cloud.k8sclustersync.v1.CiliumPolicyK8sServiceSelector.selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	32,  // 55: illumio.cloud.k8sclustersync.v1.CiliumPolicyPortRule.ports:type_name -> illumio.cloud.k8sclustersync.v1.CiliumPolicyPort
+	34,  // 56: illumio.cloud.k8sclustersync.v1.KubernetesAWSClusterNetworkPolicyData.subject:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicySubject
+	36,  // 57: illumio.cloud.k8sclustersync.v1.KubernetesAWSClusterNetworkPolicyData.ingress:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressRule
+	37,  // 58: illumio.cloud.k8sclustersync.v1.KubernetesAWSClusterNetworkPolicyData.egress:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressRule
+	35,  // 59: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicySubject.pods:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPodSelector
+	49,  // 60: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicySubject.namespaces:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	49,  // 61: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPodSelector.namespace_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	49,  // 62: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPodSelector.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	38,  // 63: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressRule.ports:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPort
+	41,  // 64: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressRule.from:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressPeer
+	38,  // 65: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressRule.ports:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPort
+	42,  // 66: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressRule.to:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressPeer
+	39,  // 67: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPort.port_number:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPortNumber
+	40,  // 68: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPort.port_range:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPortRange
+	35,  // 69: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressPeer.pods:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPodSelector
+	49,  // 70: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyIngressPeer.namespaces:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	35,  // 71: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressPeer.pods:type_name -> illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyPodSelector
+	49,  // 72: illumio.cloud.k8sclustersync.v1.AWSNetworkPolicyEgressPeer.namespaces:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	49,  // 73: illumio.cloud.k8sclustersync.v1.KubernetesAWSApplicationNetworkPolicyData.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	44,  // 74: illumio.cloud.k8sclustersync.v1.KubernetesAWSApplicationNetworkPolicyData.ingress:type_name -> illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyIngressRule
+	45,  // 75: illumio.cloud.k8sclustersync.v1.KubernetesAWSApplicationNetworkPolicyData.egress:type_name -> illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyEgressRule
+	46,  // 76: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyIngressRule.from:type_name -> illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyIngressPeer
+	48,  // 77: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyIngressRule.ports:type_name -> illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyPort
+	47,  // 78: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyEgressRule.to:type_name -> illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyEgressPeer
+	48,  // 79: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyEgressRule.ports:type_name -> illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyPort
+	49,  // 80: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyIngressPeer.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	49,  // 81: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyIngressPeer.namespace_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	52,  // 82: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyIngressPeer.ip_block:type_name -> illumio.cloud.k8sclustersync.v1.IPBlock
+	49,  // 83: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyEgressPeer.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	49,  // 84: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyEgressPeer.namespace_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	52,  // 85: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyEgressPeer.ip_block:type_name -> illumio.cloud.k8sclustersync.v1.IPBlock
+	101, // 86: illumio.cloud.k8sclustersync.v1.AWSApplicationNetworkPolicyPort.port:type_name -> google.protobuf.Value
+	96,  // 87: illumio.cloud.k8sclustersync.v1.LabelSelector.match_labels:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector.MatchLabelsEntry
+	51,  // 88: illumio.cloud.k8sclustersync.v1.LabelSelector.match_expressions:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelectorRequirement
+	49,  // 89: illumio.cloud.k8sclustersync.v1.LabelSelectorList.items:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	52,  // 90: illumio.cloud.k8sclustersync.v1.Peer.ip_block:type_name -> illumio.cloud.k8sclustersync.v1.IPBlock
+	54,  // 91: illumio.cloud.k8sclustersync.v1.Peer.pods:type_name -> illumio.cloud.k8sclustersync.v1.PeerSelector
+	49,  // 92: illumio.cloud.k8sclustersync.v1.PeerSelector.namespace_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	49,  // 93: illumio.cloud.k8sclustersync.v1.PeerSelector.pod_selector:type_name -> illumio.cloud.k8sclustersync.v1.LabelSelector
+	5,   // 94: illumio.cloud.k8sclustersync.v1.Port.protocol:type_name -> illumio.cloud.k8sclustersync.v1.Port.Protocol
+	53,  // 95: illumio.cloud.k8sclustersync.v1.NetworkPolicyRule.peers:type_name -> illumio.cloud.k8sclustersync.v1.Peer
+	55,  // 96: illumio.cloud.k8sclustersync.v1.NetworkPolicyRule.ports:type_name -> illumio.cloud.k8sclustersync.v1.Port
+	0,   // 97: illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadata.flow_collector:type_name -> illumio.cloud.k8sclustersync.v1.FlowCollector
+	6,   // 98: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
+	58,  // 99: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.cluster_metadata:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadata
+	7,   // 100: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.resource_data:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
+	60,  // 101: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.resource_snapshot_complete:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesResourceSnapshotComplete
+	62,  // 102: illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest.kubernetes_resource_mutation:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation
+	7,   // 103: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation.create_resource:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
+	7,   // 104: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation.update_resource:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
+	7,   // 105: illumio.cloud.k8sclustersync.v1.KubernetesResourceMutation.delete_resource:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesObjectData
+	66,  // 106: illumio.cloud.k8sclustersync.v1.FiveTupleFlow.layer3:type_name -> illumio.cloud.k8sclustersync.v1.IP
+	67,  // 107: illumio.cloud.k8sclustersync.v1.FiveTupleFlow.layer4:type_name -> illumio.cloud.k8sclustersync.v1.Layer4
+	100, // 108: illumio.cloud.k8sclustersync.v1.FiveTupleFlow.timestamp:type_name -> google.protobuf.Timestamp
+	100, // 109: illumio.cloud.k8sclustersync.v1.CiliumFlow.time:type_name -> google.protobuf.Timestamp
+	1,   // 110: illumio.cloud.k8sclustersync.v1.CiliumFlow.traffic_direction:type_name -> illumio.cloud.k8sclustersync.v1.TrafficDirection
+	2,   // 111: illumio.cloud.k8sclustersync.v1.CiliumFlow.verdict:type_name -> illumio.cloud.k8sclustersync.v1.Verdict
+	66,  // 112: illumio.cloud.k8sclustersync.v1.CiliumFlow.layer3:type_name -> illumio.cloud.k8sclustersync.v1.IP
+	67,  // 113: illumio.cloud.k8sclustersync.v1.CiliumFlow.layer4:type_name -> illumio.cloud.k8sclustersync.v1.Layer4
+	102, // 114: illumio.cloud.k8sclustersync.v1.CiliumFlow.is_reply:type_name -> google.protobuf.BoolValue
+	74,  // 115: illumio.cloud.k8sclustersync.v1.CiliumFlow.source_endpoint:type_name -> illumio.cloud.k8sclustersync.v1.Endpoint
+	74,  // 116: illumio.cloud.k8sclustersync.v1.CiliumFlow.destination_endpoint:type_name -> illumio.cloud.k8sclustersync.v1.Endpoint
+	65,  // 117: illumio.cloud.k8sclustersync.v1.CiliumFlow.destination_service:type_name -> illumio.cloud.k8sclustersync.v1.Service
+	76,  // 118: illumio.cloud.k8sclustersync.v1.CiliumFlow.egress_allowed_by:type_name -> illumio.cloud.k8sclustersync.v1.Policy
+	76,  // 119: illumio.cloud.k8sclustersync.v1.CiliumFlow.ingress_allowed_by:type_name -> illumio.cloud.k8sclustersync.v1.Policy
+	76,  // 120: illumio.cloud.k8sclustersync.v1.CiliumFlow.egress_denied_by:type_name -> illumio.cloud.k8sclustersync.v1.Policy
+	76,  // 121: illumio.cloud.k8sclustersync.v1.CiliumFlow.ingress_denied_by:type_name -> illumio.cloud.k8sclustersync.v1.Policy
+	3,   // 122: illumio.cloud.k8sclustersync.v1.IP.ip_version:type_name -> illumio.cloud.k8sclustersync.v1.IPVersion
+	68,  // 123: illumio.cloud.k8sclustersync.v1.Layer4.tcp:type_name -> illumio.cloud.k8sclustersync.v1.TCP
+	70,  // 124: illumio.cloud.k8sclustersync.v1.Layer4.udp:type_name -> illumio.cloud.k8sclustersync.v1.UDP
+	72,  // 125: illumio.cloud.k8sclustersync.v1.Layer4.icmpv4:type_name -> illumio.cloud.k8sclustersync.v1.ICMPv4
+	73,  // 126: illumio.cloud.k8sclustersync.v1.Layer4.icmpv6:type_name -> illumio.cloud.k8sclustersync.v1.ICMPv6
+	71,  // 127: illumio.cloud.k8sclustersync.v1.Layer4.sctp:type_name -> illumio.cloud.k8sclustersync.v1.SCTP
+	69,  // 128: illumio.cloud.k8sclustersync.v1.TCP.flags:type_name -> illumio.cloud.k8sclustersync.v1.TCPFlags
+	75,  // 129: illumio.cloud.k8sclustersync.v1.Endpoint.workloads:type_name -> illumio.cloud.k8sclustersync.v1.Workload
+	6,   // 130: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
+	64,  // 131: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.cilium_flow:type_name -> illumio.cloud.k8sclustersync.v1.CiliumFlow
+	63,  // 132: illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest.five_tuple_flow:type_name -> illumio.cloud.k8sclustersync.v1.FiveTupleFlow
+	6,   // 133: illumio.cloud.k8sclustersync.v1.SendLogsRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
+	79,  // 134: illumio.cloud.k8sclustersync.v1.SendLogsRequest.log_entry:type_name -> illumio.cloud.k8sclustersync.v1.LogEntry
+	6,   // 135: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesRequest.keepalive:type_name -> illumio.cloud.k8sclustersync.v1.Keepalive
+	97,  // 136: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.update_configuration:type_name -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration
+	84,  // 137: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.resource_data:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData
+	86,  // 138: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.resource_snapshot_complete:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectSnapshotComplete
+	87,  // 139: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.resource_mutation:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation
+	98,  // 140: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.annotations:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.AnnotationsEntry
+	99,  // 141: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.labels:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.LabelsEntry
+	13,  // 142: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.cilium_network_policy:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesCiliumNetworkPolicyData
+	14,  // 143: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.cilium_clusterwide_network_policy:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesCiliumClusterwideNetworkPolicyData
+	15,  // 144: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.cilium_cidr_group:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesCiliumCIDRGroupData
+	33,  // 145: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData.aws_cluster_network_policy:type_name -> illumio.cloud.k8sclustersync.v1.KubernetesAWSClusterNetworkPolicyData
+	84,  // 146: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation.create_or_update_object:type_name -> illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectData
+	85,  // 147: illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectMutation.delete_object:type_name -> illumio.cloud.k8sclustersync.v1.DeleteConfiguredKubernetesObject
+	4,   // 148: illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse.Configuration.log_level:type_name -> illumio.cloud.k8sclustersync.v1.LogLevel
+	59,  // 149: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesRequest
+	77,  // 150: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:input_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsRequest
+	80,  // 151: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:input_type -> illumio.cloud.k8sclustersync.v1.SendLogsRequest
+	82,  // 152: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.GetConfigurationUpdates:input_type -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesRequest
+	61,  // 153: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesResources:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesResourcesResponse
+	78,  // 154: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendKubernetesNetworkFlows:output_type -> illumio.cloud.k8sclustersync.v1.SendKubernetesNetworkFlowsResponse
+	81,  // 155: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.SendLogs:output_type -> illumio.cloud.k8sclustersync.v1.SendLogsResponse
+	83,  // 156: illumio.cloud.k8sclustersync.v1.KubernetesInfoService.GetConfigurationUpdates:output_type -> illumio.cloud.k8sclustersync.v1.GetConfigurationUpdatesResponse
+	153, // [153:157] is the sub-list for method output_type
+	149, // [149:153] is the sub-list for method input_type
+	149, // [149:149] is the sub-list for extension type_name
+	149, // [149:149] is the sub-list for extension extendee
+	0,   // [0:149] is the sub-list for field type_name
 }
 
 func init() { file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() }
@@ -7435,14 +7471,14 @@ func file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_init() {
 		(*ConfiguredKubernetesObjectMutation_CreateOrUpdateObject)(nil),
 		(*ConfiguredKubernetesObjectMutation_DeleteObject)(nil),
 	}
-	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[84].OneofWrappers = []any{}
+	file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_msgTypes[85].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc), len(file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc)),
 			NumEnums:      6,
-			NumMessages:   93,
+			NumMessages:   94,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
