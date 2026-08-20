@@ -733,6 +733,7 @@ func (suite *ConvertTestSuite) TestGetNodeIpAddresses() {
 
 func (suite *ConvertTestSuite) TestExtractPodIPsFromUnstructured() {
 	tests := map[string]struct {
+		kind        string
 		status      map[string]any
 		expectedIPs []string
 	}{
@@ -759,13 +760,25 @@ func (suite *ConvertTestSuite) TestExtractPodIPsFromUnstructured() {
 			status:      map[string]any{"podIPs": []any{map[string]any{"foo": "bar"}}},
 			expectedIPs: []string{},
 		},
+		// A non-Pod object that happens to carry a status.podIPs field must be
+		// ignored: only Pods have pod IPs.
+		"non-pod object with podIPs is ignored": {
+			kind:        "Service",
+			status:      map[string]any{"podIPs": []any{map[string]any{"ip": "10.0.0.1"}}},
+			expectedIPs: nil,
+		},
 	}
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
+			kind := tt.kind
+			if kind == "" {
+				kind = "Pod"
+			}
+
 			obj := &unstructured.Unstructured{Object: map[string]any{
 				"apiVersion": "v1",
-				"kind":       "Pod",
+				"kind":       kind,
 				"status":     tt.status,
 			}}
 

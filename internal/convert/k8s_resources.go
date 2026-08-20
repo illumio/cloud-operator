@@ -160,7 +160,7 @@ func GetMetadataFromResource(logger *zap.Logger, resource unstructured.Unstructu
 	}
 }
 
-// ConvertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
+// ConvertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesObjectData.
 // podIPs carries the pod IP addresses already read from the listed object's status; it is only used for Pods and is nil for other kinds.
 func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, clientset kubernetes.Interface, kind, apiGroup, apiVersion string, podIPs []string) *pb.KubernetesObjectData {
 	ownerReferences := convertOwnerReferences(obj.GetOwnerReferences())
@@ -625,6 +625,12 @@ func getProviderIdNodeSpec(ctx context.Context, clientset kubernetes.Interface, 
 // client-go rate limiter) is needed. Returns nil for non-pod objects or pods
 // without IPs.
 func extractPodIPsFromUnstructured(obj *unstructured.Unstructured) []string {
+	// Only Pods carry pod IPs; guard against other resources that happen to
+	// expose a status.podIPs field so we never treat them as Pods.
+	if obj.GetKind() != "Pod" {
+		return nil
+	}
+
 	podIPsField, found, err := unstructured.NestedSlice(obj.Object, "status", "podIPs")
 	if err != nil || !found {
 		return nil
