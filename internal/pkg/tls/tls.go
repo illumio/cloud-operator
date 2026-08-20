@@ -54,10 +54,13 @@ var (
 )
 
 func (c *tlsCreds) Info() credentials.ProtocolInfo {
+	// SecurityVersion and ServerName are deprecated in credentials.ProtocolInfo
+	// (SA1019): gRPC now derives the security version from Peer.AuthInfo and the
+	// authority via grpc.WithAuthority. The actual server name is still applied
+	// during ClientHandshake through c.config.ServerName, so we only report the
+	// security protocol here.
 	return credentials.ProtocolInfo{
 		SecurityProtocol: "tls",
-		SecurityVersion:  "1.2",
-		ServerName:       c.config.ServerName,
 	}
 }
 
