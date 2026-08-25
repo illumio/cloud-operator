@@ -40,7 +40,7 @@ func (suite *ConvertTestSuite) TestConvertObjectToMetadata() {
 		suite.T().Error("could not create clientset")
 	}
 	// Execute the function under test.
-	got := ConvertMetaObjectToMetadata(context.Background(), configMap, k8sClient.GetClientset(), "configMap", "", "v1", nil)
+	got := ConvertMetaObjectToMetadata(context.Background(), configMap, nil, k8sClient.GetClientset(), "configMap", "", "v1")
 
 	// Define what you expect to get.
 	want := metav1.ObjectMeta{
@@ -458,7 +458,7 @@ func (suite *ConvertTestSuite) TestConvertMetaObjectToMetadata() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			result := ConvertMetaObjectToMetadata(context.Background(), tt.objMeta, clientset, tt.kind, tt.apiGroup, tt.apiVersion, nil)
+			result := ConvertMetaObjectToMetadata(context.Background(), tt.objMeta, nil, clientset, tt.kind, tt.apiGroup, tt.apiVersion)
 			suite.Equal(tt.expected, result)
 		})
 	}

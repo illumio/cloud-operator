@@ -33,14 +33,7 @@ func NewCoreResourceConverter(clientset kubernetes.Interface, logger *zap.Logger
 
 		gvk := obj.GroupVersionKind()
 
-		// Pod IPs are already present in status.podIPs of the listed object, so
-		// read them here instead of issuing a per-pod GET. During the initial
-		// snapshot that GET was made once per pod and serialized behind the
-		// client-go rate limiter, making the snapshot take minutes on clusters
-		// with many pods.
-		podIPs := extractPodIPsFromUnstructured(obj)
-
-		metadata := ConvertMetaObjectToMetadata(ctx, *objMeta, clientset, gvk.Kind, gvk.Group, gvk.Version, podIPs)
+		metadata := ConvertMetaObjectToMetadata(ctx, *objMeta, obj, clientset, gvk.Kind, gvk.Group, gvk.Version)
 
 		// Enrich workload controllers with the labels applied to the pods they create.
 		// These kinds have no case in ConvertMetaObjectToMetadata, so KindSpecific is
@@ -161,8 +154,8 @@ func GetMetadataFromResource(logger *zap.Logger, resource unstructured.Unstructu
 }
 
 // ConvertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesObjectData.
-// podIPs carries the pod IP addresses already read from the listed object's status; it is only used for Pods and is nil for other kinds.
-func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, clientset kubernetes.Interface, kind, apiGroup, apiVersion string, podIPs []string) *pb.KubernetesObjectData {
+// rawObj is the already-listed unstructured object, used to read kind-specific data (e.g. Pod IPs) without extra API calls.
+func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, rawObj *unstructured.Unstructured, clientset kubernetes.Interface, kind, apiGroup, apiVersion string) *pb.KubernetesObjectData {
 	ownerReferences := convertOwnerReferences(obj.GetOwnerReferences())
 
 	objMetadata := &pb.KubernetesObjectData{
@@ -184,6 +177,8 @@ func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, cli
 
 	switch kind {
 	case "Pod":
+		podIPs := extractPodIPsFromUnstructured(rawObj)
+
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: podIPs}}
 	case "NetworkPolicy":
 		networkPolicy, err := getContentsOfNetworkPolicy(ctx, obj.GetName(), clientset, obj.GetNamespace())
@@ -619,11 +614,8 @@ func getProviderIdNodeSpec(ctx context.Context, clientset kubernetes.Interface, 
 }
 
 // extractPodIPsFromUnstructured reads the pod IP addresses from the status.podIPs
-// field of an already-listed unstructured Pod object. This avoids a per-pod GET
-// during the initial snapshot: the LIST that produced obj already contains the
-// pod's status, so no additional API call (which would be throttled by the
-// client-go rate limiter) is needed. Returns nil for non-pod objects or pods
-// without IPs.
+// field of an already-listed unstructured Pod object. Returns nil for non-pod
+// objects or pods without IPs.
 func extractPodIPsFromUnstructured(obj *unstructured.Unstructured) []string {
 	// Only Pods carry pod IPs; guard against other resources that happen to
 	// expose a status.podIPs field so we never treat them as Pods.
