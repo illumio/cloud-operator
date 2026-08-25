@@ -33,7 +33,7 @@ func NewCoreResourceConverter(clientset kubernetes.Interface, logger *zap.Logger
 
 		gvk := obj.GroupVersionKind()
 
-		metadata := ConvertMetaObjectToMetadata(ctx, *objMeta, clientset, gvk.Kind, gvk.Group, gvk.Version)
+		metadata := ConvertMetaObjectToMetadata(ctx, *objMeta, obj, clientset, gvk.Kind, gvk.Group, gvk.Version)
 
 		// Enrich workload controllers with the labels applied to the pods they create.
 		// These kinds have no case in ConvertMetaObjectToMetadata, so KindSpecific is
@@ -153,8 +153,9 @@ func GetMetadataFromResource(logger *zap.Logger, resource unstructured.Unstructu
 	}
 }
 
-// ConvertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesMetadata.
-func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, clientset kubernetes.Interface, kind, apiGroup, apiVersion string) *pb.KubernetesObjectData {
+// ConvertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesObjectData.
+// rawObj is the already-listed unstructured object, used to read kind-specific data (e.g. Pod IPs) without extra API calls.
+func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, rawObj *unstructured.Unstructured, clientset kubernetes.Interface, kind, apiGroup, apiVersion string) *pb.KubernetesObjectData {
 	ownerReferences := convertOwnerReferences(obj.GetOwnerReferences())
 
 	objMetadata := &pb.KubernetesObjectData{
@@ -176,9 +177,9 @@ func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, cli
 
 	switch kind {
 	case "Pod":
-		podIPS := getPodIPAddresses(ctx, obj.GetName(), clientset, obj.GetNamespace())
+		podIPs := extractPodIPsFromUnstructured(rawObj)
 
-		objMetadata.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: convertPodIPsToStrings(podIPS)}}
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: podIPs}}
 	case "NetworkPolicy":
 		networkPolicy, err := getContentsOfNetworkPolicy(ctx, obj.GetName(), clientset, obj.GetNamespace())
 		if err != nil {
@@ -612,29 +613,35 @@ func getProviderIdNodeSpec(ctx context.Context, clientset kubernetes.Interface, 
 	return "", errors.New("no providerID set")
 }
 
-// getPodIPAddresses uses a pod name and namespace to grab the hostIP addresses within the podStatus.
-func getPodIPAddresses(ctx context.Context, podName string, clientset kubernetes.Interface, namespace string) []v1.PodIP {
-	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
-	if err != nil {
-		// Could be that the pod no longer exists
-		return []v1.PodIP{}
+// extractPodIPsFromUnstructured reads the pod IP addresses from the status.podIPs
+// field of an already-listed unstructured Pod object. Returns nil for non-pod
+// objects or pods without IPs.
+func extractPodIPsFromUnstructured(obj *unstructured.Unstructured) []string {
+	// Only Pods carry pod IPs; guard against other resources that happen to
+	// expose a status.podIPs field so we never treat them as Pods.
+	if obj.GetKind() != "Pod" {
+		return nil
 	}
 
-	if pod.Status.PodIPs != nil {
-		return pod.Status.PodIPs
+	podIPsField, found, err := unstructured.NestedSlice(obj.Object, "status", "podIPs")
+	if err != nil || !found {
+		return nil
 	}
 
-	return []v1.PodIP{}
-}
+	ips := make([]string, 0, len(podIPsField))
 
-// convertPodIPsToStrings converts a slice of v1.PodIP to a slice of strings.
-func convertPodIPsToStrings(podIPs []v1.PodIP) []string {
-	stringIPs := make([]string, len(podIPs))
-	for i, podIP := range podIPs {
-		stringIPs[i] = podIP.IP
+	for _, entry := range podIPsField {
+		podIP, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		if ip, ok := podIP["ip"].(string); ok && ip != "" {
+			ips = append(ips, ip)
+		}
 	}
 
-	return stringIPs
+	return ips
 }
 
 // convertToProtoTimestamp converts a Kubernetes metav1.Time into a Protobuf Timestamp.
