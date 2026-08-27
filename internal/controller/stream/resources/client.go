@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/watch"
 
@@ -85,6 +86,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 	egressConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 		return ovn.ConvertUnstructuredToEgressResource(obj)
 	}
+	awsConverter := convert.NewAWSResourceConverter(c.logger)
 
 	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
 	sharedLimiter := rate.NewLimiter(1, 5)
@@ -113,6 +115,11 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 			converter = anpConverter
 		case ovn.IsEgressResource(resource):
 			converter = egressConverter
+		}
+
+		if convert.IsAWSResource(resource) {
+			converter = awsConverter
+			handler = runtimeCacheHandler
 		}
 
 		resourceManager := NewWatcher(WatcherConfig{
@@ -315,48 +322,78 @@ func (c *resourcesClient) CreateMutationObject(metadata *pb.KubernetesObjectData
 // newRuntimeCacheHandler returns a RuntimeCacheHandler that filters for operator-managed
 // resources and updates the runtime cache accordingly.
 //
+// Ownership is determined by checking the raw K8s object's managedFields for the
+// operator's field manager — this is immune to label mutations.
+//
 // For watch events (eventType is Added/Modified/Deleted), the handler inserts or deletes
 // from the runtime cache directly.
 //
 // For list operations (eventType is empty), the handler accumulates the configured object
 // into pendingSnapshot for later ReplaceAll — the cache is not modified directly.
 func (c *resourcesClient) newRuntimeCacheHandler(pendingSnapshot map[string]*pb.ConfiguredKubernetesObjectData) RuntimeCacheHandler {
-	return func(ctx context.Context, eventType watch.EventType, metadata *pb.KubernetesObjectData) error {
-		labels := metadata.GetLabels()
-		if labels[convert.ManagedByLabel] != convert.ManagedByValue {
+	return func(ctx context.Context, eventType watch.EventType, obj *unstructured.Unstructured, metadata *pb.KubernetesObjectData) error {
+		// Build the cache key directly from the raw metadata (kind/namespace/name),
+		// avoiding the more expensive proto conversion below. This matches the key
+		// CacheKeyForObject produces because both derive the kind from the same value.
+		key := convert.CacheKey(metadata.GetKind(), metadata.GetNamespace(), metadata.GetName())
+
+		// Determine operator ownership via managedFields, falling back to cache membership.
+		// A non-SSA write (e.g. MergePatch by an external actor) can transfer ownership of
+		// all operator-managed fields, removing our field manager entry entirely. In that case
+		// hasFieldManager returns false even though we previously applied the object. The cache
+		// membership check ensures we still track the modified state so the reconciler can
+		// detect the drift and restore it.
+		// (https://kubernetes.io/docs/reference/using-api/server-side-apply/#clearing-managedfields)
+
+		if !hasFieldManager(obj, convert.FieldManager) && c.runtimeCache.Get(key) == nil {
 			return nil
 		}
 
-		id := labels[convert.CloudSecureIDLabel]
-		if id == "" {
-			return nil
-		}
-
-		configured, err := convert.BuildConfiguredFromMetadata(id, metadata)
+		configured, err := convert.BuildConfiguredFromMetadata(metadata)
 		if err != nil {
-			return fmt.Errorf("skipping unhandled resource type in runtime cache (id=%s): %w", id, err)
+			// Unsupported kinds are watched but not reconciled; skip without error.
+			c.logger.Debug("Skipping unsupported kind in runtime cache handler",
+				zap.String("kind", metadata.GetKind()),
+				zap.String("name", metadata.GetName()),
+				zap.Error(err))
+
+			return nil
 		}
 
 		if eventType == "" {
-			pendingSnapshot[configured.GetId()] = configured
+			pendingSnapshot[key] = configured
 		} else {
 			//nolint:exhaustive // only mutation events reach the handler; Bookmark/Error are handled by the watcher
 			switch eventType {
 			case watch.Added, watch.Modified:
-				err := c.runtimeCache.Insert(ctx, configured.GetId(), configured)
+				err := c.runtimeCache.Insert(ctx, key, configured)
 				if err != nil {
-					return fmt.Errorf("failed to insert resource into runtime cache (id=%s): %w", configured.GetId(), err)
+					return fmt.Errorf("failed to insert resource into runtime cache (key=%s): %w", key, err)
 				}
 			case watch.Deleted:
-				err := c.runtimeCache.Delete(ctx, configured.GetId())
+				err := c.runtimeCache.Delete(ctx, key)
 				if err != nil {
-					return fmt.Errorf("failed to delete resource from runtime cache (id=%s): %w", configured.GetId(), err)
+					return fmt.Errorf("failed to delete resource from runtime cache (key=%s): %w", key, err)
 				}
 			}
 		}
 
 		return nil
 	}
+}
+
+// hasFieldManager reports whether the operator server-side-applies (and thus owns)
+// the object's main resource under the given manager.
+func hasFieldManager(obj *unstructured.Unstructured, manager string) bool {
+	for _, mf := range obj.GetManagedFields() {
+		if mf.Manager == manager &&
+			mf.Operation == metav1.ManagedFieldsOperationApply &&
+			mf.Subresource == "" {
+			return true
+		}
+	}
+
+	return false
 }
 
 // sendClusterMetadata sends cluster metadata to CloudSecure.

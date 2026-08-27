@@ -40,7 +40,7 @@ func (suite *ConvertTestSuite) TestConvertObjectToMetadata() {
 		suite.T().Error("could not create clientset")
 	}
 	// Execute the function under test.
-	got := ConvertMetaObjectToMetadata(context.Background(), configMap, k8sClient.GetClientset(), "configMap", "", "v1")
+	got := ConvertMetaObjectToMetadata(context.Background(), configMap, nil, k8sClient.GetClientset(), "configMap", "", "v1")
 
 	// Define what you expect to get.
 	want := metav1.ObjectMeta{
@@ -108,6 +108,205 @@ func TestNewCoreResourceConverter_MissingMetadata(t *testing.T) {
 	_, err := converter(context.Background(), obj)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot get metadata from resource")
+}
+
+func TestNewCoreResourceConverter_WorkloadLabels(t *testing.T) {
+	// podTemplate builds a spec.template with the given pod labels.
+	podTemplate := func(labels map[string]any) map[string]any {
+		return map[string]any{
+			"template": map[string]any{
+				"metadata": map[string]any{
+					"labels": labels,
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name            string
+		apiVersion      string
+		kind            string
+		spec            map[string]any
+		wantTemplate    map[string]string
+		wantSelector    map[string]string
+		wantWorkloadNil bool
+	}{
+		{
+			name:       "Deployment sends template and selector labels",
+			apiVersion: "apps/v1",
+			kind:       "Deployment",
+			spec: map[string]any{
+				"selector": map[string]any{
+					"matchLabels": map[string]any{"app": "web"},
+				},
+				"template": map[string]any{
+					"metadata": map[string]any{
+						"labels": map[string]any{"app": "web", "tier": "frontend"},
+					},
+				},
+			},
+			wantTemplate: map[string]string{"app": "web", "tier": "frontend"},
+			wantSelector: map[string]string{"app": "web"},
+		},
+		{
+			name:       "StatefulSet sends template and selector labels",
+			apiVersion: "apps/v1",
+			kind:       "StatefulSet",
+			spec: map[string]any{
+				"selector": map[string]any{
+					"matchLabels": map[string]any{"app": "db"},
+				},
+				"template": map[string]any{
+					"metadata": map[string]any{
+						"labels": map[string]any{"app": "db"},
+					},
+				},
+			},
+			wantTemplate: map[string]string{"app": "db"},
+			wantSelector: map[string]string{"app": "db"},
+		},
+		{
+			name:       "DaemonSet sends template and selector labels",
+			apiVersion: "apps/v1",
+			kind:       "DaemonSet",
+			spec: map[string]any{
+				"selector": map[string]any{
+					"matchLabels": map[string]any{"app": "agent"},
+				},
+				"template": map[string]any{
+					"metadata": map[string]any{
+						"labels": map[string]any{"app": "agent"},
+					},
+				},
+			},
+			wantTemplate: map[string]string{"app": "agent"},
+			wantSelector: map[string]string{"app": "agent"},
+		},
+		{
+			name:       "ReplicaSet sends template and selector labels",
+			apiVersion: "apps/v1",
+			kind:       "ReplicaSet",
+			spec: map[string]any{
+				"selector": map[string]any{
+					"matchLabels": map[string]any{"app": "web"},
+				},
+				"template": map[string]any{
+					"metadata": map[string]any{
+						"labels": map[string]any{"app": "web"},
+					},
+				},
+			},
+			wantTemplate: map[string]string{"app": "web"},
+			wantSelector: map[string]string{"app": "web"},
+		},
+		{
+			name:         "Job sends template labels only",
+			apiVersion:   "batch/v1",
+			kind:         "Job",
+			spec:         podTemplate(map[string]any{"job-name": "backup"}),
+			wantTemplate: map[string]string{"job-name": "backup"},
+			wantSelector: nil,
+		},
+		{
+			name:       "CronJob reads template from nested jobTemplate",
+			apiVersion: "batch/v1",
+			kind:       "CronJob",
+			spec: map[string]any{
+				"jobTemplate": map[string]any{
+					"spec": podTemplate(map[string]any{"app": "cron"}),
+				},
+			},
+			wantTemplate: map[string]string{"app": "cron"},
+			wantSelector: nil,
+		},
+		{
+			name:            "Workload without template yields nil workload",
+			apiVersion:      "apps/v1",
+			kind:            "Deployment",
+			spec:            map[string]any{},
+			wantWorkloadNil: true,
+		},
+		{
+			// Non-string label values make NestedStringMap return an error, which is
+			// logged and skipped (found=false), leaving that map empty.
+			name:       "Malformed label values are skipped, not fatal",
+			apiVersion: "apps/v1",
+			kind:       "Deployment",
+			spec: map[string]any{
+				"selector": map[string]any{
+					"matchLabels": map[string]any{"app": int64(5)},
+				},
+				"template": map[string]any{
+					"metadata": map[string]any{
+						"labels": map[string]any{"app": int64(7)},
+					},
+				},
+			},
+			wantWorkloadNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clientset := k8sfake.NewSimpleClientset()
+			converter := NewCoreResourceConverter(clientset, zap.NewNop())
+
+			obj := &unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": tt.apiVersion,
+					"kind":       tt.kind,
+					"metadata": map[string]any{
+						"name":      "my-workload",
+						"namespace": "prod",
+						"labels":    map[string]any{"top-level": "yes"},
+					},
+					"spec": tt.spec,
+				},
+			}
+
+			result, err := converter(context.Background(), obj)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+
+			// Top-level labels must always survive.
+			assert.Equal(t, "yes", result.GetLabels()["top-level"])
+
+			if tt.wantWorkloadNil {
+				assert.Nil(t, result.GetWorkload())
+
+				return
+			}
+
+			workload := result.GetWorkload()
+			require.NotNil(t, workload)
+			assert.Equal(t, tt.wantTemplate, workload.GetTemplateLabels())
+			assert.Equal(t, tt.wantSelector, workload.GetSelectorMatchLabels())
+		})
+	}
+}
+
+func TestNewCoreResourceConverter_NonWorkloadHasNilWorkload(t *testing.T) {
+	clientset := k8sfake.NewSimpleClientset()
+	converter := NewCoreResourceConverter(clientset, zap.NewNop())
+
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata": map[string]any{
+				"name":      "cfg",
+				"namespace": "prod",
+				"labels":    map[string]any{"app": "web"},
+			},
+		},
+	}
+
+	result, err := converter(context.Background(), obj)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assert.Nil(t, result.GetWorkload())
+	assert.Equal(t, "web", result.GetLabels()["app"])
 }
 
 func TestGetObjectMetadataFromRuntimeObject(t *testing.T) {
@@ -259,7 +458,7 @@ func (suite *ConvertTestSuite) TestConvertMetaObjectToMetadata() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			result := ConvertMetaObjectToMetadata(context.Background(), tt.objMeta, clientset, tt.kind, tt.apiGroup, tt.apiVersion)
+			result := ConvertMetaObjectToMetadata(context.Background(), tt.objMeta, nil, clientset, tt.kind, tt.apiGroup, tt.apiVersion)
 			suite.Equal(tt.expected, result)
 		})
 	}
@@ -373,45 +572,6 @@ func TestConvertToProtoTimestamp(t *testing.T) {
 
 	result := convertToProtoTimestamp(k8sTime)
 	assert.Equal(t, expected, result)
-}
-
-func TestConvertPodIPsToStrings(t *testing.T) {
-	tests := map[string]struct {
-		podIPs      []v1.PodIP
-		expectedIPs []string
-	}{
-		"empty slice": {
-			podIPs:      []v1.PodIP{},
-			expectedIPs: []string{},
-		},
-		"single IP": {
-			podIPs: []v1.PodIP{
-				{IP: "192.168.1.1"},
-			},
-			expectedIPs: []string{"192.168.1.1"},
-		},
-		"multiple IPs": {
-			podIPs: []v1.PodIP{
-				{IP: "192.168.1.1"},
-				{IP: "192.168.1.2"},
-				{IP: "192.168.1.3"},
-			},
-			expectedIPs: []string{"192.168.1.1", "192.168.1.2", "192.168.1.3"},
-		},
-		"IPs with different formats": {
-			podIPs: []v1.PodIP{
-				{IP: "192.168.1.1"},
-				{IP: "fe80::1ff:fe23:4567:890a"},
-				{IP: "10.0.0.1"},
-			},
-			expectedIPs: []string{"192.168.1.1", "fe80::1ff:fe23:4567:890a", "10.0.0.1"},
-		},
-	}
-
-	for name, tt := range tests {
-		result := convertPodIPsToStrings(tt.podIPs)
-		assert.Equal(t, tt.expectedIPs, result, "test failed: %s", name)
-	}
 }
 
 func (suite *ConvertTestSuite) TestGetProviderIdNodeSpec() {
@@ -571,39 +731,59 @@ func (suite *ConvertTestSuite) TestGetNodeIpAddresses() {
 	}
 }
 
-func (suite *ConvertTestSuite) TestGetPodIPAddresses() {
+func (suite *ConvertTestSuite) TestExtractPodIPsFromUnstructured() {
 	tests := map[string]struct {
-		podName        string
-		namespace      string
-		pod            *v1.Pod
-		expectedIPs    int
-		expectedErrMsg string
+		kind        string
+		status      map[string]any
+		expectedIPs []string
 	}{
-		// TODO: Create happy test case for pod IP that is not spotty.
-		"pod not found": {
-			podName:     "nonexistent-pod",
-			namespace:   "default",
-			pod:         nil,
-			expectedIPs: 0,
+		"single ip": {
+			status:      map[string]any{"podIPs": []any{map[string]any{"ip": "10.0.0.1"}}},
+			expectedIPs: []string{"10.0.0.1"},
+		},
+		"dual stack": {
+			status: map[string]any{"podIPs": []any{
+				map[string]any{"ip": "10.0.0.1"},
+				map[string]any{"ip": "fd00::1"},
+			}},
+			expectedIPs: []string{"10.0.0.1", "fd00::1"},
+		},
+		"no podIPs field": {
+			status:      map[string]any{},
+			expectedIPs: nil,
+		},
+		"empty podIPs": {
+			status:      map[string]any{"podIPs": []any{}},
+			expectedIPs: []string{},
+		},
+		"entry missing ip key": {
+			status:      map[string]any{"podIPs": []any{map[string]any{"foo": "bar"}}},
+			expectedIPs: []string{},
+		},
+		// A non-Pod object that happens to carry a status.podIPs field must be
+		// ignored: only Pods have pod IPs.
+		"non-pod object with podIPs is ignored": {
+			kind:        "Service",
+			status:      map[string]any{"podIPs": []any{map[string]any{"ip": "10.0.0.1"}}},
+			expectedIPs: nil,
 		},
 	}
 
-	k8sClient, err := k8sclient.NewClient()
-	if err != nil {
-		suite.T().Fatal("Failed to get client set " + err.Error())
-	}
-
-	clientset := k8sClient.GetClientset()
-
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			if tt.pod != nil {
-				_, err := clientset.CoreV1().Pods(tt.namespace).Create(context.TODO(), tt.pod, metav1.CreateOptions{})
-				suite.Require().NoError(err)
+			kind := tt.kind
+			if kind == "" {
+				kind = "Pod"
 			}
 
-			ips := getPodIPAddresses(context.TODO(), tt.podName, clientset, tt.namespace)
-			suite.Len(ips, tt.expectedIPs)
+			obj := &unstructured.Unstructured{Object: map[string]any{
+				"apiVersion": "v1",
+				"kind":       kind,
+				"status":     tt.status,
+			}}
+
+			ips := extractPodIPsFromUnstructured(obj)
+			suite.Equal(tt.expectedIPs, ips)
 		})
 	}
 }
@@ -665,7 +845,7 @@ func (suite *ConvertTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 30000, Port: 80, Protocol: v1.ProtocolTCP},
 			},
 			expectedResult: []*pb.KubernetesServiceData_ServicePort{
-				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
+				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP", TargetPort: "0"},
 			},
 		},
 		"multiple service ports with node ports": {
@@ -674,8 +854,8 @@ func (suite *ConvertTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 30001, Port: 443, Protocol: v1.ProtocolTCP},
 			},
 			expectedResult: []*pb.KubernetesServiceData_ServicePort{
-				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
-				{NodePort: int32ToUint32(&nodePort2), Port: 443, Protocol: "TCP"},
+				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP", TargetPort: "0"},
+				{NodePort: int32ToUint32(&nodePort2), Port: 443, Protocol: "TCP", TargetPort: "0"},
 			},
 		},
 		"service port without node port": {
@@ -683,7 +863,7 @@ func (suite *ConvertTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 0, Port: 80, Protocol: v1.ProtocolTCP},
 			},
 			expectedResult: []*pb.KubernetesServiceData_ServicePort{
-				{Port: 80, Protocol: "TCP"},
+				{Port: 80, Protocol: "TCP", TargetPort: "0"},
 			},
 		},
 		"single service port without protocol": {
@@ -691,7 +871,7 @@ func (suite *ConvertTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 30000, Port: 80},
 			},
 			expectedResult: []*pb.KubernetesServiceData_ServicePort{
-				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
+				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP", TargetPort: "0"},
 			},
 		},
 		"mix of service ports with and without node ports": {
@@ -700,8 +880,32 @@ func (suite *ConvertTestSuite) TestConvertServicePortsToPorts() {
 				{NodePort: 0, Port: 443, Protocol: v1.ProtocolTCP},
 			},
 			expectedResult: []*pb.KubernetesServiceData_ServicePort{
-				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP"},
-				{Port: 443, Protocol: "TCP"},
+				{NodePort: int32ToUint32(&nodePort), Port: 80, Protocol: "TCP", TargetPort: "0"},
+				{Port: 443, Protocol: "TCP", TargetPort: "0"},
+			},
+		},
+		"service port with target port and name": {
+			servicePorts: []v1.ServicePort{
+				{Port: 80, Protocol: v1.ProtocolTCP, Name: "http", TargetPort: intstr.FromInt(8080)},
+			},
+			expectedResult: []*pb.KubernetesServiceData_ServicePort{
+				{Port: 80, Protocol: "TCP", TargetPort: "8080", Name: "http"},
+			},
+		},
+		"service port with named target port": {
+			servicePorts: []v1.ServicePort{
+				{Port: 80, Protocol: v1.ProtocolTCP, TargetPort: intstr.FromString("http")},
+			},
+			expectedResult: []*pb.KubernetesServiceData_ServicePort{
+				{Port: 80, Protocol: "TCP", TargetPort: "http"},
+			},
+		},
+		"service port with zero target port": {
+			servicePorts: []v1.ServicePort{
+				{Port: 80, Protocol: v1.ProtocolTCP, TargetPort: intstr.FromInt(0)},
+			},
+			expectedResult: []*pb.KubernetesServiceData_ServicePort{
+				{Port: 80, Protocol: "TCP", TargetPort: "0"},
 			},
 		},
 		"empty service ports": {
@@ -791,18 +995,21 @@ func (suite *ConvertTestSuite) TestConvertToKubernetesServiceData() {
 					ClusterIPs:     []string{},
 					ExternalIPs:    []string{"192.168.1.1"},
 					LoadBalancerIP: "34.123.45.67",
+					Selector:       map[string]string{"app": "web"},
 					Ports: []v1.ServicePort{
 						{
-							Name:     "port1",
-							NodePort: 30001,
-							Port:     8080,
-							Protocol: v1.ProtocolTCP,
+							Name:       "port1",
+							NodePort:   30001,
+							Port:       8080,
+							Protocol:   v1.ProtocolTCP,
+							TargetPort: intstr.FromInt(8080),
 						},
 						{
-							Name:     "port2",
-							NodePort: 30002,
-							Port:     443,
-							Protocol: v1.ProtocolTCP,
+							Name:       "port2",
+							NodePort:   30002,
+							Port:       443,
+							Protocol:   v1.ProtocolTCP,
+							TargetPort: intstr.FromInt(8443),
 						},
 					},
 					Type: v1.ServiceTypeLoadBalancer,
@@ -820,19 +1027,106 @@ func (suite *ConvertTestSuite) TestConvertToKubernetesServiceData() {
 				// IpAddresses: []string{}, // Ignored in this test case
 				Ports: []*pb.KubernetesServiceData_ServicePort{
 					{
-						NodePort: new(uint32(30001)),
-						Port:     8080,
-						Protocol: "TCP",
+						NodePort:   new(uint32(30001)),
+						Port:       8080,
+						Protocol:   "TCP",
+						TargetPort: "8080",
+						Name:       "port1",
 					},
 					{
-						NodePort: new(uint32(30002)),
-						Port:     443,
-						Protocol: "TCP",
+						NodePort:   new(uint32(30002)),
+						Port:       443,
+						Protocol:   "TCP",
+						TargetPort: "8443",
+						Name:       "port2",
 					},
 				},
 				Type:              "LoadBalancer",
 				ExternalName:      new(""),
 				LoadBalancerClass: nil,
+				Selector:          map[string]string{"app": "web"},
+			},
+			expectedError: nil,
+		},
+		"ClusterIP service with selector": {
+			service: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service",
+					Namespace: "default",
+				},
+				Spec: v1.ServiceSpec{
+					Type:     v1.ServiceTypeClusterIP,
+					Selector: map[string]string{"app": "api", "tier": "backend"},
+					Ports: []v1.ServicePort{
+						{
+							Name:       "http",
+							Port:       80,
+							Protocol:   v1.ProtocolTCP,
+							TargetPort: intstr.FromInt(8080),
+						},
+					},
+				},
+			},
+			expectedResult: &pb.KubernetesServiceData{
+				Ports: []*pb.KubernetesServiceData_ServicePort{
+					{
+						Port:       80,
+						Protocol:   "TCP",
+						TargetPort: "8080",
+						Name:       "http",
+					},
+				},
+				Type:         "ClusterIP",
+				ExternalName: new(""),
+				Selector:     map[string]string{"app": "api", "tier": "backend"},
+			},
+			expectedError: nil,
+		},
+		"headless service without selector": {
+			service: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service",
+					Namespace: "default",
+				},
+				Spec: v1.ServiceSpec{
+					Type:      v1.ServiceTypeClusterIP,
+					ClusterIP: "None",
+					Ports: []v1.ServicePort{
+						{
+							Port:     80,
+							Protocol: v1.ProtocolTCP,
+						},
+					},
+				},
+			},
+			expectedResult: &pb.KubernetesServiceData{
+				Ports: []*pb.KubernetesServiceData_ServicePort{
+					{
+						Port:       80,
+						Protocol:   "TCP",
+						TargetPort: "80",
+					},
+				},
+				Type:         "ClusterIP",
+				ExternalName: new(""),
+			},
+			expectedError: nil,
+		},
+		"ExternalName service": {
+			service: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service",
+					Namespace: "default",
+				},
+				Spec: v1.ServiceSpec{
+					Type:         v1.ServiceTypeExternalName,
+					ExternalName: "my.database.example.com",
+				},
+			},
+			expectedResult: &pb.KubernetesServiceData{
+				Ports:        []*pb.KubernetesServiceData_ServicePort{},
+				Type:         "ExternalName",
+				ExternalName: new("my.database.example.com"),
 			},
 			expectedError: nil,
 		},
@@ -842,13 +1136,13 @@ func (suite *ConvertTestSuite) TestConvertToKubernetesServiceData() {
 		suite.Run(name, func() {
 			ctx := context.TODO()
 
-			// Ensure the service is deleted before running the test
-			if tt.service == nil {
-				err := suite.clientset.CoreV1().Services("default").Delete(ctx, "test-service", metav1.DeleteOptions{})
-				if err != nil && !k8sErrors.IsNotFound(err) {
-					suite.T().Fatal("Failed to delete service: " + err.Error())
-				}
+			// Clean up any existing service before each subtest
+			err := suite.clientset.CoreV1().Services("default").Delete(ctx, "test-service", metav1.DeleteOptions{})
+			if err != nil && !k8sErrors.IsNotFound(err) {
+				suite.T().Fatal("Failed to delete service: " + err.Error())
+			}
 
+			if tt.service == nil {
 				time.Sleep(100 * time.Millisecond) // Wait for deletion to propagate
 			}
 
@@ -876,6 +1170,7 @@ func assertEqualKubernetesServiceData(t *testing.T, expected, actual *pb.Kuberne
 	assert.Equal(t, expected.GetType(), actual.GetType())
 	assert.Equal(t, expected.GetExternalName(), actual.GetExternalName())
 	assert.Equal(t, expected.GetLoadBalancerClass(), actual.GetLoadBalancerClass())
+	assert.Equal(t, expected.GetSelector(), actual.GetSelector())
 }
 
 func TestConvertNetworkPolicyEgressRuleToProto(t *testing.T) {

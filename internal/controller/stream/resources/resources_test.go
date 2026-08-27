@@ -14,6 +14,7 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/convert"
 	"github.com/illumio/cloud-operator/internal/convert/cilium"
 	"github.com/illumio/cloud-operator/internal/convert/ovn"
 )
@@ -201,6 +202,35 @@ func TestResourceListEgressDispatchConsistency(t *testing.T) {
 	for name := range expectedEgress {
 		assert.True(t, slices.Contains(resourceList, name), "expected Egress resource %q must be in resourceList", name)
 		assert.False(t, slices.Contains(ManagedResourceNames, name), "Egress resource %q must not be operator-managed", name)
+	}
+}
+
+func TestResourceListAWSDispatchConsistency(t *testing.T) {
+	// Both AWS policy resources are watched (ingested) and routed to the AWS converter.
+	awsResources := []string{"clusternetworkpolicies", "applicationnetworkpolicies"}
+
+	for _, name := range awsResources {
+		assert.True(t, slices.Contains(resourceList, name),
+			"%s must be in resourceList (ingested)", name)
+		assert.True(t, convert.IsAWSResource(name),
+			"%s must be recognized by IsAWSResource", name)
+	}
+
+	// ClusterNetworkPolicy is enforced/reconciled, so it must be in ManagedResourceNames.
+	assert.True(t, slices.Contains(ManagedResourceNames, "clusternetworkpolicies"),
+		"clusternetworkpolicies must be in ManagedResourceNames (enforced)")
+
+	// ApplicationNetworkPolicy is ingest-only (never enforced), so it must NOT be in
+	// ManagedResourceNames, otherwise the reconciler would try to apply/delete it.
+	assert.False(t, slices.Contains(ManagedResourceNames, "applicationnetworkpolicies"),
+		"applicationnetworkpolicies must NOT be in ManagedResourceNames (ingest-only)")
+
+	// Cilium resources must not be misrouted to the AWS converter.
+	for _, resource := range resourceList {
+		if cilium.IsCiliumResource(resource) {
+			assert.False(t, convert.IsAWSResource(resource),
+				"resource %q should not be recognized as both Cilium and AWS", resource)
+		}
 	}
 }
 

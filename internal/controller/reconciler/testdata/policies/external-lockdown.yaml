@@ -1,0 +1,13 @@
+# From: https://github.com/cilium/cilium/blob/main/examples/policies/l3/entities/from_world_deny.yaml
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: external-lockdown
+spec:
+  endpointSelector: {}
+  ingressDeny:
+    - fromEntities:
+        - "world"
+  ingress:
+    - fromEntities:
+        - "all"

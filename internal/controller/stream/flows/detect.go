@@ -11,9 +11,9 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/collector"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/awsautomode"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/awsvpccni"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cilium"
-	"github.com/illumio/cloud-operator/internal/controller/stream/flows/falco"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/ovnk"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
@@ -148,15 +148,45 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 		})
 	}
 
-	// Default to Falco
-	config.Logger.Info("Using Falco flow collector")
+	// Check for EKS Auto Mode (node-proxy log polling).
+	// Auto Mode has no aws-node DaemonSet, so IsAWSVPCCNIAvailable above is false;
+	// the Network Policy Agent is AWS-managed and only its node-local log file is
+	// reachable, through the kubelet node-proxy endpoint. This path activates only
+	// when at least one node carries the eks.amazonaws.com/compute-type=auto label,
+	// so we never infer Auto Mode from the mere absence of aws-node.
+	if collector.IsEKSAutoModeAvailable(ctx, config.Logger, clientset) {
+		config.Logger.Info("Using EKS Auto Mode flow collector (node-proxy log polling)")
 
-	factory := &falco.Factory{
-		Logger:   config.Logger,
-		FlowSink: flowSink,
+		// Mark Auto Mode active so the eks_auto_mode_* stats are logged (they are
+		// suppressed on other collectors, where they would always be zero).
+		config.Stats.SetAutoModeActive()
+
+		factory := &awsautomode.Factory{
+			Logger:                   config.Logger,
+			FlowSink:                 flowSink,
+			K8sClient:                clientset,
+			PollInterval:             config.AutoModePollInterval,
+			MaxConcurrentNodePolls:   config.AutoModeMaxConcurrentNodePolls,
+			LogPath:                  config.AutoModeLogPath,
+			StatsAutoModeNodes:       config.Stats.SetAutoModeNodesObserved,
+			StatsAutoModeErrors:      config.Stats.IncrementAutoModePollErrors,
+			StatsRotationsDetected:   config.Stats.AddAutoModeRotationsDetected,
+			StatsRotationRecovered:   config.Stats.IncrementAutoModeRotationRecoveries,
+			StatsRotationRecoveryErr: config.Stats.IncrementAutoModeRotationRecoveryErrors,
+			StatsRotationGap:         config.Stats.IncrementAutoModeRotationGaps,
+		}
+
+		return pb.FlowCollector_FLOW_COLLECTOR_AWS_VPC_CNI, "EKS-Auto-Mode", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
+			return factory.NewCollector(ctx)
+		})
 	}
 
-	return pb.FlowCollector_FLOW_COLLECTOR_FALCO, "Falco", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
-		return factory.NewCollector(ctx)
-	})
+	// No supported flow exporter detected. Flow collection is disabled: the operator does not
+	// fall back to any collector. A nil factory signals the caller not to register a
+	// flow-collector stream. The reported type is FLOW_COLLECTOR_DISABLED so the
+	// backend can surface the lack of flow visibility.
+	config.Logger.Warn("No supported flow exporter detected; network flow collection is disabled. " +
+		"Configure a supported CNI plugin (Cilium+Hubble, OVN-Kubernetes, or AWS VPC CNI) to enable flow visibility.")
+
+	return pb.FlowCollector_FLOW_COLLECTOR_DISABLED, "None", nil
 }

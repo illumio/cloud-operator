@@ -15,10 +15,13 @@ var ManagedResourceNames = []string{
 	"ciliumcidrgroups",
 	"ciliumclusterwidenetworkpolicies",
 	"ciliumnetworkpolicies",
+	"clusternetworkpolicies",
 }
 
+// ApplicationNetworkPolicy is intentionally excluded: it is ingest-only.
 var resourceList = slices.Concat(ManagedResourceNames, []string{
 	"adminnetworkpolicies",
+	"applicationnetworkpolicies",
 	"baselineadminnetworkpolicies",
 	"cronjobs",
 	"customresourcedefinitions",

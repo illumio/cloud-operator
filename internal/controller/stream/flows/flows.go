@@ -51,4 +51,12 @@ type CollectorConfig struct {
 	OVNKNamespace      string
 	// AWS VPC CNI configuration
 	AWSVPCCNIPollingInterval time.Duration
+
+	// EKS Auto Mode node-proxy log collection. Activated by detection alone
+	// (the eks.amazonaws.com/compute-type=auto node label); no separate enable
+	// flag, since detection is a positive signal that only fires on real Auto
+	// Mode clusters.
+	AutoModePollInterval           time.Duration
+	AutoModeMaxConcurrentNodePolls int
+	AutoModeLogPath                string
 }

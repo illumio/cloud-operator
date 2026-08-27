@@ -93,6 +93,7 @@ func TestEnsureFlowLoggingPolicy(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, ClusterNetworkPolicyName, created.GetName())
 		assert.Equal(t, "illumio-cloud-operator", created.GetLabels()["app.kubernetes.io/managed-by"])
+		assert.Equal(t, "flow-logging", created.GetLabels()["app.kubernetes.io/component"])
 	})
 
 	t.Run("handles already exists gracefully", func(t *testing.T) {
