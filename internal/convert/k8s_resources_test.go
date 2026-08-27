@@ -40,7 +40,7 @@ func (suite *ConvertTestSuite) TestConvertObjectToMetadata() {
 		suite.T().Error("could not create clientset")
 	}
 	// Execute the function under test.
-	got := ConvertMetaObjectToMetadata(context.Background(), configMap, k8sClient.GetClientset(), "configMap", "", "v1")
+	got := ConvertMetaObjectToMetadata(context.Background(), configMap, nil, k8sClient.GetClientset(), "configMap", "", "v1")
 
 	// Define what you expect to get.
 	want := metav1.ObjectMeta{
@@ -458,7 +458,7 @@ func (suite *ConvertTestSuite) TestConvertMetaObjectToMetadata() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			result := ConvertMetaObjectToMetadata(context.Background(), tt.objMeta, clientset, tt.kind, tt.apiGroup, tt.apiVersion)
+			result := ConvertMetaObjectToMetadata(context.Background(), tt.objMeta, nil, clientset, tt.kind, tt.apiGroup, tt.apiVersion)
 			suite.Equal(tt.expected, result)
 		})
 	}
@@ -572,45 +572,6 @@ func TestConvertToProtoTimestamp(t *testing.T) {
 
 	result := convertToProtoTimestamp(k8sTime)
 	assert.Equal(t, expected, result)
-}
-
-func TestConvertPodIPsToStrings(t *testing.T) {
-	tests := map[string]struct {
-		podIPs      []v1.PodIP
-		expectedIPs []string
-	}{
-		"empty slice": {
-			podIPs:      []v1.PodIP{},
-			expectedIPs: []string{},
-		},
-		"single IP": {
-			podIPs: []v1.PodIP{
-				{IP: "192.168.1.1"},
-			},
-			expectedIPs: []string{"192.168.1.1"},
-		},
-		"multiple IPs": {
-			podIPs: []v1.PodIP{
-				{IP: "192.168.1.1"},
-				{IP: "192.168.1.2"},
-				{IP: "192.168.1.3"},
-			},
-			expectedIPs: []string{"192.168.1.1", "192.168.1.2", "192.168.1.3"},
-		},
-		"IPs with different formats": {
-			podIPs: []v1.PodIP{
-				{IP: "192.168.1.1"},
-				{IP: "fe80::1ff:fe23:4567:890a"},
-				{IP: "10.0.0.1"},
-			},
-			expectedIPs: []string{"192.168.1.1", "fe80::1ff:fe23:4567:890a", "10.0.0.1"},
-		},
-	}
-
-	for name, tt := range tests {
-		result := convertPodIPsToStrings(tt.podIPs)
-		assert.Equal(t, tt.expectedIPs, result, "test failed: %s", name)
-	}
 }
 
 func (suite *ConvertTestSuite) TestGetProviderIdNodeSpec() {
@@ -770,39 +731,59 @@ func (suite *ConvertTestSuite) TestGetNodeIpAddresses() {
 	}
 }
 
-func (suite *ConvertTestSuite) TestGetPodIPAddresses() {
+func (suite *ConvertTestSuite) TestExtractPodIPsFromUnstructured() {
 	tests := map[string]struct {
-		podName        string
-		namespace      string
-		pod            *v1.Pod
-		expectedIPs    int
-		expectedErrMsg string
+		kind        string
+		status      map[string]any
+		expectedIPs []string
 	}{
-		// TODO: Create happy test case for pod IP that is not spotty.
-		"pod not found": {
-			podName:     "nonexistent-pod",
-			namespace:   "default",
-			pod:         nil,
-			expectedIPs: 0,
+		"single ip": {
+			status:      map[string]any{"podIPs": []any{map[string]any{"ip": "10.0.0.1"}}},
+			expectedIPs: []string{"10.0.0.1"},
+		},
+		"dual stack": {
+			status: map[string]any{"podIPs": []any{
+				map[string]any{"ip": "10.0.0.1"},
+				map[string]any{"ip": "fd00::1"},
+			}},
+			expectedIPs: []string{"10.0.0.1", "fd00::1"},
+		},
+		"no podIPs field": {
+			status:      map[string]any{},
+			expectedIPs: nil,
+		},
+		"empty podIPs": {
+			status:      map[string]any{"podIPs": []any{}},
+			expectedIPs: []string{},
+		},
+		"entry missing ip key": {
+			status:      map[string]any{"podIPs": []any{map[string]any{"foo": "bar"}}},
+			expectedIPs: []string{},
+		},
+		// A non-Pod object that happens to carry a status.podIPs field must be
+		// ignored: only Pods have pod IPs.
+		"non-pod object with podIPs is ignored": {
+			kind:        "Service",
+			status:      map[string]any{"podIPs": []any{map[string]any{"ip": "10.0.0.1"}}},
+			expectedIPs: nil,
 		},
 	}
 
-	k8sClient, err := k8sclient.NewClient()
-	if err != nil {
-		suite.T().Fatal("Failed to get client set " + err.Error())
-	}
-
-	clientset := k8sClient.GetClientset()
-
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			if tt.pod != nil {
-				_, err := clientset.CoreV1().Pods(tt.namespace).Create(context.TODO(), tt.pod, metav1.CreateOptions{})
-				suite.Require().NoError(err)
+			kind := tt.kind
+			if kind == "" {
+				kind = "Pod"
 			}
 
-			ips := getPodIPAddresses(context.TODO(), tt.podName, clientset, tt.namespace)
-			suite.Len(ips, tt.expectedIPs)
+			obj := &unstructured.Unstructured{Object: map[string]any{
+				"apiVersion": "v1",
+				"kind":       kind,
+				"status":     tt.status,
+			}}
+
+			ips := extractPodIPsFromUnstructured(obj)
+			suite.Equal(tt.expectedIPs, ips)
 		})
 	}
 }
