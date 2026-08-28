@@ -676,7 +676,7 @@ message KubernetesClusterMetadata {
   // Autopilot); unset/omitted on all other providers. Distinct from cluster_name
   // (field 5), which is the user-supplied/self-managed name and must not be
   // overloaded with GKE metadata.
-  GkeClusterIdentity gke_identity = 6;
+  optional GkeClusterIdentity gke_identity = 6;
 }
 
 // Network flow collection mechanism configured in the operator.

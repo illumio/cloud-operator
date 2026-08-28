@@ -4124,7 +4124,7 @@ type KubernetesClusterMetadata struct {
 	// Autopilot); unset/omitted on all other providers. Distinct from cluster_name
 	// (field 5), which is the user-supplied/self-managed name and must not be
 	// overloaded with GKE metadata.
-	GkeIdentity   *GkeClusterIdentity `protobuf:"bytes,6,opt,name=gke_identity,json=gkeIdentity,proto3" json:"gke_identity,omitempty"`
+	GkeIdentity   *GkeClusterIdentity `protobuf:"bytes,6,opt,name=gke_identity,json=gkeIdentity,proto3,oneof" json:"gke_identity,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6971,15 +6971,16 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x12GkeClusterIdentity\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
 	"\blocation\x18\x02 \x01(\tR\blocation\x12\x18\n" +
-	"\aproject\x18\x03 \x01(\tR\aproject\"\xef\x02\n" +
+	"\aproject\x18\x03 \x01(\tR\aproject\"\x85\x03\n" +
 	"\x19KubernetesClusterMetadata\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\tR\x03uid\x12-\n" +
 	"\x12kubernetes_version\x18\x02 \x01(\tR\x11kubernetesVersion\x12)\n" +
 	"\x10operator_version\x18\x03 \x01(\tR\x0foperatorVersion\x12U\n" +
 	"\x0eflow_collector\x18\x04 \x01(\x0e2..illumio.cloud.k8sclustersync.v1.FlowCollectorR\rflowCollector\x12&\n" +
-	"\fcluster_name\x18\x05 \x01(\tH\x00R\vclusterName\x88\x01\x01\x12V\n" +
-	"\fgke_identity\x18\x06 \x01(\v23.illumio.cloud.k8sclustersync.v1.GkeClusterIdentityR\vgkeIdentityB\x0f\n" +
-	"\r_cluster_name\"\xc5\x04\n" +
+	"\fcluster_name\x18\x05 \x01(\tH\x00R\vclusterName\x88\x01\x01\x12[\n" +
+	"\fgke_identity\x18\x06 \x01(\v23.illumio.cloud.k8sclustersync.v1.GkeClusterIdentityH\x01R\vgkeIdentity\x88\x01\x01B\x0f\n" +
+	"\r_cluster_nameB\x0f\n" +
+	"\r_gke_identity\"\xc5\x04\n" +
 	"\x1eSendKubernetesResourcesRequest\x12J\n" +
 	"\tkeepalive\x18\x05 \x01(\v2*.illumio.cloud.k8sclustersync.v1.KeepaliveH\x00R\tkeepalive\x12g\n" +
 	"\x10cluster_metadata\x18\x01 \x01(\v2:.illumio.cloud.k8sclustersync.v1.KubernetesClusterMetadataH\x00R\x0fclusterMetadata\x12\\\n" +
