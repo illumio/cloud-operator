@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.26.5-trixie AS builder
+FROM golang:1.26.6-trixie AS builder
 ARG VERSION=dev
 ARG TARGETOS
 ARG TARGETARCH
