@@ -637,6 +637,23 @@ message KubernetesOwnerReference {
   string uid = 6;
 }
 
+// GkeClusterIdentity is the GKE-reported identity of a GKE cluster, read from
+// the node's GKE metadata server (available on both Standard and Autopilot).
+// Together its fields form the (project, location, name) key the backend uses to
+// link this Kubernetes cluster to its GKE ContainerCluster inventory object —
+// necessary on GKE Autopilot, where node-to-instance stitching is impossible
+// because the node VMs live in a Google-managed project and never appear in the
+// customer's cloud inventory.
+message GkeClusterIdentity {
+  // GKE cluster name (metadata server: instance/attributes/cluster-name).
+  string name = 1;
+  // GKE cluster location, a region or zone
+  // (metadata server: instance/attributes/cluster-location).
+  string location = 2;
+  // GCP project ID that owns the cluster (metadata server: project/project-id).
+  string project = 3;
+}
+
 // Metadata about the client operator and Kubernetes cluster.
 // Sent as the first message in each KubernetesResources RPC request stream.
 message KubernetesClusterMetadata {
@@ -655,6 +672,11 @@ message KubernetesClusterMetadata {
   // For self-managed clusters, this can be set via Helm configuration.
   // The Helm configuration takes precedence over the node labels.
   optional string cluster_name = 5;
+  // GKE-reported cluster identity. Present only on GKE clusters (Standard or
+  // Autopilot); nil on all other providers. Distinct from cluster_name (field 5),
+  // which is the user-supplied/self-managed name and must not be overloaded with
+  // GKE metadata.
+  GkeClusterIdentity gke_identity = 6;
 }
 
 // Network flow collection mechanism configured in the operator.
