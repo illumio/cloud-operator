@@ -4121,9 +4121,9 @@ type KubernetesClusterMetadata struct {
 	// The Helm configuration takes precedence over the node labels.
 	ClusterName *string `protobuf:"bytes,5,opt,name=cluster_name,json=clusterName,proto3,oneof" json:"cluster_name,omitempty"`
 	// GKE-reported cluster identity. Present only on GKE clusters (Standard or
-	// Autopilot); nil on all other providers. Distinct from cluster_name (field 5),
-	// which is the user-supplied/self-managed name and must not be overloaded with
-	// GKE metadata.
+	// Autopilot); unset/omitted on all other providers. Distinct from cluster_name
+	// (field 5), which is the user-supplied/self-managed name and must not be
+	// overloaded with GKE metadata.
 	GkeIdentity   *GkeClusterIdentity `protobuf:"bytes,6,opt,name=gke_identity,json=gkeIdentity,proto3" json:"gke_identity,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

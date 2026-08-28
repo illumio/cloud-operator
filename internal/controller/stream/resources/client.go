@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"net/http"
 	"slices"
 	"sync"
 
@@ -422,7 +421,7 @@ func (c *resourcesClient) sendClusterMetadata(ctx context.Context) error {
 	// affected field unset and never fails the stream. The isGKEVersion gate
 	// avoids firing the calls on non-GKE providers.
 	if isGKEVersion(kubernetesVersion.GitVersion) {
-		info := resolveGKEClusterInfo(ctx, c.logger, http.DefaultClient)
+		info := resolveGKEClusterInfo(ctx, c.logger, newGKEMetadataClient())
 		if info.Name != "" || info.Location != "" || info.ProjectID != "" {
 			metadata.GkeIdentity = &pb.GkeClusterIdentity{
 				Name:     info.Name,

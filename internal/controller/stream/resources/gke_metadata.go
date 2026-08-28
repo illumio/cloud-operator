@@ -66,6 +66,20 @@ func isGKEVersion(gitVersion string) bool {
 	return strings.Contains(gitVersion, gkeVersionMarker)
 }
 
+// newGKEMetadataClient returns an http.Client dedicated to GKE metadata server
+// calls. Its transport disables proxying (Proxy: nil) so a cluster-wide
+// HTTP_PROXY/HTTPS_PROXY can never reroute this node-local request off the node —
+// the metadata server lives at 169.254.169.254 and must be reached directly,
+// regardless of how NO_PROXY is (mis)configured. Per-call timeouts are enforced
+// by the request context in fetchGKEMetadata.
+func newGKEMetadataClient() *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy: nil,
+		},
+	}
+}
+
 // resolveGKEClusterInfo fetches the GKE cluster name, location, and project ID
 // from the GKE metadata server. It is best-effort: each attribute is fetched
 // independently, and any error (non-GKE node, metadata server disabled, network

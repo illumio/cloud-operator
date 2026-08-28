@@ -673,9 +673,9 @@ message KubernetesClusterMetadata {
   // The Helm configuration takes precedence over the node labels.
   optional string cluster_name = 5;
   // GKE-reported cluster identity. Present only on GKE clusters (Standard or
-  // Autopilot); nil on all other providers. Distinct from cluster_name (field 5),
-  // which is the user-supplied/self-managed name and must not be overloaded with
-  // GKE metadata.
+  // Autopilot); unset/omitted on all other providers. Distinct from cluster_name
+  // (field 5), which is the user-supplied/self-managed name and must not be
+  // overloaded with GKE metadata.
   GkeClusterIdentity gke_identity = 6;
 }
 
