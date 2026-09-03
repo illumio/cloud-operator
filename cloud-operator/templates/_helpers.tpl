@@ -32,7 +32,9 @@ chart: {{ include "cloud-operator.chart" . }}
 helm.sh/chart: {{ include "cloud-operator.chart" . }}
 heritage: {{ .Release.Service }}
 release: {{ .Release.Name }}
-{{- toYaml .Values.additionalLabels }}
+{{- if .Values.additionalLabels }}
+{{ toYaml .Values.additionalLabels }}
+{{- end }}
 {{- end -}}
 
 {{- define "cloud-operator.serviceAccountName" -}}
