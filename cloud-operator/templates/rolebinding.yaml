@@ -19,8 +19,8 @@ roleRef:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  namespace: kube-system # Namespace where the Secret and Role exist
   name: cloud-operator-read-hubble-client-certs
+  namespace: kube-system # Namespace where the Secret and Role exist
   labels:
     {{- include "cloud-operator.labels" . | nindent 4 }}
 subjects:
@@ -36,8 +36,8 @@ roleRef:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  namespace: kube-system
   name: cloud-operator-read-aws-vpc-cni-logs
+  namespace: kube-system
   labels:
     {{- include "cloud-operator.labels" . | nindent 4 }}
 subjects:
