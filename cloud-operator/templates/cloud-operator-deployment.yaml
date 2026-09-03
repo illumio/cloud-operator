@@ -6,10 +6,7 @@ metadata:
   name: {{ include "cloud-operator.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ include "cloud-operator.name" . }}
-    chart: {{ include "cloud-operator.chart" . }}
-    release: {{ .Release.Name }}
-    heritage: {{ .Release.Service }}
+    {{- include "cloud-operator.labels" . | nindent 4 }}
 spec:
   replicas: 1
   selector:
@@ -19,8 +16,7 @@ spec:
   template:
     metadata:
       labels:
-        app: {{ include "cloud-operator.name" . }}
-        release: {{ .Release.Name }}
+        {{- include "cloud-operator.labels" . | nindent 8 }}
     spec:
       securityContext:
         fsGroup: 65532
