@@ -24,10 +24,15 @@
 {{- end -}}
 
 {{- define "cloud-operator.labels" -}}
+app: {{ include "cloud-operator.name" . }}
 app.kubernetes.io/name: {{ include "cloud-operator.name" . }}
+chart: {{ include "cloud-operator.chart" . }}
 helm.sh/chart: {{ include "cloud-operator.chart" . }}
+release: {{ .Release.Name }}
 app.kubernetes.io/instance: {{ .Release.Name }}
+heritage: {{ .Release.Service }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- toYaml .Values.additionalLabels }}
 {{- end -}}
 
 {{- define "cloud-operator.serviceAccountName" -}}

@@ -5,6 +5,8 @@ kind: RoleBinding
 metadata:
   name: secret-manager-binding
   namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cloud-operator.labels" . | nindent 4 }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Values.serviceAccount.name }}
@@ -19,6 +21,8 @@ kind: RoleBinding
 metadata:
   namespace: kube-system # Namespace where the Secret and Role exist
   name: cloud-operator-read-hubble-client-certs
+  labels:
+    {{- include "cloud-operator.labels" . | nindent 4 }}
 subjects:
 - kind: ServiceAccount
   name: {{ .Values.serviceAccount.name }}
@@ -34,6 +38,8 @@ kind: RoleBinding
 metadata:
   namespace: kube-system
   name: cloud-operator-read-aws-vpc-cni-logs
+  labels:
+    {{- include "cloud-operator.labels" . | nindent 4 }}
 subjects:
 - kind: ServiceAccount
   name: {{ .Values.serviceAccount.name }}
@@ -49,6 +55,8 @@ kind: RoleBinding
 metadata:
   name: cloud-operator-read-hubble-client-certs
   namespace: gke-managed-dpv2-observability
+  labels:
+    {{- include "cloud-operator.labels" . | nindent 4 }}
 subjects:
 - kind: ServiceAccount
   name: {{ .Values.serviceAccount.name }}

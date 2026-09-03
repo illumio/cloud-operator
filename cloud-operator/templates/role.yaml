@@ -5,6 +5,8 @@ kind: Role
 metadata:
   name: cloud-operator-secret-manager
   namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cloud-operator.labels" . | nindent 4 }}
 rules:
 - apiGroups: [""] # "" indicates the core API group
   resources: ["secrets"]
@@ -17,6 +19,8 @@ kind: Role
 metadata:
   namespace: kube-system # Namespace where the Secret exists
   name: hubble-client-certs-reader
+  labels:
+    {{- include "cloud-operator.labels" . | nindent 4 }}
 rules:
 - apiGroups: [""]
   resources: ["secrets"]
@@ -29,6 +33,8 @@ kind: Role
 metadata:
   namespace: kube-system
   name: cloud-operator-aws-vpc-cni-logs-reader
+  labels:
+    {{- include "cloud-operator.labels" . | nindent 4 }}
 rules:
 - apiGroups: [""]
   resources: ["pods/log"]
@@ -41,6 +47,8 @@ kind: Role
 metadata:
   name: hubble-client-certs-reader
   namespace: gke-managed-dpv2-observability
+  labels:
+    {{- include "cloud-operator.labels" . | nindent 4 }}
 rules:
 - apiGroups: [""]
   resources: ["secrets"]

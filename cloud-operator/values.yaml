@@ -7,6 +7,14 @@ image:
   tag: "0.0.1"
   pullPolicy: IfNotPresent
 
+# Optional labels added to every resource.
+# For example:
+#
+#   additionalLabels:
+#     key1: value1
+#     key2: value2
+additionalLabels: {}
+
 nodeSelector: {}
 
 tolerations: []
