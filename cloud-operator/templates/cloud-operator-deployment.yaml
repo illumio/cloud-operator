@@ -16,7 +16,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "cloud-operator.labels" . | nindent 4 }}
+        {{- include "cloud-operator.labels" . | nindent 8 }}
     spec:
       securityContext:
         fsGroup: 65532
