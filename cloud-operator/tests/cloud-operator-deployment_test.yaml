@@ -3,6 +3,25 @@ suite: test cloud-operator values
 templates:
   - cloud-operator-deployment.yaml
 tests:
+  # Test for additional labels
+  - it: should set the additional labels on the deployment and pods
+    set:
+      additionalLabels:
+        key1: value1
+        key2: value2
+    asserts:
+      - equal:
+          path: metadata.labels.key1
+          value: value1
+      - equal:
+          path: metadata.labels.key2
+          value: value2
+      - equal:
+          path: spec.template.metadata.labels.key1
+          value: value1
+      - equal:
+          path: spec.template.metadata.labels.key2
+          value: value2
   # Test for environment variables
   - it: should set the correct environment variables
     set:
