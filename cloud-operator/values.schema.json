@@ -3,8 +3,7 @@
     "type": "object",
     "properties": {
         "additionalLabels": {
-            "type": "object",
-            "additionalProperties": { "type": "string" }
+            "type": "object"
         },
         "affinity": {
             "type": "object"
