@@ -6,8 +6,7 @@ metadata:
   name: {{ include "cloud-operator.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ include "cloud-operator.name" . }}
-    release: {{ .Release.Name }}
+    {{- include "cloud-operator.labels" . | nindent 4 }}
 spec:
   {{- if .Values.service.clusterIP }}
   clusterIP: {{ .Values.service.clusterIP }}
