@@ -14,6 +14,7 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/illumio/cloud-operator/internal/controller/stream"
+	"github.com/illumio/cloud-operator/internal/convert/anp"
 	"github.com/illumio/cloud-operator/internal/convert/awsvpccni"
 	"github.com/illumio/cloud-operator/internal/convert/cilium"
 	"github.com/illumio/cloud-operator/internal/convert/ovn"
@@ -169,7 +170,7 @@ func TestResourceListAdminNetworkPolicyDispatchConsistency(t *testing.T) {
 	}
 
 	for _, resource := range resourceList {
-		isANP := ovn.IsAdminNetworkPolicyResource(resource)
+		isANP := anp.IsAdminNetworkPolicyResource(resource)
 
 		if expectedANP[resource] {
 			assert.True(t, isANP, "resource %q should be recognized as ANP by IsAdminNetworkPolicyResource", resource)
