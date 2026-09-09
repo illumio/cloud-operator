@@ -14,7 +14,7 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/illumio/cloud-operator/internal/controller/stream"
-	"github.com/illumio/cloud-operator/internal/convert"
+	"github.com/illumio/cloud-operator/internal/convert/awsvpccni"
 	"github.com/illumio/cloud-operator/internal/convert/cilium"
 	"github.com/illumio/cloud-operator/internal/convert/ovn"
 )
@@ -212,7 +212,7 @@ func TestResourceListAWSDispatchConsistency(t *testing.T) {
 	for _, name := range awsResources {
 		assert.True(t, slices.Contains(resourceList, name),
 			"%s must be in resourceList (ingested)", name)
-		assert.True(t, convert.IsAWSResource(name),
+		assert.True(t, awsvpccni.IsAWSResource(name),
 			"%s must be recognized by IsAWSResource", name)
 	}
 
@@ -228,7 +228,7 @@ func TestResourceListAWSDispatchConsistency(t *testing.T) {
 	// Cilium resources must not be misrouted to the AWS converter.
 	for _, resource := range resourceList {
 		if cilium.IsCiliumResource(resource) {
-			assert.False(t, convert.IsAWSResource(resource),
+			assert.False(t, awsvpccni.IsAWSResource(resource),
 				"resource %q should not be recognized as both Cilium and AWS", resource)
 		}
 	}

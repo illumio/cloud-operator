@@ -23,6 +23,7 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 	"github.com/illumio/cloud-operator/internal/convert"
+	"github.com/illumio/cloud-operator/internal/convert/awsvpccni"
 	"github.com/illumio/cloud-operator/internal/convert/cilium"
 	"github.com/illumio/cloud-operator/internal/convert/ovn"
 	"github.com/illumio/cloud-operator/internal/version"
@@ -86,7 +87,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 	egressConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 		return ovn.ConvertUnstructuredToEgressResource(obj)
 	}
-	awsConverter := convert.NewAWSResourceConverter(c.logger)
+	awsConverter := awsvpccni.NewAWSResourceConverter(c.logger)
 
 	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
 	sharedLimiter := rate.NewLimiter(1, 5)
@@ -117,7 +118,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 			converter = egressConverter
 		}
 
-		if convert.IsAWSResource(resource) {
+		if awsvpccni.IsAWSResource(resource) {
 			converter = awsConverter
 			handler = runtimeCacheHandler
 		}
