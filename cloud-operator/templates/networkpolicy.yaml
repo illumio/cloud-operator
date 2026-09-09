@@ -5,6 +5,8 @@ kind: NetworkPolicy
 metadata:
   name: allow-network-flow-export
   namespace: {{ .Values.defaultNamespace }}
+  labels:
+    {{- include "cloud-operator.labels" . | nindent 4 }}
 spec:
   podSelector: {}
   policyTypes:
