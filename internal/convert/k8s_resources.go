@@ -617,9 +617,10 @@ func getProviderIdNodeSpec(ctx context.Context, clientset kubernetes.Interface, 
 // field of an already-listed unstructured Pod object. Returns nil for non-pod
 // objects or pods without IPs.
 func extractPodIPsFromUnstructured(obj *unstructured.Unstructured) []string {
-	// Only Pods carry pod IPs; guard against other resources that happen to
-	// expose a status.podIPs field so we never treat them as Pods.
-	if obj.GetKind() != "Pod" {
+	// Only Pods carry pod IPs; guard against a nil object and against other
+	// resources that happen to expose a status.podIPs field so we never treat
+	// them as Pods.
+	if obj == nil || obj.GetKind() != "Pod" {
 		return nil
 	}
 
