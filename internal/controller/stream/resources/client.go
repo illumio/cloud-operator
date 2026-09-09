@@ -23,6 +23,7 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 	"github.com/illumio/cloud-operator/internal/convert"
+	"github.com/illumio/cloud-operator/internal/convert/anp"
 	"github.com/illumio/cloud-operator/internal/convert/awsvpccni"
 	"github.com/illumio/cloud-operator/internal/convert/cilium"
 	"github.com/illumio/cloud-operator/internal/convert/ovn"
@@ -82,7 +83,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		return cilium.ConvertUnstructuredToCiliumResource(obj)
 	}
 	anpConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return ovn.ConvertUnstructuredToAdminNetworkPolicyResource(obj)
+		return anp.ConvertUnstructuredToAdminNetworkPolicyResource(obj)
 	}
 	egressConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 		return ovn.ConvertUnstructuredToEgressResource(obj)
@@ -112,7 +113,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		case cilium.IsCiliumResource(resource):
 			converter = ciliumConverter
 			handler = runtimeCacheHandler
-		case ovn.IsAdminNetworkPolicyResource(resource):
+		case anp.IsAdminNetworkPolicyResource(resource):
 			converter = anpConverter
 		case ovn.IsEgressResource(resource):
 			converter = egressConverter
