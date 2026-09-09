@@ -24,7 +24,7 @@ rules:
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["k8s.ovn.org"]
   resources: ["egressfirewalls", "egressips"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: ["cilium.io"]
   resources: ["ciliumcidrgroups", "ciliumnetworkpolicies", "ciliumclusterwidenetworkpolicies"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
