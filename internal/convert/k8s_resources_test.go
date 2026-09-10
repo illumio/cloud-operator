@@ -454,6 +454,33 @@ func (suite *ConvertTestSuite) TestConvertMetaObjectToMetadata() {
 				ApiVersion:        "v1",
 			},
 		},
+		"pod with nil rawObj (no IPs)": {
+			objMeta: metav1.ObjectMeta{
+				Annotations:       sampleData,
+				CreationTimestamp: creationTimestamp,
+				Labels:            sampleData,
+				Name:              "test-pod",
+				Namespace:         "test-namespace",
+				ResourceVersion:   "test-version",
+				UID:               "test-uid",
+			},
+			kind:       "Pod",
+			apiGroup:   "",
+			apiVersion: "v1",
+			expected: &pb.KubernetesObjectData{
+				Annotations:       sampleData,
+				CreationTimestamp: convertToProtoTimestamp(creationTimestamp),
+				Kind:              "Pod",
+				Labels:            sampleData,
+				Name:              "test-pod",
+				Namespace:         new("test-namespace"),
+				ResourceVersion:   "test-version",
+				Uid:               "test-uid",
+				ApiGroup:          "",
+				ApiVersion:        "v1",
+				KindSpecific:      &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: nil}},
+			},
+		},
 	}
 
 	for name, tt := range tests {
