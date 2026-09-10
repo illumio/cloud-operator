@@ -1,6 +1,6 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package convert
+package awsvpccni
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 // IsAWSResource returns true if the input identifies an AWS VPC CNI policy resource.
@@ -56,7 +57,7 @@ func ConvertUnstructuredToAWSResource(logger *zap.Logger, obj *k8sUnstructured.U
 		Kind:              gvk.Kind,
 		Labels:            obj.GetLabels(),
 		Name:              obj.GetName(),
-		OwnerReferences:   convertOwnerReferences(obj.GetOwnerReferences()),
+		OwnerReferences:   convert.ConvertOwnerReferences(obj.GetOwnerReferences()),
 		ResourceVersion:   obj.GetResourceVersion(),
 		Uid:               string(obj.GetUID()),
 	}
@@ -118,7 +119,7 @@ func convertAWSSubject(sub awsSubject) *pb.AWSNetworkPolicySubject {
 	}
 
 	if sub.Namespaces != nil {
-		out.Namespaces = convertLabelSelectorToProto(sub.Namespaces)
+		out.Namespaces = convert.ConvertLabelSelectorToProto(sub.Namespaces)
 	}
 
 	return out
@@ -130,8 +131,8 @@ func convertAWSNamespacedPod(p *awsNamespacedPod) *pb.AWSNetworkPolicyPodSelecto
 	}
 
 	return &pb.AWSNetworkPolicyPodSelector{
-		NamespaceSelector: convertLabelSelectorToProto(&p.NamespaceSelector),
-		PodSelector:       convertLabelSelectorToProto(&p.PodSelector),
+		NamespaceSelector: convert.ConvertLabelSelectorToProto(&p.NamespaceSelector),
+		PodSelector:       convert.ConvertLabelSelectorToProto(&p.PodSelector),
 	}
 }
 
@@ -227,7 +228,7 @@ func convertAWSIngressPeers(peers []awsIngressPeer) []*pb.AWSNetworkPolicyIngres
 	for _, p := range peers {
 		out = append(out, &pb.AWSNetworkPolicyIngressPeer{
 			Pods:       convertAWSNamespacedPod(p.Pods),
-			Namespaces: convertLabelSelectorToProto(p.Namespaces),
+			Namespaces: convert.ConvertLabelSelectorToProto(p.Namespaces),
 		})
 	}
 
@@ -243,7 +244,7 @@ func convertAWSEgressPeers(peers []awsEgressPeer) []*pb.AWSNetworkPolicyEgressPe
 	for _, p := range peers {
 		out = append(out, &pb.AWSNetworkPolicyEgressPeer{
 			Pods:        convertAWSNamespacedPod(p.Pods),
-			Namespaces:  convertLabelSelectorToProto(p.Namespaces),
+			Namespaces:  convert.ConvertLabelSelectorToProto(p.Namespaces),
 			Networks:    p.Networks,
 			DomainNames: p.DomainNames,
 		})
@@ -256,7 +257,7 @@ func convertAWSApplicationNetworkPolicy(logger *zap.Logger, anp *awsApplicationN
 	spec := anp.Spec
 
 	return &pb.KubernetesAWSApplicationNetworkPolicyData{
-		PodSelector: convertLabelSelectorToProto(&spec.PodSelector),
+		PodSelector: convert.ConvertLabelSelectorToProto(&spec.PodSelector),
 		PolicyTypes: convertAWSANPPolicyTypes(logger, spec.PolicyTypes),
 		Ingress:     convertAWSANPIngressRules(spec.Ingress),
 		Egress:      convertAWSANPEgressRules(spec.Egress),
@@ -326,9 +327,9 @@ func convertAWSANPIngressPeers(peers []networkingv1.NetworkPolicyPeer) []*pb.AWS
 	out := make([]*pb.AWSApplicationNetworkPolicyIngressPeer, 0, len(peers))
 	for _, p := range peers {
 		out = append(out, &pb.AWSApplicationNetworkPolicyIngressPeer{
-			PodSelector:       convertLabelSelectorToProto(p.PodSelector),
-			NamespaceSelector: convertLabelSelectorToProto(p.NamespaceSelector),
-			IpBlock:           convertIPBlockToProto(p.IPBlock),
+			PodSelector:       convert.ConvertLabelSelectorToProto(p.PodSelector),
+			NamespaceSelector: convert.ConvertLabelSelectorToProto(p.NamespaceSelector),
+			IpBlock:           convert.ConvertIPBlockToProto(p.IPBlock),
 		})
 	}
 
@@ -345,9 +346,9 @@ func convertAWSANPEgressPeers(peers []awsANPEgressPeer) []*pb.AWSApplicationNetw
 	out := make([]*pb.AWSApplicationNetworkPolicyEgressPeer, 0, len(peers))
 	for _, p := range peers {
 		out = append(out, &pb.AWSApplicationNetworkPolicyEgressPeer{
-			PodSelector:       convertLabelSelectorToProto(p.PodSelector),
-			NamespaceSelector: convertLabelSelectorToProto(p.NamespaceSelector),
-			IpBlock:           convertIPBlockToProto(p.IPBlock),
+			PodSelector:       convert.ConvertLabelSelectorToProto(p.PodSelector),
+			NamespaceSelector: convert.ConvertLabelSelectorToProto(p.NamespaceSelector),
+			IpBlock:           convert.ConvertIPBlockToProto(p.IPBlock),
 			DomainNames:       p.DomainNames,
 		})
 	}

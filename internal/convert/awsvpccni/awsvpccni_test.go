@@ -1,6 +1,6 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package convert
+package awsvpccni
 
 import (
 	"encoding/json"
@@ -12,6 +12,8 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"github.com/illumio/cloud-operator/internal/convert"
 )
 
 func TestIsAWSResource(t *testing.T) {
@@ -526,11 +528,11 @@ func TestConvertUnstructuredToAWSResource_ClusterNetworkPolicy_RoundTrip(t *test
 	require.NoError(t, err)
 
 	// proto (metadata) → proto (configured), as done before reconcile apply.
-	configured, err := BuildConfiguredFromMetadata(meta)
+	configured, err := convert.BuildConfiguredFromMetadata(meta)
 	require.NoError(t, err)
 
 	// proto → applied CRD.
-	apply, resourceName, err := ConvertToApplyObject(configured, "networking.k8s.aws", "v1alpha1")
+	apply, resourceName, err := convert.ConvertToApplyObject(configured, "networking.k8s.aws", "v1alpha1")
 	require.NoError(t, err)
 
 	assert.Equal(t, "clusternetworkpolicies", resourceName)
@@ -555,10 +557,10 @@ func TestConvertUnstructuredToAWSResource_ClusterNetworkPolicy_PriorityUnset(t *
 	meta, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
 	require.NoError(t, err)
 
-	configured, err := BuildConfiguredFromMetadata(meta)
+	configured, err := convert.BuildConfiguredFromMetadata(meta)
 	require.NoError(t, err)
 
-	apply, _, err := ConvertToApplyObject(configured, "networking.k8s.aws", "v1alpha1")
+	apply, _, err := convert.ConvertToApplyObject(configured, "networking.k8s.aws", "v1alpha1")
 	require.NoError(t, err)
 
 	appliedSpec, ok := apply.Object["spec"].(map[string]any)
