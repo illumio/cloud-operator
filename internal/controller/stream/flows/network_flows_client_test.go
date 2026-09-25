@@ -60,10 +60,12 @@ func (s *NetworkFlowsClientTestSuite) SetupTest() {
 	s.outFlows = make(chan pb.Flow, 10)
 	s.flowCache = cache.NewFlowCache(10*time.Second, 100, s.outFlows)
 	s.client = &networkFlowsClient{
-		grpcStream: s.mockStream,
-		logger:     s.logger,
-		flowCache:  s.flowCache,
-		stats:      s.stats,
+		grpcStream:   s.mockStream,
+		logger:       s.logger,
+		flowCache:    s.flowCache,
+		stats:        s.stats,
+		cancelStream: func() {},
+		sendTimeout:  DefaultSendTimeout,
 	}
 }
 
@@ -220,4 +222,26 @@ func (s *NetworkFlowsClientTestSuite) TestClose_Idempotent() {
 	s.Require().NoError(err)
 
 	s.True(s.client.closed)
+}
+
+func (s *NetworkFlowsClientTestSuite) TestRun_BlockedSendCancelsStream() {
+	streamCtx, cancelStream := context.WithCancel(context.Background())
+	defer cancelStream()
+
+	s.client.cancelStream = cancelStream
+	s.client.sendTimeout = 100 * time.Millisecond
+
+	// Mimic gRPC: Send blocks on flow control until the stream context is canceled.
+	s.mockStream.On("Send", mock.Anything).Run(func(mock.Arguments) {
+		<-streamCtx.Done()
+	}).Return(context.Canceled).Once()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	s.outFlows <- &pb.CiliumFlow{}
+
+	err := s.client.Run(ctx)
+	s.Require().ErrorIs(err, context.Canceled)
+	s.NoError(ctx.Err(), "Run must return because the blocked Send was canceled, not because the test timed out")
 }

@@ -15,15 +15,42 @@ import (
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
+// cacheFlowBlockedWarnThreshold is how long a collector may wait to hand a flow
+// to the flow cache before a warning is logged.
+const cacheFlowBlockedWarnThreshold = 30 * time.Second
+
 // FlowSinkAdapter adapts cache.FlowCache and Stats to implement the collector.FlowSink interface.
 type FlowSinkAdapter struct {
 	FlowCache *cache.FlowCache
 	Stats     *stream.Stats
+	// Logger is optional; when set, a collector blocked on the flow cache is logged.
+	Logger *zap.Logger
 }
 
 // CacheFlow caches a flow in the flow cache.
 func (f *FlowSinkAdapter) CacheFlow(ctx context.Context, flow pb.Flow) error {
-	return f.FlowCache.CacheFlow(ctx, flow)
+	if f.Logger == nil {
+		return f.FlowCache.CacheFlow(ctx, flow)
+	}
+
+	start := time.Now()
+	blockedTimer := time.AfterFunc(cacheFlowBlockedWarnThreshold, func() {
+		f.Logger.Warn("Flow collector is blocked waiting for the flow cache; flows are not being drained to CloudSecure",
+			zap.Duration("blocked_for", time.Since(start)),
+			zap.Int("flow_cache_out_queue_len", len(f.FlowCache.OutFlows)),
+		)
+	})
+
+	err := f.FlowCache.CacheFlow(ctx, flow)
+
+	if !blockedTimer.Stop() {
+		f.Logger.Info("Flow collector unblocked; flow cache accepted flow",
+			zap.Duration("blocked_for", time.Since(start)),
+			zap.Error(err),
+		)
+	}
+
+	return err
 }
 
 // IncrementFlowsReceived increments the flows received counter.

@@ -4,6 +4,7 @@ package flows
 
 import (
 	"context"
+	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -21,24 +22,37 @@ type NetworkFlowsFactory struct {
 	Logger    *zap.Logger
 	FlowCache *cache.FlowCache
 	Stats     *stream.Stats
+	// SendTimeout is how long a Send may block before the stream is reopened.
+	// Defaults to DefaultSendTimeout.
+	SendTimeout time.Duration
 }
 
 // NewStreamClient creates a new network flows stream client.
 func (f *NetworkFlowsFactory) NewStreamClient(ctx context.Context, grpcConn grpc.ClientConnInterface) (stream.StreamClient, error) {
 	grpcClient := pb.NewKubernetesInfoServiceClient(grpcConn)
 
-	grpcStream, err := grpcClient.SendKubernetesNetworkFlows(ctx)
+	streamCtx, cancel := context.WithCancel(ctx)
+
+	grpcStream, err := grpcClient.SendKubernetesNetworkFlows(streamCtx)
 	if err != nil {
+		cancel()
 		f.Logger.Error("Failed to open network flows stream", zap.Error(err))
 
 		return nil, err
 	}
 
+	sendTimeout := f.SendTimeout
+	if sendTimeout <= 0 {
+		sendTimeout = DefaultSendTimeout
+	}
+
 	return &networkFlowsClient{
-		grpcStream: grpcStream,
-		logger:     f.Logger,
-		flowCache:  f.FlowCache,
-		stats:      f.Stats,
+		grpcStream:   grpcStream,
+		logger:       f.Logger,
+		flowCache:    f.FlowCache,
+		stats:        f.Stats,
+		cancelStream: cancel,
+		sendTimeout:  sendTimeout,
 	}, nil
 }
 
