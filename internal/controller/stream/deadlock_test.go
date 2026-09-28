@@ -35,6 +35,24 @@ func TestServerIsHealthy(t *testing.T) {
 		// Reset
 		SetProcessingResources(false)
 	})
+
+	t.Run("healthy when flow send just started", func(t *testing.T) {
+		SetSendingFlow(true)
+		assert.True(t, ServerIsHealthy())
+		SetSendingFlow(false)
+	})
+
+	t.Run("unhealthy when flow send is blocked for too long", func(t *testing.T) {
+		dd.mutex.Lock()
+		dd.sendingFlow = true
+		dd.flowSendStarted = time.Now().Add(-FlowSendTimeout - time.Minute)
+		dd.mutex.Unlock()
+
+		assert.False(t, ServerIsHealthy())
+
+		SetSendingFlow(false)
+		assert.True(t, ServerIsHealthy())
+	})
 }
 
 func TestSetProcessingResources(t *testing.T) {
@@ -74,5 +92,35 @@ func TestSetProcessingResources(t *testing.T) {
 
 		assert.True(t, timeStarted.After(before) || timeStarted.Equal(before))
 		SetProcessingResources(false)
+	})
+}
+
+func TestSetSendingFlow(t *testing.T) {
+	SetSendingFlow(false)
+
+	t.Run("sets sending and start time", func(t *testing.T) {
+		before := time.Now()
+
+		SetSendingFlow(true)
+
+		dd.mutex.RLock()
+		sending := dd.sendingFlow
+		started := dd.flowSendStarted
+		dd.mutex.RUnlock()
+
+		assert.True(t, sending)
+		assert.False(t, started.Before(before))
+		SetSendingFlow(false)
+	})
+
+	t.Run("clears sending", func(t *testing.T) {
+		SetSendingFlow(true)
+		SetSendingFlow(false)
+
+		dd.mutex.RLock()
+		sending := dd.sendingFlow
+		dd.mutex.RUnlock()
+
+		assert.False(t, sending)
 	})
 }
