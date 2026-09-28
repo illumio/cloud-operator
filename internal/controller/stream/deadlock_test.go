@@ -31,6 +31,7 @@ func TestServerIsHealthy(t *testing.T) {
 		dd.mutex.Unlock()
 
 		assert.False(t, ServerIsHealthy())
+		assert.Contains(t, UnhealthyReason(), "resource processing")
 
 		// Reset
 		SetProcessingResources(false)
@@ -49,9 +50,11 @@ func TestServerIsHealthy(t *testing.T) {
 		dd.mutex.Unlock()
 
 		assert.False(t, ServerIsHealthy())
+		assert.Contains(t, UnhealthyReason(), "network flows stream")
 
 		SetSendingFlow(false)
 		assert.True(t, ServerIsHealthy())
+		assert.Empty(t, UnhealthyReason())
 	})
 }
 
