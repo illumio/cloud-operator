@@ -78,7 +78,6 @@ func (a *flowCollectorAdapter) Close() error {
 func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCollector, string, CollectorFactory) {
 	clientset := config.K8sClient.GetClientset()
 	flowSink := NewFlowSinkAdapter(config.FlowCache, config.Stats)
-	flowSink.Logger = config.Logger
 
 	// Initialize TlsAuthProps if nil so DisableTLS/DisableALPN flags persist across retries
 	tlsAuthProps := config.TlsAuthProps
