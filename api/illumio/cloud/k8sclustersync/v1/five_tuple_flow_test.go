@@ -27,3 +27,57 @@ func TestFiveTupleFlowKey_Verdict(t *testing.T) {
 	// Collectors that don't report a verdict (OVN-K, Falco) keep deduping on the 5-tuple.
 	assert.Equal(t, unset.Key(), unsetAgain.Key())
 }
+
+func TestFiveTupleFlowKey_Protocols(t *testing.T) {
+	tests := []struct {
+		name   string
+		layer4 *Layer4
+		want   FiveTupleFlowKey
+	}{
+		{
+			name:   "UDP",
+			layer4: &Layer4{Protocol: &Layer4_Udp{Udp: &UDP{SourcePort: 53000, DestinationPort: 53}}},
+			want:   FiveTupleFlowKey{SourcePort: 53000, DestinationPort: 53, Protocol: "UDP"},
+		},
+		{
+			name:   "SCTP",
+			layer4: &Layer4{Protocol: &Layer4_Sctp{Sctp: &SCTP{SourcePort: 2905, DestinationPort: 2906}}},
+			want:   FiveTupleFlowKey{SourcePort: 2905, DestinationPort: 2906, Protocol: "SCTP"},
+		},
+		{
+			name:   "ICMPv4",
+			layer4: &Layer4{Protocol: &Layer4_Icmpv4{Icmpv4: &ICMPv4{}}},
+			want:   FiveTupleFlowKey{Protocol: "ICMPv4"},
+		},
+		{
+			name:   "ICMPv6",
+			layer4: &Layer4{Protocol: &Layer4_Icmpv6{Icmpv6: &ICMPv6{}}},
+			want:   FiveTupleFlowKey{Protocol: "ICMPv6"},
+		},
+		{
+			name: "no layer4",
+			want: FiveTupleFlowKey{Protocol: "UNKNOWN"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flow := &FiveTupleFlow{
+				Layer3:  &IP{Source: "10.0.0.1", Destination: "10.0.0.2"},
+				Layer4:  tt.layer4,
+				Verdict: Verdict_VERDICT_DROPPED,
+			}
+
+			tt.want.SourceIP = "10.0.0.1"
+			tt.want.DestinationIP = "10.0.0.2"
+			tt.want.Verdict = Verdict_VERDICT_DROPPED
+			assert.Equal(t, tt.want, flow.Key())
+		})
+	}
+}
+
+func TestFiveTupleFlowKey_NilFlow(t *testing.T) {
+	var flow *FiveTupleFlow
+
+	assert.Nil(t, flow.Key())
+}
