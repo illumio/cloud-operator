@@ -16,6 +16,7 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
+//nolint:maintidx // table-driven test with comprehensive test cases
 func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 	tests := []struct {
 		name          string

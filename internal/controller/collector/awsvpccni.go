@@ -91,13 +91,15 @@ type AWSVPCCNIFlowLog struct {
 //	"Flow Info: Src IP: 2001:db8::1 Src Port: 55484 Dest IP: 2001:db8::2 Dest Port: 80 Proto: TCP Verdict: ACCEPT Direction: egress"
 //
 // v1.3.0+ appends a policy tier (", Tier DEFAULT" / " Tier: DEFAULT"), which is ignored;
-// the direction capture (\w+) stops at the comma or space before it. Direction is
-// optional, so a line without one still parses.
+// the proto, verdict and direction captures all stop at the comma or space before it,
+// since it follows whichever of them is logged last. Verdict and Direction are each
+// optional, so a line without either (or both) still parses.
 var flowMsgPattern = regexp.MustCompile(
-	`Flow Info:\s*Src IP:\s*(\S+)\s+Src Port:\s*(\d+)\s+Dest IP:\s*(\S+)\s+Dest Port:\s*(\d+)\s+Proto:?\s+(\S+)\s+Verdict:?\s+(\S+)(?:\s+Direction:?\s+(\w+))?`,
+	`Flow Info:\s*Src IP:\s*(\S+)\s+Src Port:\s*(\d+)\s+Dest IP:\s*(\S+)\s+Dest Port:\s*(\d+)\s+Proto:?\s+([^\s,]+)(?:\s+Verdict:?\s+([^\s,]+))?(?:\s+Direction:?\s+(\w+))?`,
 )
 
 // parseFlowFromMsg extracts flow data from the embedded msg string (v1.2.2+ format).
+// verdict and direction are empty when the line does not log them.
 func parseFlowFromMsg(msg string) (srcIP string, srcPort uint32, destIP string, destPort uint32, proto string, verdict string, direction string, ok bool) {
 	matches := flowMsgPattern.FindStringSubmatch(msg)
 	if len(matches) < 8 {
