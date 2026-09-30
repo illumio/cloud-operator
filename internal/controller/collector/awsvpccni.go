@@ -75,9 +75,14 @@ type AWSVPCCNIFlowLog struct {
 }
 
 // flowMsgPattern extracts flow data from the embedded msg string in v1.2.2+ format.
-// Example: "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress".
+// The agent logs IPv6 flows with a colon after Proto/Verdict and IPv4 flows without:
+//
+//	"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress"
+//	"Flow Info: Src IP: 2001:db8::1 Src Port: 55484 Dest IP: 2001:db8::2 Dest Port: 80 Proto: TCP Verdict: ACCEPT Direction: egress"
+//
+// v1.3.0+ appends a policy tier (", Tier DEFAULT" / " Tier: DEFAULT"), which is ignored.
 var flowMsgPattern = regexp.MustCompile(
-	`Flow Info:\s*Src IP:\s*(\S+)\s+Src Port:\s*(\d+)\s+Dest IP:\s*(\S+)\s+Dest Port:\s*(\d+)\s+Proto\s+(\S+)\s+Verdict\s+(\S+)`,
+	`Flow Info:\s*Src IP:\s*(\S+)\s+Src Port:\s*(\d+)\s+Dest IP:\s*(\S+)\s+Dest Port:\s*(\d+)\s+Proto:?\s+(\S+)\s+Verdict:?\s+(\S+)`,
 )
 
 // parseFlowFromMsg extracts flow data from the embedded msg string (v1.2.2+ format).
