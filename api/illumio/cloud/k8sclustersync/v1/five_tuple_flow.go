@@ -15,6 +15,9 @@ type FiveTupleFlowKey struct {
 	// Verdict keeps flows with different verdicts for the same 5-tuple (e.g. an
 	// ACCEPT and a DENY) from being deduplicated into one.
 	Verdict Verdict
+	// TrafficDirection is deliberately not part of the key: the AWS agent logs one
+	// connection twice (egress at the source pod, ingress at the destination pod),
+	// and keying on it would send both.
 }
 
 func (flow *FiveTupleFlow) StartTimestamp() time.Time {

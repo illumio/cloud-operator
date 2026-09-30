@@ -246,14 +246,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 				return
 			}
 
-			// Verify layer3 IPs
-			if flow.GetLayer3() == nil {
-				t.Error("expected layer3, got nil")
-
-				return
-			}
-
-			// Check IPs using the IP struct fields
+			// Check IPs using the IP struct fields (a nil layer3 fails these too)
 			if flow.GetLayer3().GetSource() != tt.wantSrcIP {
 				t.Errorf("expected src IP %s, got %s", tt.wantSrcIP, flow.GetLayer3().GetSource())
 			}
@@ -371,70 +364,88 @@ func TestParseOldFormat(t *testing.T) {
 
 func TestParseFlowFromMsg(t *testing.T) {
 	tests := []struct {
-		name         string
-		msg          string
-		wantOk       bool
-		wantSrcIP    string
-		wantSrcPort  uint32
-		wantDestIP   string
-		wantDestPort uint32
-		wantProto    string
-		wantVerdict  string
+		name          string
+		msg           string
+		wantOk        bool
+		wantSrcIP     string
+		wantSrcPort   uint32
+		wantDestIP    string
+		wantDestPort  uint32
+		wantProto     string
+		wantVerdict   string
+		wantDirection string
 	}{
 		{
-			name:         "valid TCP ACCEPT egress",
-			msg:          "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress",
-			wantOk:       true,
-			wantSrcIP:    "10.0.1.28",
-			wantSrcPort:  55484,
-			wantDestIP:   "10.0.1.132",
-			wantDestPort: 80,
-			wantProto:    "TCP",
-			wantVerdict:  "ACCEPT",
+			name:          "valid TCP ACCEPT egress",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "ACCEPT",
+			wantDirection: "egress",
 		},
 		{
-			name:         "valid UDP DENY",
-			msg:          "Flow Info: Src IP: 192.168.1.10 Src Port: 53000 Dest IP: 10.0.0.53 Dest Port: 53 Proto UDP Verdict DENY Direction ingress",
-			wantOk:       true,
-			wantSrcIP:    "192.168.1.10",
-			wantSrcPort:  53000,
-			wantDestIP:   "10.0.0.53",
-			wantDestPort: 53,
-			wantProto:    "UDP",
-			wantVerdict:  "DENY",
+			name:          "valid UDP DENY",
+			msg:           "Flow Info: Src IP: 192.168.1.10 Src Port: 53000 Dest IP: 10.0.0.53 Dest Port: 53 Proto UDP Verdict DENY Direction ingress",
+			wantOk:        true,
+			wantSrcIP:     "192.168.1.10",
+			wantSrcPort:   53000,
+			wantDestIP:    "10.0.0.53",
+			wantDestPort:  53,
+			wantProto:     "UDP",
+			wantVerdict:   "DENY",
+			wantDirection: "ingress",
 		},
 		{
-			name:         "valid TCP ACCEPT with Tier (v1.3.0+)",
-			msg:          "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress, Tier DEFAULT",
-			wantOk:       true,
-			wantSrcIP:    "10.0.1.28",
-			wantSrcPort:  55484,
-			wantDestIP:   "10.0.1.132",
-			wantDestPort: 80,
-			wantProto:    "TCP",
-			wantVerdict:  "ACCEPT",
+			name:          "valid TCP ACCEPT with Tier (v1.3.0+)",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress, Tier DEFAULT",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "ACCEPT",
+			wantDirection: "egress",
 		},
 		{
-			name:         "valid IPv6 TCP ACCEPT (colon after Proto and Verdict)",
-			msg:          "Flow Info: Src IP: 2001:db8::1 Src Port: 55484 Dest IP: 2001:db8::2 Dest Port: 80 Proto: TCP Verdict: ACCEPT Direction: egress",
-			wantOk:       true,
-			wantSrcIP:    "2001:db8::1",
-			wantSrcPort:  55484,
-			wantDestIP:   "2001:db8::2",
-			wantDestPort: 80,
-			wantProto:    "TCP",
-			wantVerdict:  "ACCEPT",
+			name:          "valid IPv6 TCP ACCEPT (colon after Proto and Verdict)",
+			msg:           "Flow Info: Src IP: 2001:db8::1 Src Port: 55484 Dest IP: 2001:db8::2 Dest Port: 80 Proto: TCP Verdict: ACCEPT Direction: egress",
+			wantOk:        true,
+			wantSrcIP:     "2001:db8::1",
+			wantSrcPort:   55484,
+			wantDestIP:    "2001:db8::2",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "ACCEPT",
+			wantDirection: "egress",
 		},
 		{
-			name:         "valid IPv6 UDP DENY with Tier (v1.3.0+)",
-			msg:          "Flow Info: Src IP: 2001:db8::1 Src Port: 53000 Dest IP: 2001:db8::53 Dest Port: 53 Proto: UDP Verdict: DENY Direction: ingress Tier: DEFAULT",
-			wantOk:       true,
-			wantSrcIP:    "2001:db8::1",
-			wantSrcPort:  53000,
-			wantDestIP:   "2001:db8::53",
-			wantDestPort: 53,
-			wantProto:    "UDP",
-			wantVerdict:  "DENY",
+			name:          "valid IPv6 UDP DENY with Tier (v1.3.0+)",
+			msg:           "Flow Info: Src IP: 2001:db8::1 Src Port: 53000 Dest IP: 2001:db8::53 Dest Port: 53 Proto: UDP Verdict: DENY Direction: ingress Tier: DEFAULT",
+			wantOk:        true,
+			wantSrcIP:     "2001:db8::1",
+			wantSrcPort:   53000,
+			wantDestIP:    "2001:db8::53",
+			wantDestPort:  53,
+			wantProto:     "UDP",
+			wantVerdict:   "DENY",
+			wantDirection: "ingress",
+		},
+		{
+			name:          "valid without Direction",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "ACCEPT",
+			wantDirection: "",
 		},
 		{
 			name:   "missing required fields",
@@ -460,7 +471,7 @@ func TestParseFlowFromMsg(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srcIP, srcPort, destIP, destPort, proto, verdict, ok := parseFlowFromMsg(tt.msg)
+			srcIP, srcPort, destIP, destPort, proto, verdict, direction, ok := parseFlowFromMsg(tt.msg)
 
 			if ok != tt.wantOk {
 				t.Errorf("parseFlowFromMsg() ok = %v, want %v", ok, tt.wantOk)
@@ -494,6 +505,10 @@ func TestParseFlowFromMsg(t *testing.T) {
 
 			if verdict != tt.wantVerdict {
 				t.Errorf("verdict = %v, want %v", verdict, tt.wantVerdict)
+			}
+
+			if direction != tt.wantDirection {
+				t.Errorf("direction = %v, want %v", direction, tt.wantDirection)
 			}
 		})
 	}

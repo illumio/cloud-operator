@@ -41,6 +41,11 @@ const (
 	awsVPCCNIVerdictAccept           = "ACCEPT"
 	awsVPCCNIVerdictDeny             = "DENY"
 	awsVPCCNIVerdictExpiredOrDeleted = "EXPIRED/DELETED"
+
+	// Directions logged by the AWS Network Policy Agent (v1.2.2+): the pod-side
+	// policy that produced the verdict.
+	awsVPCCNIDirectionIngress = "ingress"
+	awsVPCCNIDirectionEgress  = "egress"
 )
 
 // AWS VPC CNI flow log errors.
@@ -85,29 +90,31 @@ type AWSVPCCNIFlowLog struct {
 //	"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress"
 //	"Flow Info: Src IP: 2001:db8::1 Src Port: 55484 Dest IP: 2001:db8::2 Dest Port: 80 Proto: TCP Verdict: ACCEPT Direction: egress"
 //
-// v1.3.0+ appends a policy tier (", Tier DEFAULT" / " Tier: DEFAULT"), which is ignored.
+// v1.3.0+ appends a policy tier (", Tier DEFAULT" / " Tier: DEFAULT"), which is ignored;
+// the direction capture stops at the comma before it. Direction is optional, so a
+// line without one still parses.
 var flowMsgPattern = regexp.MustCompile(
-	`Flow Info:\s*Src IP:\s*(\S+)\s+Src Port:\s*(\d+)\s+Dest IP:\s*(\S+)\s+Dest Port:\s*(\d+)\s+Proto:?\s+(\S+)\s+Verdict:?\s+(\S+)`,
+	`Flow Info:\s*Src IP:\s*(\S+)\s+Src Port:\s*(\d+)\s+Dest IP:\s*(\S+)\s+Dest Port:\s*(\d+)\s+Proto:?\s+(\S+)\s+Verdict:?\s+(\S+)(?:\s+Direction:?\s+(\w+))?`,
 )
 
 // parseFlowFromMsg extracts flow data from the embedded msg string (v1.2.2+ format).
-func parseFlowFromMsg(msg string) (srcIP string, srcPort uint32, destIP string, destPort uint32, proto string, verdict string, ok bool) {
+func parseFlowFromMsg(msg string) (srcIP string, srcPort uint32, destIP string, destPort uint32, proto string, verdict string, direction string, ok bool) {
 	matches := flowMsgPattern.FindStringSubmatch(msg)
-	if len(matches) < 7 {
-		return "", 0, "", 0, "", "", false
+	if len(matches) < 8 {
+		return "", 0, "", 0, "", "", "", false
 	}
 
 	srcPortInt, err := strconv.ParseUint(matches[2], 10, 32)
 	if err != nil {
-		return "", 0, "", 0, "", "", false
+		return "", 0, "", 0, "", "", "", false
 	}
 
 	destPortInt, err := strconv.ParseUint(matches[4], 10, 32)
 	if err != nil {
-		return "", 0, "", 0, "", "", false
+		return "", 0, "", 0, "", "", "", false
 	}
 
-	return matches[1], uint32(srcPortInt), matches[3], uint32(destPortInt), matches[5], matches[6], true
+	return matches[1], uint32(srcPortInt), matches[3], uint32(destPortInt), matches[5], matches[6], matches[7], true
 }
 
 // parseOldFormat extracts flow data from separate JSON fields (v1.0.x - v1.2.1 format).
@@ -144,17 +151,18 @@ func ParseAWSVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 	}
 
 	var (
-		srcIP, destIP, proto, verdict string
-		srcPort, destPort             uint32
-		ok                            bool
+		srcIP, destIP, proto, verdict, direction string
+		srcPort, destPort                        uint32
+		ok                                       bool
 	)
 
 	switch {
 	case isOldFormat:
+		// The old format does not log a direction.
 		srcIP, srcPort, destIP, destPort, proto, ok = parseOldFormat(&log)
 		verdict = log.Verdict
 	case isNewFormat:
-		srcIP, srcPort, destIP, destPort, proto, verdict, ok = parseFlowFromMsg(log.Message)
+		srcIP, srcPort, destIP, destPort, proto, verdict, direction, ok = parseFlowFromMsg(log.Message)
 	default:
 		return nil, ErrAWSVPCCNINotFlowLog
 	}
@@ -214,7 +222,8 @@ func ParseAWSVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 		Ts: &pb.FiveTupleFlow_Timestamp{
 			Timestamp: ts,
 		},
-		Verdict: parseAWSVPCCNIVerdict(verdict),
+		Verdict:          parseAWSVPCCNIVerdict(verdict),
+		TrafficDirection: parseAWSVPCCNIDirection(direction),
 	}
 
 	return flow, nil
@@ -231,6 +240,21 @@ func parseAWSVPCCNIVerdict(verdict string) pb.Verdict {
 		return pb.Verdict_VERDICT_DROPPED
 	default:
 		return pb.Verdict_VERDICT_UNKNOWN_UNSPECIFIED
+	}
+}
+
+// parseAWSVPCCNIDirection maps the agent's direction to a flow TrafficDirection.
+// Any other value (e.g. no direction, as in the pre-v1.2.2 format) is sent as
+// TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED rather than dropping
+// the flow.
+func parseAWSVPCCNIDirection(direction string) pb.TrafficDirection {
+	switch direction {
+	case awsVPCCNIDirectionIngress:
+		return pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS
+	case awsVPCCNIDirectionEgress:
+		return pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS
+	default:
+		return pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED
 	}
 }
 
