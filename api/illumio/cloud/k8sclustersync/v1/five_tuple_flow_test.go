@@ -28,6 +28,25 @@ func TestFiveTupleFlowKey_Verdict(t *testing.T) {
 	assert.Equal(t, unset.Key(), unsetAgain.Key())
 }
 
+func TestFiveTupleFlowKey_DirectionNotInKey(t *testing.T) {
+	newFlow := func(direction TrafficDirection) *FiveTupleFlow {
+		return &FiveTupleFlow{
+			Layer3:           &IP{Source: "10.0.1.28", Destination: "10.0.1.132", IpVersion: IPVersion_IP_VERSION_IPV4},
+			Layer4:           &Layer4{Protocol: &Layer4_Tcp{Tcp: &TCP{SourcePort: 55484, DestinationPort: 80}}},
+			Verdict:          Verdict_VERDICT_FORWARDED,
+			TrafficDirection: direction,
+		}
+	}
+
+	// The AWS agent logs one connection twice when both pods are selected by a
+	// policy: egress from the source pod and ingress at the destination pod. These
+	// share a key, so only one of them is sent.
+	egress := newFlow(TrafficDirection_TRAFFIC_DIRECTION_EGRESS)
+	ingress := newFlow(TrafficDirection_TRAFFIC_DIRECTION_INGRESS)
+
+	assert.Equal(t, egress.Key(), ingress.Key())
+}
+
 func TestFiveTupleFlowKey_Protocols(t *testing.T) {
 	tests := []struct {
 		name   string

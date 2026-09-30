@@ -761,6 +761,13 @@ message FiveTupleFlow {
   // report one (AWS VPC CNI: ACCEPT -> VERDICT_FORWARDED, DENY -> VERDICT_DROPPED);
   // VERDICT_UNKNOWN_UNSPECIFIED otherwise.
   Verdict verdict = 5;
+
+  // traffic_direction of the flow as reported by the CNI plugin: which pod's network
+  // policy produced the verdict. Only set by collectors that report one (AWS VPC CNI
+  // v1.2.2+: egress -> TRAFFIC_DIRECTION_EGRESS, the source pod's egress policy;
+  // ingress -> TRAFFIC_DIRECTION_INGRESS, the destination pod's ingress policy);
+  // TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED otherwise.
+  TrafficDirection traffic_direction = 6;
 }
 
 // A flow received from Cilium Hubble Relay using the Observer service's GetFlows RPC.
