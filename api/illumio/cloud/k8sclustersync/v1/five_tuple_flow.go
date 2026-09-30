@@ -17,7 +17,9 @@ type FiveTupleFlowKey struct {
 	Verdict Verdict
 	// TrafficDirection is deliberately not part of the key: the AWS agent logs one
 	// connection twice (egress at the source pod, ingress at the destination pod),
-	// and keying on it would send both.
+	// and keying on it would send both. Only the first one cached is sent, so its
+	// direction is one side's decision; the other pod's policy may have evaluated
+	// the connection too. A differing verdict is still sent (Verdict is keyed).
 }
 
 func (flow *FiveTupleFlow) StartTimestamp() time.Time {

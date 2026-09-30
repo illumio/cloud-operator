@@ -91,8 +91,8 @@ type AWSVPCCNIFlowLog struct {
 //	"Flow Info: Src IP: 2001:db8::1 Src Port: 55484 Dest IP: 2001:db8::2 Dest Port: 80 Proto: TCP Verdict: ACCEPT Direction: egress"
 //
 // v1.3.0+ appends a policy tier (", Tier DEFAULT" / " Tier: DEFAULT"), which is ignored;
-// the direction capture stops at the comma before it. Direction is optional, so a
-// line without one still parses.
+// the direction capture (\w+) stops at the comma or space before it. Direction is
+// optional, so a line without one still parses.
 var flowMsgPattern = regexp.MustCompile(
 	`Flow Info:\s*Src IP:\s*(\S+)\s+Src Port:\s*(\d+)\s+Dest IP:\s*(\S+)\s+Dest Port:\s*(\d+)\s+Proto:?\s+(\S+)\s+Verdict:?\s+(\S+)(?:\s+Direction:?\s+(\w+))?`,
 )

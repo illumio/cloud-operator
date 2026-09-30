@@ -4546,7 +4546,9 @@ type FiveTupleFlow struct {
 	// policy produced the verdict. Only set by collectors that report one (AWS VPC CNI
 	// v1.2.2+: egress -> TRAFFIC_DIRECTION_EGRESS, the source pod's egress policy;
 	// ingress -> TRAFFIC_DIRECTION_INGRESS, the destination pod's ingress policy);
-	// TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED otherwise.
+	// TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED otherwise. A connection
+	// evaluated by both pods' policies with the same verdict is sent once, with the
+	// direction of whichever side was reported first.
 	TrafficDirection TrafficDirection `protobuf:"varint,6,opt,name=traffic_direction,json=trafficDirection,proto3,enum=illumio.cloud.k8sclustersync.v1.TrafficDirection" json:"traffic_direction,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
