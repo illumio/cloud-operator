@@ -15,11 +15,15 @@ func TestFiveTupleFlowKey_Verdict(t *testing.T) {
 		}
 	}
 
+	accept, acceptAgain := newFlow(Verdict_VERDICT_FORWARDED), newFlow(Verdict_VERDICT_FORWARDED)
+	deny := newFlow(Verdict_VERDICT_DROPPED)
+	unset, unsetAgain := newFlow(Verdict_VERDICT_UNKNOWN_UNSPECIFIED), newFlow(Verdict_VERDICT_UNKNOWN_UNSPECIFIED)
+
 	// The flow cache dedupes on Key() (first wins), so an ACCEPT must not hide a
 	// DENY for the same 5-tuple.
-	assert.NotEqual(t, newFlow(Verdict_VERDICT_FORWARDED).Key(), newFlow(Verdict_VERDICT_DROPPED).Key())
+	assert.NotEqual(t, accept.Key(), deny.Key())
 
-	assert.Equal(t, newFlow(Verdict_VERDICT_FORWARDED).Key(), newFlow(Verdict_VERDICT_FORWARDED).Key())
+	assert.Equal(t, accept.Key(), acceptAgain.Key())
 	// Collectors that don't report a verdict (OVN-K, Falco) keep deduping on the 5-tuple.
-	assert.Equal(t, newFlow(Verdict_VERDICT_UNKNOWN_UNSPECIFIED).Key(), newFlow(Verdict_VERDICT_UNKNOWN_UNSPECIFIED).Key())
+	assert.Equal(t, unset.Key(), unsetAgain.Key())
 }

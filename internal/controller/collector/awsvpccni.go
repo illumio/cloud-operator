@@ -36,6 +36,11 @@ const (
 	// anything older, so CacheFlowLine filters any flow whose timestamp is older than
 	// MaxFlowAge before it is cached and sent.
 	MaxFlowAge = 2 * time.Minute
+
+	// Verdicts logged by the AWS Network Policy Agent.
+	awsVPCCNIVerdictAccept           = "ACCEPT"
+	awsVPCCNIVerdictDeny             = "DENY"
+	awsVPCCNIVerdictExpiredOrDeleted = "EXPIRED/DELETED"
 )
 
 // AWS VPC CNI flow log errors.
@@ -139,22 +144,29 @@ func ParseAWSVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 	}
 
 	var (
-		srcIP, destIP, proto string
-		srcPort, destPort    uint32
-		ok                   bool
+		srcIP, destIP, proto, verdict string
+		srcPort, destPort             uint32
+		ok                            bool
 	)
 
 	switch {
 	case isOldFormat:
 		srcIP, srcPort, destIP, destPort, proto, ok = parseOldFormat(&log)
+		verdict = log.Verdict
 	case isNewFormat:
-		srcIP, srcPort, destIP, destPort, proto, _, ok = parseFlowFromMsg(log.Message)
+		srcIP, srcPort, destIP, destPort, proto, verdict, ok = parseFlowFromMsg(log.Message)
 	default:
 		return nil, ErrAWSVPCCNINotFlowLog
 	}
 
 	if !ok {
 		return nil, ErrAWSVPCCNIInvalidLog
+	}
+
+	// EXPIRED/DELETED is not an allow/deny decision for a connection, so it is
+	// not sent as a flow.
+	if verdict == awsVPCCNIVerdictExpiredOrDeleted {
+		return nil, ErrAWSVPCCNINotFlowLog
 	}
 
 	// Determine IP version
@@ -202,9 +214,24 @@ func ParseAWSVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 		Ts: &pb.FiveTupleFlow_Timestamp{
 			Timestamp: ts,
 		},
+		Verdict: parseAWSVPCCNIVerdict(verdict),
 	}
 
 	return flow, nil
+}
+
+// parseAWSVPCCNIVerdict maps the agent's verdict to a flow Verdict. Any other
+// value (e.g. a missing verdict) is sent as VERDICT_UNKNOWN_UNSPECIFIED rather
+// than dropping the flow.
+func parseAWSVPCCNIVerdict(verdict string) pb.Verdict {
+	switch verdict {
+	case awsVPCCNIVerdictAccept:
+		return pb.Verdict_VERDICT_FORWARDED
+	case awsVPCCNIVerdictDeny:
+		return pb.Verdict_VERDICT_DROPPED
+	default:
+		return pb.Verdict_VERDICT_UNKNOWN_UNSPECIFIED
+	}
 }
 
 // CacheFlowLine is the shared parse -> stale-filter -> cache path for the AWS VPC

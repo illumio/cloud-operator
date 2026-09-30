@@ -12,6 +12,9 @@ type FiveTupleFlowKey struct {
 	SourcePort      int
 	DestinationPort int
 	Protocol        string
+	// Verdict keeps flows with different verdicts for the same 5-tuple (e.g. an
+	// ACCEPT and a DENY) from being deduplicated into one.
+	Verdict Verdict
 }
 
 func (flow *FiveTupleFlow) StartTimestamp() time.Time {
@@ -26,6 +29,7 @@ func (flow *FiveTupleFlow) Key() any {
 	key := FiveTupleFlowKey{
 		SourceIP:      flow.GetLayer3().GetSource(),
 		DestinationIP: flow.GetLayer3().GetDestination(),
+		Verdict:       flow.GetVerdict(),
 	}
 	switch l4 := flow.GetLayer4().GetProtocol().(type) {
 	case *Layer4_Tcp:

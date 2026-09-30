@@ -203,12 +203,6 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			flow, err := ParseAWSVPCCNIFlowLog(tt.input)
 
 			if tt.wantErr != nil {
-				if err == nil {
-					t.Errorf("expected error %v, got nil", tt.wantErr)
-
-					return
-				}
-
 				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("expected error %v, got %v", tt.wantErr, err)
 				}
