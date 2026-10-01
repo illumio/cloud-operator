@@ -14,9 +14,9 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 
@@ -601,163 +601,6 @@ func TestConvertToProtoTimestamp(t *testing.T) {
 	assert.Equal(t, expected, result)
 }
 
-func (suite *ConvertTestSuite) TestGetProviderIdNodeSpec() {
-	tests := map[string]struct {
-		nodeName       string
-		node           *v1.Node
-		expectedID     string
-		expectedErrMsg string
-	}{
-		"node not found": {
-			nodeName:       "nonexistent-node",
-			node:           nil,
-			expectedID:     "",
-			expectedErrMsg: "nodes \"nonexistent-node\" not found",
-		},
-		"node with providerID": {
-			nodeName: "test-node",
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node",
-				},
-				Spec: v1.NodeSpec{
-					ProviderID: "provider-id-123",
-				},
-			},
-			expectedID:     "provider-id-123",
-			expectedErrMsg: "",
-		},
-		"node without providerID": {
-			nodeName: "test-node-no-id",
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node-no-id",
-				},
-				Spec: v1.NodeSpec{
-					ProviderID: "",
-				},
-			},
-			expectedID:     "",
-			expectedErrMsg: "no providerID set",
-		},
-	}
-
-	for name, tt := range tests {
-		suite.Run(name, func() {
-			k8sClient, _ := k8sclient.NewClient()
-
-			clientset := k8sClient.GetClientset()
-			if tt.node != nil {
-				_, err := clientset.CoreV1().Nodes().Create(context.TODO(), tt.node, metav1.CreateOptions{})
-				suite.Require().NoError(err)
-			}
-
-			id, err := getProviderIdNodeSpec(context.TODO(), clientset, tt.nodeName)
-			if tt.expectedErrMsg != "" {
-				suite.EqualError(err, tt.expectedErrMsg)
-			} else {
-				suite.Require().NoError(err)
-				suite.Equal(tt.expectedID, id)
-			}
-		})
-	}
-}
-
-func (suite *ConvertTestSuite) TestGetNodeIpAddresses() {
-	tests := map[string]struct {
-		nodeName       string
-		node           *v1.Node
-		expectedIPs    []string
-		expectedErrMsg string
-	}{
-		"node not found": {
-			nodeName:       "nonexistent-node",
-			node:           nil,
-			expectedIPs:    nil,
-			expectedErrMsg: "failed to get node",
-		},
-		"node with internal and external IPs": {
-			nodeName: "test-node-with-internal-external",
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node-with-internal-external",
-				},
-				Status: v1.NodeStatus{
-					Addresses: []v1.NodeAddress{
-						{Type: v1.NodeInternalIP, Address: "192.168.1.1"},
-						{Type: v1.NodeExternalIP, Address: "1.2.3.4"},
-					},
-				},
-			},
-			expectedIPs:    []string{"192.168.1.1", "1.2.3.4"},
-			expectedErrMsg: "",
-		},
-		"node with only internal IP": {
-			nodeName: "test-node-internal",
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node-internal",
-				},
-				Status: v1.NodeStatus{
-					Addresses: []v1.NodeAddress{
-						{Type: v1.NodeInternalIP, Address: "192.168.1.1"},
-					},
-				},
-			},
-			expectedIPs:    []string{"192.168.1.1"},
-			expectedErrMsg: "",
-		},
-		"node with only external IP": {
-			nodeName: "test-node-external",
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node-external",
-				},
-				Status: v1.NodeStatus{
-					Addresses: []v1.NodeAddress{
-						{Type: v1.NodeExternalIP, Address: "1.2.3.4"},
-					},
-				},
-			},
-			expectedIPs:    []string{"1.2.3.4"},
-			expectedErrMsg: "",
-		},
-		"node with no IPs": {
-			nodeName: "test-node-no-ips",
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node-no-ips",
-				},
-				Status: v1.NodeStatus{
-					Addresses: []v1.NodeAddress{},
-				},
-			},
-			expectedIPs:    []string{},
-			expectedErrMsg: "",
-		},
-	}
-
-	for name, tt := range tests {
-		suite.Run(name, func() {
-			k8sClient, _ := k8sclient.NewClient()
-
-			clientset := k8sClient.GetClientset()
-			if tt.node != nil {
-				_, err := clientset.CoreV1().Nodes().Create(context.TODO(), tt.node, metav1.CreateOptions{})
-				suite.Require().NoError(err)
-			}
-
-			ips, err := getNodeIpAddresses(context.TODO(), clientset, tt.nodeName)
-			if tt.expectedErrMsg != "" {
-				suite.EqualError(err, tt.expectedErrMsg)
-			} else {
-				suite.Require().NoError(err)
-				suite.Equal(tt.expectedIPs, ips)
-			}
-		})
-	}
-}
-
 func (suite *ConvertTestSuite) TestExtractPodIPsFromUnstructured() {
 	tests := map[string]struct {
 		kind        string
@@ -1002,15 +845,15 @@ func (suite *ConvertTestSuite) TestCombineIPAddresses() {
 	}
 }
 
-func (suite *ConvertTestSuite) TestConvertToKubernetesServiceData() {
+func TestConvertToKubernetesServiceData(t *testing.T) {
 	tests := map[string]struct {
 		service        *v1.Service
 		expectedResult *pb.KubernetesServiceData
 		expectedError  error
 	}{
-		"service not found": {
+		"nil service object": {
 			expectedResult: nil,
-			expectedError:  errors.New("failed to get service"),
+			expectedError:  errors.New("service object is nil"),
 		},
 		"normal case, all fields populated": {
 			service: &v1.Service{
@@ -1120,8 +963,11 @@ func (suite *ConvertTestSuite) TestConvertToKubernetesServiceData() {
 					ClusterIP: "None",
 					Ports: []v1.ServicePort{
 						{
-							Port:     80,
-							Protocol: v1.ProtocolTCP,
+							// The API server defaults targetPort to port; listed
+							// objects always carry it.
+							Port:       80,
+							Protocol:   v1.ProtocolTCP,
+							TargetPort: intstr.FromInt32(80),
 						},
 					},
 				},
@@ -1160,34 +1006,31 @@ func (suite *ConvertTestSuite) TestConvertToKubernetesServiceData() {
 	}
 
 	for name, tt := range tests {
-		suite.Run(name, func() {
-			ctx := context.TODO()
-
-			// Clean up any existing service before each subtest
-			err := suite.clientset.CoreV1().Services("default").Delete(ctx, "test-service", metav1.DeleteOptions{})
-			if err != nil && !k8sErrors.IsNotFound(err) {
-				suite.T().Fatal("Failed to delete service: " + err.Error())
-			}
-
-			if tt.service == nil {
-				time.Sleep(100 * time.Millisecond) // Wait for deletion to propagate
-			}
-
-			if tt.service != nil {
-				_, err := suite.clientset.CoreV1().Services(tt.service.Namespace).Create(ctx, tt.service, metav1.CreateOptions{})
-				suite.Require().NoError(err)
-			}
-
-			result, err := convertToKubernetesServiceData(ctx, "test-service", suite.clientset, "default")
+		t.Run(name, func(t *testing.T) {
+			result, err := convertToKubernetesServiceData(serviceToUnstructured(t, tt.service))
 			if tt.expectedError != nil {
-				suite.EqualError(err, tt.expectedError.Error())
+				assert.EqualError(t, err, tt.expectedError.Error())
 			} else {
-				suite.Require().NoError(err)
-				// Custom comparison ignoring IpAddresses field since KIND can mess with them.
-				assertEqualKubernetesServiceData(suite.T(), tt.expectedResult, result)
+				require.NoError(t, err)
+				assertEqualKubernetesServiceData(t, tt.expectedResult, result)
 			}
 		})
 	}
+}
+
+// serviceToUnstructured converts a typed Service to the unstructured form the
+// resource watcher passes to the converter. A nil Service gives a nil object.
+func serviceToUnstructured(t *testing.T, service *v1.Service) *unstructured.Unstructured {
+	t.Helper()
+
+	if service == nil {
+		return nil
+	}
+
+	obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(service)
+	require.NoError(t, err)
+
+	return &unstructured.Unstructured{Object: obj}
 }
 
 func assertEqualKubernetesServiceData(t *testing.T, expected, actual *pb.KubernetesServiceData) {
@@ -1717,6 +1560,269 @@ func TestConvertNetworkPolicyToProto_Comprehensive(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, tt.expectedPolicy, result)
 			}
+		})
+	}
+}
+
+func TestConvertMetaObjectToMetadata_Node(t *testing.T) {
+	ctx := context.Background()
+	clientset := k8sfake.NewSimpleClientset()
+
+	tests := map[string]struct {
+		node             *v1.Node
+		apiGroup         string
+		expectedNodeData *pb.KubernetesNodeData
+	}{
+		"node with providerID and all address types": {
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{Name: "node-a"},
+				Spec:       v1.NodeSpec{ProviderID: "aws:///us-west-2a/i-0123456789"},
+				Status: v1.NodeStatus{Addresses: []v1.NodeAddress{
+					{Type: v1.NodeInternalIP, Address: "10.0.0.1"},
+					{Type: v1.NodeExternalIP, Address: "34.1.2.3"},
+					{Type: v1.NodeHostName, Address: "node-a"},
+					{Type: v1.NodeInternalDNS, Address: "ip-10-0-0-1.ec2.internal"},
+				}},
+			},
+			expectedNodeData: &pb.KubernetesNodeData{
+				ProviderId:  "aws:///us-west-2a/i-0123456789",
+				IpAddresses: []string{"10.0.0.1", "34.1.2.3"},
+				Addresses: []*pb.KubernetesNodeData_NodeAddress{
+					{Type: "InternalIP", Address: "10.0.0.1"},
+					{Type: "ExternalIP", Address: "34.1.2.3"},
+					{Type: "Hostname", Address: "node-a"},
+					{Type: "InternalDNS", Address: "ip-10-0-0-1.ec2.internal"},
+				},
+			},
+		},
+		// Bare-metal and kind nodes have no providerID; their addresses must
+		// still be sent.
+		"node without providerID keeps its addresses": {
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{Name: "kind-worker"},
+				Status: v1.NodeStatus{Addresses: []v1.NodeAddress{
+					{Type: v1.NodeInternalIP, Address: "172.18.0.2"},
+					{Type: v1.NodeHostName, Address: "kind-worker"},
+				}},
+			},
+			expectedNodeData: &pb.KubernetesNodeData{
+				ProviderId:  "",
+				IpAddresses: []string{"172.18.0.2"},
+				Addresses: []*pb.KubernetesNodeData_NodeAddress{
+					{Type: "InternalIP", Address: "172.18.0.2"},
+					{Type: "Hostname", Address: "kind-worker"},
+				},
+			},
+		},
+		"node without addresses": {
+			node: &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-b"}},
+			expectedNodeData: &pb.KubernetesNodeData{
+				IpAddresses: []string{},
+			},
+		},
+		"openshift config Node is not parsed as a core Node": {
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{Name: "cluster"},
+				Status:     v1.NodeStatus{Addresses: []v1.NodeAddress{{Type: v1.NodeInternalIP, Address: "10.0.0.1"}}},
+			},
+			apiGroup:         "config.openshift.io",
+			expectedNodeData: nil,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(tt.node)
+			require.NoError(t, err)
+
+			result := ConvertMetaObjectToMetadata(ctx, tt.node.ObjectMeta, &unstructured.Unstructured{Object: obj}, clientset, "Node", tt.apiGroup, "v1")
+
+			if tt.expectedNodeData == nil {
+				assert.Nil(t, result.GetKindSpecific())
+
+				return
+			}
+
+			assert.Equal(t, tt.expectedNodeData, result.GetNode())
+		})
+	}
+}
+
+func TestConvertMetaObjectToMetadata_NodeWithoutRawObject(t *testing.T) {
+	objMeta := metav1.ObjectMeta{Name: "node-a"}
+
+	result := ConvertMetaObjectToMetadata(context.Background(), objMeta, nil, k8sfake.NewSimpleClientset(), "Node", "", "v1")
+
+	assert.Nil(t, result.GetKindSpecific())
+}
+
+func TestConvertToKubernetesServiceData_LoadBalancer(t *testing.T) {
+	vip := v1.LoadBalancerIPModeVIP
+	proxy := v1.LoadBalancerIPModeProxy
+	portError := "CertificateMismatch"
+
+	tests := map[string]struct {
+		spec     v1.ServiceSpec
+		status   v1.ServiceStatus
+		validate func(t *testing.T, data *pb.KubernetesServiceData)
+	}{
+		"AWS NLB exposes a hostname": {
+			spec: v1.ServiceSpec{
+				Type:                  v1.ServiceTypeLoadBalancer,
+				ClusterIPs:            []string{"10.96.0.10"},
+				ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyCluster,
+				Ports:                 []v1.ServicePort{{Port: 80, NodePort: 30080, Protocol: v1.ProtocolTCP}},
+			},
+			status: v1.ServiceStatus{LoadBalancer: v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{
+				{Hostname: "k8s-default-web-0123.elb.us-west-2.amazonaws.com"},
+			}}},
+			validate: func(t *testing.T, data *pb.KubernetesServiceData) {
+				t.Helper()
+				assert.Equal(t, []*pb.LoadBalancerIngress{
+					{Hostname: new("k8s-default-web-0123.elb.us-west-2.amazonaws.com")},
+				}, data.GetLoadBalancerIngress())
+				assert.Equal(t, "Cluster", data.GetExternalTrafficPolicy())
+				// The hostname stays in ip_addresses for backward compatibility.
+				assert.Equal(t, []string{"10.96.0.10", "k8s-default-web-0123.elb.us-west-2.amazonaws.com"}, data.GetIpAddresses())
+			},
+		},
+		"local traffic policy with health check port and source ranges": {
+			spec: v1.ServiceSpec{
+				Type:                     v1.ServiceTypeLoadBalancer,
+				ClusterIPs:               []string{"10.96.0.11"},
+				ExternalTrafficPolicy:    v1.ServiceExternalTrafficPolicyLocal,
+				HealthCheckNodePort:      32000,
+				LoadBalancerSourceRanges: []string{"203.0.113.0/24", "198.51.100.7/32"},
+			},
+			status: v1.ServiceStatus{LoadBalancer: v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{
+				{IP: "34.120.1.2", IPMode: &vip},
+			}}},
+			validate: func(t *testing.T, data *pb.KubernetesServiceData) {
+				t.Helper()
+				assert.Equal(t, "Local", data.GetExternalTrafficPolicy())
+				assert.Equal(t, uint32(32000), data.GetHealthCheckNodePort())
+				assert.Equal(t, []string{"203.0.113.0/24", "198.51.100.7/32"}, data.GetLoadBalancerSourceRanges())
+				assert.Equal(t, []*pb.LoadBalancerIngress{
+					{Ip: new("34.120.1.2"), IpMode: new("VIP")},
+				}, data.GetLoadBalancerIngress())
+			},
+		},
+		"IP and hostname with port status": {
+			spec: v1.ServiceSpec{
+				Type:                          v1.ServiceTypeLoadBalancer,
+				AllocateLoadBalancerNodePorts: new(false),
+			},
+			status: v1.ServiceStatus{LoadBalancer: v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{
+				{
+					IP:       "192.0.2.10",
+					Hostname: "lb.example.com",
+					IPMode:   &proxy,
+					Ports: []v1.PortStatus{
+						{Port: 80, Protocol: v1.ProtocolTCP},
+						{Port: 443, Protocol: v1.ProtocolTCP, Error: &portError},
+					},
+				},
+			}}},
+			validate: func(t *testing.T, data *pb.KubernetesServiceData) {
+				t.Helper()
+				assert.False(t, data.GetAllocateLoadBalancerNodePorts())
+				require.NotNil(t, data.AllocateLoadBalancerNodePorts)
+				assert.Equal(t, []*pb.LoadBalancerIngress{{
+					Ip:       new("192.0.2.10"),
+					Hostname: new("lb.example.com"),
+					IpMode:   new("Proxy"),
+					Ports: []*pb.LoadBalancerIngress_PortStatus{
+						{Port: 80, Protocol: "TCP"},
+						{Port: 443, Protocol: "TCP", Error: new("CertificateMismatch")},
+					},
+				}}, data.GetLoadBalancerIngress())
+			},
+		},
+		"ClusterIP service has no load balancer fields": {
+			spec: v1.ServiceSpec{
+				Type:       v1.ServiceTypeClusterIP,
+				ClusterIPs: []string{"10.96.0.12"},
+			},
+			validate: func(t *testing.T, data *pb.KubernetesServiceData) {
+				t.Helper()
+				assert.Empty(t, data.GetLoadBalancerIngress())
+				assert.Nil(t, data.ExternalTrafficPolicy)
+				assert.Nil(t, data.HealthCheckNodePort)
+				assert.Empty(t, data.GetLoadBalancerSourceRanges())
+				assert.Nil(t, data.AllocateLoadBalancerNodePorts)
+			},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			data, err := convertToKubernetesServiceData(serviceToUnstructured(t, &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
+				Spec:       tt.spec,
+				Status:     tt.status,
+			}))
+			require.NoError(t, err)
+
+			tt.validate(t, data)
+		})
+	}
+}
+
+// A delete event carries the deleted object, which no longer exists in the API.
+// The Service data must come from that object, not from a fresh GET.
+func TestConvertMetaObjectToMetadata_DeletedServiceKeepsData(t *testing.T) {
+	service := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
+		Spec: v1.ServiceSpec{
+			Type:                  v1.ServiceTypeLoadBalancer,
+			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyLocal,
+		},
+		Status: v1.ServiceStatus{LoadBalancer: v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{
+			{IP: "34.120.1.2"},
+		}}},
+	}
+
+	// The clientset has no Services, as after a delete.
+	result := ConvertMetaObjectToMetadata(context.Background(), service.ObjectMeta, serviceToUnstructured(t, service), k8sfake.NewSimpleClientset(), "Service", "", "v1")
+
+	require.NotNil(t, result.GetService())
+	assert.Equal(t, "Local", result.GetService().GetExternalTrafficPolicy())
+	assert.Equal(t, []*pb.LoadBalancerIngress{{Ip: new("34.120.1.2")}}, result.GetService().GetLoadBalancerIngress())
+}
+
+// CRDs in other groups can reuse core kind names. They must be sent with
+// metadata only, never with data read from a core object of the same name.
+func TestConvertMetaObjectToMetadata_OtherGroupKindsGetMetadataOnly(t *testing.T) {
+	objMeta := metav1.ObjectMeta{Name: "web", Namespace: "default"}
+	coreService := &v1.Service{
+		ObjectMeta: objMeta,
+		Spec:       v1.ServiceSpec{Type: v1.ServiceTypeLoadBalancer, ClusterIPs: []string{"10.96.0.10"}},
+	}
+	clientset := k8sfake.NewSimpleClientset(
+		coreService,
+		&networkingv1.NetworkPolicy{ObjectMeta: objMeta},
+	)
+
+	tests := map[string]struct {
+		kind     string
+		apiGroup string
+	}{
+		"knative Service":       {kind: "Service", apiGroup: "serving.knative.dev"},
+		"calico NetworkPolicy":  {kind: "NetworkPolicy", apiGroup: "crd.projectcalico.org"},
+		"non-core Pod":          {kind: "Pod", apiGroup: "example.com"},
+		"openshift config Node": {kind: "Node", apiGroup: "config.openshift.io"},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			obj := serviceToUnstructured(t, coreService)
+			obj.SetKind(tt.kind)
+			obj.SetAPIVersion(tt.apiGroup + "/v1")
+
+			result := ConvertMetaObjectToMetadata(context.Background(), objMeta, obj, clientset, tt.kind, tt.apiGroup, "v1")
+
+			assert.Equal(t, "web", result.GetName())
+			assert.Nil(t, result.GetKindSpecific())
 		})
 	}
 }

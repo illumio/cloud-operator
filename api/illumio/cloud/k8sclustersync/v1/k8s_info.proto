@@ -55,6 +55,10 @@ message KubernetesObjectData {
     KubernetesWorkloadData workload = 107;
     KubernetesAWSClusterNetworkPolicyData aws_cluster_network_policy = 108;
     KubernetesAWSApplicationNetworkPolicyData aws_application_network_policy = 109;
+    // Tags 110-113 are reserved by the in-flight OpenShift policy CRDs work.
+    KubernetesTargetGroupBindingData target_group_binding = 114;
+    KubernetesServiceNetworkEndpointGroupData service_network_endpoint_group = 115;
+    KubernetesMetalLBServiceStatusData metallb_service_status = 116;
   }
 }
 
@@ -72,6 +76,23 @@ message KubernetesServiceData {
   optional string load_balancer_class = 5;
   // Label selector that determines which pods are targeted by this service
   map<string, string> selector = 6;
+  // spec.externalTrafficPolicy: "Cluster" or "Local". With "Local", only nodes
+  // running a backing pod receive external traffic.
+  optional string external_traffic_policy = 7;
+  // status.loadBalancer.ingress, typed. The same IPs and hostnames are also
+  // included in ip_addresses for backward compatibility.
+  repeated LoadBalancerIngress load_balancer_ingress = 8;
+  // spec.loadBalancerSourceRanges: client CIDRs allowed through the load balancer.
+  repeated string load_balancer_source_ranges = 9;
+  // spec.healthCheckNodePort: the node port the load balancer health-checks
+  // when external_traffic_policy is "Local".
+  optional uint32 health_check_node_port = 10;
+  // spec.allocateLoadBalancerNodePorts. False only stops Kubernetes from
+  // allocating node ports automatically: node ports set explicitly, or allocated
+  // before the field changed, remain in ports[].node_port. It does not show that
+  // the load balancer targets pods; some implementations (e.g. MetalLB) still
+  // route through nodes without node ports.
+  optional bool allocate_load_balancer_node_ports = 11;
 
   message ServicePort {
     // The port on each node on which this service is exposed
@@ -91,10 +112,122 @@ message KubernetesServiceData {
 
 // KubernetesNodeData contains information specific to a Node Object.
 message KubernetesNodeData {
-  // Node.spec.providerID
+  // Node.spec.providerID. Empty on clusters without a cloud provider (bare
+  // metal, kind, some on-prem distributions).
   string provider_id = 1;
   // List of ip addresses that are tied to Node so we can resolve them as workloads
   repeated string ip_addresses = 2;
+  // Node.status.addresses with their types (InternalIP, ExternalIP, Hostname,
+  // InternalDNS, ExternalDNS).
+  repeated NodeAddress addresses = 3;
+
+  message NodeAddress {
+    string type = 1;
+    string address = 2;
+  }
+}
+
+// LoadBalancerIngress is one entry of a Service's status.loadBalancer.ingress.
+message LoadBalancerIngress {
+  // Set by load balancers that expose an IP (GCP, Azure, MetalLB, ...).
+  optional string ip = 1;
+  // Set by load balancers that expose a DNS name (AWS ELB/NLB).
+  optional string hostname = 2;
+  // "VIP": traffic is delivered to the node with the destination set to the
+  // load balancer IP. "Proxy": the load balancer rewrites the destination.
+  // Only set on Kubernetes 1.30+.
+  optional string ip_mode = 3;
+  repeated PortStatus ports = 4;
+
+  message PortStatus {
+    uint32 port = 1;
+    string protocol = 2;
+    // Set when the load balancer failed to expose this port.
+    optional string error = 3;
+  }
+}
+
+// KubernetesTargetGroupBindingData contains information specific to an AWS
+// Load Balancer Controller TargetGroupBinding (elbv2.k8s.aws). It binds an AWS
+// target group to a Service and records whether the load balancer targets
+// nodes or pods.
+// https://github.com/kubernetes-sigs/aws-load-balancer-controller/blob/main/apis/elbv2/v1beta1/targetgroupbinding_types.go
+message KubernetesTargetGroupBindingData {
+  // spec.serviceRef.name, in the TargetGroupBinding's namespace.
+  string service_name = 1;
+  // spec.serviceRef.port: a port number or a port name.
+  string service_port = 2;
+  // spec.targetType: "instance" (nodes) or "ip" (pods).
+  optional string target_type = 3;
+  string target_group_arn = 4;
+  optional string target_group_name = 5;
+  // spec.ipAddressType: "ipv4" or "ipv6".
+  optional string ip_address_type = 6;
+  // spec.nodeSelector: nodes registered as targets when target_type is "instance".
+  LabelSelector node_selector = 7;
+  // spec.networking.ingress: sources the controller allows to reach the targets.
+  repeated TargetGroupBindingIngressRule networking_ingress_rules = 8;
+  optional string vpc_id = 9;
+  optional string target_group_protocol = 10;
+  // spec.multiClusterTargetGroup: the target group is shared with other clusters.
+  bool multi_cluster_target_group = 11;
+}
+
+message TargetGroupBindingIngressRule {
+  repeated TargetGroupBindingPeer from = 1;
+  repeated TargetGroupBindingPort ports = 2;
+}
+
+// TargetGroupBindingPeer has exactly one of cidr or security_group_id set.
+message TargetGroupBindingPeer {
+  optional string cidr = 1;
+  optional string security_group_id = 2;
+}
+
+message TargetGroupBindingPort {
+  optional string protocol = 1;
+  // A port number or a port name. Unset means all ports.
+  optional string port = 2;
+}
+
+// KubernetesServiceNetworkEndpointGroupData contains information specific to a
+// GKE ServiceNetworkEndpointGroup (networking.gke.io). GKE creates one per
+// Service port that uses network endpoint groups.
+// https://github.com/kubernetes/ingress-gce/blob/master/pkg/apis/svcneg/v1beta1/types.go
+message KubernetesServiceNetworkEndpointGroupData {
+  // From the networking.gke.io/service-name label.
+  string service_name = 1;
+  // From the networking.gke.io/service-port label.
+  string service_port = 2;
+  // status.networkEndpointGroups
+  repeated NetworkEndpointGroup network_endpoint_groups = 3;
+
+  message NetworkEndpointGroup {
+    string id = 1;
+    // "GCE_VM_IP_PORT" targets pods, "GCE_VM_IP" targets nodes,
+    // "NON_GCP_PRIVATE_IP_PORT" targets endpoints outside GCP.
+    string network_endpoint_type = 2;
+    string self_link = 3;
+    string subnet_url = 4;
+    string state = 5;
+  }
+}
+
+// KubernetesMetalLBServiceStatusData contains information specific to a MetalLB
+// ServiceL2Status or ServiceBGPStatus (metallb.io). Each one records a node
+// that announces a LoadBalancer Service's IP. The object's kind tells L2 mode
+// (one node receives all traffic) from BGP mode (traffic is spread across the
+// announcing nodes).
+// https://github.com/metallb/metallb/tree/main/api/v1beta1
+message KubernetesMetalLBServiceStatusData {
+  string service_name = 1;
+  string service_namespace = 2;
+  // The node announcing the Service's IP.
+  string node = 3;
+  // ServiceL2Status only: interfaces the IP is announced on.
+  repeated string interfaces = 4;
+  // ServiceBGPStatus only: BGP peers the IP is advertised to.
+  repeated string peers = 5;
 }
 
 // KubernetesPodData contains information specific to a Pod object.
