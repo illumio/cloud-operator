@@ -65,3 +65,17 @@ rules:
 - apiGroups: ["config.openshift.io"]
   resources: ["ingresses", "nodes"]
   verbs: ["get", "list", "watch"]
+# Load balancer bindings: how a provider's load balancer reaches a Service
+# (nodes or pods). Read-only, and unused on clusters without these CRDs.
+# AWS Load Balancer Controller
+- apiGroups: ["elbv2.k8s.aws"]
+  resources: ["targetgroupbindings"]
+  verbs: ["get", "list", "watch"]
+# GKE network endpoint groups
+- apiGroups: ["networking.gke.io"]
+  resources: ["servicenetworkendpointgroups"]
+  verbs: ["get", "list", "watch"]
+# MetalLB announcing nodes (L2 and BGP)
+- apiGroups: ["metallb.io"]
+  resources: ["servicel2statuses", "servicebgpstatuses"]
+  verbs: ["get", "list", "watch"]

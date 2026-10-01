@@ -39,9 +39,21 @@ var resourceList = slices.Concat(ManagedResourceNames, []string{
 	"replicasets",
 	"replicationcontrollers",
 	"serviceaccounts",
+	"servicebgpstatuses",
+	"servicel2statuses",
+	"servicenetworkendpointgroups",
 	"services",
 	"statefulsets",
+	"targetgroupbindings",
 })
+
+// expectedGroup pins plural resource names that more than one API group serves
+// to the group we watch. Without it, whichever group discovery returns last
+// wins: on OpenShift, config.openshift.io/nodes (cluster config) would replace
+// the core nodes.
+var expectedGroup = map[string]string{
+	"nodes": "",
+}
 
 // ResourceInfo holds the API group and preferred version for a resource.
 type ResourceInfo struct {
@@ -88,6 +100,10 @@ func BuildResourceAPIGroupMap(resources []string, clientset kubernetes.Interface
 
 		for _, resource := range resourceList.APIResources {
 			if _, exists := resourceSet[resource.Name]; exists {
+				if pinnedGroup, pinned := expectedGroup[resource.Name]; pinned && pinnedGroup != group.Name {
+					continue
+				}
+
 				resourceAPIGroupMap[resource.Name] = ResourceInfo{
 					Group:   group.Name,
 					Version: group.PreferredVersion.Version,

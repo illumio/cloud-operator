@@ -136,6 +136,72 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 		assert.Equal(t, "apps", result["statefulsets"].Group)
 		assert.Equal(t, "v1", result["statefulsets"].Version)
 	})
+
+	// On OpenShift, config.openshift.io also serves "nodes" (cluster config) and
+	// is discovered after the core group. The core nodes must still win.
+	t.Run("core nodes win over config.openshift.io nodes", func(t *testing.T) {
+		clientset := k8sfake.NewSimpleClientset()
+
+		fakeDiscovery, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
+		require.True(t, ok, "failed to get fake discovery client")
+
+		fakeDiscovery.Resources = []*metav1.APIResourceList{
+			{
+				GroupVersion: "v1",
+				APIResources: []metav1.APIResource{
+					{Name: "nodes", Kind: "Node"},
+				},
+			},
+			{
+				GroupVersion: "config.openshift.io/v1",
+				APIResources: []metav1.APIResource{
+					{Name: "nodes", Kind: "Node"},
+				},
+			},
+		}
+
+		result, err := BuildResourceAPIGroupMap([]string{"nodes"}, clientset, logger)
+		require.NoError(t, err)
+
+		assert.Equal(t, ResourceInfo{Group: "", Version: "v1"}, result["nodes"])
+	})
+
+	t.Run("maps load balancer binding resources", func(t *testing.T) {
+		clientset := k8sfake.NewSimpleClientset()
+
+		fakeDiscovery, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
+		require.True(t, ok, "failed to get fake discovery client")
+
+		fakeDiscovery.Resources = []*metav1.APIResourceList{
+			{
+				GroupVersion: "elbv2.k8s.aws/v1beta1",
+				APIResources: []metav1.APIResource{
+					{Name: "targetgroupbindings", Kind: "TargetGroupBinding"},
+				},
+			},
+			{
+				GroupVersion: "networking.gke.io/v1beta1",
+				APIResources: []metav1.APIResource{
+					{Name: "servicenetworkendpointgroups", Kind: "ServiceNetworkEndpointGroup"},
+				},
+			},
+			{
+				GroupVersion: "metallb.io/v1beta1",
+				APIResources: []metav1.APIResource{
+					{Name: "servicel2statuses", Kind: "ServiceL2Status"},
+					{Name: "servicebgpstatuses", Kind: "ServiceBGPStatus"},
+				},
+			},
+		}
+
+		result, err := BuildResourceAPIGroupMap(resourceList, clientset, logger)
+		require.NoError(t, err)
+
+		assert.Equal(t, ResourceInfo{Group: "elbv2.k8s.aws", Version: "v1beta1"}, result["targetgroupbindings"])
+		assert.Equal(t, ResourceInfo{Group: "networking.gke.io", Version: "v1beta1"}, result["servicenetworkendpointgroups"])
+		assert.Equal(t, ResourceInfo{Group: "metallb.io", Version: "v1beta1"}, result["servicel2statuses"])
+		assert.Equal(t, ResourceInfo{Group: "metallb.io", Version: "v1beta1"}, result["servicebgpstatuses"])
+	})
 }
 
 func TestResourceListCiliumDispatchConsistency(t *testing.T) {
