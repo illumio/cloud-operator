@@ -47,6 +47,25 @@ func TestFiveTupleFlowKey_DirectionNotInKey(t *testing.T) {
 	assert.Equal(t, egress.Key(), ingress.Key())
 }
 
+func TestFiveTupleFlowKey_PolicyTierNotInKey(t *testing.T) {
+	newFlow := func(tier PolicyTier) *FiveTupleFlow {
+		return &FiveTupleFlow{
+			Layer3:     &IP{Source: "10.0.1.28", Destination: "10.0.1.132", IpVersion: IPVersion_IP_VERSION_IPV4},
+			Layer4:     &Layer4{Protocol: &Layer4_Tcp{Tcp: &TCP{SourcePort: 55484, DestinationPort: 80}}},
+			Verdict:    Verdict_VERDICT_FORWARDED,
+			PolicyTier: tier,
+		}
+	}
+
+	// The tier belongs to the same side's decision as the direction, so it is not
+	// keyed either: e.g. a connection allowed by the destination pod's
+	// NetworkPolicy and by the source pod's default is sent once.
+	defaultTier := newFlow(PolicyTier_POLICY_TIER_DEFAULT)
+	networkPolicy := newFlow(PolicyTier_POLICY_TIER_NETWORK_POLICY)
+
+	assert.Equal(t, defaultTier.Key(), networkPolicy.Key())
+}
+
 func TestFiveTupleFlowKey_Protocols(t *testing.T) {
 	tests := []struct {
 		name   string

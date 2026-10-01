@@ -770,6 +770,15 @@ message FiveTupleFlow {
   // evaluated by both pods' policies with the same verdict is sent once, with the
   // direction of whichever side was reported first.
   TrafficDirection traffic_direction = 6;
+
+  // policy_tier of the flow as reported by the CNI plugin: which tier of network
+  // policy produced the verdict, for the same side as traffic_direction. Only set by
+  // collectors that report one (AWS VPC CNI v1.3.0+: ADMIN, NETWORK_POLICY,
+  // BASELINE, DEFAULT, ERROR); POLICY_TIER_UNSPECIFIED otherwise. Like
+  // traffic_direction, it is not part of the flow's identity: a connection evaluated
+  // by both pods' policies with the same verdict is sent once, with the tier of
+  // whichever side was reported first.
+  PolicyTier policy_tier = 7;
 }
 
 // A flow received from Cilium Hubble Relay using the Observer service's GetFlows RPC.
@@ -833,6 +842,29 @@ enum Verdict {
   VERDICT_REDIRECTED = 5;
   VERDICT_TRACED = 6;
   VERDICT_TRANSLATED = 7;
+}
+
+// PolicyTier is the tier of network policy that decided a flow's verdict. Tiers are
+// evaluated in order: admin cluster policy, then namespaced network policy, then
+// baseline cluster policy, then the pod's default. Values mirror the tiers logged by
+// the AWS Network Policy Agent:
+// https://github.com/aws/aws-network-policy-agent/blob/b2e4eeeb01bca8abbd98f9a203a64f0628e52bef/pkg/ebpf/c/tc.v4ingress.bpf.c
+enum PolicyTier {
+  // The CNI plugin did not report a tier.
+  POLICY_TIER_UNSPECIFIED = 0;
+  // An admin-tier cluster network policy rule allowed or denied the flow.
+  POLICY_TIER_ADMIN = 1;
+  // A namespaced network policy decided: one of its rules allowed the flow, or the
+  // pod is selected by a policy and no rule allowed it.
+  POLICY_TIER_NETWORK_POLICY = 2;
+  // No namespaced network policy selects the pod, and a baseline-tier cluster
+  // network policy rule allowed or denied the flow.
+  POLICY_TIER_BASELINE = 3;
+  // No policy rule decided; the pod's default action (allow or deny) applied.
+  POLICY_TIER_DEFAULT = 4;
+  // The flow was dropped without a policy decision (AWS agent: its per-pod policy
+  // state was missing).
+  POLICY_TIER_ERROR = 5;
 }
 
 // IP contains the IP header fields of a flow.

@@ -27,6 +27,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 		wantProto     string
 		wantVerdict   pb.Verdict
 		wantDirection pb.TrafficDirection
+		wantTier      pb.PolicyTier
 	}{
 		{
 			name:          "valid TCP ACCEPT flow",
@@ -37,6 +38,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "tcp",
 			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
 			name:          "valid TCP DENY flow",
@@ -47,6 +49,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "tcp",
 			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
 			name:          "valid UDP flow",
@@ -57,6 +60,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "udp",
 			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
 			name:          "valid ICMP flow with zero ports",
@@ -67,6 +71,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "icmp",
 			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
 			name:    "not a flow log - different message",
@@ -102,6 +107,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "tcp",
 			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		// New format tests (v1.2.2+) - embedded msg string
 		{
@@ -113,6 +119,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "tcp",
 			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
 			name:          "v1.2.2+ format - TCP ACCEPT ingress",
@@ -123,6 +130,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "tcp",
 			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
 			name:          "v1.2.2+ format - UDP ACCEPT",
@@ -133,6 +141,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "udp",
 			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
 			name:          "v1.2.2+ format - TCP DENY",
@@ -143,6 +152,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "tcp",
 			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
 			name:          "v1.3.0+ format - TCP ACCEPT with Tier",
@@ -153,6 +163,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "tcp",
 			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_DEFAULT,
 		},
 		// IPv6 lines put a colon after Proto/Verdict/Direction (v1.2.2+).
 		{
@@ -164,6 +175,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "tcp",
 			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
 			name:          "v1.3.0+ format - IPv6 UDP DENY with Tier",
@@ -174,6 +186,74 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "udp",
 			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_DEFAULT,
+		},
+		// v1.3.0+ logs the policy tier that decided the verdict.
+		{
+			name:          "v1.3.0+ format - ADMIN tier",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.2.50 Src Port: 45000 Dest IP: 10.0.1.100 Dest Port: 443 Proto TCP Verdict DENY Direction ingress, Tier ADMIN"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.2.50",
+			wantDstIP:     "10.0.1.100",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_ADMIN,
+		},
+		{
+			name:          "v1.3.0+ format - NETWORK_POLICY tier",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction ingress, Tier NETWORK_POLICY"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.1.28",
+			wantDstIP:     "10.0.1.132",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_NETWORK_POLICY,
+		},
+		{
+			name:          "v1.3.0+ format - BASELINE tier",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 192.168.1.10 Src Port: 53000 Dest IP: 10.0.0.53 Dest Port: 53 Proto UDP Verdict ACCEPT Direction egress, Tier BASELINE"}`,
+			wantErr:       nil,
+			wantSrcIP:     "192.168.1.10",
+			wantDstIP:     "10.0.0.53",
+			wantProto:     "udp",
+			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_BASELINE,
+		},
+		{
+			name:          "v1.3.0+ format - ERROR tier",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.2.50 Src Port: 45000 Dest IP: 10.0.1.100 Dest Port: 443 Proto TCP Verdict DENY Direction egress, Tier ERROR"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.2.50",
+			wantDstIP:     "10.0.1.100",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_ERROR,
+		},
+		{
+			name:          "v1.3.0+ format - IPv6 NETWORK_POLICY tier",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 2001:db8::1 Src Port: 55484 Dest IP: 2001:db8::2 Dest Port: 80 Proto: TCP Verdict: DENY Direction: egress Tier: NETWORK_POLICY"}`,
+			wantErr:       nil,
+			wantSrcIP:     "2001:db8::1",
+			wantDstIP:     "2001:db8::2",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_NETWORK_POLICY,
+		},
+		{
+			name:          "v1.3.0+ format - unrecognized tier is sent as unknown",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress, Tier FUTURE"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.1.28",
+			wantDstIP:     "10.0.1.132",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		// EXPIRED/DELETED is not an allow/deny decision, so it is not sent as a flow.
 		{
@@ -195,6 +275,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "tcp",
 			wantVerdict:   pb.Verdict_VERDICT_UNKNOWN_UNSPECIFIED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
 			name:          "v1.2.2+ format - missing direction is sent as unknown",
@@ -205,6 +286,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "tcp",
 			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
 			name:          "v1.2.2+ format - missing verdict is sent as unknown",
@@ -215,6 +297,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "tcp",
 			wantVerdict:   pb.Verdict_VERDICT_UNKNOWN_UNSPECIFIED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
 			name:          "v1.3.0+ format - IPv6 missing verdict with Tier is sent as unknown",
@@ -225,6 +308,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "udp",
 			wantVerdict:   pb.Verdict_VERDICT_UNKNOWN_UNSPECIFIED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_DEFAULT,
 		},
 		{
 			name:          "v1.2.2+ format - missing verdict and direction are sent as unknown",
@@ -235,6 +319,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "tcp",
 			wantVerdict:   pb.Verdict_VERDICT_UNKNOWN_UNSPECIFIED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		// The IPv4 v1.3.0+ ", Tier DEFAULT" follows whichever field is logged last.
 		{
@@ -246,6 +331,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "tcp",
 			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_DEFAULT,
 		},
 		{
 			name:          "v1.3.0+ format - missing verdict and direction with Tier are sent as unknown",
@@ -256,6 +342,7 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantProto:     "tcp",
 			wantVerdict:   pb.Verdict_VERDICT_UNKNOWN_UNSPECIFIED,
 			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_DEFAULT,
 		},
 		{
 			name:    "v1.2.2+ format - invalid msg (missing fields)",
@@ -299,13 +386,8 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			}
 
 			// Check IPs using the IP struct fields (a nil layer3 fails these too)
-			if flow.GetLayer3().GetSource() != tt.wantSrcIP {
-				t.Errorf("expected src IP %s, got %s", tt.wantSrcIP, flow.GetLayer3().GetSource())
-			}
-
-			if flow.GetLayer3().GetDestination() != tt.wantDstIP {
-				t.Errorf("expected dst IP %s, got %s", tt.wantDstIP, flow.GetLayer3().GetDestination())
-			}
+			checkEqual(t, "src IP", flow.GetLayer3().GetSource(), tt.wantSrcIP)
+			checkEqual(t, "dst IP", flow.GetLayer3().GetDestination(), tt.wantDstIP)
 
 			// Check protocol in layer4
 			if flow.GetLayer4() == nil {
@@ -314,14 +396,20 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 				return
 			}
 
-			if flow.GetVerdict() != tt.wantVerdict {
-				t.Errorf("expected verdict %v, got %v", tt.wantVerdict, flow.GetVerdict())
-			}
-
-			if flow.GetTrafficDirection() != tt.wantDirection {
-				t.Errorf("expected direction %v, got %v", tt.wantDirection, flow.GetTrafficDirection())
-			}
+			checkEqual(t, "verdict", flow.GetVerdict(), tt.wantVerdict)
+			checkEqual(t, "direction", flow.GetTrafficDirection(), tt.wantDirection)
+			checkEqual(t, "tier", flow.GetPolicyTier(), tt.wantTier)
 		})
+	}
+}
+
+// checkEqual reports a mismatch of one parsed field; a helper keeps the
+// table-driven parser tests under the gocognit limit.
+func checkEqual[T comparable](t *testing.T, field string, got, want T) {
+	t.Helper()
+
+	if got != want {
+		t.Errorf("%s = %v, want %v", field, got, want)
 	}
 }
 
