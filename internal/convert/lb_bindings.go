@@ -3,10 +3,10 @@
 package convert
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
@@ -39,7 +39,7 @@ func convertLoadBalancerBinding(objMetadata *pb.KubernetesObjectData, obj *unstr
 	switch {
 	case kind == "TargetGroupBinding" && apiGroup == awsLoadBalancerControllerGroup:
 		var tgb tgbTargetGroupBinding
-		if err := unmarshalUnstructured(obj, &tgb); err != nil {
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &tgb); err != nil {
 			return fmt.Errorf("deserializing %s: %w", kind, err)
 		}
 
@@ -48,7 +48,7 @@ func convertLoadBalancerBinding(objMetadata *pb.KubernetesObjectData, obj *unstr
 		}
 	case kind == "ServiceNetworkEndpointGroup" && apiGroup == gkeNetworkingGroup:
 		var svcNeg svcNegServiceNetworkEndpointGroup
-		if err := unmarshalUnstructured(obj, &svcNeg); err != nil {
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &svcNeg); err != nil {
 			return fmt.Errorf("deserializing %s: %w", kind, err)
 		}
 
@@ -57,7 +57,7 @@ func convertLoadBalancerBinding(objMetadata *pb.KubernetesObjectData, obj *unstr
 		}
 	case (kind == "ServiceL2Status" || kind == "ServiceBGPStatus") && apiGroup == metalLBGroup:
 		var status metalLBServiceStatus
-		if err := unmarshalUnstructured(obj, &status); err != nil {
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &status); err != nil {
 			return fmt.Errorf("deserializing %s: %w", kind, err)
 		}
 
@@ -67,16 +67,6 @@ func convertLoadBalancerBinding(objMetadata *pb.KubernetesObjectData, obj *unstr
 	}
 
 	return nil
-}
-
-// unmarshalUnstructured deserializes an unstructured object into a mirror struct.
-func unmarshalUnstructured(obj *unstructured.Unstructured, out any) error {
-	jsonBytes, err := obj.MarshalJSON()
-	if err != nil {
-		return fmt.Errorf("marshaling to JSON: %w", err)
-	}
-
-	return json.Unmarshal(jsonBytes, out)
 }
 
 func convertTargetGroupBinding(tgb *tgbTargetGroupBinding) *pb.KubernetesTargetGroupBindingData {

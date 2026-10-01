@@ -8,8 +8,8 @@ import (
 )
 
 // Local structs mirroring the provider CRDs that bind a load balancer to a
-// Service. We deserialize the unstructured object into these plain structs and
-// then convert to proto, as for the AWS VPC CNI policies. Only the fields we
+// Service. We convert the unstructured object into these plain structs with
+// runtime.DefaultUnstructuredConverter and then convert to proto. Only the fields we
 // send are mirrored, so no provider SDK is pulled in.
 //
 // Schema:

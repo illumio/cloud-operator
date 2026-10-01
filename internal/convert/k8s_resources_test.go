@@ -14,7 +14,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -846,15 +845,15 @@ func (suite *ConvertTestSuite) TestCombineIPAddresses() {
 	}
 }
 
-func (suite *ConvertTestSuite) TestConvertToKubernetesServiceData() {
+func TestConvertToKubernetesServiceData(t *testing.T) {
 	tests := map[string]struct {
 		service        *v1.Service
 		expectedResult *pb.KubernetesServiceData
 		expectedError  error
 	}{
-		"service not found": {
+		"nil service object": {
 			expectedResult: nil,
-			expectedError:  errors.New("failed to get service"),
+			expectedError:  errors.New("service object is nil"),
 		},
 		"normal case, all fields populated": {
 			service: &v1.Service{
@@ -964,8 +963,11 @@ func (suite *ConvertTestSuite) TestConvertToKubernetesServiceData() {
 					ClusterIP: "None",
 					Ports: []v1.ServicePort{
 						{
-							Port:     80,
-							Protocol: v1.ProtocolTCP,
+							// The API server defaults targetPort to port; listed
+							// objects always carry it.
+							Port:       80,
+							Protocol:   v1.ProtocolTCP,
+							TargetPort: intstr.FromInt32(80),
 						},
 					},
 				},
@@ -1004,34 +1006,31 @@ func (suite *ConvertTestSuite) TestConvertToKubernetesServiceData() {
 	}
 
 	for name, tt := range tests {
-		suite.Run(name, func() {
-			ctx := context.TODO()
-
-			// Clean up any existing service before each subtest
-			err := suite.clientset.CoreV1().Services("default").Delete(ctx, "test-service", metav1.DeleteOptions{})
-			if err != nil && !k8sErrors.IsNotFound(err) {
-				suite.T().Fatal("Failed to delete service: " + err.Error())
-			}
-
-			if tt.service == nil {
-				time.Sleep(100 * time.Millisecond) // Wait for deletion to propagate
-			}
-
-			if tt.service != nil {
-				_, err := suite.clientset.CoreV1().Services(tt.service.Namespace).Create(ctx, tt.service, metav1.CreateOptions{})
-				suite.Require().NoError(err)
-			}
-
-			result, err := convertToKubernetesServiceData(ctx, "test-service", suite.clientset, "default")
+		t.Run(name, func(t *testing.T) {
+			result, err := convertToKubernetesServiceData(serviceToUnstructured(t, tt.service))
 			if tt.expectedError != nil {
-				suite.EqualError(err, tt.expectedError.Error())
+				assert.EqualError(t, err, tt.expectedError.Error())
 			} else {
-				suite.Require().NoError(err)
-				// Custom comparison ignoring IpAddresses field since KIND can mess with them.
-				assertEqualKubernetesServiceData(suite.T(), tt.expectedResult, result)
+				require.NoError(t, err)
+				assertEqualKubernetesServiceData(t, tt.expectedResult, result)
 			}
 		})
 	}
+}
+
+// serviceToUnstructured converts a typed Service to the unstructured form the
+// resource watcher passes to the converter. A nil Service gives a nil object.
+func serviceToUnstructured(t *testing.T, service *v1.Service) *unstructured.Unstructured {
+	t.Helper()
+
+	if service == nil {
+		return nil
+	}
+
+	obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(service)
+	require.NoError(t, err)
+
+	return &unstructured.Unstructured{Object: obj}
 }
 
 func assertEqualKubernetesServiceData(t *testing.T, expected, actual *pb.KubernetesServiceData) {
@@ -1658,7 +1657,6 @@ func TestConvertMetaObjectToMetadata_NodeWithoutRawObject(t *testing.T) {
 }
 
 func TestConvertToKubernetesServiceData_LoadBalancer(t *testing.T) {
-	ctx := context.Background()
 	vip := v1.LoadBalancerIPModeVIP
 	proxy := v1.LoadBalancerIPModeProxy
 	portError := "CertificateMismatch"
@@ -1758,16 +1756,73 @@ func TestConvertToKubernetesServiceData_LoadBalancer(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			clientset := k8sfake.NewSimpleClientset(&v1.Service{
+			data, err := convertToKubernetesServiceData(serviceToUnstructured(t, &v1.Service{
 				ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
 				Spec:       tt.spec,
 				Status:     tt.status,
-			})
-
-			data, err := convertToKubernetesServiceData(ctx, "web", clientset, "default")
+			}))
 			require.NoError(t, err)
 
 			tt.validate(t, data)
+		})
+	}
+}
+
+// A delete event carries the deleted object, which no longer exists in the API.
+// The Service data must come from that object, not from a fresh GET.
+func TestConvertMetaObjectToMetadata_DeletedServiceKeepsData(t *testing.T) {
+	service := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
+		Spec: v1.ServiceSpec{
+			Type:                  v1.ServiceTypeLoadBalancer,
+			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyLocal,
+		},
+		Status: v1.ServiceStatus{LoadBalancer: v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{
+			{IP: "34.120.1.2"},
+		}}},
+	}
+
+	// The clientset has no Services, as after a delete.
+	result := ConvertMetaObjectToMetadata(context.Background(), service.ObjectMeta, serviceToUnstructured(t, service), k8sfake.NewSimpleClientset(), "Service", "", "v1")
+
+	require.NotNil(t, result.GetService())
+	assert.Equal(t, "Local", result.GetService().GetExternalTrafficPolicy())
+	assert.Equal(t, []*pb.LoadBalancerIngress{{Ip: new("34.120.1.2")}}, result.GetService().GetLoadBalancerIngress())
+}
+
+// CRDs in other groups can reuse core kind names. They must be sent with
+// metadata only, never with data read from a core object of the same name.
+func TestConvertMetaObjectToMetadata_OtherGroupKindsGetMetadataOnly(t *testing.T) {
+	objMeta := metav1.ObjectMeta{Name: "web", Namespace: "default"}
+	coreService := &v1.Service{
+		ObjectMeta: objMeta,
+		Spec:       v1.ServiceSpec{Type: v1.ServiceTypeLoadBalancer, ClusterIPs: []string{"10.96.0.10"}},
+	}
+	clientset := k8sfake.NewSimpleClientset(
+		coreService,
+		&networkingv1.NetworkPolicy{ObjectMeta: objMeta},
+	)
+
+	tests := map[string]struct {
+		kind     string
+		apiGroup string
+	}{
+		"knative Service":       {kind: "Service", apiGroup: "serving.knative.dev"},
+		"calico NetworkPolicy":  {kind: "NetworkPolicy", apiGroup: "crd.projectcalico.org"},
+		"non-core Pod":          {kind: "Pod", apiGroup: "example.com"},
+		"openshift config Node": {kind: "Node", apiGroup: "config.openshift.io"},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			obj := serviceToUnstructured(t, coreService)
+			obj.SetKind(tt.kind)
+			obj.SetAPIVersion(tt.apiGroup + "/v1")
+
+			result := ConvertMetaObjectToMetadata(context.Background(), objMeta, obj, clientset, tt.kind, tt.apiGroup, "v1")
+
+			assert.Equal(t, "web", result.GetName())
+			assert.Nil(t, result.GetKindSpecific())
 		})
 	}
 }

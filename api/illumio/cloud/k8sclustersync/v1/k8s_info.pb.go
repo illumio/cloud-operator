@@ -798,8 +798,11 @@ type KubernetesServiceData struct {
 	// spec.healthCheckNodePort: the node port the load balancer health-checks
 	// when external_traffic_policy is "Local".
 	HealthCheckNodePort *uint32 `protobuf:"varint,10,opt,name=health_check_node_port,json=healthCheckNodePort,proto3,oneof" json:"health_check_node_port,omitempty"`
-	// spec.allocateLoadBalancerNodePorts. False means no node ports are allocated
-	// and the load balancer must target pods directly.
+	// spec.allocateLoadBalancerNodePorts. False only stops Kubernetes from
+	// allocating node ports automatically: node ports set explicitly, or allocated
+	// before the field changed, remain in ports[].node_port. It does not show that
+	// the load balancer targets pods; some implementations (e.g. MetalLB) still
+	// route through nodes without node ports.
 	AllocateLoadBalancerNodePorts *bool `protobuf:"varint,11,opt,name=allocate_load_balancer_node_ports,json=allocateLoadBalancerNodePorts,proto3,oneof" json:"allocate_load_balancer_node_ports,omitempty"`
 	unknownFields                 protoimpl.UnknownFields
 	sizeCache                     protoimpl.SizeCache

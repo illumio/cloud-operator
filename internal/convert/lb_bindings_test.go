@@ -8,27 +8,31 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-// convertBinding runs an unstructured object through ConvertMetaObjectToMetadata,
-// the same path the resource watcher uses.
+// convertBinding runs an unstructured object through NewCoreResourceConverter,
+// the converter the resource watcher uses.
 func convertBinding(t *testing.T, obj map[string]any) *pb.KubernetesObjectData {
 	t.Helper()
 
-	u := &unstructured.Unstructured{Object: obj}
-	gvk := u.GroupVersionKind()
-	objMeta := metav1.ObjectMeta{
-		Name:      u.GetName(),
-		Namespace: u.GetNamespace(),
-		Labels:    u.GetLabels(),
-	}
+	return convertBindingWithLogger(t, obj, zap.NewNop())
+}
 
-	return ConvertMetaObjectToMetadata(context.Background(), objMeta, u, k8sfake.NewSimpleClientset(), gvk.Kind, gvk.Group, gvk.Version)
+func convertBindingWithLogger(t *testing.T, obj map[string]any, logger *zap.Logger) *pb.KubernetesObjectData {
+	t.Helper()
+
+	converter := NewCoreResourceConverter(k8sfake.NewSimpleClientset(), logger)
+
+	result, err := converter(context.Background(), &unstructured.Unstructured{Object: obj})
+	require.NoError(t, err)
+
+	return result
 }
 
 func TestConvertTargetGroupBinding(t *testing.T) {
@@ -131,18 +135,26 @@ func TestConvertTargetGroupBinding(t *testing.T) {
 }
 
 func TestConvertTargetGroupBinding_Malformed(t *testing.T) {
-	result := convertBinding(t, map[string]any{
+	core, logs := observer.New(zap.WarnLevel)
+
+	result := convertBindingWithLogger(t, map[string]any{
 		"apiVersion": "elbv2.k8s.aws/v1beta1",
 		"kind":       "TargetGroupBinding",
 		"metadata":   map[string]any{"name": "tgb", "namespace": "default"},
 		"spec": map[string]any{
 			"serviceRef": map[string]any{"name": "web", "port": true},
 		},
-	})
+	}, zap.New(core))
 
-	// A malformed object is still sent, with metadata only.
+	// A malformed object is still sent, with metadata only, and the reason is logged.
 	assert.Equal(t, "tgb", result.GetName())
 	assert.Nil(t, result.GetKindSpecific())
+
+	entries := logs.FilterMessage("Failed to read load balancer binding, sending metadata only").All()
+	require.Len(t, entries, 1)
+	assert.Equal(t, "TargetGroupBinding", entries[0].ContextMap()["kind"])
+	assert.Equal(t, "default", entries[0].ContextMap()["namespace"])
+	assert.Equal(t, "tgb", entries[0].ContextMap()["name"])
 }
 
 func TestConvertServiceNetworkEndpointGroup(t *testing.T) {
