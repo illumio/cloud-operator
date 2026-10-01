@@ -514,6 +514,7 @@ func TestParseFlowFromMsg(t *testing.T) {
 		wantProto     string
 		wantVerdict   string
 		wantDirection string
+		wantTier      string
 	}{
 		{
 			name:          "valid TCP ACCEPT egress",
@@ -526,6 +527,7 @@ func TestParseFlowFromMsg(t *testing.T) {
 			wantProto:     "TCP",
 			wantVerdict:   "ACCEPT",
 			wantDirection: "egress",
+			wantTier:      "",
 		},
 		{
 			name:          "valid UDP DENY",
@@ -538,6 +540,7 @@ func TestParseFlowFromMsg(t *testing.T) {
 			wantProto:     "UDP",
 			wantVerdict:   "DENY",
 			wantDirection: "ingress",
+			wantTier:      "",
 		},
 		{
 			name:          "valid TCP ACCEPT with Tier (v1.3.0+)",
@@ -550,6 +553,7 @@ func TestParseFlowFromMsg(t *testing.T) {
 			wantProto:     "TCP",
 			wantVerdict:   "ACCEPT",
 			wantDirection: "egress",
+			wantTier:      "DEFAULT",
 		},
 		{
 			name:          "valid IPv6 TCP ACCEPT (colon after Proto and Verdict)",
@@ -562,6 +566,7 @@ func TestParseFlowFromMsg(t *testing.T) {
 			wantProto:     "TCP",
 			wantVerdict:   "ACCEPT",
 			wantDirection: "egress",
+			wantTier:      "",
 		},
 		{
 			name:          "valid IPv6 UDP DENY with Tier (v1.3.0+)",
@@ -574,6 +579,7 @@ func TestParseFlowFromMsg(t *testing.T) {
 			wantProto:     "UDP",
 			wantVerdict:   "DENY",
 			wantDirection: "ingress",
+			wantTier:      "DEFAULT",
 		},
 		{
 			name:          "valid without Direction",
@@ -586,6 +592,7 @@ func TestParseFlowFromMsg(t *testing.T) {
 			wantProto:     "TCP",
 			wantVerdict:   "ACCEPT",
 			wantDirection: "",
+			wantTier:      "",
 		},
 		{
 			name:          "valid without Verdict",
@@ -598,6 +605,7 @@ func TestParseFlowFromMsg(t *testing.T) {
 			wantProto:     "TCP",
 			wantVerdict:   "",
 			wantDirection: "egress",
+			wantTier:      "",
 		},
 		{
 			name:          "valid IPv6 without Verdict with Tier (v1.3.0+)",
@@ -610,6 +618,7 @@ func TestParseFlowFromMsg(t *testing.T) {
 			wantProto:     "UDP",
 			wantVerdict:   "",
 			wantDirection: "ingress",
+			wantTier:      "DEFAULT",
 		},
 		{
 			name:          "valid without Verdict or Direction",
@@ -622,6 +631,7 @@ func TestParseFlowFromMsg(t *testing.T) {
 			wantProto:     "TCP",
 			wantVerdict:   "",
 			wantDirection: "",
+			wantTier:      "",
 		},
 		{
 			name:          "valid without Direction with Tier (v1.3.0+)",
@@ -634,6 +644,7 @@ func TestParseFlowFromMsg(t *testing.T) {
 			wantProto:     "TCP",
 			wantVerdict:   "DENY",
 			wantDirection: "",
+			wantTier:      "DEFAULT",
 		},
 		{
 			name:          "valid without Verdict or Direction with Tier (v1.3.0+)",
@@ -646,6 +657,59 @@ func TestParseFlowFromMsg(t *testing.T) {
 			wantProto:     "TCP",
 			wantVerdict:   "",
 			wantDirection: "",
+			wantTier:      "DEFAULT",
+		},
+		{
+			name:          "valid NETWORK_POLICY Tier (v1.3.0+)",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict DENY Direction ingress, Tier NETWORK_POLICY",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "DENY",
+			wantDirection: "ingress",
+			wantTier:      "NETWORK_POLICY",
+		},
+		{
+			name:          "valid IPv6 ADMIN Tier (v1.3.0+)",
+			msg:           "Flow Info: Src IP: 2001:db8::1 Src Port: 55484 Dest IP: 2001:db8::2 Dest Port: 80 Proto: TCP Verdict: ACCEPT Direction: egress Tier: ADMIN",
+			wantOk:        true,
+			wantSrcIP:     "2001:db8::1",
+			wantSrcPort:   55484,
+			wantDestIP:    "2001:db8::2",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "ACCEPT",
+			wantDirection: "egress",
+			wantTier:      "ADMIN",
+		},
+		{
+			name:          "valid without Verdict with Tier (v1.3.0+)",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Direction egress, Tier BASELINE",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "",
+			wantDirection: "egress",
+			wantTier:      "BASELINE",
+		},
+		{
+			name:          "valid with an empty Tier (v1.3.0+)",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress, Tier ",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "ACCEPT",
+			wantDirection: "egress",
+			wantTier:      "",
 		},
 		{
 			name:   "missing required fields",
@@ -671,7 +735,7 @@ func TestParseFlowFromMsg(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srcIP, srcPort, destIP, destPort, proto, verdict, direction, ok := parseFlowFromMsg(tt.msg)
+			srcIP, srcPort, destIP, destPort, proto, verdict, direction, tier, ok := parseFlowFromMsg(tt.msg)
 
 			if ok != tt.wantOk {
 				t.Errorf("parseFlowFromMsg() ok = %v, want %v", ok, tt.wantOk)
@@ -683,33 +747,14 @@ func TestParseFlowFromMsg(t *testing.T) {
 				return
 			}
 
-			if srcIP != tt.wantSrcIP {
-				t.Errorf("srcIP = %v, want %v", srcIP, tt.wantSrcIP)
-			}
-
-			if srcPort != tt.wantSrcPort {
-				t.Errorf("srcPort = %v, want %v", srcPort, tt.wantSrcPort)
-			}
-
-			if destIP != tt.wantDestIP {
-				t.Errorf("destIP = %v, want %v", destIP, tt.wantDestIP)
-			}
-
-			if destPort != tt.wantDestPort {
-				t.Errorf("destPort = %v, want %v", destPort, tt.wantDestPort)
-			}
-
-			if proto != tt.wantProto {
-				t.Errorf("proto = %v, want %v", proto, tt.wantProto)
-			}
-
-			if verdict != tt.wantVerdict {
-				t.Errorf("verdict = %v, want %v", verdict, tt.wantVerdict)
-			}
-
-			if direction != tt.wantDirection {
-				t.Errorf("direction = %v, want %v", direction, tt.wantDirection)
-			}
+			checkEqual(t, "srcIP", srcIP, tt.wantSrcIP)
+			checkEqual(t, "srcPort", srcPort, tt.wantSrcPort)
+			checkEqual(t, "destIP", destIP, tt.wantDestIP)
+			checkEqual(t, "destPort", destPort, tt.wantDestPort)
+			checkEqual(t, "proto", proto, tt.wantProto)
+			checkEqual(t, "verdict", verdict, tt.wantVerdict)
+			checkEqual(t, "direction", direction, tt.wantDirection)
+			checkEqual(t, "tier", tier, tt.wantTier)
 		})
 	}
 }

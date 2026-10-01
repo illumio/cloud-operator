@@ -20,6 +20,8 @@ type FiveTupleFlowKey struct {
 	// and keying on it would send both. Only the first one cached is sent, so its
 	// direction is one side's decision; the other pod's policy may have evaluated
 	// the connection too. A differing verdict is still sent (Verdict is keyed).
+	// PolicyTier is left out for the same reason: it is the tier of that same
+	// side's decision, so the two stay consistent in the record that is sent.
 }
 
 func (flow *FiveTupleFlow) StartTimestamp() time.Time {

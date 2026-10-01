@@ -46,6 +46,14 @@ const (
 	// policy that produced the verdict.
 	awsVPCCNIDirectionIngress = "ingress"
 	awsVPCCNIDirectionEgress  = "egress"
+
+	// Policy tiers logged by the AWS Network Policy Agent (v1.3.0+): which tier of
+	// policy produced the verdict.
+	awsVPCCNITierAdmin         = "ADMIN"
+	awsVPCCNITierNetworkPolicy = "NETWORK_POLICY"
+	awsVPCCNITierBaseline      = "BASELINE"
+	awsVPCCNITierDefault       = "DEFAULT"
+	awsVPCCNITierError         = "ERROR"
 )
 
 // AWS VPC CNI flow log errors.
@@ -90,33 +98,33 @@ type AWSVPCCNIFlowLog struct {
 //	"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress"
 //	"Flow Info: Src IP: 2001:db8::1 Src Port: 55484 Dest IP: 2001:db8::2 Dest Port: 80 Proto: TCP Verdict: ACCEPT Direction: egress"
 //
-// v1.3.0+ appends a policy tier (", Tier DEFAULT" / " Tier: DEFAULT"), which is ignored;
-// the proto, verdict and direction captures all stop at the comma or space before it,
-// since it follows whichever of them is logged last. Verdict and Direction are each
-// optional, so a line without either (or both) still parses.
+// v1.3.0+ appends a policy tier (", Tier DEFAULT" / " Tier: DEFAULT"). It follows
+// whichever field is logged last, so the proto, verdict and direction captures all stop
+// at the comma or space before it. Verdict, Direction and Tier are each optional, so a
+// line without any of them still parses.
 var flowMsgPattern = regexp.MustCompile(
-	`Flow Info:\s*Src IP:\s*(\S+)\s+Src Port:\s*(\d+)\s+Dest IP:\s*(\S+)\s+Dest Port:\s*(\d+)\s+Proto:?\s+([^\s,]+)(?:\s+Verdict:?\s+([^\s,]+))?(?:\s+Direction:?\s+(\w+))?`,
+	`Flow Info:\s*Src IP:\s*(\S+)\s+Src Port:\s*(\d+)\s+Dest IP:\s*(\S+)\s+Dest Port:\s*(\d+)\s+Proto:?\s+([^\s,]+)(?:\s+Verdict:?\s+([^\s,]+))?(?:\s+Direction:?\s+(\w+))?(?:,?\s+Tier:?\s+(\w+))?`,
 )
 
 // parseFlowFromMsg extracts flow data from the embedded msg string (v1.2.2+ format).
-// verdict and direction are empty when the line does not log them.
-func parseFlowFromMsg(msg string) (srcIP string, srcPort uint32, destIP string, destPort uint32, proto string, verdict string, direction string, ok bool) {
+// verdict, direction and tier are empty when the line does not log them.
+func parseFlowFromMsg(msg string) (srcIP string, srcPort uint32, destIP string, destPort uint32, proto string, verdict string, direction string, tier string, ok bool) {
 	matches := flowMsgPattern.FindStringSubmatch(msg)
-	if len(matches) < 8 {
-		return "", 0, "", 0, "", "", "", false
+	if len(matches) < 9 {
+		return "", 0, "", 0, "", "", "", "", false
 	}
 
 	srcPortInt, err := strconv.ParseUint(matches[2], 10, 32)
 	if err != nil {
-		return "", 0, "", 0, "", "", "", false
+		return "", 0, "", 0, "", "", "", "", false
 	}
 
 	destPortInt, err := strconv.ParseUint(matches[4], 10, 32)
 	if err != nil {
-		return "", 0, "", 0, "", "", "", false
+		return "", 0, "", 0, "", "", "", "", false
 	}
 
-	return matches[1], uint32(srcPortInt), matches[3], uint32(destPortInt), matches[5], matches[6], matches[7], true
+	return matches[1], uint32(srcPortInt), matches[3], uint32(destPortInt), matches[5], matches[6], matches[7], matches[8], true
 }
 
 // parseOldFormat extracts flow data from separate JSON fields (v1.0.x - v1.2.1 format).
@@ -153,18 +161,18 @@ func ParseAWSVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 	}
 
 	var (
-		srcIP, destIP, proto, verdict, direction string
-		srcPort, destPort                        uint32
-		ok                                       bool
+		srcIP, destIP, proto, verdict, direction, tier string
+		srcPort, destPort                              uint32
+		ok                                             bool
 	)
 
 	switch {
 	case isOldFormat:
-		// The old format does not log a direction.
+		// The old format does not log a direction or a tier.
 		srcIP, srcPort, destIP, destPort, proto, ok = parseOldFormat(&log)
 		verdict = log.Verdict
 	case isNewFormat:
-		srcIP, srcPort, destIP, destPort, proto, verdict, direction, ok = parseFlowFromMsg(log.Message)
+		srcIP, srcPort, destIP, destPort, proto, verdict, direction, tier, ok = parseFlowFromMsg(log.Message)
 	default:
 		return nil, ErrAWSVPCCNINotFlowLog
 	}
@@ -226,6 +234,7 @@ func ParseAWSVPCCNIFlowLog(line string) (*pb.FiveTupleFlow, error) {
 		},
 		Verdict:          parseAWSVPCCNIVerdict(verdict),
 		TrafficDirection: parseAWSVPCCNIDirection(direction),
+		PolicyTier:       parseAWSVPCCNITier(tier),
 	}
 
 	return flow, nil
@@ -257,6 +266,26 @@ func parseAWSVPCCNIDirection(direction string) pb.TrafficDirection {
 		return pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS
 	default:
 		return pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED
+	}
+}
+
+// parseAWSVPCCNITier maps the agent's policy tier to a flow PolicyTier. Any other
+// value (e.g. no tier, as before v1.3.0) is sent as POLICY_TIER_UNSPECIFIED rather
+// than dropping the flow.
+func parseAWSVPCCNITier(tier string) pb.PolicyTier {
+	switch tier {
+	case awsVPCCNITierAdmin:
+		return pb.PolicyTier_POLICY_TIER_ADMIN
+	case awsVPCCNITierNetworkPolicy:
+		return pb.PolicyTier_POLICY_TIER_NETWORK_POLICY
+	case awsVPCCNITierBaseline:
+		return pb.PolicyTier_POLICY_TIER_BASELINE
+	case awsVPCCNITierDefault:
+		return pb.PolicyTier_POLICY_TIER_DEFAULT
+	case awsVPCCNITierError:
+		return pb.PolicyTier_POLICY_TIER_ERROR
+	default:
+		return pb.PolicyTier_POLICY_TIER_UNSPECIFIED
 	}
 }
 
