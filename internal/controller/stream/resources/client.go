@@ -412,6 +412,25 @@ func (c *resourcesClient) sendClusterMetadata(ctx context.Context) error {
 		metadata.ClusterName = &c.clusterName
 	}
 
+	// On GKE (Standard or Autopilot), fetch the cluster identity (name, location,
+	// project) from the node-local metadata server so the backend can link this
+	// cluster to its GKE ContainerCluster inventory object by (project, location,
+	// name). This is essential on Autopilot, where node-to-instance stitching is
+	// impossible (node VMs live in a Google-managed project), but harmless and
+	// equally valid on Standard. The calls are best-effort: a failure leaves the
+	// affected field unset and never fails the stream. The isGKEVersion gate
+	// avoids firing the calls on non-GKE providers.
+	if isGKEVersion(kubernetesVersion.GitVersion) {
+		info := resolveGKEClusterInfo(ctx, c.logger, newGKEMetadataClient())
+		if info.Name != "" || info.Location != "" || info.ProjectID != "" {
+			metadata.GkeIdentity = &pb.GkeClusterIdentity{
+				Name:     info.Name,
+				Location: info.Location,
+				Project:  info.ProjectID,
+			}
+		}
+	}
+
 	request := &pb.SendKubernetesResourcesRequest{
 		Request: &pb.SendKubernetesResourcesRequest_ClusterMetadata{
 			ClusterMetadata: metadata,
