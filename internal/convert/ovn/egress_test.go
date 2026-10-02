@@ -26,9 +26,11 @@ func TestIsEgressResource(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, IsEgressResource(tt.input))
-		})
+		for _, group := range []string{"k8s.ovn.org", "policy.networking.k8s.io", "example.com", ""} {
+			t.Run(tt.name+"/"+group, func(t *testing.T) {
+				assert.Equal(t, tt.expected && group == "k8s.ovn.org", IsEgressResource(group, tt.input))
+			})
+		}
 	}
 }
 
@@ -37,6 +39,25 @@ func TestConvertUnstructuredToEgressResource_Nil(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "cannot convert nil object")
+}
+
+func TestConvertUnstructuredToEgressResource_RejectsOtherAPIGroups(t *testing.T) {
+	for _, kind := range []string{"EgressFirewall", "EgressIP"} {
+		for _, apiVersion := range []string{"example.com/v1", "v1"} {
+			t.Run(kind+"/"+apiVersion, func(t *testing.T) {
+				obj := &unstructured.Unstructured{Object: map[string]any{
+					"apiVersion": apiVersion,
+					"kind":       kind,
+					"metadata":   map[string]any{"name": "unrelated-resource"},
+					"spec":       map[string]any{},
+				}}
+
+				result, err := ConvertUnstructuredToEgressResource(obj)
+				require.ErrorContains(t, err, "API group")
+				assert.Nil(t, result)
+			})
+		}
+	}
 }
 
 func TestConvertUnstructuredToEgressResource_UnsupportedKind(t *testing.T) {

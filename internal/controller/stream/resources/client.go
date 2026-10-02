@@ -113,9 +113,9 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		case cilium.IsCiliumResource(resource):
 			converter = ciliumConverter
 			handler = runtimeCacheHandler
-		case anp.IsAdminNetworkPolicyResource(resource):
+		case anp.IsAdminNetworkPolicyResource(resourceInfo.Group, resource):
 			converter = anpConverter
-		case ovn.IsEgressResource(resource):
+		case ovn.IsEgressResource(resourceInfo.Group, resource):
 			converter = egressConverter
 		}
 

@@ -14,10 +14,17 @@ import (
 	"github.com/illumio/cloud-operator/internal/convert"
 )
 
-// IsAdminNetworkPolicyResource returns true if the input identifies an AdminNetworkPolicy
+// APIGroup is the Kubernetes Network Policy API group for ANP and BANP.
+const APIGroup = "policy.networking.k8s.io"
+
+// IsAdminNetworkPolicyResource returns true if the group and name identify an AdminNetworkPolicy
 // or BaselineAdminNetworkPolicy resource.
 // Accepts both Kind (PascalCase) and resource name (lowercase plural).
-func IsAdminNetworkPolicyResource(kindOrResource string) bool {
+func IsAdminNetworkPolicyResource(apiGroup, kindOrResource string) bool {
+	if apiGroup != APIGroup {
+		return false
+	}
+
 	switch kindOrResource {
 	case "AdminNetworkPolicy", "BaselineAdminNetworkPolicy",
 		"adminnetworkpolicies", "baselineadminnetworkpolicies":
@@ -35,6 +42,10 @@ func ConvertUnstructuredToAdminNetworkPolicyResource(obj *k8sUnstructured.Unstru
 	}
 
 	gvk := obj.GroupVersionKind()
+	if gvk.Group != APIGroup {
+		return nil, fmt.Errorf("unsupported AdminNetworkPolicy API group: %q", gvk.Group)
+	}
+
 	namespace := obj.GetNamespace()
 
 	objMetadata := &pb.KubernetesObjectData{
@@ -120,22 +131,18 @@ func convertBaselineAdminNetworkPolicyData(banp *baselineAdminNetworkPolicy) *pb
 
 // --- Subject conversion ---
 
-func convertANPSubject(subject *adminNetworkPolicySubject) *pb.AdminNetworkPolicySubject {
-	pbSubject := &pb.AdminNetworkPolicySubject{}
-
-	if subject.Namespaces != nil {
-		pbSubject.Namespaces = convert.ConvertLabelSelectorToProto(subject.Namespaces)
-	}
-
+func convertANPSubject(subject *adminNetworkPolicySubject) *pb.AdminNetworkPolicyPodSelector {
 	if subject.Pods != nil {
-		pbSubject.Pods = convertNamespacedPod(subject.Pods)
+		return convertNamespacedPod(subject.Pods)
 	}
 
-	return pbSubject
+	return &pb.AdminNetworkPolicyPodSelector{
+		NamespaceSelector: convert.ConvertLabelSelectorToProto(subject.Namespaces),
+	}
 }
 
-func convertNamespacedPod(pod *namespacedPod) *pb.AdminNetworkPolicyNamespacedPod {
-	return &pb.AdminNetworkPolicyNamespacedPod{
+func convertNamespacedPod(pod *namespacedPod) *pb.AdminNetworkPolicyPodSelector {
+	return &pb.AdminNetworkPolicyPodSelector{
 		NamespaceSelector: convert.ConvertLabelSelectorToProto(&pod.NamespaceSelector),
 		PodSelector:       convert.ConvertLabelSelectorToProto(&pod.PodSelector),
 	}
@@ -154,11 +161,14 @@ func convertANPIngressRules(rules []adminNetworkPolicyIngressRule) []*pb.AdminNe
 			pbRule.Name = &rule.Name
 		}
 
-		for _, peer := range rule.From {
-			pbRule.Peers = append(pbRule.Peers, convertANPIngressPeer(&peer))
+		if len(rule.From) > 0 {
+			pbRule.Peers = make([]*pb.AdminNetworkPolicyPeer, 0, len(rule.From))
+			for _, peer := range rule.From {
+				pbRule.Peers = append(pbRule.Peers, convertANPIngressPeer(&peer))
+			}
 		}
 
-		if rule.Ports != nil {
+		if rule.Ports != nil && len(*rule.Ports) > 0 {
 			pbRule.Ports = convertAdminNetworkPolicyPorts(*rule.Ports)
 		}
 
@@ -179,11 +189,14 @@ func convertANPEgressRules(rules []adminNetworkPolicyEgressRule) []*pb.AdminNetw
 			pbRule.Name = &rule.Name
 		}
 
-		for _, peer := range rule.To {
-			pbRule.Peers = append(pbRule.Peers, convertANPEgressPeer(&peer))
+		if len(rule.To) > 0 {
+			pbRule.Peers = make([]*pb.AdminNetworkPolicyPeer, 0, len(rule.To))
+			for _, peer := range rule.To {
+				pbRule.Peers = append(pbRule.Peers, convertANPEgressPeer(&peer))
+			}
 		}
 
-		if rule.Ports != nil {
+		if rule.Ports != nil && len(*rule.Ports) > 0 {
 			pbRule.Ports = convertAdminNetworkPolicyPorts(*rule.Ports)
 		}
 
@@ -204,11 +217,14 @@ func convertBaselineANPIngressRules(rules []baselineAdminNetworkPolicyIngressRul
 			pbRule.Name = &rule.Name
 		}
 
-		for _, peer := range rule.From {
-			pbRule.Peers = append(pbRule.Peers, convertANPIngressPeer(&peer))
+		if len(rule.From) > 0 {
+			pbRule.Peers = make([]*pb.AdminNetworkPolicyPeer, 0, len(rule.From))
+			for _, peer := range rule.From {
+				pbRule.Peers = append(pbRule.Peers, convertANPIngressPeer(&peer))
+			}
 		}
 
-		if rule.Ports != nil {
+		if rule.Ports != nil && len(*rule.Ports) > 0 {
 			pbRule.Ports = convertAdminNetworkPolicyPorts(*rule.Ports)
 		}
 
@@ -229,11 +245,14 @@ func convertBaselineANPEgressRules(rules []baselineAdminNetworkPolicyEgressRule)
 			pbRule.Name = &rule.Name
 		}
 
-		for _, peer := range rule.To {
-			pbRule.Peers = append(pbRule.Peers, convertANPEgressPeer(&peer))
+		if len(rule.To) > 0 {
+			pbRule.Peers = make([]*pb.AdminNetworkPolicyPeer, 0, len(rule.To))
+			for _, peer := range rule.To {
+				pbRule.Peers = append(pbRule.Peers, convertANPEgressPeer(&peer))
+			}
 		}
 
-		if rule.Ports != nil {
+		if rule.Ports != nil && len(*rule.Ports) > 0 {
 			pbRule.Ports = convertAdminNetworkPolicyPorts(*rule.Ports)
 		}
 

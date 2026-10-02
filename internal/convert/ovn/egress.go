@@ -14,10 +14,17 @@ import (
 	"github.com/illumio/cloud-operator/internal/convert"
 )
 
-// IsEgressResource returns true if the input identifies an OpenShift OVN EgressFirewall
+// APIGroup is the OVN-Kubernetes API group for EgressFirewall and EgressIP.
+const APIGroup = "k8s.ovn.org"
+
+// IsEgressResource returns true if the group and name identify an OpenShift OVN EgressFirewall
 // or EgressIP resource.
 // Accepts both Kind (PascalCase) and resource name (lowercase plural).
-func IsEgressResource(kindOrResource string) bool {
+func IsEgressResource(apiGroup, kindOrResource string) bool {
+	if apiGroup != APIGroup {
+		return false
+	}
+
 	switch kindOrResource {
 	case "EgressFirewall", "EgressIP",
 		"egressfirewalls", "egressips":
@@ -35,6 +42,10 @@ func ConvertUnstructuredToEgressResource(obj *k8sUnstructured.Unstructured) (*pb
 	}
 
 	gvk := obj.GroupVersionKind()
+	if gvk.Group != APIGroup {
+		return nil, fmt.Errorf("unsupported Egress API group: %q", gvk.Group)
+	}
+
 	namespace := obj.GetNamespace()
 
 	objMetadata := &pb.KubernetesObjectData{

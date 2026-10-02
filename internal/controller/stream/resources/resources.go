@@ -8,6 +8,9 @@ import (
 	"go.uber.org/zap"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/illumio/cloud-operator/internal/convert/anp"
+	"github.com/illumio/cloud-operator/internal/convert/ovn"
 )
 
 // ManagedResourceNames lists the plural resource names managed by the reconciler.
@@ -16,6 +19,15 @@ var ManagedResourceNames = []string{
 	"ciliumclusterwidenetworkpolicies",
 	"ciliumnetworkpolicies",
 	"clusternetworkpolicies",
+}
+
+// These CRD names are only supported in their defining API groups. Filter other
+// groups before populating the name-keyed discovery map to prevent collisions.
+var policyResourceGroups = map[string]string{
+	"adminnetworkpolicies":         anp.APIGroup,
+	"baselineadminnetworkpolicies": anp.APIGroup,
+	"egressfirewalls":              ovn.APIGroup,
+	"egressips":                    ovn.APIGroup,
 }
 
 // ApplicationNetworkPolicy is intentionally excluded: it is ingest-only.
@@ -91,6 +103,10 @@ func BuildResourceAPIGroupMap(resources []string, clientset kubernetes.Interface
 		}
 
 		for _, resource := range resourceList.APIResources {
+			if expectedGroup, restricted := policyResourceGroups[resource.Name]; restricted && group.Name != expectedGroup {
+				continue
+			}
+
 			if _, exists := resourceSet[resource.Name]; exists {
 				resourceAPIGroupMap[resource.Name] = ResourceInfo{
 					Group:   group.Name,

@@ -7,7 +7,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 func TestIsAdminNetworkPolicyResource(t *testing.T) {
@@ -27,10 +30,12 @@ func TestIsAdminNetworkPolicyResource(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := IsAdminNetworkPolicyResource(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
+		for _, group := range []string{"policy.networking.k8s.io", "k8s.ovn.org", "example.com", ""} {
+			t.Run(tt.name+"/"+group, func(t *testing.T) {
+				result := IsAdminNetworkPolicyResource(group, tt.input)
+				assert.Equal(t, tt.expected && group == "policy.networking.k8s.io", result)
+			})
+		}
 	}
 }
 
@@ -39,6 +44,177 @@ func TestConvertUnstructuredToAdminNetworkPolicyResource_Nil(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "cannot convert nil object")
+}
+
+func TestConvertUnstructuredToAdminNetworkPolicyResource_RejectsOtherAPIGroups(t *testing.T) {
+	for _, kind := range []string{"AdminNetworkPolicy", "BaselineAdminNetworkPolicy"} {
+		for _, apiVersion := range []string{"example.com/v1", "v1"} {
+			t.Run(kind+"/"+apiVersion, func(t *testing.T) {
+				obj := &unstructured.Unstructured{Object: map[string]any{
+					"apiVersion": apiVersion,
+					"kind":       kind,
+					"metadata":   map[string]any{"name": "unrelated-policy"},
+					"spec":       map[string]any{"subject": map[string]any{"namespaces": map[string]any{}}},
+				}}
+
+				result, err := ConvertUnstructuredToAdminNetworkPolicyResource(obj)
+				require.ErrorContains(t, err, "API group")
+				assert.Nil(t, result)
+			})
+		}
+	}
+}
+
+func TestConvertUnstructuredToAdminNetworkPolicyResource_SubjectSelectors(t *testing.T) {
+	tests := []struct {
+		name            string
+		subject         map[string]any
+		namespaceLabels map[string]string
+		podLabels       map[string]string
+		hasPodSelector  bool
+	}{
+		{
+			name:    "all namespaces",
+			subject: map[string]any{"namespaces": map[string]any{}},
+		},
+		{
+			name: "selected namespaces",
+			subject: map[string]any{"namespaces": map[string]any{
+				"matchLabels": map[string]any{"env": "production"},
+			}},
+			namespaceLabels: map[string]string{"env": "production"},
+		},
+		{
+			name: "explicit all pods",
+			subject: map[string]any{"pods": map[string]any{
+				"namespaceSelector": map[string]any{},
+				"podSelector":       map[string]any{},
+			}},
+			hasPodSelector: true,
+		},
+		{
+			name: "selected pods in selected namespaces",
+			subject: map[string]any{"pods": map[string]any{
+				"namespaceSelector": map[string]any{"matchLabels": map[string]any{"env": "production"}},
+				"podSelector":       map[string]any{"matchLabels": map[string]any{"app": "web"}},
+			}},
+			namespaceLabels: map[string]string{"env": "production"},
+			podLabels:       map[string]string{"app": "web"},
+			hasPodSelector:  true,
+		},
+	}
+
+	for _, kind := range []string{"AdminNetworkPolicy", "BaselineAdminNetworkPolicy"} {
+		for _, tt := range tests {
+			t.Run(kind+"/"+tt.name, func(t *testing.T) {
+				obj := &unstructured.Unstructured{Object: map[string]any{
+					"apiVersion": "policy.networking.k8s.io/v1alpha1",
+					"kind":       kind,
+					"metadata":   map[string]any{"name": "default"},
+					"spec":       map[string]any{"subject": tt.subject},
+				}}
+
+				result, err := ConvertUnstructuredToAdminNetworkPolicyResource(obj)
+				require.NoError(t, err)
+
+				selector := result.GetAdminNetworkPolicy().GetSubject()
+				if kind == "BaselineAdminNetworkPolicy" {
+					selector = result.GetBaselineAdminNetworkPolicy().GetSubject()
+				}
+
+				require.NotNil(t, selector.GetNamespaceSelector())
+				assert.Equal(t, tt.namespaceLabels, selector.GetNamespaceSelector().GetMatchLabels())
+
+				if tt.hasPodSelector {
+					require.NotNil(t, selector.GetPodSelector())
+				} else {
+					assert.Nil(t, selector.GetPodSelector())
+				}
+
+				assert.Equal(t, tt.podLabels, selector.GetPodSelector().GetMatchLabels())
+
+				encoded, err := proto.Marshal(selector)
+				require.NoError(t, err)
+
+				var decoded pb.AdminNetworkPolicyPodSelector
+
+				require.NoError(t, proto.Unmarshal(encoded, &decoded))
+				assert.True(t, proto.Equal(selector, &decoded), "selector presence must survive protobuf serialization")
+			})
+		}
+	}
+}
+
+func TestConvertUnstructuredToAdminNetworkPolicyResource_PeersAndOptionalPorts(t *testing.T) {
+	peers := []any{
+		map[string]any{"namespaces": map[string]any{"matchLabels": map[string]any{"team": "monitoring"}}},
+		map[string]any{"pods": map[string]any{
+			"namespaceSelector": map[string]any{"matchLabels": map[string]any{"env": "production"}},
+			"podSelector":       map[string]any{"matchLabels": map[string]any{"app": "web"}},
+		}},
+	}
+
+	portCases := []struct {
+		name  string
+		ports []any
+	}{
+		{name: "omitted"},
+		{name: "empty", ports: []any{}},
+		{name: "numeric", ports: []any{map[string]any{"portNumber": map[string]any{"protocol": "TCP", "port": int64(443)}}}},
+	}
+
+	for _, kind := range []string{"AdminNetworkPolicy", "BaselineAdminNetworkPolicy"} {
+		for _, tt := range portCases {
+			t.Run(kind+"/"+tt.name, func(t *testing.T) {
+				ingress := map[string]any{"name": "allow-ingress", "action": "Allow", "from": peers}
+				egress := map[string]any{"name": "allow-egress", "action": "Allow", "to": peers}
+
+				if tt.ports != nil {
+					ingress["ports"] = tt.ports
+					egress["ports"] = tt.ports
+				}
+
+				obj := &unstructured.Unstructured{Object: map[string]any{
+					"apiVersion": "policy.networking.k8s.io/v1alpha1",
+					"kind":       kind,
+					"metadata":   map[string]any{"name": "default"},
+					"spec": map[string]any{
+						"subject": map[string]any{"namespaces": map[string]any{}},
+						"ingress": []any{ingress},
+						"egress":  []any{egress},
+					},
+				}}
+
+				result, err := ConvertUnstructuredToAdminNetworkPolicyResource(obj)
+				require.NoError(t, err)
+
+				ingressRules, egressRules := result.GetAdminNetworkPolicy().GetIngress(), result.GetAdminNetworkPolicy().GetEgress()
+				if kind == "BaselineAdminNetworkPolicy" {
+					ingressRules, egressRules = result.GetBaselineAdminNetworkPolicy().GetIngress(), result.GetBaselineAdminNetworkPolicy().GetEgress()
+				}
+
+				for _, rules := range [][]*pb.AdminNetworkPolicyRule{ingressRules, egressRules} {
+					require.Len(t, rules, 1)
+					rule := rules[0]
+					assert.Equal(t, "Allow", rule.GetAction())
+					require.Len(t, rule.GetPeers(), 2)
+					assert.Equal(t, "monitoring", rule.GetPeers()[0].GetNamespaces().GetMatchLabels()["team"])
+					pod := rule.GetPeers()[1].GetPods()
+					require.NotNil(t, pod)
+					assert.Equal(t, "production", pod.GetNamespaceSelector().GetMatchLabels()["env"])
+					assert.Equal(t, "web", pod.GetPodSelector().GetMatchLabels()["app"])
+
+					if len(tt.ports) == 0 {
+						assert.Nil(t, rule.GetPorts())
+					} else {
+						require.Len(t, rule.GetPorts(), 1)
+						assert.Equal(t, "TCP", rule.GetPorts()[0].GetPortNumber().GetProtocol())
+						assert.Equal(t, int32(443), rule.GetPorts()[0].GetPortNumber().GetPort())
+					}
+				}
+			})
+		}
+	}
 }
 
 func TestConvertUnstructuredToAdminNetworkPolicyResource_AdminNetworkPolicy(t *testing.T) {
@@ -111,8 +287,8 @@ func TestConvertUnstructuredToAdminNetworkPolicyResource_AdminNetworkPolicy(t *t
 
 	// Subject
 	require.NotNil(t, anpData.GetSubject())
-	require.NotNil(t, anpData.GetSubject().GetNamespaces())
-	assert.Equal(t, "prod", anpData.GetSubject().GetNamespaces().GetMatchLabels()["env"])
+	require.NotNil(t, anpData.GetSubject().GetNamespaceSelector())
+	assert.Equal(t, "prod", anpData.GetSubject().GetNamespaceSelector().GetMatchLabels()["env"])
 
 	// Ingress
 	require.Len(t, anpData.GetIngress(), 1)
@@ -182,9 +358,9 @@ func TestConvertUnstructuredToAdminNetworkPolicyResource_BaselineAdminNetworkPol
 
 	// Subject with pods
 	require.NotNil(t, banpData.GetSubject())
-	require.NotNil(t, banpData.GetSubject().GetPods())
-	assert.Equal(t, "my-namespace", banpData.GetSubject().GetPods().GetNamespaceSelector().GetMatchLabels()["kubernetes.io/metadata.name"])
-	assert.Equal(t, "web", banpData.GetSubject().GetPods().GetPodSelector().GetMatchLabels()["app"])
+	require.NotNil(t, banpData.GetSubject().GetPodSelector())
+	assert.Equal(t, "my-namespace", banpData.GetSubject().GetNamespaceSelector().GetMatchLabels()["kubernetes.io/metadata.name"])
+	assert.Equal(t, "web", banpData.GetSubject().GetPodSelector().GetMatchLabels()["app"])
 
 	// Ingress
 	require.Len(t, banpData.GetIngress(), 1)

@@ -141,6 +141,56 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 	})
 }
 
+func TestBuildResourceAPIGroupMap_PolicyGroupCollisions(t *testing.T) {
+	policyResources := []metav1.APIResource{
+		{Name: "adminnetworkpolicies", Kind: "AdminNetworkPolicy"},
+		{Name: "baselineadminnetworkpolicies", Kind: "BaselineAdminNetworkPolicy"},
+	}
+	egressResources := []metav1.APIResource{
+		{Name: "egressfirewalls", Kind: "EgressFirewall"},
+		{Name: "egressips", Kind: "EgressIP"},
+	}
+	supported := []*metav1.APIResourceList{
+		{GroupVersion: "policy.networking.k8s.io/v1alpha1", APIResources: policyResources},
+		{GroupVersion: "k8s.ovn.org/v1", APIResources: egressResources},
+	}
+	foreign := &metav1.APIResourceList{
+		GroupVersion: "example.com/v1",
+		APIResources: slices.Concat(policyResources, egressResources),
+	}
+	wantSupported := map[string]ResourceInfo{
+		"adminnetworkpolicies":         {Group: "policy.networking.k8s.io", Version: "v1alpha1"},
+		"baselineadminnetworkpolicies": {Group: "policy.networking.k8s.io", Version: "v1alpha1"},
+		"egressfirewalls":              {Group: "k8s.ovn.org", Version: "v1"},
+		"egressips":                    {Group: "k8s.ovn.org", Version: "v1"},
+	}
+
+	tests := []struct {
+		name      string
+		resources []*metav1.APIResourceList
+		want      map[string]ResourceInfo
+	}{
+		{name: "supported groups", resources: supported, want: wantSupported},
+		{name: "foreign group only", resources: []*metav1.APIResourceList{foreign}, want: map[string]ResourceInfo{}},
+		{name: "foreign group listed first", resources: append([]*metav1.APIResourceList{foreign}, supported...), want: wantSupported},
+		{name: "foreign group listed last", resources: append(slices.Clone(supported), foreign), want: wantSupported},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clientset := k8sfake.NewSimpleClientset()
+			fakeDiscovery, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
+			require.True(t, ok)
+
+			fakeDiscovery.Resources = tt.resources
+
+			got, err := BuildResourceAPIGroupMap(resourceList, clientset, zap.NewNop())
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestResourceListCiliumDispatchConsistency(t *testing.T) {
 	expectedCilium := map[string]bool{
 		"ciliumcidrgroups":                 true,
@@ -199,7 +249,7 @@ func TestResourceListAdminNetworkPolicyDispatchConsistency(t *testing.T) {
 	}
 
 	for _, resource := range resourceList {
-		isANP := anp.IsAdminNetworkPolicyResource(resource)
+		isANP := anp.IsAdminNetworkPolicyResource("policy.networking.k8s.io", resource)
 
 		if expectedANP[resource] {
 			assert.True(t, isANP, "resource %q should be recognized as ANP by IsAdminNetworkPolicyResource", resource)
@@ -220,7 +270,7 @@ func TestResourceListEgressDispatchConsistency(t *testing.T) {
 	}
 
 	for _, resource := range resourceList {
-		isEgress := ovn.IsEgressResource(resource)
+		isEgress := ovn.IsEgressResource("k8s.ovn.org", resource)
 
 		if expectedEgress[resource] {
 			assert.True(t, isEgress, "resource %q should be recognized as Egress by IsEgressResource", resource)
