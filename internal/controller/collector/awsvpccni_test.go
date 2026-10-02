@@ -16,46 +16,62 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
+//nolint:maintidx // table-driven test with comprehensive test cases
 func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 	tests := []struct {
-		name      string
-		input     string
-		wantErr   error
-		wantSrcIP string
-		wantDstIP string
-		wantProto string
+		name          string
+		input         string
+		wantErr       error
+		wantSrcIP     string
+		wantDstIP     string
+		wantProto     string
+		wantVerdict   pb.Verdict
+		wantDirection pb.TrafficDirection
+		wantTier      pb.PolicyTier
 	}{
 		{
-			name:      "valid TCP ACCEPT flow",
-			input:     `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client","caller":"events/events.go:193","msg":"Flow Info: ","Src IP":"10.0.141.167","Src Port":39197,"Dest IP":"172.20.0.10","Dest Port":53,"Proto":"TCP","Verdict":"ACCEPT"}`,
-			wantErr:   nil,
-			wantSrcIP: "10.0.141.167",
-			wantDstIP: "172.20.0.10",
-			wantProto: "tcp",
+			name:          "valid TCP ACCEPT flow",
+			input:         `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client","caller":"events/events.go:193","msg":"Flow Info: ","Src IP":"10.0.141.167","Src Port":39197,"Dest IP":"172.20.0.10","Dest Port":53,"Proto":"TCP","Verdict":"ACCEPT"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.141.167",
+			wantDstIP:     "172.20.0.10",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
-			name:      "valid TCP DENY flow",
-			input:     `{"level":"info","ts":"2024-09-23T12:36:53.604Z","logger":"ebpf-client","caller":"events/events.go:193","msg":"Flow Info: ","Src IP":"10.0.141.167","Src Port":43088,"Dest IP":"172.20.2.72","Dest Port":14220,"Proto":"TCP","Verdict":"DENY"}`,
-			wantErr:   nil,
-			wantSrcIP: "10.0.141.167",
-			wantDstIP: "172.20.2.72",
-			wantProto: "tcp",
+			name:          "valid TCP DENY flow",
+			input:         `{"level":"info","ts":"2024-09-23T12:36:53.604Z","logger":"ebpf-client","caller":"events/events.go:193","msg":"Flow Info: ","Src IP":"10.0.141.167","Src Port":43088,"Dest IP":"172.20.2.72","Dest Port":14220,"Proto":"TCP","Verdict":"DENY"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.141.167",
+			wantDstIP:     "172.20.2.72",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
-			name:      "valid UDP flow",
-			input:     `{"level":"info","ts":"2024-04-11T02:18:47.938Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"192.168.87.155","Src Port":38971,"Dest IP":"64.6.160.1","Dest Port":53,"Proto":"UDP","Verdict":"ACCEPT"}`,
-			wantErr:   nil,
-			wantSrcIP: "192.168.87.155",
-			wantDstIP: "64.6.160.1",
-			wantProto: "udp",
+			name:          "valid UDP flow",
+			input:         `{"level":"info","ts":"2024-04-11T02:18:47.938Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"192.168.87.155","Src Port":38971,"Dest IP":"64.6.160.1","Dest Port":53,"Proto":"UDP","Verdict":"ACCEPT"}`,
+			wantErr:       nil,
+			wantSrcIP:     "192.168.87.155",
+			wantDstIP:     "64.6.160.1",
+			wantProto:     "udp",
+			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
-			name:      "valid ICMP flow with zero ports",
-			input:     `{"level":"info","ts":"2024-02-07T19:07:00.513Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"57.20.37.65","Src Port":0,"Dest IP":"100.64.44.16","Dest Port":0,"Proto":"ICMP","Verdict":"DENY"}`,
-			wantErr:   nil,
-			wantSrcIP: "57.20.37.65",
-			wantDstIP: "100.64.44.16",
-			wantProto: "icmp",
+			name:          "valid ICMP flow with zero ports",
+			input:         `{"level":"info","ts":"2024-02-07T19:07:00.513Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"57.20.37.65","Src Port":0,"Dest IP":"100.64.44.16","Dest Port":0,"Proto":"ICMP","Verdict":"DENY"}`,
+			wantErr:       nil,
+			wantSrcIP:     "57.20.37.65",
+			wantDstIP:     "100.64.44.16",
+			wantProto:     "icmp",
+			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
 			name:    "not a flow log - different message",
@@ -83,45 +99,250 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			wantErr: ErrAWSVPCCNIInvalidLog,
 		},
 		{
-			name:      "UNKNOWN protocol defaults to TCP",
-			input:     `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.0.1","Src Port":1234,"Dest IP":"10.0.0.2","Dest Port":80,"Proto":"UNKNOWN","Verdict":"ACCEPT"}`,
-			wantErr:   nil,
-			wantSrcIP: "10.0.0.1",
-			wantDstIP: "10.0.0.2",
-			wantProto: "tcp",
+			name:          "UNKNOWN protocol defaults to TCP",
+			input:         `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.0.1","Src Port":1234,"Dest IP":"10.0.0.2","Dest Port":80,"Proto":"UNKNOWN","Verdict":"ACCEPT"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.0.1",
+			wantDstIP:     "10.0.0.2",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		// New format tests (v1.2.2+) - embedded msg string
 		{
-			name:      "v1.2.2+ format - TCP ACCEPT egress",
-			input:     `{"level":"debug","ts":"2026-04-13T21:18:46.888Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress"}`,
-			wantErr:   nil,
-			wantSrcIP: "10.0.1.28",
-			wantDstIP: "10.0.1.132",
-			wantProto: "tcp",
+			name:          "v1.2.2+ format - TCP ACCEPT egress",
+			input:         `{"level":"debug","ts":"2026-04-13T21:18:46.888Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.1.28",
+			wantDstIP:     "10.0.1.132",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
-			name:      "v1.2.2+ format - TCP ACCEPT ingress",
-			input:     `{"level":"debug","ts":"2026-04-13T21:18:46.888Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction ingress"}`,
-			wantErr:   nil,
-			wantSrcIP: "10.0.1.28",
-			wantDstIP: "10.0.1.132",
-			wantProto: "tcp",
+			name:          "v1.2.2+ format - TCP ACCEPT ingress",
+			input:         `{"level":"debug","ts":"2026-04-13T21:18:46.888Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction ingress"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.1.28",
+			wantDstIP:     "10.0.1.132",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
-			name:      "v1.2.2+ format - UDP ACCEPT",
-			input:     `{"level":"debug","ts":"2026-04-13T21:20:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 192.168.1.10 Src Port: 53000 Dest IP: 10.0.0.53 Dest Port: 53 Proto UDP Verdict ACCEPT Direction egress"}`,
-			wantErr:   nil,
-			wantSrcIP: "192.168.1.10",
-			wantDstIP: "10.0.0.53",
-			wantProto: "udp",
+			name:          "v1.2.2+ format - UDP ACCEPT",
+			input:         `{"level":"debug","ts":"2026-04-13T21:20:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 192.168.1.10 Src Port: 53000 Dest IP: 10.0.0.53 Dest Port: 53 Proto UDP Verdict ACCEPT Direction egress"}`,
+			wantErr:       nil,
+			wantSrcIP:     "192.168.1.10",
+			wantDstIP:     "10.0.0.53",
+			wantProto:     "udp",
+			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
 		},
 		{
-			name:      "v1.2.2+ format - TCP DENY",
-			input:     `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.2.50 Src Port: 45000 Dest IP: 10.0.1.100 Dest Port: 443 Proto TCP Verdict DENY Direction egress"}`,
-			wantErr:   nil,
-			wantSrcIP: "10.0.2.50",
-			wantDstIP: "10.0.1.100",
-			wantProto: "tcp",
+			name:          "v1.2.2+ format - TCP DENY",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.2.50 Src Port: 45000 Dest IP: 10.0.1.100 Dest Port: 443 Proto TCP Verdict DENY Direction egress"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.2.50",
+			wantDstIP:     "10.0.1.100",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
+		},
+		{
+			name:          "v1.3.0+ format - TCP ACCEPT with Tier",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress, Tier DEFAULT"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.1.28",
+			wantDstIP:     "10.0.1.132",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_DEFAULT,
+		},
+		// IPv6 lines put a colon after Proto/Verdict/Direction (v1.2.2+).
+		{
+			name:          "v1.2.2+ format - IPv6 TCP ACCEPT",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 2001:db8::1 Src Port: 55484 Dest IP: 2001:db8::2 Dest Port: 80 Proto: TCP Verdict: ACCEPT Direction: egress"}`,
+			wantErr:       nil,
+			wantSrcIP:     "2001:db8::1",
+			wantDstIP:     "2001:db8::2",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
+		},
+		{
+			name:          "v1.3.0+ format - IPv6 UDP DENY with Tier",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 2001:db8::1 Src Port: 53000 Dest IP: 2001:db8::53 Dest Port: 53 Proto: UDP Verdict: DENY Direction: ingress Tier: DEFAULT"}`,
+			wantErr:       nil,
+			wantSrcIP:     "2001:db8::1",
+			wantDstIP:     "2001:db8::53",
+			wantProto:     "udp",
+			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_DEFAULT,
+		},
+		// v1.3.0+ logs the policy tier that decided the verdict.
+		{
+			name:          "v1.3.0+ format - ADMIN tier",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.2.50 Src Port: 45000 Dest IP: 10.0.1.100 Dest Port: 443 Proto TCP Verdict DENY Direction ingress, Tier ADMIN"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.2.50",
+			wantDstIP:     "10.0.1.100",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_ADMIN,
+		},
+		{
+			name:          "v1.3.0+ format - NETWORK_POLICY tier",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction ingress, Tier NETWORK_POLICY"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.1.28",
+			wantDstIP:     "10.0.1.132",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_NETWORK_POLICY,
+		},
+		{
+			name:          "v1.3.0+ format - BASELINE tier",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 192.168.1.10 Src Port: 53000 Dest IP: 10.0.0.53 Dest Port: 53 Proto UDP Verdict ACCEPT Direction egress, Tier BASELINE"}`,
+			wantErr:       nil,
+			wantSrcIP:     "192.168.1.10",
+			wantDstIP:     "10.0.0.53",
+			wantProto:     "udp",
+			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_BASELINE,
+		},
+		{
+			name:          "v1.3.0+ format - ERROR tier",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.2.50 Src Port: 45000 Dest IP: 10.0.1.100 Dest Port: 443 Proto TCP Verdict DENY Direction egress, Tier ERROR"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.2.50",
+			wantDstIP:     "10.0.1.100",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_ERROR,
+		},
+		{
+			name:          "v1.3.0+ format - IPv6 NETWORK_POLICY tier",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 2001:db8::1 Src Port: 55484 Dest IP: 2001:db8::2 Dest Port: 80 Proto: TCP Verdict: DENY Direction: egress Tier: NETWORK_POLICY"}`,
+			wantErr:       nil,
+			wantSrcIP:     "2001:db8::1",
+			wantDstIP:     "2001:db8::2",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_NETWORK_POLICY,
+		},
+		{
+			name:          "v1.3.0+ format - unrecognized tier is sent as unknown",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress, Tier FUTURE"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.1.28",
+			wantDstIP:     "10.0.1.132",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
+		},
+		// EXPIRED/DELETED is not an allow/deny decision, so it is not sent as a flow.
+		{
+			name:    "EXPIRED/DELETED verdict is not a flow",
+			input:   `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.0.1","Src Port":1234,"Dest IP":"10.0.0.2","Dest Port":80,"Proto":"TCP","Verdict":"EXPIRED/DELETED"}`,
+			wantErr: ErrAWSVPCCNINotFlowLog,
+		},
+		{
+			name:    "v1.2.2+ format - EXPIRED/DELETED verdict is not a flow",
+			input:   `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict EXPIRED/DELETED Direction ingress"}`,
+			wantErr: ErrAWSVPCCNINotFlowLog,
+		},
+		{
+			name:          "missing verdict is sent as unknown",
+			input:         `{"level":"info","ts":"2024-09-23T12:36:53.562Z","logger":"ebpf-client","msg":"Flow Info: ","Src IP":"10.0.0.1","Src Port":1234,"Dest IP":"10.0.0.2","Dest Port":80,"Proto":"TCP"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.0.1",
+			wantDstIP:     "10.0.0.2",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_UNKNOWN_UNSPECIFIED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
+		},
+		{
+			name:          "v1.2.2+ format - missing direction is sent as unknown",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.1.28",
+			wantDstIP:     "10.0.1.132",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_FORWARDED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
+		},
+		{
+			name:          "v1.2.2+ format - missing verdict is sent as unknown",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Direction egress"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.1.28",
+			wantDstIP:     "10.0.1.132",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_UNKNOWN_UNSPECIFIED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
+		},
+		{
+			name:          "v1.3.0+ format - IPv6 missing verdict with Tier is sent as unknown",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 2001:db8::1 Src Port: 53000 Dest IP: 2001:db8::53 Dest Port: 53 Proto: UDP Direction: ingress Tier: DEFAULT"}`,
+			wantErr:       nil,
+			wantSrcIP:     "2001:db8::1",
+			wantDstIP:     "2001:db8::53",
+			wantProto:     "udp",
+			wantVerdict:   pb.Verdict_VERDICT_UNKNOWN_UNSPECIFIED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS,
+			wantTier:      pb.PolicyTier_POLICY_TIER_DEFAULT,
+		},
+		{
+			name:          "v1.2.2+ format - missing verdict and direction are sent as unknown",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.1.28",
+			wantDstIP:     "10.0.1.132",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_UNKNOWN_UNSPECIFIED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_UNSPECIFIED,
+		},
+		// The IPv4 v1.3.0+ ", Tier DEFAULT" follows whichever field is logged last.
+		{
+			name:          "v1.3.0+ format - missing direction with Tier keeps the verdict",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict DENY, Tier DEFAULT"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.1.28",
+			wantDstIP:     "10.0.1.132",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_DROPPED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_DEFAULT,
+		},
+		{
+			name:          "v1.3.0+ format - missing verdict and direction with Tier are sent as unknown",
+			input:         `{"level":"debug","ts":"2026-04-13T21:25:00.000Z","caller":"runtime/asm_amd64.s:1700","msg":"Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP, Tier DEFAULT"}`,
+			wantErr:       nil,
+			wantSrcIP:     "10.0.1.28",
+			wantDstIP:     "10.0.1.132",
+			wantProto:     "tcp",
+			wantVerdict:   pb.Verdict_VERDICT_UNKNOWN_UNSPECIFIED,
+			wantDirection: pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED,
+			wantTier:      pb.PolicyTier_POLICY_TIER_DEFAULT,
 		},
 		{
 			name:    "v1.2.2+ format - invalid msg (missing fields)",
@@ -145,12 +366,6 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 			flow, err := ParseAWSVPCCNIFlowLog(tt.input)
 
 			if tt.wantErr != nil {
-				if err == nil {
-					t.Errorf("expected error %v, got nil", tt.wantErr)
-
-					return
-				}
-
 				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("expected error %v, got %v", tt.wantErr, err)
 				}
@@ -170,21 +385,9 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 				return
 			}
 
-			// Verify layer3 IPs
-			if flow.GetLayer3() == nil {
-				t.Error("expected layer3, got nil")
-
-				return
-			}
-
-			// Check IPs using the IP struct fields
-			if flow.GetLayer3().GetSource() != tt.wantSrcIP {
-				t.Errorf("expected src IP %s, got %s", tt.wantSrcIP, flow.GetLayer3().GetSource())
-			}
-
-			if flow.GetLayer3().GetDestination() != tt.wantDstIP {
-				t.Errorf("expected dst IP %s, got %s", tt.wantDstIP, flow.GetLayer3().GetDestination())
-			}
+			// Check IPs using the IP struct fields (a nil layer3 fails these too)
+			checkEqual(t, "src IP", flow.GetLayer3().GetSource(), tt.wantSrcIP)
+			checkEqual(t, "dst IP", flow.GetLayer3().GetDestination(), tt.wantDstIP)
 
 			// Check protocol in layer4
 			if flow.GetLayer4() == nil {
@@ -192,7 +395,21 @@ func TestParseAWSVPCCNIFlowLog(t *testing.T) {
 
 				return
 			}
+
+			checkEqual(t, "verdict", flow.GetVerdict(), tt.wantVerdict)
+			checkEqual(t, "direction", flow.GetTrafficDirection(), tt.wantDirection)
+			checkEqual(t, "tier", flow.GetPolicyTier(), tt.wantTier)
 		})
+	}
+}
+
+// checkEqual reports a mismatch of one parsed field; a helper keeps the
+// table-driven parser tests under the gocognit limit.
+func checkEqual[T comparable](t *testing.T, field string, got, want T) {
+	t.Helper()
+
+	if got != want {
+		t.Errorf("%s = %v, want %v", field, got, want)
 	}
 }
 
@@ -287,37 +504,212 @@ func TestParseOldFormat(t *testing.T) {
 
 func TestParseFlowFromMsg(t *testing.T) {
 	tests := []struct {
-		name         string
-		msg          string
-		wantOk       bool
-		wantSrcIP    string
-		wantSrcPort  uint32
-		wantDestIP   string
-		wantDestPort uint32
-		wantProto    string
-		wantVerdict  string
+		name          string
+		msg           string
+		wantOk        bool
+		wantSrcIP     string
+		wantSrcPort   uint32
+		wantDestIP    string
+		wantDestPort  uint32
+		wantProto     string
+		wantVerdict   string
+		wantDirection string
+		wantTier      string
 	}{
 		{
-			name:         "valid TCP ACCEPT egress",
-			msg:          "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress",
-			wantOk:       true,
-			wantSrcIP:    "10.0.1.28",
-			wantSrcPort:  55484,
-			wantDestIP:   "10.0.1.132",
-			wantDestPort: 80,
-			wantProto:    "TCP",
-			wantVerdict:  "ACCEPT",
+			name:          "valid TCP ACCEPT egress",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "ACCEPT",
+			wantDirection: "egress",
+			wantTier:      "",
 		},
 		{
-			name:         "valid UDP DENY",
-			msg:          "Flow Info: Src IP: 192.168.1.10 Src Port: 53000 Dest IP: 10.0.0.53 Dest Port: 53 Proto UDP Verdict DENY Direction ingress",
-			wantOk:       true,
-			wantSrcIP:    "192.168.1.10",
-			wantSrcPort:  53000,
-			wantDestIP:   "10.0.0.53",
-			wantDestPort: 53,
-			wantProto:    "UDP",
-			wantVerdict:  "DENY",
+			name:          "valid UDP DENY",
+			msg:           "Flow Info: Src IP: 192.168.1.10 Src Port: 53000 Dest IP: 10.0.0.53 Dest Port: 53 Proto UDP Verdict DENY Direction ingress",
+			wantOk:        true,
+			wantSrcIP:     "192.168.1.10",
+			wantSrcPort:   53000,
+			wantDestIP:    "10.0.0.53",
+			wantDestPort:  53,
+			wantProto:     "UDP",
+			wantVerdict:   "DENY",
+			wantDirection: "ingress",
+			wantTier:      "",
+		},
+		{
+			name:          "valid TCP ACCEPT with Tier (v1.3.0+)",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress, Tier DEFAULT",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "ACCEPT",
+			wantDirection: "egress",
+			wantTier:      "DEFAULT",
+		},
+		{
+			name:          "valid IPv6 TCP ACCEPT (colon after Proto and Verdict)",
+			msg:           "Flow Info: Src IP: 2001:db8::1 Src Port: 55484 Dest IP: 2001:db8::2 Dest Port: 80 Proto: TCP Verdict: ACCEPT Direction: egress",
+			wantOk:        true,
+			wantSrcIP:     "2001:db8::1",
+			wantSrcPort:   55484,
+			wantDestIP:    "2001:db8::2",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "ACCEPT",
+			wantDirection: "egress",
+			wantTier:      "",
+		},
+		{
+			name:          "valid IPv6 UDP DENY with Tier (v1.3.0+)",
+			msg:           "Flow Info: Src IP: 2001:db8::1 Src Port: 53000 Dest IP: 2001:db8::53 Dest Port: 53 Proto: UDP Verdict: DENY Direction: ingress Tier: DEFAULT",
+			wantOk:        true,
+			wantSrcIP:     "2001:db8::1",
+			wantSrcPort:   53000,
+			wantDestIP:    "2001:db8::53",
+			wantDestPort:  53,
+			wantProto:     "UDP",
+			wantVerdict:   "DENY",
+			wantDirection: "ingress",
+			wantTier:      "DEFAULT",
+		},
+		{
+			name:          "valid without Direction",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "ACCEPT",
+			wantDirection: "",
+			wantTier:      "",
+		},
+		{
+			name:          "valid without Verdict",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Direction egress",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "",
+			wantDirection: "egress",
+			wantTier:      "",
+		},
+		{
+			name:          "valid IPv6 without Verdict with Tier (v1.3.0+)",
+			msg:           "Flow Info: Src IP: 2001:db8::1 Src Port: 53000 Dest IP: 2001:db8::53 Dest Port: 53 Proto: UDP Direction: ingress Tier: DEFAULT",
+			wantOk:        true,
+			wantSrcIP:     "2001:db8::1",
+			wantSrcPort:   53000,
+			wantDestIP:    "2001:db8::53",
+			wantDestPort:  53,
+			wantProto:     "UDP",
+			wantVerdict:   "",
+			wantDirection: "ingress",
+			wantTier:      "DEFAULT",
+		},
+		{
+			name:          "valid without Verdict or Direction",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "",
+			wantDirection: "",
+			wantTier:      "",
+		},
+		{
+			name:          "valid without Direction with Tier (v1.3.0+)",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict DENY, Tier DEFAULT",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "DENY",
+			wantDirection: "",
+			wantTier:      "DEFAULT",
+		},
+		{
+			name:          "valid without Verdict or Direction with Tier (v1.3.0+)",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP, Tier DEFAULT",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "",
+			wantDirection: "",
+			wantTier:      "DEFAULT",
+		},
+		{
+			name:          "valid NETWORK_POLICY Tier (v1.3.0+)",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict DENY Direction ingress, Tier NETWORK_POLICY",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "DENY",
+			wantDirection: "ingress",
+			wantTier:      "NETWORK_POLICY",
+		},
+		{
+			name:          "valid IPv6 ADMIN Tier (v1.3.0+)",
+			msg:           "Flow Info: Src IP: 2001:db8::1 Src Port: 55484 Dest IP: 2001:db8::2 Dest Port: 80 Proto: TCP Verdict: ACCEPT Direction: egress Tier: ADMIN",
+			wantOk:        true,
+			wantSrcIP:     "2001:db8::1",
+			wantSrcPort:   55484,
+			wantDestIP:    "2001:db8::2",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "ACCEPT",
+			wantDirection: "egress",
+			wantTier:      "ADMIN",
+		},
+		{
+			name:          "valid without Verdict with Tier (v1.3.0+)",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Direction egress, Tier BASELINE",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "",
+			wantDirection: "egress",
+			wantTier:      "BASELINE",
+		},
+		{
+			name:          "valid with an empty Tier (v1.3.0+)",
+			msg:           "Flow Info: Src IP: 10.0.1.28 Src Port: 55484 Dest IP: 10.0.1.132 Dest Port: 80 Proto TCP Verdict ACCEPT Direction egress, Tier ",
+			wantOk:        true,
+			wantSrcIP:     "10.0.1.28",
+			wantSrcPort:   55484,
+			wantDestIP:    "10.0.1.132",
+			wantDestPort:  80,
+			wantProto:     "TCP",
+			wantVerdict:   "ACCEPT",
+			wantDirection: "egress",
+			wantTier:      "",
 		},
 		{
 			name:   "missing required fields",
@@ -343,7 +735,7 @@ func TestParseFlowFromMsg(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srcIP, srcPort, destIP, destPort, proto, verdict, ok := parseFlowFromMsg(tt.msg)
+			srcIP, srcPort, destIP, destPort, proto, verdict, direction, tier, ok := parseFlowFromMsg(tt.msg)
 
 			if ok != tt.wantOk {
 				t.Errorf("parseFlowFromMsg() ok = %v, want %v", ok, tt.wantOk)
@@ -355,29 +747,14 @@ func TestParseFlowFromMsg(t *testing.T) {
 				return
 			}
 
-			if srcIP != tt.wantSrcIP {
-				t.Errorf("srcIP = %v, want %v", srcIP, tt.wantSrcIP)
-			}
-
-			if srcPort != tt.wantSrcPort {
-				t.Errorf("srcPort = %v, want %v", srcPort, tt.wantSrcPort)
-			}
-
-			if destIP != tt.wantDestIP {
-				t.Errorf("destIP = %v, want %v", destIP, tt.wantDestIP)
-			}
-
-			if destPort != tt.wantDestPort {
-				t.Errorf("destPort = %v, want %v", destPort, tt.wantDestPort)
-			}
-
-			if proto != tt.wantProto {
-				t.Errorf("proto = %v, want %v", proto, tt.wantProto)
-			}
-
-			if verdict != tt.wantVerdict {
-				t.Errorf("verdict = %v, want %v", verdict, tt.wantVerdict)
-			}
+			checkEqual(t, "srcIP", srcIP, tt.wantSrcIP)
+			checkEqual(t, "srcPort", srcPort, tt.wantSrcPort)
+			checkEqual(t, "destIP", destIP, tt.wantDestIP)
+			checkEqual(t, "destPort", destPort, tt.wantDestPort)
+			checkEqual(t, "proto", proto, tt.wantProto)
+			checkEqual(t, "verdict", verdict, tt.wantVerdict)
+			checkEqual(t, "direction", direction, tt.wantDirection)
+			checkEqual(t, "tier", tier, tt.wantTier)
 		})
 	}
 }
