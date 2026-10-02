@@ -1,3 +1,5 @@
+// Copyright 2026 Illumio, Inc. All Rights Reserved.
+
 package k8sclustersyncv1
 
 import (
