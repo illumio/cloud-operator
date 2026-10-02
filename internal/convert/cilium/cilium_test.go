@@ -29,10 +29,12 @@ func TestIsCiliumResource(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := IsCiliumResource(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
+		for _, group := range []string{"cilium.io", "networking.k8s.aws", "policy.networking.k8s.io", "example.com", ""} {
+			t.Run(tt.name+"/"+group, func(t *testing.T) {
+				result := IsCiliumResource(group, tt.input)
+				assert.Equal(t, tt.expected && group == "cilium.io", result)
+			})
+		}
 	}
 }
 
@@ -41,6 +43,25 @@ func TestConvertUnstructuredToCiliumResource_Nil(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "cannot convert nil object")
+}
+
+func TestConvertUnstructuredToCiliumResource_RejectsOtherAPIGroups(t *testing.T) {
+	for _, kind := range []string{"CiliumNetworkPolicy", "CiliumClusterwideNetworkPolicy", "CiliumCIDRGroup"} {
+		for _, apiVersion := range []string{"networking.k8s.aws/v1alpha1", "example.com/v1", "v2"} {
+			t.Run(kind+"/"+apiVersion, func(t *testing.T) {
+				obj := &unstructured.Unstructured{Object: map[string]any{
+					"apiVersion": apiVersion,
+					"kind":       kind,
+					"metadata":   map[string]any{"name": "unrelated-policy"},
+					"spec":       map[string]any{},
+				}}
+
+				result, err := ConvertUnstructuredToCiliumResource(obj)
+				require.ErrorContains(t, err, "API group")
+				assert.Nil(t, result)
+			})
+		}
+	}
 }
 
 func TestConvertUnstructuredToCiliumResource_Basic(t *testing.T) {

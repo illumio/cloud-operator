@@ -150,19 +150,39 @@ func TestBuildResourceAPIGroupMap_PolicyGroupCollisions(t *testing.T) {
 		{Name: "egressfirewalls", Kind: "EgressFirewall"},
 		{Name: "egressips", Kind: "EgressIP"},
 	}
+	awsResources := []metav1.APIResource{
+		{Name: "clusternetworkpolicies", Kind: "ClusterNetworkPolicy"},
+		{Name: "applicationnetworkpolicies", Kind: "ApplicationNetworkPolicy"},
+	}
+	ciliumResources := []metav1.APIResource{
+		{Name: "ciliumnetworkpolicies", Kind: "CiliumNetworkPolicy"},
+		{Name: "ciliumclusterwidenetworkpolicies", Kind: "CiliumClusterwideNetworkPolicy"},
+		{Name: "ciliumcidrgroups", Kind: "CiliumCIDRGroup"},
+	}
 	supported := []*metav1.APIResourceList{
 		{GroupVersion: "policy.networking.k8s.io/v1alpha1", APIResources: policyResources},
 		{GroupVersion: "k8s.ovn.org/v1", APIResources: egressResources},
+		{GroupVersion: "networking.k8s.aws/v1alpha1", APIResources: awsResources},
+		{GroupVersion: "cilium.io/v2", APIResources: ciliumResources},
 	}
 	foreign := &metav1.APIResourceList{
 		GroupVersion: "example.com/v1",
-		APIResources: slices.Concat(policyResources, egressResources),
+		APIResources: slices.Concat(policyResources, egressResources, awsResources, ciliumResources),
+	}
+	kubernetesCNP := &metav1.APIResourceList{
+		GroupVersion: "policy.networking.k8s.io/v1alpha2",
+		APIResources: []metav1.APIResource{{Name: "clusternetworkpolicies", Kind: "ClusterNetworkPolicy"}},
 	}
 	wantSupported := map[string]ResourceInfo{
-		"adminnetworkpolicies":         {Group: "policy.networking.k8s.io", Version: "v1alpha1"},
-		"baselineadminnetworkpolicies": {Group: "policy.networking.k8s.io", Version: "v1alpha1"},
-		"egressfirewalls":              {Group: "k8s.ovn.org", Version: "v1"},
-		"egressips":                    {Group: "k8s.ovn.org", Version: "v1"},
+		"adminnetworkpolicies":             {Group: "policy.networking.k8s.io", Version: "v1alpha1"},
+		"baselineadminnetworkpolicies":     {Group: "policy.networking.k8s.io", Version: "v1alpha1"},
+		"egressfirewalls":                  {Group: "k8s.ovn.org", Version: "v1"},
+		"egressips":                        {Group: "k8s.ovn.org", Version: "v1"},
+		"clusternetworkpolicies":           {Group: "networking.k8s.aws", Version: "v1alpha1"},
+		"applicationnetworkpolicies":       {Group: "networking.k8s.aws", Version: "v1alpha1"},
+		"ciliumnetworkpolicies":            {Group: "cilium.io", Version: "v2"},
+		"ciliumclusterwidenetworkpolicies": {Group: "cilium.io", Version: "v2"},
+		"ciliumcidrgroups":                 {Group: "cilium.io", Version: "v2"},
 	}
 
 	tests := []struct {
@@ -174,6 +194,18 @@ func TestBuildResourceAPIGroupMap_PolicyGroupCollisions(t *testing.T) {
 		{name: "foreign group only", resources: []*metav1.APIResourceList{foreign}, want: map[string]ResourceInfo{}},
 		{name: "foreign group listed first", resources: append([]*metav1.APIResourceList{foreign}, supported...), want: wantSupported},
 		{name: "foreign group listed last", resources: append(slices.Clone(supported), foreign), want: wantSupported},
+		{name: "Kubernetes CNP is not an AWS resource", resources: []*metav1.APIResourceList{kubernetesCNP}, want: map[string]ResourceInfo{}},
+		{
+			name: "AWS and Kubernetes CNP coexist",
+			resources: []*metav1.APIResourceList{
+				{GroupVersion: "networking.k8s.aws/v1alpha1", APIResources: awsResources},
+				kubernetesCNP,
+			},
+			want: map[string]ResourceInfo{
+				"clusternetworkpolicies":     {Group: "networking.k8s.aws", Version: "v1alpha1"},
+				"applicationnetworkpolicies": {Group: "networking.k8s.aws", Version: "v1alpha1"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -199,7 +231,7 @@ func TestResourceListCiliumDispatchConsistency(t *testing.T) {
 	}
 
 	for _, resource := range resourceList {
-		isCilium := cilium.IsCiliumResource(resource)
+		isCilium := cilium.IsCiliumResource("cilium.io", resource)
 
 		if expectedCilium[resource] {
 			assert.True(t, isCilium, "resource %q should be recognized as Cilium by IsCiliumResource", resource)
@@ -220,7 +252,7 @@ func TestResourceListAWSDispatchConsistency(t *testing.T) {
 	for _, name := range awsResources {
 		assert.True(t, slices.Contains(resourceList, name),
 			"%s must be in resourceList (ingested)", name)
-		assert.True(t, awsvpccni.IsAWSResource(name),
+		assert.True(t, awsvpccni.IsAWSResource("networking.k8s.aws", name),
 			"%s must be recognized by IsAWSResource", name)
 	}
 
@@ -235,8 +267,8 @@ func TestResourceListAWSDispatchConsistency(t *testing.T) {
 
 	// Cilium resources must not be misrouted to the AWS converter.
 	for _, resource := range resourceList {
-		if cilium.IsCiliumResource(resource) {
-			assert.False(t, awsvpccni.IsAWSResource(resource),
+		if cilium.IsCiliumResource("cilium.io", resource) {
+			assert.False(t, awsvpccni.IsAWSResource("cilium.io", resource),
 				"resource %q should not be recognized as both Cilium and AWS", resource)
 		}
 	}

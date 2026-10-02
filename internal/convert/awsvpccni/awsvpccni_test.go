@@ -24,6 +24,8 @@ func TestIsAWSResource(t *testing.T) {
 	}{
 		{"ClusterNetworkPolicy kind", "ClusterNetworkPolicy", true},
 		{"clusternetworkpolicies resource", "clusternetworkpolicies", true},
+		{"ApplicationNetworkPolicy kind", "ApplicationNetworkPolicy", true},
+		{"applicationnetworkpolicies resource", "applicationnetworkpolicies", true},
 		{"CiliumNetworkPolicy is not AWS", "CiliumNetworkPolicy", false},
 		{"NetworkPolicy is not AWS", "NetworkPolicy", false},
 		{"pods is not AWS", "pods", false},
@@ -31,10 +33,12 @@ func TestIsAWSResource(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := IsAWSResource(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
+		for _, group := range []string{"networking.k8s.aws", "policy.networking.k8s.io", "cilium.io", "example.com", ""} {
+			t.Run(tt.name+"/"+group, func(t *testing.T) {
+				result := IsAWSResource(group, tt.input)
+				assert.Equal(t, tt.expected && group == "networking.k8s.aws", result)
+			})
+		}
 	}
 }
 
@@ -43,6 +47,25 @@ func TestConvertUnstructuredToAWSResource_Nil(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "cannot convert nil object")
+}
+
+func TestConvertUnstructuredToAWSResource_RejectsOtherAPIGroups(t *testing.T) {
+	for _, kind := range []string{"ClusterNetworkPolicy", "ApplicationNetworkPolicy"} {
+		for _, apiVersion := range []string{"policy.networking.k8s.io/v1alpha2", "cilium.io/v2", "example.com/v1", "v1"} {
+			t.Run(kind+"/"+apiVersion, func(t *testing.T) {
+				obj := &unstructured.Unstructured{Object: map[string]any{
+					"apiVersion": apiVersion,
+					"kind":       kind,
+					"metadata":   map[string]any{"name": "unrelated-policy"},
+					"spec":       map[string]any{},
+				}}
+
+				result, err := ConvertUnstructuredToAWSResource(zap.NewNop(), obj)
+				require.ErrorContains(t, err, "API group")
+				assert.Nil(t, result)
+			})
+		}
+	}
 }
 
 func TestConvertUnstructuredToAWSResource_UnsupportedKind(t *testing.T) {
@@ -342,8 +365,8 @@ func TestConvertUnstructuredToAWSResource_MatchExpressions(t *testing.T) {
 }
 
 func TestIsAWSResource_ApplicationNetworkPolicy(t *testing.T) {
-	assert.True(t, IsAWSResource("ApplicationNetworkPolicy"))
-	assert.True(t, IsAWSResource("applicationnetworkpolicies"))
+	assert.True(t, IsAWSResource("networking.k8s.aws", "ApplicationNetworkPolicy"))
+	assert.True(t, IsAWSResource("networking.k8s.aws", "applicationnetworkpolicies"))
 }
 
 // newANP builds an unstructured ApplicationNetworkPolicy (namespaced) with the given spec.

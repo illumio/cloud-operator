@@ -19,9 +19,16 @@ import (
 	"github.com/illumio/cloud-operator/internal/convert"
 )
 
-// IsAWSResource returns true if the input identifies an AWS VPC CNI policy resource.
+// APIGroup is the AWS VPC CNI policy API group.
+const APIGroup = "networking.k8s.aws"
+
+// IsAWSResource returns true if the group and name identify an AWS VPC CNI policy resource.
 // Accepts both Kind (PascalCase) and resource name (lowercase plural).
-func IsAWSResource(kindOrResource string) bool {
+func IsAWSResource(apiGroup, kindOrResource string) bool {
+	if apiGroup != APIGroup {
+		return false
+	}
+
 	switch kindOrResource {
 	case "ClusterNetworkPolicy", "clusternetworkpolicies",
 		"ApplicationNetworkPolicy", "applicationnetworkpolicies":
@@ -48,6 +55,9 @@ func ConvertUnstructuredToAWSResource(logger *zap.Logger, obj *k8sUnstructured.U
 	}
 
 	gvk := obj.GroupVersionKind()
+	if gvk.Group != APIGroup {
+		return nil, fmt.Errorf("unsupported AWS API group: %q", gvk.Group)
+	}
 
 	objMetadata := &pb.KubernetesObjectData{
 		Annotations:       obj.GetAnnotations(),

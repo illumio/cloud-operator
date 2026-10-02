@@ -10,6 +10,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/illumio/cloud-operator/internal/convert/anp"
+	"github.com/illumio/cloud-operator/internal/convert/awsvpccni"
+	"github.com/illumio/cloud-operator/internal/convert/cilium"
 	"github.com/illumio/cloud-operator/internal/convert/ovn"
 )
 
@@ -24,10 +26,15 @@ var ManagedResourceNames = []string{
 // These CRD names are only supported in their defining API groups. Filter other
 // groups before populating the name-keyed discovery map to prevent collisions.
 var policyResourceGroups = map[string]string{
-	"adminnetworkpolicies":         anp.APIGroup,
-	"baselineadminnetworkpolicies": anp.APIGroup,
-	"egressfirewalls":              ovn.APIGroup,
-	"egressips":                    ovn.APIGroup,
+	"adminnetworkpolicies":             anp.APIGroup,
+	"applicationnetworkpolicies":       awsvpccni.APIGroup,
+	"baselineadminnetworkpolicies":     anp.APIGroup,
+	"ciliumcidrgroups":                 cilium.APIGroup,
+	"ciliumclusterwidenetworkpolicies": cilium.APIGroup,
+	"ciliumnetworkpolicies":            cilium.APIGroup,
+	"clusternetworkpolicies":           awsvpccni.APIGroup,
+	"egressfirewalls":                  ovn.APIGroup,
+	"egressips":                        ovn.APIGroup,
 }
 
 // ApplicationNetworkPolicy is intentionally excluded: it is ingest-only.

@@ -110,7 +110,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		var handler RuntimeCacheHandler
 
 		switch {
-		case cilium.IsCiliumResource(resource):
+		case cilium.IsCiliumResource(resourceInfo.Group, resource):
 			converter = ciliumConverter
 			handler = runtimeCacheHandler
 		case anp.IsAdminNetworkPolicyResource(resourceInfo.Group, resource):
@@ -119,7 +119,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 			converter = egressConverter
 		}
 
-		if awsvpccni.IsAWSResource(resource) {
+		if awsvpccni.IsAWSResource(resourceInfo.Group, resource) {
 			converter = awsConverter
 			handler = runtimeCacheHandler
 		}
