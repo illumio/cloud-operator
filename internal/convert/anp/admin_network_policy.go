@@ -131,18 +131,22 @@ func convertBaselineAdminNetworkPolicyData(banp *baselineAdminNetworkPolicy) *pb
 
 // --- Subject conversion ---
 
-func convertANPSubject(subject *adminNetworkPolicySubject) *pb.AdminNetworkPolicyPodSelector {
-	if subject.Pods != nil {
-		return convertNamespacedPod(subject.Pods)
+func convertANPSubject(subject *adminNetworkPolicySubject) *pb.AdminNetworkPolicySubject {
+	pbSubject := &pb.AdminNetworkPolicySubject{}
+
+	if subject.Namespaces != nil {
+		pbSubject.Namespaces = convert.ConvertLabelSelectorToProto(subject.Namespaces)
 	}
 
-	return &pb.AdminNetworkPolicyPodSelector{
-		NamespaceSelector: convert.ConvertLabelSelectorToProto(subject.Namespaces),
+	if subject.Pods != nil {
+		pbSubject.Pods = convertNamespacedPod(subject.Pods)
 	}
+
+	return pbSubject
 }
 
-func convertNamespacedPod(pod *namespacedPod) *pb.AdminNetworkPolicyPodSelector {
-	return &pb.AdminNetworkPolicyPodSelector{
+func convertNamespacedPod(pod *namespacedPod) *pb.AdminNetworkPolicyNamespacedPod {
+	return &pb.AdminNetworkPolicyNamespacedPod{
 		NamespaceSelector: convert.ConvertLabelSelectorToProto(&pod.NamespaceSelector),
 		PodSelector:       convert.ConvertLabelSelectorToProto(&pod.PodSelector),
 	}

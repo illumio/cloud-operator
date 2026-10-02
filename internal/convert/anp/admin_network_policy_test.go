@@ -117,29 +117,32 @@ func TestConvertUnstructuredToAdminNetworkPolicyResource_SubjectSelectors(t *tes
 				result, err := ConvertUnstructuredToAdminNetworkPolicyResource(obj)
 				require.NoError(t, err)
 
-				selector := result.GetAdminNetworkPolicy().GetSubject()
+				subject := result.GetAdminNetworkPolicy().GetSubject()
 				if kind == "BaselineAdminNetworkPolicy" {
-					selector = result.GetBaselineAdminNetworkPolicy().GetSubject()
+					subject = result.GetBaselineAdminNetworkPolicy().GetSubject()
 				}
-
-				require.NotNil(t, selector.GetNamespaceSelector())
-				assert.Equal(t, tt.namespaceLabels, selector.GetNamespaceSelector().GetMatchLabels())
 
 				if tt.hasPodSelector {
-					require.NotNil(t, selector.GetPodSelector())
+					assert.Nil(t, subject.GetNamespaces())
+					pod := subject.GetPods()
+					require.NotNil(t, pod)
+					require.NotNil(t, pod.GetNamespaceSelector())
+					require.NotNil(t, pod.GetPodSelector())
+					assert.Equal(t, tt.namespaceLabels, pod.GetNamespaceSelector().GetMatchLabels())
+					assert.Equal(t, tt.podLabels, pod.GetPodSelector().GetMatchLabels())
 				} else {
-					assert.Nil(t, selector.GetPodSelector())
+					assert.Nil(t, subject.GetPods())
+					require.NotNil(t, subject.GetNamespaces())
+					assert.Equal(t, tt.namespaceLabels, subject.GetNamespaces().GetMatchLabels())
 				}
 
-				assert.Equal(t, tt.podLabels, selector.GetPodSelector().GetMatchLabels())
-
-				encoded, err := proto.Marshal(selector)
+				encoded, err := proto.Marshal(subject)
 				require.NoError(t, err)
 
-				var decoded pb.AdminNetworkPolicyPodSelector
+				var decoded pb.AdminNetworkPolicySubject
 
 				require.NoError(t, proto.Unmarshal(encoded, &decoded))
-				assert.True(t, proto.Equal(selector, &decoded), "selector presence must survive protobuf serialization")
+				assert.True(t, proto.Equal(subject, &decoded), "selector presence must survive protobuf serialization")
 			})
 		}
 	}
@@ -287,8 +290,8 @@ func TestConvertUnstructuredToAdminNetworkPolicyResource_AdminNetworkPolicy(t *t
 
 	// Subject
 	require.NotNil(t, anpData.GetSubject())
-	require.NotNil(t, anpData.GetSubject().GetNamespaceSelector())
-	assert.Equal(t, "prod", anpData.GetSubject().GetNamespaceSelector().GetMatchLabels()["env"])
+	require.NotNil(t, anpData.GetSubject().GetNamespaces())
+	assert.Equal(t, "prod", anpData.GetSubject().GetNamespaces().GetMatchLabels()["env"])
 
 	// Ingress
 	require.Len(t, anpData.GetIngress(), 1)
@@ -358,9 +361,9 @@ func TestConvertUnstructuredToAdminNetworkPolicyResource_BaselineAdminNetworkPol
 
 	// Subject with pods
 	require.NotNil(t, banpData.GetSubject())
-	require.NotNil(t, banpData.GetSubject().GetPodSelector())
-	assert.Equal(t, "my-namespace", banpData.GetSubject().GetNamespaceSelector().GetMatchLabels()["kubernetes.io/metadata.name"])
-	assert.Equal(t, "web", banpData.GetSubject().GetPodSelector().GetMatchLabels()["app"])
+	require.NotNil(t, banpData.GetSubject().GetPods())
+	assert.Equal(t, "my-namespace", banpData.GetSubject().GetPods().GetNamespaceSelector().GetMatchLabels()["kubernetes.io/metadata.name"])
+	assert.Equal(t, "web", banpData.GetSubject().GetPods().GetPodSelector().GetMatchLabels()["app"])
 
 	// Ingress
 	require.Len(t, banpData.GetIngress(), 1)
