@@ -41,4 +41,9 @@ const (
 	// ResourceProcessingTimeout is the maximum time allowed for resource processing
 	// before the server is considered unhealthy.
 	ResourceProcessingTimeout = 5 * time.Minute
+
+	// FlowSendTimeout is the maximum time a single Send on the network flows stream
+	// may block before the server is considered unhealthy. A Send blocks when
+	// CloudSecure stops consuming the stream without closing the connection.
+	FlowSendTimeout = 5 * time.Minute
 )

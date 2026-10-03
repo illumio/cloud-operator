@@ -64,13 +64,18 @@ const (
 
 // newHealthHandler returns an HTTP HandlerFunc that checks the health of the
 // server by calling the given function and returns a status code accordingly.
-func newHealthHandler(checkFunc func() bool) http.HandlerFunc {
+// The function returns why the server is unhealthy, or an empty string if it is healthy.
+func newHealthHandler(logger *zap.Logger, unhealthyReason func() string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if checkFunc() {
+		reason := unhealthyReason()
+		if reason == "" {
 			w.WriteHeader(http.StatusOK)
-		} else {
-			w.WriteHeader(http.StatusInternalServerError)
+
+			return
 		}
+
+		logger.Error("Health check failed", zap.String("reason", reason))
+		http.Error(w, reason, http.StatusInternalServerError)
 	}
 }
 
@@ -215,7 +220,7 @@ func main() {
 		logger.Error("Failed to start gops agent", zap.Error(err))
 	}
 
-	http.HandleFunc("/healthz", newHealthHandler(stream.ServerIsHealthy))
+	http.HandleFunc("/healthz", newHealthHandler(logger, stream.UnhealthyReason))
 
 	healthChecker := &http.Server{
 		Addr:              ":8080",
