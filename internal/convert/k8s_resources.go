@@ -44,7 +44,7 @@ func NewCoreResourceConverter(clientset kubernetes.Interface, logger *zap.Logger
 		}
 
 		// Enrich the provider objects that bind a load balancer to a Service. These
-		// kinds also have no case in ConvertMetaObjectToMetadata. A malformed object
+		// kinds also have no case in ConvertMetaObjectToMetadata. A minimal object
 		// is still sent, with metadata only.
 		if err := convertLoadBalancerBinding(metadata, obj, gvk.Kind, gvk.Group); err != nil {
 			logger.Warn("Failed to read load balancer binding, sending metadata only",

@@ -1,6 +1,6 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package convert
+package awsvpccni
 
 import (
 	networkingv1 "k8s.io/api/networking/v1"

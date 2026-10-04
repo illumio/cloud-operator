@@ -9,6 +9,11 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/illumio/cloud-operator/internal/convert/anp"
+	"github.com/illumio/cloud-operator/internal/convert/awsvpccni"
+	"github.com/illumio/cloud-operator/internal/convert/cilium"
+	"github.com/illumio/cloud-operator/internal/convert/ovn"
 )
 
 // ManagedResourceNames lists the plural resource names managed by the reconciler.
@@ -22,10 +27,14 @@ var ManagedResourceNames = []string{
 // ApplicationNetworkPolicy is intentionally excluded: it is ingest-only.
 var resourceList = slices.Concat(ManagedResourceNames, []string{
 	"applicationnetworkpolicies",
+	"adminnetworkpolicies",
+	"baselineadminnetworkpolicies",
 	"cronjobs",
 	"customresourcedefinitions",
 	"daemonsets",
 	"deployments",
+	"egressfirewalls",
+	"egressips",
 	"endpoints",
 	"gateways",
 	"gatewayclasses",
@@ -56,15 +65,19 @@ var resourceList = slices.Concat(ManagedResourceNames, []string{
 // networking.istio.io/gateways, policy.networking.k8s.io/clusternetworkpolicies.
 // Every entry in resourceList must be listed here.
 var resourceGroups = map[string]string{
-	"applicationnetworkpolicies":       "networking.k8s.aws",
-	"ciliumcidrgroups":                 "cilium.io",
-	"ciliumclusterwidenetworkpolicies": "cilium.io",
-	"ciliumnetworkpolicies":            "cilium.io",
-	"clusternetworkpolicies":           "networking.k8s.aws",
+	"adminnetworkpolicies":             anp.APIGroup,
+	"applicationnetworkpolicies":       awsvpccni.APIGroup,
+	"baselineadminnetworkpolicies":     anp.APIGroup,
+	"ciliumcidrgroups":                 cilium.APIGroup,
+	"ciliumclusterwidenetworkpolicies": cilium.APIGroup,
+	"ciliumnetworkpolicies":            cilium.APIGroup,
+	"clusternetworkpolicies":           awsvpccni.APIGroup,
 	"cronjobs":                         "batch",
 	"customresourcedefinitions":        "apiextensions.k8s.io",
 	"daemonsets":                       "apps",
 	"deployments":                      "apps",
+	"egressfirewalls":                  ovn.APIGroup,
+	"egressips":                        ovn.APIGroup,
 	"endpoints":                        "",
 	"gatewayclasses":                   "gateway.networking.k8s.io",
 	"gateways":                         "gateway.networking.k8s.io",

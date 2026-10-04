@@ -43,8 +43,8 @@ func convertLoadBalancerBinding(objMetadata *pb.KubernetesObjectData, obj *unstr
 			return fmt.Errorf("deserializing %s: %w", kind, err)
 		}
 
-		objMetadata.KindSpecific = &pb.KubernetesObjectData_TargetGroupBinding{
-			TargetGroupBinding: convertTargetGroupBinding(&tgb),
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_AwsTargetGroupBinding{
+			AwsTargetGroupBinding: convertAWSTargetGroupBinding(&tgb),
 		}
 	case kind == "ServiceNetworkEndpointGroup" && apiGroup == gkeNetworkingGroup:
 		var svcNeg svcNegServiceNetworkEndpointGroup
@@ -52,8 +52,8 @@ func convertLoadBalancerBinding(objMetadata *pb.KubernetesObjectData, obj *unstr
 			return fmt.Errorf("deserializing %s: %w", kind, err)
 		}
 
-		objMetadata.KindSpecific = &pb.KubernetesObjectData_ServiceNetworkEndpointGroup{
-			ServiceNetworkEndpointGroup: convertServiceNetworkEndpointGroup(&svcNeg, obj.GetLabels()),
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_GkeServiceNetworkEndpointGroup{
+			GkeServiceNetworkEndpointGroup: convertGKEServiceNetworkEndpointGroup(&svcNeg, obj.GetLabels()),
 		}
 	case (kind == "ServiceL2Status" || kind == "ServiceBGPStatus") && apiGroup == metalLBGroup:
 		var status metalLBServiceStatus
@@ -69,10 +69,10 @@ func convertLoadBalancerBinding(objMetadata *pb.KubernetesObjectData, obj *unstr
 	return nil
 }
 
-func convertTargetGroupBinding(tgb *tgbTargetGroupBinding) *pb.KubernetesTargetGroupBindingData {
+func convertAWSTargetGroupBinding(tgb *tgbTargetGroupBinding) *pb.KubernetesAWSTargetGroupBindingData {
 	spec := tgb.Spec
 
-	return &pb.KubernetesTargetGroupBindingData{
+	return &pb.KubernetesAWSTargetGroupBindingData{
 		ServiceName:             spec.ServiceRef.Name,
 		ServicePort:             spec.ServiceRef.Port.String(),
 		TargetType:              nonEmptyString(spec.TargetType),
@@ -87,14 +87,14 @@ func convertTargetGroupBinding(tgb *tgbTargetGroupBinding) *pb.KubernetesTargetG
 	}
 }
 
-func convertTGBIngressRules(networking *tgbNetworking) []*pb.TargetGroupBindingIngressRule {
+func convertTGBIngressRules(networking *tgbNetworking) []*pb.AWSTargetGroupBindingIngressRule {
 	if networking == nil || len(networking.Ingress) == 0 {
 		return nil
 	}
 
-	out := make([]*pb.TargetGroupBindingIngressRule, 0, len(networking.Ingress))
+	out := make([]*pb.AWSTargetGroupBindingIngressRule, 0, len(networking.Ingress))
 	for _, rule := range networking.Ingress {
-		out = append(out, &pb.TargetGroupBindingIngressRule{
+		out = append(out, &pb.AWSTargetGroupBindingIngressRule{
 			From:  convertTGBPeers(rule.From),
 			Ports: convertTGBPorts(rule.Ports),
 		})
@@ -103,14 +103,14 @@ func convertTGBIngressRules(networking *tgbNetworking) []*pb.TargetGroupBindingI
 	return out
 }
 
-func convertTGBPeers(peers []tgbPeer) []*pb.TargetGroupBindingPeer {
+func convertTGBPeers(peers []tgbPeer) []*pb.AWSTargetGroupBindingPeer {
 	if len(peers) == 0 {
 		return nil
 	}
 
-	out := make([]*pb.TargetGroupBindingPeer, 0, len(peers))
+	out := make([]*pb.AWSTargetGroupBindingPeer, 0, len(peers))
 	for _, peer := range peers {
-		pbPeer := &pb.TargetGroupBindingPeer{}
+		pbPeer := &pb.AWSTargetGroupBindingPeer{}
 
 		if peer.IPBlock != nil {
 			pbPeer.Cidr = nonEmptyString(&peer.IPBlock.CIDR)
@@ -126,14 +126,14 @@ func convertTGBPeers(peers []tgbPeer) []*pb.TargetGroupBindingPeer {
 	return out
 }
 
-func convertTGBPorts(ports []tgbPort) []*pb.TargetGroupBindingPort {
+func convertTGBPorts(ports []tgbPort) []*pb.AWSTargetGroupBindingPort {
 	if len(ports) == 0 {
 		return nil
 	}
 
-	out := make([]*pb.TargetGroupBindingPort, 0, len(ports))
+	out := make([]*pb.AWSTargetGroupBindingPort, 0, len(ports))
 	for _, port := range ports {
-		pbPort := &pb.TargetGroupBindingPort{
+		pbPort := &pb.AWSTargetGroupBindingPort{
 			Protocol: nonEmptyString(port.Protocol),
 		}
 
@@ -148,14 +148,14 @@ func convertTGBPorts(ports []tgbPort) []*pb.TargetGroupBindingPort {
 	return out
 }
 
-func convertServiceNetworkEndpointGroup(svcNeg *svcNegServiceNetworkEndpointGroup, labels map[string]string) *pb.KubernetesServiceNetworkEndpointGroupData {
-	out := &pb.KubernetesServiceNetworkEndpointGroupData{
+func convertGKEServiceNetworkEndpointGroup(svcNeg *svcNegServiceNetworkEndpointGroup, labels map[string]string) *pb.KubernetesGKEServiceNetworkEndpointGroupData {
+	out := &pb.KubernetesGKEServiceNetworkEndpointGroupData{
 		ServiceName: labels[gkeNegServiceNameLabel],
 		ServicePort: labels[gkeNegServicePortLabel],
 	}
 
 	for _, neg := range svcNeg.Status.NetworkEndpointGroups {
-		out.NetworkEndpointGroups = append(out.NetworkEndpointGroups, &pb.KubernetesServiceNetworkEndpointGroupData_NetworkEndpointGroup{
+		out.NetworkEndpointGroups = append(out.NetworkEndpointGroups, &pb.KubernetesGKEServiceNetworkEndpointGroupData_NetworkEndpointGroup{
 			Id:                  neg.ID,
 			NetworkEndpointType: neg.NetworkEndpointType,
 			SelfLink:            neg.SelfLink,
@@ -172,7 +172,6 @@ func convertMetalLBServiceStatus(status *metalLBServiceStatus) *pb.KubernetesMet
 		ServiceName:      status.Status.ServiceName,
 		ServiceNamespace: status.Status.ServiceNamespace,
 		Node:             status.Status.Node,
-		Peers:            status.Status.Peers,
 	}
 
 	for _, iface := range status.Status.Interfaces {

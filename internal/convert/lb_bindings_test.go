@@ -35,11 +35,11 @@ func convertBindingWithLogger(t *testing.T, obj map[string]any, logger *zap.Logg
 	return result
 }
 
-func TestConvertTargetGroupBinding(t *testing.T) {
+func TestConvertAWSTargetGroupBinding(t *testing.T) {
 	tests := map[string]struct {
 		apiVersion string
 		spec       map[string]any
-		expected   *pb.KubernetesTargetGroupBindingData
+		expected   *pb.KubernetesAWSTargetGroupBindingData
 	}{
 		"ip target type with numeric port and networking rules": {
 			apiVersion: "elbv2.k8s.aws/v1beta1",
@@ -65,7 +65,7 @@ func TestConvertTargetGroupBinding(t *testing.T) {
 					},
 				},
 			},
-			expected: &pb.KubernetesTargetGroupBindingData{
+			expected: &pb.KubernetesAWSTargetGroupBindingData{
 				ServiceName:         "web",
 				ServicePort:         "80",
 				TargetType:          new("ip"),
@@ -73,12 +73,12 @@ func TestConvertTargetGroupBinding(t *testing.T) {
 				IpAddressType:       new("ipv4"),
 				VpcId:               new("vpc-0123"),
 				TargetGroupProtocol: new("TCP"),
-				NetworkingIngressRules: []*pb.TargetGroupBindingIngressRule{{
-					From: []*pb.TargetGroupBindingPeer{
+				NetworkingIngressRules: []*pb.AWSTargetGroupBindingIngressRule{{
+					From: []*pb.AWSTargetGroupBindingPeer{
 						{Cidr: new("0.0.0.0/0")},
 						{SecurityGroupId: new("sg-0123")},
 					},
-					Ports: []*pb.TargetGroupBindingPort{
+					Ports: []*pb.AWSTargetGroupBindingPort{
 						{Protocol: new("TCP"), Port: new("8080")},
 						{Protocol: new("TCP")},
 					},
@@ -96,7 +96,7 @@ func TestConvertTargetGroupBinding(t *testing.T) {
 					"matchLabels": map[string]any{"role": "edge"},
 				},
 			},
-			expected: &pb.KubernetesTargetGroupBindingData{
+			expected: &pb.KubernetesAWSTargetGroupBindingData{
 				ServiceName:             "api",
 				ServicePort:             "https",
 				TargetType:              new("instance"),
@@ -112,7 +112,7 @@ func TestConvertTargetGroupBinding(t *testing.T) {
 				"serviceRef":     map[string]any{"name": "web", "port": int64(80)},
 				"targetGroupARN": "arn:aws:elasticloadbalancing:us-west-2:123456789012:targetgroup/web/0123",
 			},
-			expected: &pb.KubernetesTargetGroupBindingData{
+			expected: &pb.KubernetesAWSTargetGroupBindingData{
 				ServiceName:    "web",
 				ServicePort:    "80",
 				TargetGroupArn: "arn:aws:elasticloadbalancing:us-west-2:123456789012:targetgroup/web/0123",
@@ -129,12 +129,12 @@ func TestConvertTargetGroupBinding(t *testing.T) {
 				"spec":       tt.spec,
 			})
 
-			assert.Equal(t, tt.expected, result.GetTargetGroupBinding())
+			assert.Equal(t, tt.expected, result.GetAwsTargetGroupBinding())
 		})
 	}
 }
 
-func TestConvertTargetGroupBinding_Malformed(t *testing.T) {
+func TestConvertAWSTargetGroupBinding_Malformed(t *testing.T) {
 	core, logs := observer.New(zap.WarnLevel)
 
 	result := convertBindingWithLogger(t, map[string]any{
@@ -157,11 +157,11 @@ func TestConvertTargetGroupBinding_Malformed(t *testing.T) {
 	assert.Equal(t, "tgb", entries[0].ContextMap()["name"])
 }
 
-func TestConvertServiceNetworkEndpointGroup(t *testing.T) {
+func TestConvertGKEServiceNetworkEndpointGroup(t *testing.T) {
 	tests := map[string]struct {
 		labels   map[string]any
 		status   map[string]any
-		expected *pb.KubernetesServiceNetworkEndpointGroupData
+		expected *pb.KubernetesGKEServiceNetworkEndpointGroupData
 	}{
 		"pod-direct and node NEGs": {
 			labels: map[string]any{
@@ -184,10 +184,10 @@ func TestConvertServiceNetworkEndpointGroup(t *testing.T) {
 					},
 				},
 			},
-			expected: &pb.KubernetesServiceNetworkEndpointGroupData{
+			expected: &pb.KubernetesGKEServiceNetworkEndpointGroupData{
 				ServiceName: "web",
 				ServicePort: "80",
-				NetworkEndpointGroups: []*pb.KubernetesServiceNetworkEndpointGroupData_NetworkEndpointGroup{
+				NetworkEndpointGroups: []*pb.KubernetesGKEServiceNetworkEndpointGroupData_NetworkEndpointGroup{
 					{
 						Id:                  "1234",
 						NetworkEndpointType: "GCE_VM_IP_PORT",
@@ -200,7 +200,7 @@ func TestConvertServiceNetworkEndpointGroup(t *testing.T) {
 			},
 		},
 		"no labels and no status yet": {
-			expected: &pb.KubernetesServiceNetworkEndpointGroupData{},
+			expected: &pb.KubernetesGKEServiceNetworkEndpointGroupData{},
 		},
 	}
 
@@ -222,7 +222,7 @@ func TestConvertServiceNetworkEndpointGroup(t *testing.T) {
 
 			result := convertBinding(t, obj)
 
-			assert.Equal(t, tt.expected, result.GetServiceNetworkEndpointGroup())
+			assert.Equal(t, tt.expected, result.GetGkeServiceNetworkEndpointGroup())
 		})
 	}
 }
@@ -248,7 +248,7 @@ func TestConvertMetalLBServiceStatus(t *testing.T) {
 				Interfaces:       []string{"eth0", "eth1"},
 			},
 		},
-		"BGP status lists the peers": {
+		"BGP status names the announcing node": {
 			kind: "ServiceBGPStatus",
 			status: map[string]any{
 				"node":             "worker-2",
@@ -260,7 +260,6 @@ func TestConvertMetalLBServiceStatus(t *testing.T) {
 				ServiceName:      "web",
 				ServiceNamespace: "default",
 				Node:             "worker-2",
-				Peers:            []string{"tor-a", "tor-b"},
 			},
 		},
 	}

@@ -14,7 +14,10 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/illumio/cloud-operator/internal/controller/stream"
-	"github.com/illumio/cloud-operator/internal/convert"
+	"github.com/illumio/cloud-operator/internal/convert/anp"
+	"github.com/illumio/cloud-operator/internal/convert/awsvpccni"
+	"github.com/illumio/cloud-operator/internal/convert/cilium"
+	"github.com/illumio/cloud-operator/internal/convert/ovn"
 )
 
 func TestBuildResourceApiGroupMap(t *testing.T) {
@@ -286,6 +289,88 @@ func TestResourceGroupsCoverResourceList(t *testing.T) {
 	}
 }
 
+func TestBuildResourceAPIGroupMap_PolicyGroupCollisions(t *testing.T) {
+	policyResources := []metav1.APIResource{
+		{Name: "adminnetworkpolicies", Kind: "AdminNetworkPolicy"},
+		{Name: "baselineadminnetworkpolicies", Kind: "BaselineAdminNetworkPolicy"},
+	}
+	egressResources := []metav1.APIResource{
+		{Name: "egressfirewalls", Kind: "EgressFirewall"},
+		{Name: "egressips", Kind: "EgressIP"},
+	}
+	awsResources := []metav1.APIResource{
+		{Name: "clusternetworkpolicies", Kind: "ClusterNetworkPolicy"},
+		{Name: "applicationnetworkpolicies", Kind: "ApplicationNetworkPolicy"},
+	}
+	ciliumResources := []metav1.APIResource{
+		{Name: "ciliumnetworkpolicies", Kind: "CiliumNetworkPolicy"},
+		{Name: "ciliumclusterwidenetworkpolicies", Kind: "CiliumClusterwideNetworkPolicy"},
+		{Name: "ciliumcidrgroups", Kind: "CiliumCIDRGroup"},
+	}
+	supported := []*metav1.APIResourceList{
+		{GroupVersion: "policy.networking.k8s.io/v1alpha1", APIResources: policyResources},
+		{GroupVersion: "k8s.ovn.org/v1", APIResources: egressResources},
+		{GroupVersion: "networking.k8s.aws/v1alpha1", APIResources: awsResources},
+		{GroupVersion: "cilium.io/v2", APIResources: ciliumResources},
+	}
+	foreign := &metav1.APIResourceList{
+		GroupVersion: "example.com/v1",
+		APIResources: slices.Concat(policyResources, egressResources, awsResources, ciliumResources),
+	}
+	kubernetesCNP := &metav1.APIResourceList{
+		GroupVersion: "policy.networking.k8s.io/v1alpha2",
+		APIResources: []metav1.APIResource{{Name: "clusternetworkpolicies", Kind: "ClusterNetworkPolicy"}},
+	}
+	wantSupported := map[string]ResourceInfo{
+		"adminnetworkpolicies":             {Group: "policy.networking.k8s.io", Version: "v1alpha1"},
+		"baselineadminnetworkpolicies":     {Group: "policy.networking.k8s.io", Version: "v1alpha1"},
+		"egressfirewalls":                  {Group: "k8s.ovn.org", Version: "v1"},
+		"egressips":                        {Group: "k8s.ovn.org", Version: "v1"},
+		"clusternetworkpolicies":           {Group: "networking.k8s.aws", Version: "v1alpha1"},
+		"applicationnetworkpolicies":       {Group: "networking.k8s.aws", Version: "v1alpha1"},
+		"ciliumnetworkpolicies":            {Group: "cilium.io", Version: "v2"},
+		"ciliumclusterwidenetworkpolicies": {Group: "cilium.io", Version: "v2"},
+		"ciliumcidrgroups":                 {Group: "cilium.io", Version: "v2"},
+	}
+
+	tests := []struct {
+		name      string
+		resources []*metav1.APIResourceList
+		want      map[string]ResourceInfo
+	}{
+		{name: "supported groups", resources: supported, want: wantSupported},
+		{name: "foreign group only", resources: []*metav1.APIResourceList{foreign}, want: map[string]ResourceInfo{}},
+		{name: "foreign group listed first", resources: append([]*metav1.APIResourceList{foreign}, supported...), want: wantSupported},
+		{name: "foreign group listed last", resources: append(slices.Clone(supported), foreign), want: wantSupported},
+		{name: "Kubernetes CNP is not an AWS resource", resources: []*metav1.APIResourceList{kubernetesCNP}, want: map[string]ResourceInfo{}},
+		{
+			name: "AWS and Kubernetes CNP coexist",
+			resources: []*metav1.APIResourceList{
+				{GroupVersion: "networking.k8s.aws/v1alpha1", APIResources: awsResources},
+				kubernetesCNP,
+			},
+			want: map[string]ResourceInfo{
+				"clusternetworkpolicies":     {Group: "networking.k8s.aws", Version: "v1alpha1"},
+				"applicationnetworkpolicies": {Group: "networking.k8s.aws", Version: "v1alpha1"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clientset := k8sfake.NewSimpleClientset()
+			fakeDiscovery, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
+			require.True(t, ok)
+
+			fakeDiscovery.Resources = tt.resources
+
+			got, err := BuildResourceAPIGroupMap(resourceList, clientset, zap.NewNop())
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestResourceListCiliumDispatchConsistency(t *testing.T) {
 	expectedCilium := map[string]bool{
 		"ciliumcidrgroups":                 true,
@@ -294,7 +379,7 @@ func TestResourceListCiliumDispatchConsistency(t *testing.T) {
 	}
 
 	for _, resource := range resourceList {
-		isCilium := convert.IsCiliumResource(resource)
+		isCilium := cilium.IsCiliumResource("cilium.io", resource)
 
 		if expectedCilium[resource] {
 			assert.True(t, isCilium, "resource %q should be recognized as Cilium by IsCiliumResource", resource)
@@ -315,7 +400,7 @@ func TestResourceListAWSDispatchConsistency(t *testing.T) {
 	for _, name := range awsResources {
 		assert.True(t, slices.Contains(resourceList, name),
 			"%s must be in resourceList (ingested)", name)
-		assert.True(t, convert.IsAWSResource(name),
+		assert.True(t, awsvpccni.IsAWSResource("networking.k8s.aws", name),
 			"%s must be recognized by IsAWSResource", name)
 	}
 
@@ -330,10 +415,53 @@ func TestResourceListAWSDispatchConsistency(t *testing.T) {
 
 	// Cilium resources must not be misrouted to the AWS converter.
 	for _, resource := range resourceList {
-		if convert.IsCiliumResource(resource) {
-			assert.False(t, convert.IsAWSResource(resource),
+		if cilium.IsCiliumResource("cilium.io", resource) {
+			assert.False(t, awsvpccni.IsAWSResource("cilium.io", resource),
 				"resource %q should not be recognized as both Cilium and AWS", resource)
 		}
+	}
+}
+
+func TestResourceListAdminNetworkPolicyDispatchConsistency(t *testing.T) {
+	expectedANP := map[string]bool{
+		"adminnetworkpolicies":         true,
+		"baselineadminnetworkpolicies": true,
+	}
+
+	for _, resource := range resourceList {
+		isANP := anp.IsAdminNetworkPolicyResource("policy.networking.k8s.io", resource)
+
+		if expectedANP[resource] {
+			assert.True(t, isANP, "resource %q should be recognized as ANP by IsAdminNetworkPolicyResource", resource)
+		} else {
+			assert.False(t, isANP, "resource %q should NOT be recognized as ANP by IsAdminNetworkPolicyResource", resource)
+		}
+	}
+
+	for name := range expectedANP {
+		assert.True(t, slices.Contains(resourceList, name), "expected ANP resource %q must be in resourceList", name)
+	}
+}
+
+func TestResourceListEgressDispatchConsistency(t *testing.T) {
+	expectedEgress := map[string]bool{
+		"egressfirewalls": true,
+		"egressips":       true,
+	}
+
+	for _, resource := range resourceList {
+		isEgress := ovn.IsEgressResource("k8s.ovn.org", resource)
+
+		if expectedEgress[resource] {
+			assert.True(t, isEgress, "resource %q should be recognized as Egress by IsEgressResource", resource)
+		} else {
+			assert.False(t, isEgress, "resource %q should NOT be recognized as Egress by IsEgressResource", resource)
+		}
+	}
+
+	for name := range expectedEgress {
+		assert.True(t, slices.Contains(resourceList, name), "expected Egress resource %q must be in resourceList", name)
+		assert.False(t, slices.Contains(ManagedResourceNames, name), "Egress resource %q must not be operator-managed", name)
 	}
 }
 

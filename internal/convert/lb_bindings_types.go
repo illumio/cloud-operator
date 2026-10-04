@@ -105,13 +105,12 @@ type metalLBServiceStatus struct {
 }
 
 // metalLBServiceStatusStatus mirrors MetalLBServiceL2Status and
-// MetalLBServiceBGPStatus. Interfaces is set for L2 only, Peers for BGP only.
+// MetalLBServiceBGPStatus. Interfaces is set for L2 only.
 type metalLBServiceStatusStatus struct {
 	Node             string             `json:"node,omitempty"`
 	ServiceName      string             `json:"serviceName,omitempty"`
 	ServiceNamespace string             `json:"serviceNamespace,omitempty"`
 	Interfaces       []metalLBInterface `json:"interfaces,omitempty"`
-	Peers            []string           `json:"peers,omitempty"`
 }
 
 // metalLBInterface mirrors InterfaceInfo.
