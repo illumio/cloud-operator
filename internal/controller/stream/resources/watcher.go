@@ -287,7 +287,7 @@ func (r *Watcher) FetchResources(ctx context.Context, namespace string) (*unstru
 				zap.String("reason", string(apierrors.ReasonForError(err))),
 				zap.Error(err))
 
-			return nil, fmt.Errorf("resource %s unavailable: %w", resource.Resource, err)
+			return nil, fmt.Errorf("resource %s unavailable: %w", resource.GroupResource(), err)
 		}
 
 		r.logger.Error("Cannot list resource", zap.Stringer("kind", resource), zap.Error(err))

@@ -39,7 +39,7 @@ func NewCoreResourceConverter(clientset kubernetes.Interface, logger *zap.Logger
 		// Enrich workload controllers with the labels applied to the pods they create.
 		// These kinds have no case in ConvertMetaObjectToMetadata, so KindSpecific is
 		// still nil here and safe to set.
-		if workload := extractWorkloadData(obj, gvk.Kind, logger); workload != nil {
+		if workload := extractWorkloadData(obj, gvk.Kind, gvk.Group, logger); workload != nil {
 			metadata.KindSpecific = &pb.KubernetesObjectData_Workload{Workload: workload}
 		}
 
@@ -59,22 +59,24 @@ func NewCoreResourceConverter(clientset kubernetes.Interface, logger *zap.Logger
 	}
 }
 
-// workloadKinds is the set of controller kinds whose pod-template labels we send.
-var workloadKinds = map[string]struct{}{
-	"CronJob":     {},
-	"DaemonSet":   {},
-	"Deployment":  {},
-	"Job":         {},
-	"ReplicaSet":  {},
-	"StatefulSet": {},
+// workloadKinds maps the controller kinds whose pod-template labels we send to
+// their API group. A CRD in another group that reuses one of these kind names is
+// not a workload.
+var workloadKinds = map[string]string{
+	"CronJob":     "batch",
+	"DaemonSet":   "apps",
+	"Deployment":  "apps",
+	"Job":         "batch",
+	"ReplicaSet":  "apps",
+	"StatefulSet": "apps",
 }
 
 // extractWorkloadData reads the pod-template labels and pod selector matchLabels
 // directly from the unstructured spec. It returns nil for non-workload kinds or
 // when neither is present. CronJob nests the pod template one level deeper under
 // spec.jobTemplate; Job and CronJob have no user-facing selector.
-func extractWorkloadData(obj *unstructured.Unstructured, kind string, logger *zap.Logger) *pb.KubernetesWorkloadData {
-	if _, ok := workloadKinds[kind]; !ok {
+func extractWorkloadData(obj *unstructured.Unstructured, kind, apiGroup string, logger *zap.Logger) *pb.KubernetesWorkloadData {
+	if group, ok := workloadKinds[kind]; !ok || group != apiGroup {
 		return nil
 	}
 

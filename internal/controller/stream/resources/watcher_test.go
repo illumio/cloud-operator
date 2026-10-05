@@ -922,6 +922,11 @@ func TestFetchResources_NotFound(t *testing.T) {
 	if !apierrors.IsNotFound(err) {
 		t.Errorf("expected NotFound error, got %v", err)
 	}
+
+	// The message names the API group, since plural names are not unique across groups.
+	if !strings.Contains(err.Error(), "resource ciliumnetworkpolicies.cilium.io unavailable") {
+		t.Errorf("expected error to name the group, got %v", err)
+	}
 }
 
 func TestDynamicListResources_CoreResources(t *testing.T) {
