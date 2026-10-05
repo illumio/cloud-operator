@@ -4,6 +4,7 @@ package flows
 
 import (
 	"context"
+	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -61,7 +62,25 @@ func (f collectorFactoryFunc) NewCollector(ctx context.Context) (Collector, erro
 	return f(ctx)
 }
 
+func (f collectorFactoryFunc) PollingInterval() time.Duration {
+	return 0
+}
+
+// pollingCollectorFactory preserves the selected factory's effective interval
+// while adapting its NewCollector method to the shared Collector interface.
+type pollingCollectorFactory struct {
+	collectorFactoryFunc
+
+	pollingInterval func() time.Duration
+}
+
+func (f pollingCollectorFactory) PollingInterval() time.Duration {
+	return f.pollingInterval()
+}
+
 func (a *flowCollectorAdapter) Run(ctx context.Context) error {
+	stream.StartFlowCollection()
+
 	return a.collector.Run(ctx)
 }
 
@@ -143,9 +162,12 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 			PollInterval: config.AWSVPCCNIPollingInterval,
 		}
 
-		return pb.FlowCollector_FLOW_COLLECTOR_AWS_VPC_CNI, "AWS-VPC-CNI", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
-			return factory.NewCollector(ctx)
-		})
+		return pb.FlowCollector_FLOW_COLLECTOR_AWS_VPC_CNI, "AWS-VPC-CNI", pollingCollectorFactory{
+			collectorFactoryFunc: func(ctx context.Context) (Collector, error) {
+				return factory.NewCollector(ctx)
+			},
+			pollingInterval: factory.EffectivePollInterval,
+		}
 	}
 
 	// Check for EKS Auto Mode (node-proxy log polling).
@@ -176,9 +198,12 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 			StatsRotationGap:         config.Stats.IncrementAutoModeRotationGaps,
 		}
 
-		return pb.FlowCollector_FLOW_COLLECTOR_AWS_VPC_CNI, "EKS-Auto-Mode", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
-			return factory.NewCollector(ctx)
-		})
+		return pb.FlowCollector_FLOW_COLLECTOR_AWS_VPC_CNI, "EKS-Auto-Mode", pollingCollectorFactory{
+			collectorFactoryFunc: func(ctx context.Context) (Collector, error) {
+				return factory.NewCollector(ctx)
+			},
+			pollingInterval: factory.EffectivePollInterval,
+		}
 	}
 
 	// No supported flow exporter detected. Flow collection is disabled: the operator does not

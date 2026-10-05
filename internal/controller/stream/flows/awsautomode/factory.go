@@ -57,13 +57,17 @@ type Factory struct {
 	StatsRotationGap         func()
 }
 
-// NewCollector creates a new EKS Auto Mode flow collector.
-func (f *Factory) NewCollector(_ context.Context) (flowCollector, error) {
-	pollInterval := f.PollInterval
-	if pollInterval <= 0 {
-		pollInterval = DefaultPollInterval
+// EffectivePollInterval returns the configured polling interval or its default.
+func (f *Factory) EffectivePollInterval() time.Duration {
+	if f.PollInterval <= 0 {
+		return DefaultPollInterval
 	}
 
+	return f.PollInterval
+}
+
+// NewCollector creates a new EKS Auto Mode flow collector.
+func (f *Factory) NewCollector(_ context.Context) (flowCollector, error) {
 	maxConcurrent := f.MaxConcurrentNodePolls
 	if maxConcurrent <= 0 {
 		maxConcurrent = DefaultMaxConcurrentNodePolls
@@ -74,7 +78,7 @@ func (f *Factory) NewCollector(_ context.Context) (flowCollector, error) {
 		flowSink:                 f.FlowSink,
 		k8sClient:                f.K8sClient,
 		fetcher:                  &restLogFetcher{k8sClient: f.K8sClient, logPath: f.LogPath, logger: f.Logger},
-		pollInterval:             pollInterval,
+		pollInterval:             f.EffectivePollInterval(),
 		maxConcurrentPolls:       maxConcurrent,
 		checkpoints:              newCheckpointStore(),
 		statsAutoModeNodes:       f.StatsAutoModeNodes,
