@@ -93,16 +93,13 @@ func (c *networkFlowsClient) sendNetworkFlowRequest(flow any) error {
 		return errors.New("stream closed")
 	}
 
-	// Report the Send to the health check, so a Send blocked on a stream that
-	// CloudSecure stopped consuming fails the liveness probe.
-	stream.SetSendingFlow(true)
-	defer stream.SetSendingFlow(false)
-
 	if err := c.grpcStream.Send(request); err != nil {
 		c.logger.Error("Failed to send network flow", zap.Error(err))
 
 		return err
 	}
+
+	stream.RecordFlowSent()
 
 	return nil
 }

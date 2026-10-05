@@ -64,10 +64,10 @@ const (
 
 // newHealthHandler returns an HTTP HandlerFunc that checks the health of the
 // server by calling the given function and returns a status code accordingly.
-// The function returns why the server is unhealthy, or an empty string if it is healthy.
-func newHealthHandler(logger *zap.Logger, unhealthyReason func() string) http.HandlerFunc {
+// The status function returns an empty string if the server is healthy, or an error status if the server is unhealthy.
+func newHealthHandler(logger *zap.Logger, status func() string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		reason := unhealthyReason()
+		reason := status()
 		if reason == "" {
 			w.WriteHeader(http.StatusOK)
 
@@ -331,6 +331,19 @@ func main() {
 	// A nil factory means no collector is available (flow collection disabled);
 	// in that case we skip the stream entirely rather than falling back.
 	if flowCollectorFactory != nil {
+		keepalivePeriods := make([]time.Duration, 0, len(factories))
+		for _, factory := range factories {
+			keepalivePeriods = append(keepalivePeriods, factory.KeepalivePeriod)
+		}
+
+		flowTimeout := stream.FlowInactivityTimeout(
+			viper.GetDuration("flow_cache_active_timeout"),
+			flowCollectorFactory.PollingInterval(),
+			keepalivePeriods...,
+		)
+		stream.ConfigureFlowLiveness(flowTimeout)
+		logger.Info("Flow liveness enabled", zap.Duration("timeout", flowTimeout))
+
 		factories = append(factories, stream.ManagedFactory{
 			Factory: &flows.FlowCollectorStreamFactory{
 				Factory:       flowCollectorFactory,

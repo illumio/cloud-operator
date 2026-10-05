@@ -42,8 +42,10 @@ const (
 	// before the server is considered unhealthy.
 	ResourceProcessingTimeout = 5 * time.Minute
 
-	// FlowSendTimeout is the maximum time a single Send on the network flows stream
-	// may block before the server is considered unhealthy. A Send blocks when
-	// CloudSecure stops consuming the stream without closing the connection.
-	FlowSendTimeout = 5 * time.Minute
+	// FlowInactivityKeepaliveMultiplier allows several keepalive intervals for
+	// background traffic to produce flows before declaring the pipeline stalled.
+	FlowInactivityKeepaliveMultiplier = 3
+
+	// FlowInactivityMargin allows additional time for collection and delivery.
+	FlowInactivityMargin = time.Minute
 )
