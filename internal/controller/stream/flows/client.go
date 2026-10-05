@@ -99,6 +99,8 @@ func (c *networkFlowsClient) sendNetworkFlowRequest(flow any) error {
 		return err
 	}
 
+	stream.RecordFlowSent()
+
 	return nil
 }
 
