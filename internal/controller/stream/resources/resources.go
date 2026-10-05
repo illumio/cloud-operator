@@ -8,6 +8,11 @@ import (
 	"go.uber.org/zap"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/illumio/cloud-operator/internal/convert/anp"
+	"github.com/illumio/cloud-operator/internal/convert/awsvpccni"
+	"github.com/illumio/cloud-operator/internal/convert/cilium"
+	"github.com/illumio/cloud-operator/internal/convert/ovn"
 )
 
 // ManagedResourceNames lists the plural resource names managed by the reconciler.
@@ -18,13 +23,31 @@ var ManagedResourceNames = []string{
 	"clusternetworkpolicies",
 }
 
+// These CRD names are only supported in their defining API groups. Filter other
+// groups before populating the name-keyed discovery map to prevent collisions.
+var policyResourceGroups = map[string]string{
+	"adminnetworkpolicies":             anp.APIGroup,
+	"applicationnetworkpolicies":       awsvpccni.APIGroup,
+	"baselineadminnetworkpolicies":     anp.APIGroup,
+	"ciliumcidrgroups":                 cilium.APIGroup,
+	"ciliumclusterwidenetworkpolicies": cilium.APIGroup,
+	"ciliumnetworkpolicies":            cilium.APIGroup,
+	"clusternetworkpolicies":           awsvpccni.APIGroup,
+	"egressfirewalls":                  ovn.APIGroup,
+	"egressips":                        ovn.APIGroup,
+}
+
 // ApplicationNetworkPolicy is intentionally excluded: it is ingest-only.
 var resourceList = slices.Concat(ManagedResourceNames, []string{
 	"applicationnetworkpolicies",
+	"adminnetworkpolicies",
+	"baselineadminnetworkpolicies",
 	"cronjobs",
 	"customresourcedefinitions",
 	"daemonsets",
 	"deployments",
+	"egressfirewalls",
+	"egressips",
 	"endpoints",
 	"gateways",
 	"gatewayclasses",
@@ -87,6 +110,10 @@ func BuildResourceAPIGroupMap(resources []string, clientset kubernetes.Interface
 		}
 
 		for _, resource := range resourceList.APIResources {
+			if expectedGroup, restricted := policyResourceGroups[resource.Name]; restricted && group.Name != expectedGroup {
+				continue
+			}
+
 			if _, exists := resourceSet[resource.Name]; exists {
 				resourceAPIGroupMap[resource.Name] = ResourceInfo{
 					Group:   group.Name,
