@@ -4,6 +4,7 @@ package flows
 
 import (
 	"context"
+	"time"
 )
 
 // Collector collects network flows.
@@ -14,4 +15,6 @@ type Collector interface {
 // CollectorFactory creates flow collectors.
 type CollectorFactory interface {
 	NewCollector(ctx context.Context) (Collector, error)
+	// PollingInterval returns the effective polling interval, or zero for a streaming collector.
+	PollingInterval() time.Duration
 }

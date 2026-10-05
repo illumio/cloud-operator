@@ -197,6 +197,9 @@ env:
   statsLogPeriod: "30m"
 
   # The intervals between keepalive messages sent over each stream.
+  # After a detected collector starts, flow liveness allows 3x the shortest
+  # period + the collector's polling interval (if any) + flowCache.activeTimeout
+  # + 1m without a successfully sent data flow.
   streamKeepalivePeriods:
     configuration: "10s"
     kubernetesResources: "10s"

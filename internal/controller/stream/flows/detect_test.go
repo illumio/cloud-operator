@@ -6,10 +6,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtimescheme "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -57,6 +61,10 @@ type mockCollectorFactory struct {
 
 func (m *mockCollectorFactory) NewCollector(_ context.Context) (Collector, error) {
 	return m.collector, m.err
+}
+
+func (m *mockCollectorFactory) PollingInterval() time.Duration {
+	return 0
 }
 
 func TestFlowCollectorStreamFactory_Name(t *testing.T) {
@@ -143,6 +151,33 @@ func TestFlowCollectorAdapter_Close(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestFlowCollectorLiveness(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		stream.ConfigureFlowLiveness(time.Minute)
+		t.Cleanup(func() { stream.ConfigureFlowLiveness(0) })
+
+		expectedErr := errors.New("collector stopped")
+		factory := &FlowCollectorStreamFactory{
+			Factory: &mockCollectorFactory{collector: &mockCollector{runErr: expectedErr}},
+		}
+
+		client, err := factory.NewStreamClient(t.Context(), nil)
+		require.NoError(t, err)
+		time.Sleep(2 * time.Minute)
+		assert.True(t, stream.ServerIsHealthy(), "constructing a collector does not start the timer")
+
+		require.ErrorIs(t, client.Run(t.Context()), expectedErr)
+		assert.True(t, stream.ServerIsHealthy(), "the first run starts the grace period")
+		time.Sleep(30 * time.Second)
+		require.NoError(t, client.Close())
+		client, err = factory.NewStreamClient(t.Context(), nil)
+		require.NoError(t, err)
+		require.ErrorIs(t, client.Run(t.Context()), expectedErr)
+		time.Sleep(30*time.Second + time.Nanosecond)
+		assert.False(t, stream.ServerIsHealthy(), "recreating the collector does not reset the timer")
+	})
+}
+
 func TestCollectorFactoryFunc(t *testing.T) {
 	t.Run("wraps function and returns collector", func(t *testing.T) {
 		expectedColl := &mockCollector{}
@@ -154,6 +189,7 @@ func TestCollectorFactoryFunc(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, expectedColl, coll)
+		assert.Zero(t, fn.PollingInterval(), "streaming collectors have no polling delay")
 	})
 
 	t.Run("wraps function and returns error", func(t *testing.T) {
@@ -194,7 +230,72 @@ func TestDetectFlowCollector_NoSupportedCNI(t *testing.T) {
 	assert.Nil(t, factory, "no supported CNI should return a nil factory (no fallback)")
 }
 
-// Note: the positive DetectFlowCollector paths (Cilium/OVN-K/AWS VPC CNI) are
-// harder to unit test as they require a fake Hubble Relay connection and
-// resource fixtures. See collector/cilium_test.go and collector/ovnk_test.go
-// for unit tests of the individual detection helpers.
+func TestDetectFlowCollectorPollingInterval(t *testing.T) {
+	awsNode := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "aws-node", Namespace: "kube-system", Labels: map[string]string{"k8s-app": "aws-node"},
+		},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "aws-eks-nodeagent"}}},
+	}
+	autoNode := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "auto-node", Labels: map[string]string{"eks.amazonaws.com/compute-type": "auto"}},
+	}
+	ovnNamespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "openshift-ovn-kubernetes"}}
+	tests := []struct {
+		name         string
+		resource     runtimescheme.Object
+		awsInterval  time.Duration
+		autoInterval time.Duration
+		wantName     string
+		wantInterval time.Duration
+	}{
+		{
+			name: "standard AWS uses its default and ignores Auto Mode", resource: awsNode,
+			autoInterval: 5 * time.Minute, wantName: "AWS-VPC-CNI", wantInterval: time.Second,
+		},
+		{
+			name: "standard AWS uses configured polling", resource: awsNode,
+			awsInterval: 5 * time.Minute, wantName: "AWS-VPC-CNI", wantInterval: 5 * time.Minute,
+		},
+		{
+			name: "Auto Mode uses its default and ignores standard AWS", resource: autoNode,
+			awsInterval: 5 * time.Minute, wantName: "EKS-Auto-Mode", wantInterval: 10 * time.Second,
+		},
+		{
+			name: "Auto Mode defaults a negative interval", resource: autoNode,
+			autoInterval: -time.Second, wantName: "EKS-Auto-Mode", wantInterval: 10 * time.Second,
+		},
+		{
+			name: "Auto Mode uses configured polling", resource: autoNode,
+			autoInterval: 5 * time.Minute, wantName: "EKS-Auto-Mode", wantInterval: 5 * time.Minute,
+		},
+		{
+			name: "streaming collector ignores AWS polling settings", resource: ovnNamespace,
+			awsInterval: 5 * time.Minute, autoInterval: 5 * time.Minute, wantName: "OVN-K",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clientset := k8sfake.NewClientset(tt.resource)
+			getter := &fakeK8sClientGetter{
+				clientset: clientset,
+				discovery: clientset.Discovery(),
+				dynamic:   dynamicfake.NewSimpleDynamicClient(runtimescheme.NewScheme()),
+			}
+			_, name, factory := DetectFlowCollector(t.Context(), CollectorConfig{
+				Logger:                   zap.NewNop(),
+				K8sClient:                getter,
+				Stats:                    stream.NewStats(),
+				CiliumNamespaces:         []string{"kube-system"},
+				OVNKNamespace:            "openshift-ovn-kubernetes",
+				AWSVPCCNIPollingInterval: tt.awsInterval,
+				AutoModePollInterval:     tt.autoInterval,
+			})
+
+			require.NotNil(t, factory)
+			assert.Equal(t, tt.wantName, name)
+			assert.Equal(t, tt.wantInterval, factory.PollingInterval())
+		})
+	}
+}
