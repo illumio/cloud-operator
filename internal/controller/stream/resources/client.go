@@ -62,7 +62,9 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 	dynamicClient := c.k8sClient.GetDynamicClient()
 	clientset := c.k8sClient.GetClientset()
 
-	resourceAPIGroupMap, err := BuildResourceAPIGroupMap(resourceList, clientset, c.logger)
+	// Search every served version: some watched CRDs (MetalLB, GKE NEGs) are not
+	// in their group's preferred version.
+	resourceAPIGroupMap, err := buildResourceAPIGroupMap(resourceList, clientset, c.logger, true)
 	if err != nil {
 		c.logger.Error("Failed to build resource api group map", zap.Error(err))
 

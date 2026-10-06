@@ -7,6 +7,7 @@ import (
 
 	"go.uber.org/zap"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/illumio/cloud-operator/internal/convert/anp"
@@ -21,20 +22,6 @@ var ManagedResourceNames = []string{
 	"ciliumclusterwidenetworkpolicies",
 	"ciliumnetworkpolicies",
 	"clusternetworkpolicies",
-}
-
-// These CRD names are only supported in their defining API groups. Filter other
-// groups before populating the name-keyed discovery map to prevent collisions.
-var policyResourceGroups = map[string]string{
-	"adminnetworkpolicies":             anp.APIGroup,
-	"applicationnetworkpolicies":       awsvpccni.APIGroup,
-	"baselineadminnetworkpolicies":     anp.APIGroup,
-	"ciliumcidrgroups":                 cilium.APIGroup,
-	"ciliumclusterwidenetworkpolicies": cilium.APIGroup,
-	"ciliumnetworkpolicies":            cilium.APIGroup,
-	"clusternetworkpolicies":           awsvpccni.APIGroup,
-	"egressfirewalls":                  ovn.APIGroup,
-	"egressips":                        ovn.APIGroup,
 }
 
 // ApplicationNetworkPolicy is intentionally excluded: it is ingest-only.
@@ -62,9 +49,56 @@ var resourceList = slices.Concat(ManagedResourceNames, []string{
 	"replicasets",
 	"replicationcontrollers",
 	"serviceaccounts",
+	"servicebgpstatuses",
+	"servicel2statuses",
+	"servicenetworkendpointgroups",
 	"services",
 	"statefulsets",
+	"targetgroupbindings",
 })
+
+// resourceGroups pins each resource name we discover to the API group we expect
+// it in. Several plural names are also served by common CRD groups, which
+// discovery returns after the built-in groups, so without the pin the CRD would
+// replace the resource we mean: config.openshift.io/nodes and /ingresses,
+// serving.knative.dev/services, crd.projectcalico.org/networkpolicies,
+// networking.istio.io/gateways, policy.networking.k8s.io/clusternetworkpolicies.
+// Every entry in resourceList must be listed here.
+var resourceGroups = map[string]string{
+	"adminnetworkpolicies":             anp.APIGroup,
+	"applicationnetworkpolicies":       awsvpccni.APIGroup,
+	"baselineadminnetworkpolicies":     anp.APIGroup,
+	"ciliumcidrgroups":                 cilium.APIGroup,
+	"ciliumclusterwidenetworkpolicies": cilium.APIGroup,
+	"ciliumnetworkpolicies":            cilium.APIGroup,
+	"clusternetworkpolicies":           awsvpccni.APIGroup,
+	"cronjobs":                         "batch",
+	"customresourcedefinitions":        "apiextensions.k8s.io",
+	"daemonsets":                       "apps",
+	"deployments":                      "apps",
+	"egressfirewalls":                  ovn.APIGroup,
+	"egressips":                        ovn.APIGroup,
+	"endpoints":                        "",
+	"gatewayclasses":                   "gateway.networking.k8s.io",
+	"gateways":                         "gateway.networking.k8s.io",
+	"httproutes":                       "gateway.networking.k8s.io",
+	"ingressclasses":                   "networking.k8s.io",
+	"ingresses":                        "networking.k8s.io",
+	"jobs":                             "batch",
+	"namespaces":                       "",
+	"networkpolicies":                  "networking.k8s.io",
+	"nodes":                            "",
+	"pods":                             "",
+	"replicasets":                      "apps",
+	"replicationcontrollers":           "",
+	"serviceaccounts":                  "",
+	"servicebgpstatuses":               "metallb.io",
+	"servicel2statuses":                "metallb.io",
+	"servicenetworkendpointgroups":     "networking.gke.io",
+	"services":                         "",
+	"statefulsets":                     "apps",
+	"targetgroupbindings":              "elbv2.k8s.aws",
+}
 
 // ResourceInfo holds the API group and preferred version for a resource.
 type ResourceInfo struct {
@@ -73,8 +107,18 @@ type ResourceInfo struct {
 }
 
 // BuildResourceAPIGroupMap creates a mapping between Kubernetes resources and their API groups with preferred versions.
-// Exported for use by the reconciler.
+// Exported for use by the reconciler. Only each group's preferred version is
+// searched, so the reconciler applies objects at the version the server prefers.
 func BuildResourceAPIGroupMap(resources []string, clientset kubernetes.Interface, logger *zap.Logger) (map[string]ResourceInfo, error) {
+	return buildResourceAPIGroupMap(resources, clientset, logger, false)
+}
+
+// buildResourceAPIGroupMap maps each resource to its API group and version.
+// With searchAllVersions, a pinned resource missing from its group's preferred
+// version is looked up in the group's other versions, in server priority order:
+// MetalLB prefers metallb.io/v1beta2 but serves ServiceL2Status only in v1beta1,
+// and networking.gke.io can prefer v1 while ServiceNetworkEndpointGroup is v1beta1.
+func buildResourceAPIGroupMap(resources []string, clientset kubernetes.Interface, logger *zap.Logger, searchAllVersions bool) (map[string]ResourceInfo, error) {
 	resourceAPIGroupMap := make(map[string]ResourceInfo)
 
 	resourceSet := make(map[string]struct{})
@@ -98,8 +142,6 @@ func BuildResourceAPIGroupMap(resources []string, clientset kubernetes.Interface
 			continue
 		}
 
-		// Query only the preferred version rather than iterating all group.Versions.
-		// All resources in our resource list are always present in the preferred version.
 		resourceList, err := discoveryClient.ServerResourcesForGroupVersion(group.PreferredVersion.GroupVersion)
 		if err != nil {
 			if apierrors.IsForbidden(err) {
@@ -109,21 +151,75 @@ func BuildResourceAPIGroupMap(resources []string, clientset kubernetes.Interface
 			return nil, err
 		}
 
-		for _, resource := range resourceList.APIResources {
-			if expectedGroup, restricted := policyResourceGroups[resource.Name]; restricted && group.Name != expectedGroup {
+		addResources(resourceAPIGroupMap, resourceSet, group.Name, group.PreferredVersion.Version, resourceList.APIResources)
+
+		if !searchAllVersions {
+			continue
+		}
+
+		for _, version := range group.Versions {
+			if version.GroupVersion == group.PreferredVersion.GroupVersion {
 				continue
 			}
 
-			if _, exists := resourceSet[resource.Name]; exists {
-				resourceAPIGroupMap[resource.Name] = ResourceInfo{
-					Group:   group.Name,
-					Version: group.PreferredVersion.Version,
-				}
+			if !hasMissingResource(resourceAPIGroupMap, resourceSet, group.Name) {
+				break
 			}
+
+			resourceList, err := discoveryClient.ServerResourcesForGroupVersion(version.GroupVersion)
+			if err != nil {
+				if apierrors.IsForbidden(err) || apierrors.IsNotFound(err) {
+					continue
+				}
+
+				return nil, err
+			}
+
+			addResources(resourceAPIGroupMap, resourceSet, group.Name, version.Version, resourceList.APIResources)
 		}
 	}
 
 	return resourceAPIGroupMap, nil
+}
+
+// addResources records the wanted resources served at groupName/version. A
+// resource pinned to another group is ignored, and a resource already found at
+// a higher-priority version is kept.
+func addResources(resourceAPIGroupMap map[string]ResourceInfo, resourceSet map[string]struct{}, groupName, version string, apiResources []metav1.APIResource) {
+	for _, resource := range apiResources {
+		if _, wanted := resourceSet[resource.Name]; !wanted {
+			continue
+		}
+
+		if pinnedGroup, pinned := resourceGroups[resource.Name]; pinned && pinnedGroup != groupName {
+			continue
+		}
+
+		if existing, found := resourceAPIGroupMap[resource.Name]; found && existing.Group == groupName {
+			continue
+		}
+
+		resourceAPIGroupMap[resource.Name] = ResourceInfo{
+			Group:   groupName,
+			Version: version,
+		}
+	}
+}
+
+// hasMissingResource reports whether a wanted resource pinned to groupName has
+// not been found yet.
+func hasMissingResource(resourceAPIGroupMap map[string]ResourceInfo, resourceSet map[string]struct{}, groupName string) bool {
+	for resource := range resourceSet {
+		if resourceGroups[resource] != groupName {
+			continue
+		}
+
+		if _, found := resourceAPIGroupMap[resource]; !found {
+			return true
+		}
+	}
+
+	return false
 }
 
 type watcherInfo struct {

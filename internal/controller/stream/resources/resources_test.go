@@ -139,6 +139,154 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 		assert.Equal(t, "apps", result["statefulsets"].Group)
 		assert.Equal(t, "v1", result["statefulsets"].Version)
 	})
+
+	// Discovery returns CRD groups after the built-in groups, so without pinning
+	// these CRDs would replace the resources we watch.
+	t.Run("pinned resources ignore same-named resources in other groups", func(t *testing.T) {
+		clientset := k8sfake.NewSimpleClientset()
+
+		fakeDiscovery, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
+		require.True(t, ok, "failed to get fake discovery client")
+
+		fakeDiscovery.Resources = []*metav1.APIResourceList{
+			{GroupVersion: "v1", APIResources: []metav1.APIResource{
+				{Name: "nodes", Kind: "Node"},
+				{Name: "services", Kind: "Service"},
+			}},
+			{GroupVersion: "networking.k8s.io/v1", APIResources: []metav1.APIResource{
+				{Name: "ingresses", Kind: "Ingress"},
+				{Name: "networkpolicies", Kind: "NetworkPolicy"},
+			}},
+			{GroupVersion: "gateway.networking.k8s.io/v1", APIResources: []metav1.APIResource{
+				{Name: "gateways", Kind: "Gateway"},
+			}},
+			{GroupVersion: "networking.k8s.aws/v1alpha1", APIResources: []metav1.APIResource{
+				{Name: "clusternetworkpolicies", Kind: "ClusterNetworkPolicy"},
+			}},
+			{GroupVersion: "config.openshift.io/v1", APIResources: []metav1.APIResource{
+				{Name: "nodes", Kind: "Node"},
+				{Name: "ingresses", Kind: "Ingress"},
+			}},
+			{GroupVersion: "serving.knative.dev/v1", APIResources: []metav1.APIResource{
+				{Name: "services", Kind: "Service"},
+			}},
+			{GroupVersion: "crd.projectcalico.org/v1", APIResources: []metav1.APIResource{
+				{Name: "networkpolicies", Kind: "NetworkPolicy"},
+			}},
+			{GroupVersion: "networking.istio.io/v1", APIResources: []metav1.APIResource{
+				{Name: "gateways", Kind: "Gateway"},
+			}},
+			{GroupVersion: "policy.networking.k8s.io/v1alpha2", APIResources: []metav1.APIResource{
+				{Name: "clusternetworkpolicies", Kind: "ClusterNetworkPolicy"},
+			}},
+		}
+
+		resources := []string{"nodes", "services", "ingresses", "networkpolicies", "gateways", "clusternetworkpolicies"}
+
+		result, err := BuildResourceAPIGroupMap(resources, clientset, logger)
+		require.NoError(t, err)
+
+		assert.Equal(t, map[string]ResourceInfo{
+			"nodes":                  {Group: "", Version: "v1"},
+			"services":               {Group: "", Version: "v1"},
+			"ingresses":              {Group: "networking.k8s.io", Version: "v1"},
+			"networkpolicies":        {Group: "networking.k8s.io", Version: "v1"},
+			"gateways":               {Group: "gateway.networking.k8s.io", Version: "v1"},
+			"clusternetworkpolicies": {Group: "networking.k8s.aws", Version: "v1alpha1"},
+		}, result)
+	})
+
+	t.Run("pinned resource absent from its group is not taken from another group", func(t *testing.T) {
+		clientset := k8sfake.NewSimpleClientset()
+
+		fakeDiscovery, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
+		require.True(t, ok, "failed to get fake discovery client")
+
+		fakeDiscovery.Resources = []*metav1.APIResourceList{
+			{GroupVersion: "networking.istio.io/v1", APIResources: []metav1.APIResource{
+				{Name: "gateways", Kind: "Gateway"},
+			}},
+		}
+
+		result, err := buildResourceAPIGroupMap([]string{"gateways"}, clientset, logger, true)
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
+}
+
+// The fake discovery client treats the first listed version of a group as the
+// preferred version, so these fixtures list the preferred version first.
+func TestBuildResourceAPIGroupMap_VersionFallback(t *testing.T) {
+	logger := zap.NewNop()
+
+	newClientset := func(t *testing.T) *k8sfake.Clientset {
+		t.Helper()
+
+		clientset := k8sfake.NewSimpleClientset()
+
+		fakeDiscovery, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
+		require.True(t, ok, "failed to get fake discovery client")
+
+		fakeDiscovery.Resources = []*metav1.APIResourceList{
+			// MetalLB prefers v1beta2 (BGPPeer) but serves the status CRDs only in v1beta1.
+			{GroupVersion: "metallb.io/v1beta2", APIResources: []metav1.APIResource{
+				{Name: "bgppeers", Kind: "BGPPeer"},
+			}},
+			{GroupVersion: "metallb.io/v1beta1", APIResources: []metav1.APIResource{
+				{Name: "bgppeers", Kind: "BGPPeer"},
+				{Name: "servicel2statuses", Kind: "ServiceL2Status"},
+				{Name: "servicebgpstatuses", Kind: "ServiceBGPStatus"},
+			}},
+			// GKE can prefer networking.gke.io/v1 while svcneg stays in v1beta1.
+			{GroupVersion: "networking.gke.io/v1", APIResources: []metav1.APIResource{
+				{Name: "managedcertificates", Kind: "ManagedCertificate"},
+			}},
+			{GroupVersion: "networking.gke.io/v1beta1", APIResources: []metav1.APIResource{
+				{Name: "servicenetworkendpointgroups", Kind: "ServiceNetworkEndpointGroup"},
+			}},
+			// A resource served in both versions resolves to the preferred one.
+			{GroupVersion: "elbv2.k8s.aws/v1beta1", APIResources: []metav1.APIResource{
+				{Name: "targetgroupbindings", Kind: "TargetGroupBinding"},
+			}},
+			{GroupVersion: "elbv2.k8s.aws/v1alpha1", APIResources: []metav1.APIResource{
+				{Name: "targetgroupbindings", Kind: "TargetGroupBinding"},
+			}},
+		}
+
+		return clientset
+	}
+
+	resources := []string{"servicel2statuses", "servicebgpstatuses", "servicenetworkendpointgroups", "targetgroupbindings"}
+
+	t.Run("resource stream searches every served version", func(t *testing.T) {
+		result, err := buildResourceAPIGroupMap(resources, newClientset(t), logger, true)
+		require.NoError(t, err)
+
+		assert.Equal(t, map[string]ResourceInfo{
+			"servicel2statuses":            {Group: "metallb.io", Version: "v1beta1"},
+			"servicebgpstatuses":           {Group: "metallb.io", Version: "v1beta1"},
+			"servicenetworkendpointgroups": {Group: "networking.gke.io", Version: "v1beta1"},
+			"targetgroupbindings":          {Group: "elbv2.k8s.aws", Version: "v1beta1"},
+		}, result)
+	})
+
+	// The reconciler applies objects at the version it discovers, so it keeps
+	// using only the preferred version.
+	t.Run("exported map only uses preferred versions", func(t *testing.T) {
+		result, err := BuildResourceAPIGroupMap(resources, newClientset(t), logger)
+		require.NoError(t, err)
+
+		assert.Equal(t, map[string]ResourceInfo{
+			"targetgroupbindings": {Group: "elbv2.k8s.aws", Version: "v1beta1"},
+		}, result)
+	})
+}
+
+func TestResourceGroupsCoverResourceList(t *testing.T) {
+	for _, resource := range slices.Concat(resourceList, ManagedResourceNames) {
+		_, pinned := resourceGroups[resource]
+		assert.True(t, pinned, "resource %q must have an API group in resourceGroups", resource)
+	}
 }
 
 func TestBuildResourceAPIGroupMap_PolicyGroupCollisions(t *testing.T) {

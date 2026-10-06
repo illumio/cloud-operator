@@ -22,8 +22,9 @@ import (
 )
 
 // NewCoreResourceConverter returns a ResourceConverter for standard Kubernetes resources.
-// It closes over clientset and logger because core resource conversion needs them
-// to fetch additional data (Pod IPs, NetworkPolicy specs, Node provider IDs, Service details).
+// It closes over clientset and logger because core resource conversion needs them:
+// clientset to fetch NetworkPolicy specs, logger to report objects whose
+// kind-specific data cannot be read.
 func NewCoreResourceConverter(clientset kubernetes.Interface, logger *zap.Logger) func(ctx context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 	return func(ctx context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 		objMeta, err := GetMetadataFromResource(logger, *obj)
@@ -40,6 +41,18 @@ func NewCoreResourceConverter(clientset kubernetes.Interface, logger *zap.Logger
 		// still nil here and safe to set.
 		if workload := extractWorkloadData(obj, gvk.Kind, logger); workload != nil {
 			metadata.KindSpecific = &pb.KubernetesObjectData_Workload{Workload: workload}
+		}
+
+		// Enrich the provider objects that bind a load balancer to a Service. These
+		// kinds also have no case in ConvertMetaObjectToMetadata. A minimal object
+		// is still sent, with metadata only.
+		if err := convertLoadBalancerBinding(metadata, obj, gvk.Kind, gvk.Group); err != nil {
+			logger.Warn("Failed to read load balancer binding, sending metadata only",
+				zap.String("kind", gvk.Kind),
+				zap.String("namespace", obj.GetNamespace()),
+				zap.String("name", obj.GetName()),
+				zap.Error(err),
+			)
 		}
 
 		return metadata, nil
@@ -177,10 +190,20 @@ func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, raw
 
 	switch kind {
 	case "Pod":
+		// Kind alone is not enough: CRDs in other groups can reuse core kind names
+		// (e.g. serving.knative.dev Service), and must not get core data.
+		if apiGroup != "" {
+			return objMetadata
+		}
+
 		podIPs := extractPodIPsFromUnstructured(rawObj)
 
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_Pod{Pod: &pb.KubernetesPodData{IpAddresses: podIPs}}
 	case "NetworkPolicy":
+		if apiGroup != networkingv1.GroupName {
+			return objMetadata
+		}
+
 		networkPolicy, err := getContentsOfNetworkPolicy(ctx, obj.GetName(), clientset, obj.GetNamespace())
 		if err != nil {
 			return objMetadata
@@ -188,19 +211,22 @@ func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, raw
 
 		objMetadata.KindSpecific = &pb.KubernetesObjectData_NetworkPolicy{NetworkPolicy: networkPolicy}
 	case "Node":
-		providerId, err := getProviderIdNodeSpec(ctx, clientset, obj.GetName())
+		if apiGroup != "" {
+			return objMetadata
+		}
+
+		nodeData, err := extractNodeDataFromUnstructured(rawObj)
 		if err != nil {
 			return objMetadata
 		}
 
-		ipAddresses, err := getNodeIpAddresses(ctx, clientset, obj.GetName())
-		if err != nil {
-			return objMetadata
-		}
-
-		objMetadata.KindSpecific = &pb.KubernetesObjectData_Node{Node: &pb.KubernetesNodeData{ProviderId: providerId, IpAddresses: ipAddresses}}
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_Node{Node: nodeData}
 	case "Service":
-		convertedServiceData, err := convertToKubernetesServiceData(ctx, obj.GetName(), clientset, obj.GetNamespace())
+		if apiGroup != "" {
+			return objMetadata
+		}
+
+		convertedServiceData, err := convertToKubernetesServiceData(rawObj)
 		if err != nil {
 			return objMetadata
 		}
@@ -429,23 +455,74 @@ func convertIPBlockToProto(iPBlock *networkingv1.IPBlock) *pb.IPBlock {
 	}
 }
 
-// getNodeIpAddresses fetches the IP addresses of a node.
-func getNodeIpAddresses(ctx context.Context, clientset kubernetes.Interface, nodeName string) ([]string, error) {
-	node, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-	if err != nil {
-		return nil, errors.New("failed to get node")
+// extractNodeDataFromUnstructured reads spec.providerID and status.addresses
+// from an already-listed unstructured Node. Only these two fields are read, so
+// the rest of the Node (images, capacity, conditions) is not decoded. Nodes
+// without a providerID (bare metal, kind, on-prem) are still returned with
+// their addresses; provider_id is simply empty.
+func extractNodeDataFromUnstructured(obj *unstructured.Unstructured) (*pb.KubernetesNodeData, error) {
+	if obj == nil {
+		return nil, errors.New("node object is nil")
 	}
 
+	providerID, _, err := unstructured.NestedString(obj.Object, "spec", "providerID")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read spec.providerID: %w", err)
+	}
+
+	addressesField, _, err := unstructured.NestedSlice(obj.Object, "status", "addresses")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read status.addresses: %w", err)
+	}
+
+	addresses := make([]v1.NodeAddress, 0, len(addressesField))
+	for _, entry := range addressesField {
+		fields, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		addressType, _, _ := unstructured.NestedString(fields, "type")
+		address, _, _ := unstructured.NestedString(fields, "address")
+		addresses = append(addresses, v1.NodeAddress{Type: v1.NodeAddressType(addressType), Address: address})
+	}
+
+	return &pb.KubernetesNodeData{
+		ProviderId:  providerID,
+		IpAddresses: getNodeIpAddresses(addresses),
+		Addresses:   convertNodeAddresses(addresses),
+	}, nil
+}
+
+// getNodeIpAddresses returns the InternalIP and ExternalIP addresses of a node.
+func getNodeIpAddresses(addresses []v1.NodeAddress) []string {
 	ipAddresses := []string{}
 
-	for _, address := range node.Status.Addresses {
+	for _, address := range addresses {
 		// We are excluding hostnames
 		if address.Type == v1.NodeInternalIP || address.Type == v1.NodeExternalIP {
 			ipAddresses = append(ipAddresses, address.Address)
 		}
 	}
 
-	return ipAddresses, nil
+	return ipAddresses
+}
+
+// convertNodeAddresses converts all of a node's status.addresses, keeping their types.
+func convertNodeAddresses(addresses []v1.NodeAddress) []*pb.KubernetesNodeData_NodeAddress {
+	if len(addresses) == 0 {
+		return nil
+	}
+
+	result := make([]*pb.KubernetesNodeData_NodeAddress, 0, len(addresses))
+	for _, address := range addresses {
+		result = append(result, &pb.KubernetesNodeData_NodeAddress{
+			Type:    string(address.Type),
+			Address: address.Address,
+		})
+	}
+
+	return result
 }
 
 // convertIngressToStringList converts an array of v1.LoadBalancerIngress to a string array.
@@ -519,11 +596,18 @@ func combineIPAddresses(clusterIps []string, externalIps []string, loadBalancerI
 	return combinedIPs
 }
 
-// Convert ServiceAttributes to KubernetesServiceData.
-func convertToKubernetesServiceData(ctx context.Context, serviceName string, clientset kubernetes.Interface, namespace string) (*pb.KubernetesServiceData, error) {
-	service, err := clientset.CoreV1().Services(namespace).Get(ctx, serviceName, metav1.GetOptions{})
-	if err != nil {
-		return nil, errors.New("failed to get service")
+// convertToKubernetesServiceData converts an already-listed unstructured Service
+// to KubernetesServiceData. Reading the event's own object, rather than fetching
+// the Service again, keeps the data on delete events and matches the event's
+// resourceVersion.
+func convertToKubernetesServiceData(obj *unstructured.Unstructured) (*pb.KubernetesServiceData, error) {
+	if obj == nil {
+		return nil, errors.New("service object is nil")
+	}
+
+	service := &v1.Service{}
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, service); err != nil {
+		return nil, fmt.Errorf("failed to convert unstructured to Service: %w", err)
 	}
 
 	loadBalancerIngress := []string{}
@@ -555,14 +639,66 @@ func convertToKubernetesServiceData(ctx context.Context, serviceName string, cli
 		}
 	}
 
-	return &pb.KubernetesServiceData{
-		IpAddresses:       combinedIPs,
-		Ports:             servicePorts,
-		Type:              string(service.Spec.Type),
-		ExternalName:      &service.Spec.ExternalName,
-		LoadBalancerClass: service.Spec.LoadBalancerClass,
-		Selector:          service.Spec.Selector,
-	}, nil
+	serviceData := &pb.KubernetesServiceData{
+		IpAddresses:                   combinedIPs,
+		Ports:                         servicePorts,
+		Type:                          string(service.Spec.Type),
+		ExternalName:                  &service.Spec.ExternalName,
+		LoadBalancerClass:             service.Spec.LoadBalancerClass,
+		Selector:                      service.Spec.Selector,
+		LoadBalancerIngress:           convertLoadBalancerIngress(service.Status.LoadBalancer.Ingress),
+		LoadBalancerSourceRanges:      service.Spec.LoadBalancerSourceRanges,
+		AllocateLoadBalancerNodePorts: service.Spec.AllocateLoadBalancerNodePorts,
+	}
+
+	if service.Spec.ExternalTrafficPolicy != "" {
+		externalTrafficPolicy := string(service.Spec.ExternalTrafficPolicy)
+		serviceData.ExternalTrafficPolicy = &externalTrafficPolicy
+	}
+
+	if service.Spec.HealthCheckNodePort > 0 {
+		serviceData.HealthCheckNodePort = int32ToUint32(&service.Spec.HealthCheckNodePort)
+	}
+
+	return serviceData, nil
+}
+
+// convertLoadBalancerIngress converts a Service's status.loadBalancer.ingress
+// into typed proto entries, keeping IPs and hostnames apart.
+func convertLoadBalancerIngress(ingresses []v1.LoadBalancerIngress) []*pb.LoadBalancerIngress {
+	if len(ingresses) == 0 {
+		return nil
+	}
+
+	result := make([]*pb.LoadBalancerIngress, 0, len(ingresses))
+	for _, ingress := range ingresses {
+		entry := &pb.LoadBalancerIngress{}
+
+		if ingress.IP != "" {
+			entry.Ip = &ingress.IP
+		}
+
+		if ingress.Hostname != "" {
+			entry.Hostname = &ingress.Hostname
+		}
+
+		if ingress.IPMode != nil {
+			ipMode := string(*ingress.IPMode)
+			entry.IpMode = &ipMode
+		}
+
+		for _, portStatus := range ingress.Ports {
+			entry.Ports = append(entry.Ports, &pb.LoadBalancerIngress_PortStatus{
+				Port:     uint32(portStatus.Port), //nolint:gosec
+				Protocol: string(portStatus.Protocol),
+				Error:    portStatus.Error,
+			})
+		}
+
+		result = append(result, entry)
+	}
+
+	return result
 }
 
 // convertOwnerReferences converts a slice of Kubernetes OwnerReference objects into a slice of
@@ -597,20 +733,6 @@ func convertOwnerReferences(ownerReferences []metav1.OwnerReference) []*pb.Kuber
 	}
 
 	return result
-}
-
-// getProviderIdNodeSpec uses a node name to return the providerID within the node's spec.
-func getProviderIdNodeSpec(ctx context.Context, clientset kubernetes.Interface, nodeName string) (string, error) {
-	node, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-	if err != nil {
-		return "", err
-	}
-
-	if node.Spec.ProviderID != "" {
-		return node.Spec.ProviderID, nil
-	}
-
-	return "", errors.New("no providerID set")
 }
 
 // extractPodIPsFromUnstructured reads the pod IP addresses from the status.podIPs
