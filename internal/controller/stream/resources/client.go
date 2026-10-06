@@ -94,12 +94,12 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
 	sharedLimiter := rate.NewLimiter(1, 5)
-	resourceManagers := make(map[string]*Watcher)
 	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
 	runtimeCacheHandler := c.newRuntimeCacheHandler(pendingSnapshot)
 
-	for _, resource := range slices.Sorted(maps.Keys(resourceAPIGroupMap)) {
-		resourceInfo := resourceAPIGroupMap[resource]
+	for _, groupResource := range slices.SortedFunc(maps.Keys(resourceAPIGroupMap), compareGroupResources) {
+		resourceInfo := resourceAPIGroupMap[groupResource]
+		resource := groupResource.Resource
 
 		select {
 		case <-ctx.Done():
@@ -137,7 +137,6 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 			Limiter:             sharedLimiter,
 			Converter:           converter,
 		})
-		resourceManagers[resource] = resourceManager
 
 		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger)
 		if err != nil {
@@ -145,7 +144,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 			// NotFound can occur when a CRD is deleted after discovery but before listing.
 			if apierrors.IsForbidden(err) || apierrors.IsNotFound(err) {
 				c.logger.Warn("Skipping unavailable resource",
-					zap.String("kind", resource),
+					zap.String("resource", resource),
 					zap.String("api_group", resourceInfo.Group),
 					zap.String("reason", string(apierrors.ReasonForError(err))),
 					zap.Error(err))
@@ -157,9 +156,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		}
 
 		allWatchInfos = append(allWatchInfos, watcherInfo{
-			resource:        resource,
-			apiGroup:        resourceInfo.Group,
-			apiVersion:      resourceInfo.Version,
+			watcher:         resourceManager,
 			resourceVersion: resourceVersion,
 		})
 	}
@@ -188,15 +185,13 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 	defer cancel()
 
 	for _, info := range allWatchInfos {
-		resourceManager := resourceManagers[info.resource]
-
 		watcherWaitGroup.Add(1)
 
-		go func(info watcherInfo, manager *Watcher) {
+		go func(info watcherInfo) {
 			defer watcherWaitGroup.Done()
 
-			manager.WatchK8sResources(ctx, cancel, info.resourceVersion, mutationChan)
-		}(info, resourceManager)
+			info.watcher.WatchK8sResources(ctx, cancel, info.resourceVersion, mutationChan)
+		}(info)
 	}
 
 	stream.SetProcessingResources(false)

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 
@@ -19,6 +20,11 @@ import (
 	"github.com/illumio/cloud-operator/internal/convert/cilium"
 	"github.com/illumio/cloud-operator/internal/convert/ovn"
 )
+
+// gr builds a schema.GroupResource for test tables.
+func gr(group, resource string) schema.GroupResource {
+	return schema.GroupResource{Group: group, Resource: resource}
+}
 
 func TestBuildResourceApiGroupMap(t *testing.T) {
 	logger := zap.NewNop()
@@ -45,13 +51,13 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 			},
 		}
 
-		resources := []string{"pods", "deployments"}
+		resources := []schema.GroupResource{gr("", "pods"), gr("apps", "deployments")}
 
 		result, err := BuildResourceAPIGroupMap(resources, clientset, logger)
 		require.NoError(t, err)
 
 		// pods should be in core group (empty string)
-		resourceInfo, ok := result["pods"]
+		resourceInfo, ok := result[gr("", "pods")]
 		assert.True(t, ok, "expected 'pods' to be in result")
 		assert.Empty(t, resourceInfo.Group, "expected pods apiGroup to be empty")
 		assert.Equal(t, "v1", resourceInfo.Version)
@@ -60,7 +66,7 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 	t.Run("handles empty resources", func(t *testing.T) {
 		clientset := k8sfake.NewSimpleClientset()
 
-		resources := []string{}
+		resources := []schema.GroupResource{}
 
 		result, err := BuildResourceAPIGroupMap(resources, clientset, logger)
 		require.NoError(t, err)
@@ -82,13 +88,13 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 			},
 		}
 
-		resources := []string{"nodes"}
+		resources := []schema.GroupResource{gr("metrics.k8s.io", "nodes")}
 
 		result, err := BuildResourceAPIGroupMap(resources, clientset, logger)
 		require.NoError(t, err)
 
 		// nodes should NOT be mapped because metrics.k8s.io is skipped
-		_, ok = result["nodes"]
+		_, ok = result[gr("metrics.k8s.io", "nodes")]
 		assert.False(t, ok, "expected 'nodes' to be skipped for metrics.k8s.io group")
 	})
 
@@ -107,7 +113,7 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 			},
 		}
 
-		result, err := BuildResourceAPIGroupMap([]string{"deployments"}, clientset, logger)
+		result, err := BuildResourceAPIGroupMap([]schema.GroupResource{gr("apps", "deployments")}, clientset, logger)
 		require.NoError(t, err)
 		assert.Empty(t, result, "expected no match for resource not present in any group")
 	})
@@ -129,20 +135,20 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 			},
 		}
 
-		resources := []string{"deployments", "statefulsets"}
+		resources := []schema.GroupResource{gr("apps", "deployments"), gr("apps", "statefulsets")}
 
 		result, err := BuildResourceAPIGroupMap(resources, clientset, logger)
 		require.NoError(t, err)
 
-		assert.Equal(t, "apps", result["deployments"].Group)
-		assert.Equal(t, "v1", result["deployments"].Version)
-		assert.Equal(t, "apps", result["statefulsets"].Group)
-		assert.Equal(t, "v1", result["statefulsets"].Version)
+		assert.Equal(t, map[schema.GroupResource]ResourceInfo{
+			gr("apps", "deployments"):  {Group: "apps", Version: "v1"},
+			gr("apps", "statefulsets"): {Group: "apps", Version: "v1"},
+		}, result)
 	})
 
-	// Discovery returns CRD groups after the built-in groups, so without pinning
-	// these CRDs would replace the resources we watch.
-	t.Run("pinned resources ignore same-named resources in other groups", func(t *testing.T) {
+	// Several CRD groups serve the same plural names as the resources we watch.
+	// Only the requested group is mapped.
+	t.Run("same-named resources in other groups are not mapped", func(t *testing.T) {
 		clientset := k8sfake.NewSimpleClientset()
 
 		fakeDiscovery, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
@@ -181,22 +187,60 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 			}},
 		}
 
-		resources := []string{"nodes", "services", "ingresses", "networkpolicies", "gateways", "clusternetworkpolicies"}
+		resources := []schema.GroupResource{
+			gr("", "nodes"),
+			gr("", "services"),
+			gr("networking.k8s.io", "ingresses"),
+			gr("networking.k8s.io", "networkpolicies"),
+			gr("gateway.networking.k8s.io", "gateways"),
+			gr("networking.k8s.aws", "clusternetworkpolicies"),
+		}
 
 		result, err := BuildResourceAPIGroupMap(resources, clientset, logger)
 		require.NoError(t, err)
 
-		assert.Equal(t, map[string]ResourceInfo{
-			"nodes":                  {Group: "", Version: "v1"},
-			"services":               {Group: "", Version: "v1"},
-			"ingresses":              {Group: "networking.k8s.io", Version: "v1"},
-			"networkpolicies":        {Group: "networking.k8s.io", Version: "v1"},
-			"gateways":               {Group: "gateway.networking.k8s.io", Version: "v1"},
-			"clusternetworkpolicies": {Group: "networking.k8s.aws", Version: "v1alpha1"},
+		assert.Equal(t, map[schema.GroupResource]ResourceInfo{
+			gr("", "nodes"):                                    {Group: "", Version: "v1"},
+			gr("", "services"):                                 {Group: "", Version: "v1"},
+			gr("networking.k8s.io", "ingresses"):               {Group: "networking.k8s.io", Version: "v1"},
+			gr("networking.k8s.io", "networkpolicies"):         {Group: "networking.k8s.io", Version: "v1"},
+			gr("gateway.networking.k8s.io", "gateways"):        {Group: "gateway.networking.k8s.io", Version: "v1"},
+			gr("networking.k8s.aws", "clusternetworkpolicies"): {Group: "networking.k8s.aws", Version: "v1alpha1"},
 		}, result)
 	})
 
-	t.Run("pinned resource absent from its group is not taken from another group", func(t *testing.T) {
+	// Resources that share a plural name in different groups can be watched
+	// together: both Gateway API and Istio gateways are mapped when requested.
+	t.Run("same plural name in two requested groups maps both", func(t *testing.T) {
+		clientset := k8sfake.NewSimpleClientset()
+
+		fakeDiscovery, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
+		require.True(t, ok, "failed to get fake discovery client")
+
+		fakeDiscovery.Resources = []*metav1.APIResourceList{
+			{GroupVersion: "gateway.networking.k8s.io/v1", APIResources: []metav1.APIResource{
+				{Name: "gateways", Kind: "Gateway"},
+			}},
+			{GroupVersion: "networking.istio.io/v1", APIResources: []metav1.APIResource{
+				{Name: "gateways", Kind: "Gateway"},
+			}},
+		}
+
+		resources := []schema.GroupResource{
+			gr("gateway.networking.k8s.io", "gateways"),
+			gr("networking.istio.io", "gateways"),
+		}
+
+		result, err := buildResourceAPIGroupMap(resources, clientset, logger, true)
+		require.NoError(t, err)
+
+		assert.Equal(t, map[schema.GroupResource]ResourceInfo{
+			gr("gateway.networking.k8s.io", "gateways"): {Group: "gateway.networking.k8s.io", Version: "v1"},
+			gr("networking.istio.io", "gateways"):       {Group: "networking.istio.io", Version: "v1"},
+		}, result)
+	})
+
+	t.Run("resource absent from its group is not taken from another group", func(t *testing.T) {
 		clientset := k8sfake.NewSimpleClientset()
 
 		fakeDiscovery, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
@@ -208,7 +252,7 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 			}},
 		}
 
-		result, err := buildResourceAPIGroupMap([]string{"gateways"}, clientset, logger, true)
+		result, err := buildResourceAPIGroupMap([]schema.GroupResource{gr("gateway.networking.k8s.io", "gateways")}, clientset, logger, true)
 		require.NoError(t, err)
 		assert.Empty(t, result)
 	})
@@ -256,17 +300,22 @@ func TestBuildResourceAPIGroupMap_VersionFallback(t *testing.T) {
 		return clientset
 	}
 
-	resources := []string{"servicel2statuses", "servicebgpstatuses", "servicenetworkendpointgroups", "targetgroupbindings"}
+	resources := []schema.GroupResource{
+		gr("metallb.io", "servicel2statuses"),
+		gr("metallb.io", "servicebgpstatuses"),
+		gr("networking.gke.io", "servicenetworkendpointgroups"),
+		gr("elbv2.k8s.aws", "targetgroupbindings"),
+	}
 
 	t.Run("resource stream searches every served version", func(t *testing.T) {
 		result, err := buildResourceAPIGroupMap(resources, newClientset(t), logger, true)
 		require.NoError(t, err)
 
-		assert.Equal(t, map[string]ResourceInfo{
-			"servicel2statuses":            {Group: "metallb.io", Version: "v1beta1"},
-			"servicebgpstatuses":           {Group: "metallb.io", Version: "v1beta1"},
-			"servicenetworkendpointgroups": {Group: "networking.gke.io", Version: "v1beta1"},
-			"targetgroupbindings":          {Group: "elbv2.k8s.aws", Version: "v1beta1"},
+		assert.Equal(t, map[schema.GroupResource]ResourceInfo{
+			gr("metallb.io", "servicel2statuses"):                   {Group: "metallb.io", Version: "v1beta1"},
+			gr("metallb.io", "servicebgpstatuses"):                  {Group: "metallb.io", Version: "v1beta1"},
+			gr("networking.gke.io", "servicenetworkendpointgroups"): {Group: "networking.gke.io", Version: "v1beta1"},
+			gr("elbv2.k8s.aws", "targetgroupbindings"):              {Group: "elbv2.k8s.aws", Version: "v1beta1"},
 		}, result)
 	})
 
@@ -276,16 +325,26 @@ func TestBuildResourceAPIGroupMap_VersionFallback(t *testing.T) {
 		result, err := BuildResourceAPIGroupMap(resources, newClientset(t), logger)
 		require.NoError(t, err)
 
-		assert.Equal(t, map[string]ResourceInfo{
-			"targetgroupbindings": {Group: "elbv2.k8s.aws", Version: "v1beta1"},
+		assert.Equal(t, map[schema.GroupResource]ResourceInfo{
+			gr("elbv2.k8s.aws", "targetgroupbindings"): {Group: "elbv2.k8s.aws", Version: "v1beta1"},
 		}, result)
 	})
 }
 
-func TestResourceGroupsCoverResourceList(t *testing.T) {
-	for _, resource := range slices.Concat(resourceList, ManagedResourceNames) {
-		_, pinned := resourceGroups[resource]
-		assert.True(t, pinned, "resource %q must have an API group in resourceGroups", resource)
+func TestResourceListHasNoDuplicates(t *testing.T) {
+	seen := make(map[schema.GroupResource]struct{}, len(resourceList))
+
+	for _, groupResource := range resourceList {
+		_, duplicate := seen[groupResource]
+		assert.False(t, duplicate, "resource %s is listed twice in resourceList", groupResource)
+
+		seen[groupResource] = struct{}{}
+	}
+}
+
+func TestManagedResourcesAreWatched(t *testing.T) {
+	for _, groupResource := range ManagedResources {
+		assert.True(t, slices.Contains(resourceList, groupResource), "managed resource %s must be in resourceList", groupResource)
 	}
 }
 
@@ -321,37 +380,37 @@ func TestBuildResourceAPIGroupMap_PolicyGroupCollisions(t *testing.T) {
 		GroupVersion: "policy.networking.k8s.io/v1alpha2",
 		APIResources: []metav1.APIResource{{Name: "clusternetworkpolicies", Kind: "ClusterNetworkPolicy"}},
 	}
-	wantSupported := map[string]ResourceInfo{
-		"adminnetworkpolicies":             {Group: "policy.networking.k8s.io", Version: "v1alpha1"},
-		"baselineadminnetworkpolicies":     {Group: "policy.networking.k8s.io", Version: "v1alpha1"},
-		"egressfirewalls":                  {Group: "k8s.ovn.org", Version: "v1"},
-		"egressips":                        {Group: "k8s.ovn.org", Version: "v1"},
-		"clusternetworkpolicies":           {Group: "networking.k8s.aws", Version: "v1alpha1"},
-		"applicationnetworkpolicies":       {Group: "networking.k8s.aws", Version: "v1alpha1"},
-		"ciliumnetworkpolicies":            {Group: "cilium.io", Version: "v2"},
-		"ciliumclusterwidenetworkpolicies": {Group: "cilium.io", Version: "v2"},
-		"ciliumcidrgroups":                 {Group: "cilium.io", Version: "v2"},
+	wantSupported := map[schema.GroupResource]ResourceInfo{
+		gr("policy.networking.k8s.io", "adminnetworkpolicies"):         {Group: "policy.networking.k8s.io", Version: "v1alpha1"},
+		gr("policy.networking.k8s.io", "baselineadminnetworkpolicies"): {Group: "policy.networking.k8s.io", Version: "v1alpha1"},
+		gr("k8s.ovn.org", "egressfirewalls"):                           {Group: "k8s.ovn.org", Version: "v1"},
+		gr("k8s.ovn.org", "egressips"):                                 {Group: "k8s.ovn.org", Version: "v1"},
+		gr("networking.k8s.aws", "clusternetworkpolicies"):             {Group: "networking.k8s.aws", Version: "v1alpha1"},
+		gr("networking.k8s.aws", "applicationnetworkpolicies"):         {Group: "networking.k8s.aws", Version: "v1alpha1"},
+		gr("cilium.io", "ciliumnetworkpolicies"):                       {Group: "cilium.io", Version: "v2"},
+		gr("cilium.io", "ciliumclusterwidenetworkpolicies"):            {Group: "cilium.io", Version: "v2"},
+		gr("cilium.io", "ciliumcidrgroups"):                            {Group: "cilium.io", Version: "v2"},
 	}
 
 	tests := []struct {
 		name      string
 		resources []*metav1.APIResourceList
-		want      map[string]ResourceInfo
+		want      map[schema.GroupResource]ResourceInfo
 	}{
 		{name: "supported groups", resources: supported, want: wantSupported},
-		{name: "foreign group only", resources: []*metav1.APIResourceList{foreign}, want: map[string]ResourceInfo{}},
+		{name: "foreign group only", resources: []*metav1.APIResourceList{foreign}, want: map[schema.GroupResource]ResourceInfo{}},
 		{name: "foreign group listed first", resources: append([]*metav1.APIResourceList{foreign}, supported...), want: wantSupported},
 		{name: "foreign group listed last", resources: append(slices.Clone(supported), foreign), want: wantSupported},
-		{name: "Kubernetes CNP is not an AWS resource", resources: []*metav1.APIResourceList{kubernetesCNP}, want: map[string]ResourceInfo{}},
+		{name: "Kubernetes CNP is not an AWS resource", resources: []*metav1.APIResourceList{kubernetesCNP}, want: map[schema.GroupResource]ResourceInfo{}},
 		{
 			name: "AWS and Kubernetes CNP coexist",
 			resources: []*metav1.APIResourceList{
 				{GroupVersion: "networking.k8s.aws/v1alpha1", APIResources: awsResources},
 				kubernetesCNP,
 			},
-			want: map[string]ResourceInfo{
-				"clusternetworkpolicies":     {Group: "networking.k8s.aws", Version: "v1alpha1"},
-				"applicationnetworkpolicies": {Group: "networking.k8s.aws", Version: "v1alpha1"},
+			want: map[schema.GroupResource]ResourceInfo{
+				gr("networking.k8s.aws", "clusternetworkpolicies"):     {Group: "networking.k8s.aws", Version: "v1alpha1"},
+				gr("networking.k8s.aws", "applicationnetworkpolicies"): {Group: "networking.k8s.aws", Version: "v1alpha1"},
 			},
 		},
 	}
@@ -371,97 +430,82 @@ func TestBuildResourceAPIGroupMap_PolicyGroupCollisions(t *testing.T) {
 	}
 }
 
+// The dispatch tests check that each converter claims exactly its own entries of
+// resourceList, using each entry's real API group.
+
 func TestResourceListCiliumDispatchConsistency(t *testing.T) {
-	expectedCilium := map[string]bool{
-		"ciliumcidrgroups":                 true,
-		"ciliumclusterwidenetworkpolicies": true,
-		"ciliumnetworkpolicies":            true,
+	expectedCilium := map[schema.GroupResource]bool{
+		gr(cilium.APIGroup, "ciliumcidrgroups"):                 true,
+		gr(cilium.APIGroup, "ciliumclusterwidenetworkpolicies"): true,
+		gr(cilium.APIGroup, "ciliumnetworkpolicies"):            true,
 	}
 
-	for _, resource := range resourceList {
-		isCilium := cilium.IsCiliumResource("cilium.io", resource)
-
-		if expectedCilium[resource] {
-			assert.True(t, isCilium, "resource %q should be recognized as Cilium by IsCiliumResource", resource)
-		} else {
-			assert.False(t, isCilium, "resource %q should NOT be recognized as Cilium by IsCiliumResource", resource)
-		}
+	for _, groupResource := range resourceList {
+		isCilium := cilium.IsCiliumResource(groupResource.Group, groupResource.Resource)
+		assert.Equal(t, expectedCilium[groupResource], isCilium, "IsCiliumResource(%s)", groupResource)
 	}
 
-	for name := range expectedCilium {
-		assert.True(t, slices.Contains(resourceList, name), "expected Cilium resource %q must be in resourceList", name)
+	for groupResource := range expectedCilium {
+		assert.True(t, slices.Contains(resourceList, groupResource), "expected Cilium resource %s must be in resourceList", groupResource)
 	}
 }
 
 func TestResourceListAWSDispatchConsistency(t *testing.T) {
 	// Both AWS policy resources are watched (ingested) and routed to the AWS converter.
-	awsResources := []string{"clusternetworkpolicies", "applicationnetworkpolicies"}
-
-	for _, name := range awsResources {
-		assert.True(t, slices.Contains(resourceList, name),
-			"%s must be in resourceList (ingested)", name)
-		assert.True(t, awsvpccni.IsAWSResource("networking.k8s.aws", name),
-			"%s must be recognized by IsAWSResource", name)
+	expectedAWS := map[schema.GroupResource]bool{
+		gr(awsvpccni.APIGroup, "clusternetworkpolicies"):     true,
+		gr(awsvpccni.APIGroup, "applicationnetworkpolicies"): true,
 	}
 
-	// ClusterNetworkPolicy is enforced/reconciled, so it must be in ManagedResourceNames.
-	assert.True(t, slices.Contains(ManagedResourceNames, "clusternetworkpolicies"),
-		"clusternetworkpolicies must be in ManagedResourceNames (enforced)")
+	for _, groupResource := range resourceList {
+		isAWS := awsvpccni.IsAWSResource(groupResource.Group, groupResource.Resource)
+		assert.Equal(t, expectedAWS[groupResource], isAWS, "IsAWSResource(%s)", groupResource)
+	}
+
+	for groupResource := range expectedAWS {
+		assert.True(t, slices.Contains(resourceList, groupResource), "%s must be in resourceList (ingested)", groupResource)
+	}
+
+	// ClusterNetworkPolicy is enforced/reconciled, so it must be in ManagedResources.
+	assert.True(t, slices.Contains(ManagedResources, gr(awsvpccni.APIGroup, "clusternetworkpolicies")),
+		"clusternetworkpolicies must be in ManagedResources (enforced)")
 
 	// ApplicationNetworkPolicy is ingest-only (never enforced), so it must NOT be in
-	// ManagedResourceNames, otherwise the reconciler would try to apply/delete it.
-	assert.False(t, slices.Contains(ManagedResourceNames, "applicationnetworkpolicies"),
-		"applicationnetworkpolicies must NOT be in ManagedResourceNames (ingest-only)")
-
-	// Cilium resources must not be misrouted to the AWS converter.
-	for _, resource := range resourceList {
-		if cilium.IsCiliumResource("cilium.io", resource) {
-			assert.False(t, awsvpccni.IsAWSResource("cilium.io", resource),
-				"resource %q should not be recognized as both Cilium and AWS", resource)
-		}
-	}
+	// ManagedResources, otherwise the reconciler would try to apply/delete it.
+	assert.False(t, slices.Contains(ManagedResources, gr(awsvpccni.APIGroup, "applicationnetworkpolicies")),
+		"applicationnetworkpolicies must NOT be in ManagedResources (ingest-only)")
 }
 
 func TestResourceListAdminNetworkPolicyDispatchConsistency(t *testing.T) {
-	expectedANP := map[string]bool{
-		"adminnetworkpolicies":         true,
-		"baselineadminnetworkpolicies": true,
+	expectedANP := map[schema.GroupResource]bool{
+		gr(anp.APIGroup, "adminnetworkpolicies"):         true,
+		gr(anp.APIGroup, "baselineadminnetworkpolicies"): true,
 	}
 
-	for _, resource := range resourceList {
-		isANP := anp.IsAdminNetworkPolicyResource("policy.networking.k8s.io", resource)
-
-		if expectedANP[resource] {
-			assert.True(t, isANP, "resource %q should be recognized as ANP by IsAdminNetworkPolicyResource", resource)
-		} else {
-			assert.False(t, isANP, "resource %q should NOT be recognized as ANP by IsAdminNetworkPolicyResource", resource)
-		}
+	for _, groupResource := range resourceList {
+		isANP := anp.IsAdminNetworkPolicyResource(groupResource.Group, groupResource.Resource)
+		assert.Equal(t, expectedANP[groupResource], isANP, "IsAdminNetworkPolicyResource(%s)", groupResource)
 	}
 
-	for name := range expectedANP {
-		assert.True(t, slices.Contains(resourceList, name), "expected ANP resource %q must be in resourceList", name)
+	for groupResource := range expectedANP {
+		assert.True(t, slices.Contains(resourceList, groupResource), "expected ANP resource %s must be in resourceList", groupResource)
 	}
 }
 
 func TestResourceListEgressDispatchConsistency(t *testing.T) {
-	expectedEgress := map[string]bool{
-		"egressfirewalls": true,
-		"egressips":       true,
+	expectedEgress := map[schema.GroupResource]bool{
+		gr(ovn.APIGroup, "egressfirewalls"): true,
+		gr(ovn.APIGroup, "egressips"):       true,
 	}
 
-	for _, resource := range resourceList {
-		isEgress := ovn.IsEgressResource("k8s.ovn.org", resource)
-
-		if expectedEgress[resource] {
-			assert.True(t, isEgress, "resource %q should be recognized as Egress by IsEgressResource", resource)
-		} else {
-			assert.False(t, isEgress, "resource %q should NOT be recognized as Egress by IsEgressResource", resource)
-		}
+	for _, groupResource := range resourceList {
+		isEgress := ovn.IsEgressResource(groupResource.Group, groupResource.Resource)
+		assert.Equal(t, expectedEgress[groupResource], isEgress, "IsEgressResource(%s)", groupResource)
 	}
 
-	for name := range expectedEgress {
-		assert.True(t, slices.Contains(resourceList, name), "expected Egress resource %q must be in resourceList", name)
-		assert.False(t, slices.Contains(ManagedResourceNames, name), "Egress resource %q must not be operator-managed", name)
+	for groupResource := range expectedEgress {
+		assert.True(t, slices.Contains(resourceList, groupResource), "expected Egress resource %s must be in resourceList", groupResource)
+		assert.False(t, slices.Contains(ManagedResources, groupResource), "Egress resource %s must not be operator-managed", groupResource)
 	}
 }
 

@@ -244,6 +244,20 @@ func TestNewCoreResourceConverter_WorkloadLabels(t *testing.T) {
 			},
 			wantWorkloadNil: true,
 		},
+		{
+			// A CRD in another group that reuses a workload kind name is not a workload.
+			name:       "Deployment in another API group is not a workload",
+			apiVersion: "example.com/v1",
+			kind:       "Deployment",
+			spec: map[string]any{
+				"template": map[string]any{
+					"metadata": map[string]any{
+						"labels": map[string]any{"app": "web"},
+					},
+				},
+			},
+			wantWorkloadNil: true,
+		},
 	}
 
 	for _, tt := range tests {
