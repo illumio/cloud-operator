@@ -5,7 +5,7 @@ go 1.26.6
 require (
 	github.com/cilium/cilium v1.20.2
 	github.com/go-logr/zapr v1.3.0
-	github.com/netsampler/goflow2 v1.3.7
+	github.com/netsampler/goflow2 v1.3.8
 	go.uber.org/goleak v1.3.0
 	go.uber.org/zap v1.28.0
 	golang.org/x/oauth2 v0.37.0
@@ -14,7 +14,7 @@ require (
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
 	k8s.io/client-go v0.37.1
-	sigs.k8s.io/controller-runtime v0.25.1 // only used for integration tests
+	sigs.k8s.io/controller-runtime v0.25.2 // only used for integration tests
 )
 
 require (

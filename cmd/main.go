@@ -64,13 +64,18 @@ const (
 
 // newHealthHandler returns an HTTP HandlerFunc that checks the health of the
 // server by calling the given function and returns a status code accordingly.
-func newHealthHandler(checkFunc func() bool) http.HandlerFunc {
+// The status function returns an empty string if the server is healthy, or an error status if the server is unhealthy.
+func newHealthHandler(logger *zap.Logger, status func() string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if checkFunc() {
+		reason := status()
+		if reason == "" {
 			w.WriteHeader(http.StatusOK)
-		} else {
-			w.WriteHeader(http.StatusInternalServerError)
+
+			return
 		}
+
+		logger.Error("Health check failed", zap.String("reason", reason))
+		http.Error(w, reason, http.StatusInternalServerError)
 	}
 }
 
@@ -215,7 +220,7 @@ func main() {
 		logger.Error("Failed to start gops agent", zap.Error(err))
 	}
 
-	http.HandleFunc("/healthz", newHealthHandler(stream.ServerIsHealthy))
+	http.HandleFunc("/healthz", newHealthHandler(logger, stream.UnhealthyReason))
 
 	healthChecker := &http.Server{
 		Addr:              ":8080",
@@ -326,6 +331,19 @@ func main() {
 	// A nil factory means no collector is available (flow collection disabled);
 	// in that case we skip the stream entirely rather than falling back.
 	if flowCollectorFactory != nil {
+		keepalivePeriods := make([]time.Duration, 0, len(factories))
+		for _, factory := range factories {
+			keepalivePeriods = append(keepalivePeriods, factory.KeepalivePeriod)
+		}
+
+		flowTimeout := stream.FlowInactivityTimeout(
+			viper.GetDuration("flow_cache_active_timeout"),
+			flowCollectorFactory.PollingInterval(),
+			keepalivePeriods...,
+		)
+		stream.ConfigureFlowLiveness(flowTimeout)
+		logger.Info("Flow liveness enabled", zap.Duration("timeout", flowTimeout))
+
 		factories = append(factories, stream.ManagedFactory{
 			Factory: &flows.FlowCollectorStreamFactory{
 				Factory:       flowCollectorFactory,
