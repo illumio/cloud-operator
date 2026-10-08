@@ -6,11 +6,13 @@ import (
 	"context"
 	"strconv"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
@@ -26,6 +28,26 @@ func (m *MockFlow) StartTimestamp() time.Time {
 
 func (m *MockFlow) Key() any {
 	return m.key
+}
+
+// newCiliumFlow returns a Hubble event for TCP client:42138 -> api:8080 as
+// observed on the node running both pods. Hubble sets endpoint IDs only for
+// local pods, so events share a flow key only when observed on the same node.
+func newCiliumFlow(verdict pb.Verdict, timestamp time.Time) *pb.CiliumFlow {
+	return &pb.CiliumFlow{
+		Time:    timestamppb.New(timestamp),
+		Verdict: verdict,
+		Layer3: &pb.IP{
+			Source:      "10.1.54.107",
+			Destination: "10.1.48.226",
+			IpVersion:   pb.IPVersion_IP_VERSION_IPV4,
+		},
+		Layer4: &pb.Layer4{
+			Protocol: &pb.Layer4_Tcp{Tcp: &pb.TCP{SourcePort: 42138, DestinationPort: 8080}},
+		},
+		SourceEndpoint:      &pb.Endpoint{Uid: 1201, PodName: "client"},
+		DestinationEndpoint: &pb.Endpoint{Uid: 3517, PodName: "api"},
+	}
 }
 
 func TestNewFlowCache(t *testing.T) {
@@ -78,10 +100,8 @@ func TestFlowCache_EvictExpiredFlows(t *testing.T) {
 	expiredFlow := &MockFlow{startTimestamp: now.Add(-15 * time.Second), key: "expired"}
 	activeFlow := &MockFlow{startTimestamp: now.Add(-5 * time.Second), key: "active"}
 
-	c.queue.PushBack(expiredFlow)
-	c.queue.PushBack(activeFlow)
-	c.cache[expiredFlow.Key()] = expiredFlow
-	c.cache[activeFlow.Key()] = activeFlow
+	c.cache[expiredFlow.Key()] = c.queue.PushBack(expiredFlow)
+	c.cache[activeFlow.Key()] = c.queue.PushBack(activeFlow)
 
 	ctx := context.Background()
 	logger, _ := zap.NewDevelopment()
@@ -100,9 +120,82 @@ func TestFlowCache_ShouldSkipFlow(t *testing.T) {
 	c := NewFlowCache(10*time.Second, 100, outFlows)
 
 	flow := &MockFlow{startTimestamp: time.Now(), key: "flow1"}
-	c.cache[flow.Key()] = flow
+	c.addFlowToCache(flow)
 
 	assert.True(t, c.shouldSkipFlow(flow))
+}
+
+func TestFlowCache_ShouldSkipFlow_Verdicts(t *testing.T) {
+	tests := []struct {
+		name     string
+		cached   pb.Verdict
+		incoming pb.Verdict
+		wantSkip bool
+	}{
+		{name: "dropped replaces forwarded", cached: pb.Verdict_VERDICT_FORWARDED, incoming: pb.Verdict_VERDICT_DROPPED},
+		{name: "audit replaces forwarded", cached: pb.Verdict_VERDICT_FORWARDED, incoming: pb.Verdict_VERDICT_AUDIT},
+		{name: "dropped replaces audit", cached: pb.Verdict_VERDICT_AUDIT, incoming: pb.Verdict_VERDICT_DROPPED},
+		{name: "forwarded after dropped is skipped", cached: pb.Verdict_VERDICT_DROPPED, incoming: pb.Verdict_VERDICT_FORWARDED, wantSkip: true},
+		{name: "audit after dropped is skipped", cached: pb.Verdict_VERDICT_DROPPED, incoming: pb.Verdict_VERDICT_AUDIT, wantSkip: true},
+		{name: "forwarded after audit is skipped", cached: pb.Verdict_VERDICT_AUDIT, incoming: pb.Verdict_VERDICT_FORWARDED, wantSkip: true},
+		{name: "same verdict is skipped", cached: pb.Verdict_VERDICT_DROPPED, incoming: pb.Verdict_VERDICT_DROPPED, wantSkip: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewFlowCache(10*time.Second, 100, make(chan pb.Flow, 10))
+			now := time.Now()
+
+			c.addFlowToCache(newCiliumFlow(tt.cached, now))
+
+			assert.Equal(t, tt.wantSkip, c.shouldSkipFlow(newCiliumFlow(tt.incoming, now)))
+		})
+	}
+}
+
+// TestFlowCache_Run_DroppedReplacesForwarded replays the Hubble events for one
+// connection denied by ingress policy, with both pods on one node: to-stack
+// FORWARDED on the client's egress, then policy-verdict and drop events (both
+// DROPPED) for the SYN and for its retransmission one second later.
+func TestFlowCache_Run_DroppedReplacesForwarded(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const activeTimeout = 20 * time.Second
+
+		outFlows := make(chan pb.Flow, 10)
+		logger, _ := zap.NewDevelopment()
+		c := NewFlowCache(activeTimeout, 100, outFlows)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+
+		go func() {
+			done <- c.Run(ctx, logger)
+		}()
+
+		policyVerdict := newCiliumFlow(pb.Verdict_VERDICT_DROPPED, time.Now())
+		for _, flow := range []pb.Flow{
+			newCiliumFlow(pb.Verdict_VERDICT_FORWARDED, time.Now()),
+			policyVerdict,
+			newCiliumFlow(pb.Verdict_VERDICT_DROPPED, time.Now()),
+		} {
+			require.NoError(t, c.CacheFlow(ctx, flow))
+		}
+
+		time.Sleep(time.Second)
+
+		for range 2 {
+			require.NoError(t, c.CacheFlow(ctx, newCiliumFlow(pb.Verdict_VERDICT_DROPPED, time.Now())))
+		}
+
+		time.Sleep(activeTimeout)
+		synctest.Wait()
+
+		require.Len(t, outFlows, 1)
+		assert.Same(t, policyVerdict, <-outFlows)
+
+		cancel()
+		require.ErrorIs(t, <-done, context.Canceled)
+	})
 }
 
 func TestFlowCache_ShouldEvictOldest(t *testing.T) {
@@ -111,8 +204,7 @@ func TestFlowCache_ShouldEvictOldest(t *testing.T) {
 
 	for i := range 100 {
 		flow := &MockFlow{startTimestamp: time.Now(), key: "flow" + strconv.Itoa(i)}
-		c.queue.PushBack(flow)
-		c.cache[flow.Key()] = flow
+		c.cache[flow.Key()] = c.queue.PushBack(flow)
 	}
 
 	assert.True(t, c.shouldEvictOldest())

@@ -18,7 +18,7 @@ import (
 // - lack of resources: cache has reached maxFlows capacity
 // - active timeout: flow has been cached longer than activeTimeout.
 type FlowCache struct {
-	cache         map[any]pb.Flow
+	cache         map[any]*list.Element
 	queue         *list.List
 	activeTimeout time.Duration
 	maxFlows      int
@@ -34,7 +34,7 @@ func NewFlowCache(
 	outFlows chan pb.Flow,
 ) *FlowCache {
 	return &FlowCache{
-		cache:         make(map[any]pb.Flow, maxFlows),
+		cache:         make(map[any]*list.Element, maxFlows),
 		queue:         list.New(),
 		activeTimeout: activeTimeout,
 		maxFlows:      maxFlows,
@@ -93,7 +93,11 @@ func (c *FlowCache) Run(ctx context.Context, logger *zap.Logger) error {
 				continue
 			}
 
-			if c.shouldEvictOldest() {
+			if elem, alreadyCached := c.cache[flow.Key()]; alreadyCached {
+				// The flow supersedes the cached flow with the same key and
+				// takes its place.
+				c.queue.Remove(elem)
+			} else if c.shouldEvictOldest() {
 				if err := c.evictOldestFlow(ctx, logger); err != nil {
 					return err
 				}
@@ -142,10 +146,34 @@ func (c *FlowCache) evictExpiredFlows(ctx context.Context, logger *zap.Logger) {
 	}
 }
 
+// shouldSkipFlow reports whether a flow with the same key is already cached
+// with an equally or more severe verdict. The more severe verdict wins because
+// one connection can produce events with different verdicts: e.g. Cilium can
+// report a to-stack FORWARDED event on the client's egress before the DROPPED
+// event from the server's ingress policy, and the drop is the outcome.
 func (c *FlowCache) shouldSkipFlow(flow pb.Flow) bool {
-	_, alreadyCached := c.cache[flow.Key()]
+	elem, alreadyCached := c.cache[flow.Key()]
 
-	return alreadyCached
+	return alreadyCached && verdictRank(flow) <= verdictRank(elem.Value)
+}
+
+// verdictRank ranks a Cilium flow's verdict by severity. Other flows have no
+// verdict and rank lowest.
+func verdictRank(flow any) int {
+	ciliumFlow, ok := flow.(*pb.CiliumFlow)
+	if !ok {
+		return 0
+	}
+
+	//nolint:exhaustive // only verdicts closer to a deny than FORWARDED rank higher
+	switch ciliumFlow.GetVerdict() {
+	case pb.Verdict_VERDICT_DROPPED:
+		return 2
+	case pb.Verdict_VERDICT_AUDIT:
+		return 1
+	default:
+		return 0
+	}
 }
 
 func (c *FlowCache) shouldEvictOldest() bool {
@@ -197,16 +225,14 @@ func (c *FlowCache) addFlowToCache(flow pb.Flow) {
 
 		if !existing.StartTimestamp().After(flowTimestamp) {
 			// Insert after this element (flow is newer or same time)
-			c.queue.InsertAfter(flow, e)
-			c.cache[flow.Key()] = flow
+			c.cache[flow.Key()] = c.queue.InsertAfter(flow, e)
 
 			return
 		}
 	}
 
 	// Flow is oldest, insert at front
-	c.queue.PushFront(flow)
-	c.cache[flow.Key()] = flow
+	c.cache[flow.Key()] = c.queue.PushFront(flow)
 }
 
 func (c *FlowCache) resetTimerForNextExpiration(timer *time.Timer, logger *zap.Logger) {
