@@ -654,3 +654,12 @@ func TestInt32PtrToUint32(t *testing.T) {
 	assert.Nil(t, int32PtrToUint32(new(int32(-1))))
 	assert.Equal(t, new(uint32(8080)), int32PtrToUint32(new(int32(8080))))
 }
+
+func TestMakeRepeated(t *testing.T) {
+	assert.Nil(t, makeRepeated[string](0))
+
+	preallocated := makeRepeated[string](3)
+	assert.NotNil(t, preallocated)
+	assert.Empty(t, preallocated)
+	assert.Equal(t, 3, cap(preallocated))
+}

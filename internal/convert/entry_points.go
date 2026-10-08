@@ -103,10 +103,12 @@ func convertIngress(ingress *networkingv1.Ingress) *pb.KubernetesIngressData {
 		out.DefaultBackend = convertIngressBackend(spec.DefaultBackend)
 	}
 
+	out.Rules = makeRepeated[*pb.KubernetesIngressData_Rule](len(spec.Rules))
 	for _, rule := range spec.Rules {
 		pbRule := &pb.KubernetesIngressData_Rule{Host: nonEmptyString(&rule.Host)}
 
 		if rule.HTTP != nil {
+			pbRule.Paths = makeRepeated[*pb.KubernetesIngressData_Path](len(rule.HTTP.Paths))
 			for _, path := range rule.HTTP.Paths {
 				pbPath := &pb.KubernetesIngressData_Path{
 					Path:    nonEmptyString(&path.Path),
@@ -124,6 +126,7 @@ func convertIngress(ingress *networkingv1.Ingress) *pb.KubernetesIngressData {
 		out.Rules = append(out.Rules, pbRule)
 	}
 
+	out.Tls = makeRepeated[*pb.KubernetesIngressData_TLS](len(spec.TLS))
 	for _, tls := range spec.TLS {
 		out.Tls = append(out.Tls, &pb.KubernetesIngressData_TLS{
 			Hosts:      tls.Hosts,
@@ -170,6 +173,7 @@ func convertIngressLoadBalancerIngress(ingresses []networkingv1.IngressLoadBalan
 			Hostname: nonEmptyString(&ingress.Hostname),
 		}
 
+		entry.Ports = makeRepeated[*pb.LoadBalancerIngress_PortStatus](len(ingress.Ports))
 		for _, portStatus := range ingress.Ports {
 			entry.Ports = append(entry.Ports, &pb.LoadBalancerIngress_PortStatus{
 				Port:     uint32(portStatus.Port), //nolint:gosec
@@ -187,6 +191,7 @@ func convertIngressLoadBalancerIngress(ingresses []networkingv1.IngressLoadBalan
 func convertGateway(gateway *gwGateway) *pb.KubernetesGatewayData {
 	out := &pb.KubernetesGatewayData{GatewayClassName: gateway.Spec.GatewayClassName}
 
+	out.Listeners = makeRepeated[*pb.KubernetesGatewayData_Listener](len(gateway.Spec.Listeners))
 	for _, listener := range gateway.Spec.Listeners {
 		out.Listeners = append(out.Listeners, &pb.KubernetesGatewayData_Listener{
 			Name:     listener.Name,
@@ -195,6 +200,7 @@ func convertGateway(gateway *gwGateway) *pb.KubernetesGatewayData {
 		})
 	}
 
+	out.Addresses = makeRepeated[*pb.KubernetesGatewayData_Address](len(gateway.Status.Addresses))
 	for _, address := range gateway.Status.Addresses {
 		out.Addresses = append(out.Addresses, &pb.KubernetesGatewayData_Address{
 			Type:  nonEmptyString(address.Type),
@@ -211,10 +217,17 @@ func convertGateway(gateway *gwGateway) *pb.KubernetesGatewayData {
 func convertGatewayRoute(route *gwRoute, generation int64) *pb.KubernetesGatewayRouteData {
 	out := &pb.KubernetesGatewayRouteData{}
 
+	out.ParentRefs = makeRepeated[*pb.KubernetesGatewayRouteData_ParentReference](len(route.Spec.ParentRefs))
 	for _, parentRef := range route.Spec.ParentRefs {
 		out.ParentRefs = append(out.ParentRefs, convertGatewayParentReference(&parentRef))
 	}
 
+	backendRefCount := 0
+	for _, rule := range route.Spec.Rules {
+		backendRefCount += len(rule.BackendRefs)
+	}
+
+	out.BackendRefs = makeRepeated[*pb.KubernetesGatewayRouteData_BackendRef](backendRefCount)
 	for _, rule := range route.Spec.Rules {
 		for _, backendRef := range rule.BackendRefs {
 			out.BackendRefs = append(out.BackendRefs, &pb.KubernetesGatewayRouteData_BackendRef{
@@ -228,6 +241,7 @@ func convertGatewayRoute(route *gwRoute, generation int64) *pb.KubernetesGateway
 		}
 	}
 
+	out.Parents = makeRepeated[*pb.KubernetesGatewayRouteData_RouteParentStatus](len(route.Status.Parents))
 	for _, parent := range route.Status.Parents {
 		pbParent := &pb.KubernetesGatewayRouteData_RouteParentStatus{
 			ParentRef:      convertGatewayParentReference(&parent.ParentRef),
@@ -289,4 +303,14 @@ func int32PtrToUint32(i *int32) *uint32 {
 	}
 
 	return new(uint32(*i))
+}
+
+// makeRepeated returns an empty slice with capacity n for a repeated proto
+// field, or nil when n is 0 so the field stays unset as before.
+func makeRepeated[T any](n int) []T {
+	if n == 0 {
+		return nil
+	}
+
+	return make([]T, 0, n)
 }
