@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/illumio/cloud-operator/internal/convert"
 	"github.com/illumio/cloud-operator/internal/convert/anp"
 	"github.com/illumio/cloud-operator/internal/convert/awsvpccni"
 	"github.com/illumio/cloud-operator/internal/convert/cilium"
@@ -49,9 +50,13 @@ var resourceList = slices.Concat(ManagedResources, []schema.GroupResource{
 	{Group: "batch", Resource: "cronjobs"},
 	{Group: "batch", Resource: "jobs"},
 	{Group: "elbv2.k8s.aws", Resource: "targetgroupbindings"},
-	{Group: "gateway.networking.k8s.io", Resource: "gatewayclasses"},
-	{Group: "gateway.networking.k8s.io", Resource: "gateways"},
-	{Group: "gateway.networking.k8s.io", Resource: "httproutes"},
+	{Group: convert.GatewayAPIGroup, Resource: "gatewayclasses"},
+	{Group: convert.GatewayAPIGroup, Resource: "gateways"},
+	{Group: convert.GatewayAPIGroup, Resource: "grpcroutes"},
+	{Group: convert.GatewayAPIGroup, Resource: "httproutes"},
+	{Group: convert.GatewayAPIGroup, Resource: "tcproutes"},
+	{Group: convert.GatewayAPIGroup, Resource: "tlsroutes"},
+	{Group: convert.GatewayAPIGroup, Resource: "udproutes"},
 	{Group: "metallb.io", Resource: "servicebgpstatuses"},
 	{Group: "metallb.io", Resource: "servicel2statuses"},
 	{Group: "networking.gke.io", Resource: "servicenetworkendpointgroups"},
