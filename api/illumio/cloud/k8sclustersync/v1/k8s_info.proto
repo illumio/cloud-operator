@@ -62,6 +62,11 @@ message KubernetesObjectData {
     KubernetesAWSTargetGroupBindingData aws_target_group_binding = 114;
     KubernetesGKEServiceNetworkEndpointGroupData gke_service_network_endpoint_group = 115;
     KubernetesMetalLBServiceStatusData metallb_service_status = 116;
+    KubernetesIngressData ingress = 117;
+    KubernetesIngressClassData ingress_class = 118;
+    KubernetesGatewayData gateway = 119;
+    KubernetesGatewayClassData gateway_class = 120;
+    KubernetesGatewayRouteData gateway_route = 121;
   }
 }
 
@@ -229,6 +234,143 @@ message KubernetesMetalLBServiceStatusData {
   string node = 3;
   // ServiceL2Status only: interfaces the IP is announced on.
   repeated string interfaces = 4;
+}
+
+// KubernetesIngressData contains information specific to an Ingress
+// (networking.k8s.io). It routes HTTP(S) traffic from the Ingress controller's
+// load balancer to Services.
+// https://kubernetes.io/docs/reference/kubernetes-api/service-resources/ingress-v1/
+message KubernetesIngressData {
+  // spec.ingressClassName, or the legacy kubernetes.io/ingress.class
+  // annotation when spec.ingressClassName is not set.
+  optional string ingress_class_name = 1;
+  // spec.defaultBackend: receives requests that match no rule.
+  optional Backend default_backend = 2;
+  // spec.rules
+  repeated Rule rules = 3;
+  // spec.tls
+  repeated TLS tls = 4;
+  // status.loadBalancer.ingress. ip_mode is never set for an Ingress.
+  repeated LoadBalancerIngress load_balancer_ingress = 5;
+
+  message Rule {
+    // Unset matches every host.
+    optional string host = 1;
+    // http.paths
+    repeated Path paths = 2;
+  }
+
+  message Path {
+    optional string path = 1;
+    // "Exact", "Prefix" or "ImplementationSpecific".
+    string path_type = 2;
+    Backend backend = 3;
+  }
+
+  // Backend is a Service in the Ingress's namespace. All fields are unset for a
+  // resource backend, which is not a Service.
+  message Backend {
+    optional string service_name = 1;
+    // Exactly one of service_port_number or service_port_name is set for a
+    // Service backend.
+    optional uint32 service_port_number = 2;
+    optional string service_port_name = 3;
+  }
+
+  message TLS {
+    repeated string hosts = 1;
+    optional string secret_name = 2;
+  }
+}
+
+// KubernetesIngressClassData contains information specific to an IngressClass
+// (networking.k8s.io).
+message KubernetesIngressClassData {
+  // spec.controller: the controller implementing the class, e.g.
+  // "k8s.io/ingress-nginx" or "ingress.k8s.aws/alb".
+  string controller = 1;
+}
+
+// KubernetesGatewayData contains information specific to a Gateway API Gateway
+// (gateway.networking.k8s.io).
+// https://gateway-api.sigs.k8s.io/reference/spec/#gateway
+message KubernetesGatewayData {
+  // spec.gatewayClassName
+  string gateway_class_name = 1;
+  // spec.listeners
+  repeated Listener listeners = 2;
+  // status.addresses: the addresses the Gateway is reachable at.
+  repeated Address addresses = 3;
+
+  message Listener {
+    string name = 1;
+    uint32 port = 2;
+    // "HTTP", "HTTPS", "TLS", "TCP", "UDP" or an implementation-specific protocol.
+    string protocol = 3;
+  }
+
+  message Address {
+    // "IPAddress", "Hostname" or an implementation-specific type. Unset means
+    // "IPAddress".
+    optional string type = 1;
+    string value = 2;
+  }
+}
+
+// KubernetesGatewayClassData contains information specific to a Gateway API
+// GatewayClass (gateway.networking.k8s.io).
+message KubernetesGatewayClassData {
+  // spec.controllerName: the controller implementing the class.
+  string controller_name = 1;
+}
+
+// KubernetesGatewayRouteData contains information specific to a Gateway API
+// route (gateway.networking.k8s.io): HTTPRoute, GRPCRoute, TCPRoute, TLSRoute
+// or UDPRoute. The object's kind tells which.
+// https://gateway-api.sigs.k8s.io/reference/spec/#httproute
+message KubernetesGatewayRouteData {
+  // spec.parentRefs: the Gateways (or, for service mesh, Services) the route
+  // attaches to.
+  repeated ParentReference parent_refs = 1;
+  // spec.rules[].backendRefs[] of every rule.
+  repeated BackendRef backend_refs = 2;
+  // status.parents: the route's status for each parent.
+  repeated RouteParentStatus parents = 3;
+
+  message ParentReference {
+    // Unset means "gateway.networking.k8s.io".
+    optional string group = 1;
+    // Unset means "Gateway".
+    optional string kind = 2;
+    // Unset means the route's namespace.
+    optional string namespace = 3;
+    string name = 4;
+    // The Gateway listener name the route attaches to.
+    optional string section_name = 5;
+    optional uint32 port = 6;
+  }
+
+  message BackendRef {
+    // Unset means the core group.
+    optional string group = 1;
+    // Unset means "Service".
+    optional string kind = 2;
+    string name = 3;
+    // Unset means the route's namespace.
+    optional string namespace = 4;
+    optional uint32 port = 5;
+    optional int32 weight = 6;
+  }
+
+  message RouteParentStatus {
+    ParentReference parent_ref = 1;
+    string controller_name = 2;
+    // The Accepted condition's status. Unset when the condition is missing or
+    // Unknown.
+    optional bool accepted = 3;
+    // The Accepted condition's reason.
+    optional string accepted_reason = 4;
+  }
 }
 
 // KubernetesPodData contains information specific to a Pod object.
