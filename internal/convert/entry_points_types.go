@@ -111,4 +111,6 @@ type gwCondition struct {
 	Type   string `json:"type"`
 	Status string `json:"status"`
 	Reason string `json:"reason,omitempty"`
+	// ObservedGeneration is the route generation the condition describes.
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }

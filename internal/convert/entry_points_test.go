@@ -448,6 +448,73 @@ func TestConvertHTTPRoute(t *testing.T) {
 	}, result.GetGatewayRoute())
 }
 
+// After a route's spec changes, its Accepted condition can still describe the
+// previous generation, e.g. while a controller keeps serving the last valid
+// configuration. Acceptance of an older generation is not sent with the new
+// backends.
+func TestConvertGatewayRoute_StaleAccepted(t *testing.T) {
+	tests := map[string]struct {
+		generation         int64
+		observedGeneration int64
+		expectedAccepted   *bool
+		expectedReason     *string
+	}{
+		"condition observed the current generation": {
+			generation:         3,
+			observedGeneration: 3,
+			expectedAccepted:   new(true),
+			expectedReason:     new("Accepted"),
+		},
+		"condition observed an older generation": {
+			generation:         3,
+			observedGeneration: 2,
+		},
+		// Controllers are not required to set observedGeneration; without it
+		// staleness cannot be told, and the condition is taken as current.
+		"condition without observedGeneration": {
+			generation:       3,
+			expectedAccepted: new(true),
+			expectedReason:   new("Accepted"),
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			condition := map[string]any{"type": "Accepted", "status": "True", "reason": "Accepted"}
+			if tt.observedGeneration != 0 {
+				condition["observedGeneration"] = tt.observedGeneration
+			}
+
+			result := convertBinding(t, map[string]any{
+				"apiVersion": "gateway.networking.k8s.io/v1",
+				"kind":       "HTTPRoute",
+				"metadata":   map[string]any{"name": "shop", "namespace": "default", "generation": tt.generation},
+				"spec": map[string]any{
+					"parentRefs": []any{map[string]any{"name": "edge"}},
+					"rules": []any{map[string]any{
+						"backendRefs": []any{map[string]any{"name": "web-v2", "port": int64(80)}},
+					}},
+				},
+				"status": map[string]any{
+					"parents": []any{map[string]any{
+						"parentRef":      map[string]any{"name": "edge"},
+						"controllerName": "example.com/controller",
+						"conditions":     []any{condition},
+					}},
+				},
+			})
+
+			parents := result.GetGatewayRoute().GetParents()
+			require.Len(t, parents, 1)
+			assert.Equal(t, "example.com/controller", parents[0].GetControllerName())
+			assert.Equal(t, tt.expectedAccepted, parents[0].Accepted)
+			assert.Equal(t, tt.expectedReason, parents[0].AcceptedReason)
+			assert.Equal(t, []*pb.KubernetesGatewayRouteData_BackendRef{{Name: "web-v2", Port: new(uint32(80))}},
+				result.GetGatewayRoute().GetBackendRefs())
+		})
+	}
+}
+
 // Every route kind is converted the same way, at whichever version the cluster
 // serves it: GRPCRoute was v1alpha2 before Gateway API v1.1, and TCPRoute,
 // TLSRoute and UDPRoute are alpha only.

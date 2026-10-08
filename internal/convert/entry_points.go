@@ -79,7 +79,7 @@ func convertEntryPoint(objMetadata *pb.KubernetesObjectData, obj *unstructured.U
 			return fmt.Errorf("deserializing %s: %w", kind, err)
 		}
 
-		objMetadata.KindSpecific = &pb.KubernetesObjectData_GatewayRoute{GatewayRoute: convertGatewayRoute(&route)}
+		objMetadata.KindSpecific = &pb.KubernetesObjectData_GatewayRoute{GatewayRoute: convertGatewayRoute(&route, obj.GetGeneration())}
 	}
 
 	return nil
@@ -205,7 +205,10 @@ func convertGateway(gateway *gwGateway) *pb.KubernetesGatewayData {
 	return out
 }
 
-func convertGatewayRoute(route *gwRoute) *pb.KubernetesGatewayRouteData {
+// convertGatewayRoute converts a route. generation is the route's
+// metadata.generation, used to drop an Accepted condition that describes an
+// older spec.
+func convertGatewayRoute(route *gwRoute, generation int64) *pb.KubernetesGatewayRouteData {
 	out := &pb.KubernetesGatewayRouteData{}
 
 	for _, parentRef := range route.Spec.ParentRefs {
@@ -234,6 +237,14 @@ func convertGatewayRoute(route *gwRoute) *pb.KubernetesGatewayRouteData {
 		for _, condition := range parent.Conditions {
 			if condition.Type != "Accepted" {
 				continue
+			}
+
+			// The condition describes an older spec: whether the current one is
+			// accepted is not known yet, so accepted stays unset. Without
+			// observedGeneration staleness cannot be told, and the condition is
+			// taken as current.
+			if condition.ObservedGeneration > 0 && condition.ObservedGeneration < generation {
+				break
 			}
 
 			switch metav1.ConditionStatus(condition.Status) {

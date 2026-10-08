@@ -9298,10 +9298,12 @@ type KubernetesGatewayRouteData_RouteParentStatus struct {
 	state          protoimpl.MessageState                      `protogen:"open.v1"`
 	ParentRef      *KubernetesGatewayRouteData_ParentReference `protobuf:"bytes,1,opt,name=parent_ref,json=parentRef,proto3" json:"parent_ref,omitempty"`
 	ControllerName string                                      `protobuf:"bytes,2,opt,name=controller_name,json=controllerName,proto3" json:"controller_name,omitempty"`
-	// The Accepted condition's status. Unset when the condition is missing or
-	// Unknown.
+	// The Accepted condition's status. Unset when the condition is missing,
+	// Unknown, or describes an older generation of the route than the one sent
+	// (its observedGeneration is lower than metadata.generation).
 	Accepted *bool `protobuf:"varint,3,opt,name=accepted,proto3,oneof" json:"accepted,omitempty"`
-	// The Accepted condition's reason.
+	// The Accepted condition's reason. Unset whenever accepted is unset for
+	// being stale.
 	AcceptedReason *string `protobuf:"bytes,4,opt,name=accepted_reason,json=acceptedReason,proto3,oneof" json:"accepted_reason,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache

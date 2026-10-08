@@ -365,10 +365,12 @@ message KubernetesGatewayRouteData {
   message RouteParentStatus {
     ParentReference parent_ref = 1;
     string controller_name = 2;
-    // The Accepted condition's status. Unset when the condition is missing or
-    // Unknown.
+    // The Accepted condition's status. Unset when the condition is missing,
+    // Unknown, or describes an older generation of the route than the one sent
+    // (its observedGeneration is lower than metadata.generation).
     optional bool accepted = 3;
-    // The Accepted condition's reason.
+    // The Accepted condition's reason. Unset whenever accepted is unset for
+    // being stale.
     optional string accepted_reason = 4;
   }
 }
