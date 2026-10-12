@@ -142,7 +142,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		if err != nil {
 			// Skip resources that are unavailable due to RBAC or missing CRDs.
 			// NotFound can occur when a CRD is deleted after discovery but before listing.
-			if apierrors.IsForbidden(err) || apierrors.IsNotFound(err) {
+			if isResourceUnavailable(err) {
 				c.logger.Warn("Skipping unavailable resource",
 					zap.String("resource", resource),
 					zap.String("api_group", resourceInfo.Group),
