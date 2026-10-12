@@ -100,6 +100,14 @@ func (s *ServerState) RecordFiveTupleFlow() {
 	s.FiveTupleFlowsReceived++
 }
 
+// RecordCalicoFlow increments the Calico flow counter.
+func (s *ServerState) RecordCalicoFlow() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.CalicoFlowsReceived++
+}
+
 type LogEntry map[string]any
 
 func (l LogEntry) Level() (zapcore.Level, error) {
@@ -299,6 +307,9 @@ func (fs *FakeServer) SendKubernetesNetworkFlows(stream pb.KubernetesInfoService
 		case *pb.SendKubernetesNetworkFlowsRequest_FiveTupleFlow:
 			fs.State.RecordFiveTupleFlow()
 			fs.Logger.Info("Received FiveTupleFlow")
+		case *pb.SendKubernetesNetworkFlowsRequest_CalicoFlow:
+			fs.State.RecordCalicoFlow()
+			fs.Logger.Info("Received CalicoFlow")
 		}
 	}
 }

@@ -82,6 +82,12 @@ func (c *networkFlowsClient) sendNetworkFlowRequest(flow any) error {
 				CiliumFlow: f,
 			},
 		}
+	case *pb.CalicoFlow:
+		request = &pb.SendKubernetesNetworkFlowsRequest{
+			Request: &pb.SendKubernetesNetworkFlowsRequest_CalicoFlow{
+				CalicoFlow: f,
+			},
+		}
 	default:
 		return fmt.Errorf("unsupported flow type: %T", flow)
 	}

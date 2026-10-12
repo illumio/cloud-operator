@@ -5,7 +5,9 @@ package calico
 import (
 	"context"
 	"fmt"
-	"strconv"
+	"math"
+	"net/netip"
+	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -17,10 +19,18 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/goldmane"
 )
 
-// TODO: Calico Goldmane flows currently use workload identifiers (name/namespace/type) instead of
-// IP addresses like Cilium, Falco, and OVN-K five-tuple flows. Once upstream issue
-// projectcalico/calico#10601 is resolved, update to include source/dest IP addresses
-// for consistency with other flow collectors.
+// aggregationIntervalSeconds is the Goldmane stream aggregation interval. The Goldmane API
+// requires it to always be 15s.
+const aggregationIntervalSeconds = 15
+
+// Protocol names as reported in a Goldmane FlowKey (felix/collector/utils.ProtoToString).
+const (
+	goldmaneProtoTCP   = "tcp"
+	goldmaneProtoUDP   = "udp"
+	goldmaneProtoSCTP  = "sctp"
+	goldmaneProtoICMP  = "icmp"
+	goldmaneProtoICMP6 = "icmp6"
+)
 
 // calicoClient collects flows from Calico Goldmane.
 type calicoClient struct {
@@ -52,8 +62,9 @@ func (c *calicoClient) connect(ctx context.Context) (*grpc.ClientConn, error) {
 	return conn, nil
 }
 
-// Run connects to Goldmane, streams flows from it, and sends them to the flow sink.
-// The connection is closed when Run returns, so each retry dials a fresh connection.
+// Run connects to Goldmane, streams flows from it, and sends them to the flow sink as
+// Calico flows. The connection is closed when Run returns, so each retry dials a
+// fresh connection.
 func (c *calicoClient) Run(ctx context.Context) error {
 	conn, err := c.connect(ctx)
 	if err != nil {
@@ -68,12 +79,16 @@ func (c *calicoClient) Run(ctx context.Context) error {
 		}
 	}()
 
-	stream, err := goldmanepb.NewFlowsClient(conn).Stream(ctx, &goldmanepb.StreamRequest{})
+	stream, err := goldmanepb.NewFlowsClient(conn).Stream(ctx, &goldmanepb.FlowStreamRequest{
+		AggregationInterval: aggregationIntervalSeconds,
+	})
 	if err != nil {
 		c.logger.Error("Error starting Goldmane flow stream", zap.Error(err))
 
 		return err
 	}
+
+	warnedMissingIPs := false
 
 	for {
 		resp, err := stream.Recv()
@@ -87,14 +102,23 @@ func (c *calicoClient) Run(ctx context.Context) error {
 			return err
 		}
 
-		flow := convertGoldmaneFlow(resp)
-		if flow == nil {
+		flow := resp.GetFlow()
+		if !warnedMissingIPs && flow != nil && (len(flow.GetSourceIps()) == 0 || len(flow.GetDestIps()) == 0) {
+			warnedMissingIPs = true
+
+			c.logger.Warn("Dropping Goldmane flows without source/destination IPs; " +
+				"requires a Calico release that includes projectcalico/calico#13063 " +
+				"with FelixConfiguration flowLogsGoldmaneIncludeIPs enabled")
+		}
+
+		calicoFlow := convertGoldmaneFlow(flow)
+		if calicoFlow == nil {
 			continue
 		}
 
 		c.flowSink.IncrementFlowsReceived()
 
-		err = c.flowSink.CacheFlow(ctx, flow)
+		err = c.flowSink.CacheFlow(ctx, calicoFlow)
 		if err != nil {
 			c.logger.Error("Failed to cache Calico flow", zap.Error(err))
 
@@ -103,142 +127,159 @@ func (c *calicoClient) Run(ctx context.Context) error {
 	}
 }
 
-// convertGoldmaneFlow converts a Goldmane StreamResponse to a CalicoFlow.
-func convertGoldmaneFlow(resp *goldmanepb.StreamResponse) *pb.CalicoFlow {
-	if resp == nil || resp.GetFlow() == nil || resp.GetFlow().GetKey() == nil {
+// convertGoldmaneFlow converts a Goldmane flow into a CalicoFlow. Returns nil if the flow
+// lacks the IPs, protocol, port, or timestamp needed to identify its connections.
+func convertGoldmaneFlow(flow *goldmanepb.Flow) *pb.CalicoFlow {
+	key := flow.GetKey()
+	if key == nil {
 		return nil
 	}
 
-	flow := resp.GetFlow()
-	key := flow.GetKey()
+	sourceIPs := normalizeIPs(flow.GetSourceIps())
+	destinationIPs := normalizeIPs(flow.GetDestIps())
 
-	// Parse timestamps (Goldmane returns Unix timestamps as strings)
-	startTime := parseUnixTimestamp(flow.GetStartTime())
-	endTime := parseUnixTimestamp(flow.GetEndTime())
+	if len(sourceIPs) == 0 || len(destinationIPs) == 0 {
+		return nil
+	}
 
-	// Parse destination port
-	destPort := parseUint32(key.GetDestPort())
-	destServicePort := parseUint32(key.GetDestServicePort())
+	destPort := key.GetDestPort()
+	if destPort < 0 || destPort > math.MaxUint16 {
+		return nil
+	}
 
-	// Parse statistics
-	packetsIn := parseUint64(flow.GetPacketsIn())
-	packetsOut := parseUint64(flow.GetPacketsOut())
-	bytesIn := parseUint64(flow.GetBytesIn())
-	bytesOut := parseUint64(flow.GetBytesOut())
-	numConnectionsStarted := parseUint64(flow.GetNumConnectionsStarted())
-	numConnectionsCompleted := parseUint64(flow.GetNumConnectionsCompleted())
-	numConnectionsLive := parseUint64(flow.GetNumConnectionsLive())
+	layer4 := newLayer4(key.GetProto(), uint32(destPort))
+	if layer4 == nil {
+		return nil
+	}
 
-	// Convert policies
-	var policies *pb.CalicoPolicies
-	if key.GetPolicies() != nil {
-		policies = convertGoldmanePolicies(key.GetPolicies())
+	startTime := flow.GetStartTime()
+	if startTime <= 0 {
+		return nil
 	}
 
 	calicoFlow := &pb.CalicoFlow{
-		StartTime:               startTime,
-		EndTime:                 endTime,
-		SourceName:              key.GetSourceName(),
-		SourceNamespace:         key.GetSourceNamespace(),
-		SourceType:              key.GetSourceType(),
-		DestName:                key.GetDestName(),
-		DestNamespace:           key.GetDestNamespace(),
-		DestType:                key.GetDestType(),
-		DestPort:                destPort,
-		DestServiceName:         key.GetDestServiceName(),
-		DestServiceNamespace:    key.GetDestServiceNamespace(),
-		DestServicePortName:     key.GetDestServicePortName(),
-		DestServicePort:         destServicePort,
-		Proto:                   key.GetProto(),
-		Reporter:                key.GetReporter(),
-		Action:                  key.GetAction(),
-		SourceLabels:            flow.GetSourceLabels(),
-		DestLabels:              flow.GetDestLabels(),
-		PacketsIn:               packetsIn,
-		PacketsOut:              packetsOut,
-		BytesIn:                 bytesIn,
-		BytesOut:                bytesOut,
-		NumConnectionsStarted:   numConnectionsStarted,
-		NumConnectionsCompleted: numConnectionsCompleted,
-		NumConnectionsLive:      numConnectionsLive,
-		Policies:                policies,
+		Time:             timestamppb.New(time.Unix(startTime, 0)),
+		TrafficDirection: convertReporter(key.GetReporter()),
+		Verdict:          convertAction(key.GetAction()),
+		SourceIps:        sourceIPs,
+		DestinationIps:   destinationIPs,
+		Layer4:           layer4,
+		SourceEndpoint: &pb.CalicoEndpoint{
+			Namespace:      key.GetSourceNamespace(),
+			Labels:         flow.GetSourceLabels(),
+			AggregatedName: key.GetSourceName(),
+		},
+		DestinationEndpoint: &pb.CalicoEndpoint{
+			Namespace:      key.GetDestNamespace(),
+			Labels:         flow.GetDestLabels(),
+			AggregatedName: key.GetDestName(),
+		},
 	}
+
+	if key.GetDestServiceName() != "" {
+		calicoFlow.DestinationService = &pb.Service{
+			Name:      key.GetDestServiceName(),
+			Namespace: key.GetDestServiceNamespace(),
+		}
+	}
+
+	setPolicies(calicoFlow, key.GetPolicies().GetEnforcedPolicies())
 
 	return calicoFlow
 }
 
-// convertGoldmanePolicies converts Goldmane Policies to CalicoPolicies.
-func convertGoldmanePolicies(policies *goldmanepb.Policies) *pb.CalicoPolicies {
-	if policies == nil {
-		return nil
-	}
-
-	enforcedPolicies := make([]*pb.CalicoPolicy, 0, len(policies.GetEnforcedPolicies()))
-	for _, p := range policies.GetEnforcedPolicies() {
-		enforcedPolicies = append(enforcedPolicies, &pb.CalicoPolicy{
-			Kind:      p.GetKind(),
-			Namespace: p.GetNamespace(),
-			Name:      p.GetName(),
-			Tier:      p.GetTier(),
-			Action:    p.GetAction(),
-		})
-	}
-
-	pendingPolicies := make([]*pb.CalicoPolicy, 0, len(policies.GetPendingPolicies()))
-	for _, p := range policies.GetPendingPolicies() {
-		pendingPolicies = append(pendingPolicies, &pb.CalicoPolicy{
-			Kind:      p.GetKind(),
-			Namespace: p.GetNamespace(),
-			Name:      p.GetName(),
-			Tier:      p.GetTier(),
-			Action:    p.GetAction(),
-		})
-	}
-
-	return &pb.CalicoPolicies{
-		EnforcedPolicies: enforcedPolicies,
-		PendingPolicies:  pendingPolicies,
+// convertReporter maps the Goldmane reporter to the direction whose policy was evaluated:
+// the source endpoint's node evaluates egress policy, the destination's node ingress policy.
+func convertReporter(reporter goldmanepb.Reporter) pb.TrafficDirection {
+	switch reporter {
+	case goldmanepb.Reporter_Src:
+		return pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS
+	case goldmanepb.Reporter_Dst:
+		return pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS
+	case goldmanepb.Reporter_ReporterUnspecified:
+		return pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED
+	default:
+		return pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED
 	}
 }
 
-// parseUnixTimestamp parses a Unix timestamp string to a protobuf Timestamp.
-func parseUnixTimestamp(s string) *timestamppb.Timestamp {
-	if s == "" {
-		return nil
+// convertAction maps the flow's final Goldmane action to a verdict.
+func convertAction(action goldmanepb.Action) pb.Verdict {
+	switch action {
+	case goldmanepb.Action_Allow:
+		return pb.Verdict_VERDICT_FORWARDED
+	case goldmanepb.Action_Deny:
+		return pb.Verdict_VERDICT_DROPPED
+	case goldmanepb.Action_ActionUnspecified, goldmanepb.Action_Pass:
+		// Pass only defers to the next tier; it is never a flow's final action.
+		return pb.Verdict_VERDICT_UNKNOWN_UNSPECIFIED
+	default:
+		return pb.Verdict_VERDICT_UNKNOWN_UNSPECIFIED
 	}
-
-	seconds, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return nil
-	}
-
-	return &timestamppb.Timestamp{Seconds: seconds}
 }
 
-// parseUint32 parses a string to uint32.
-func parseUint32(s string) uint32 {
-	if s == "" {
-		return 0
-	}
+// setPolicies fills the flow's allowed/denied-by policies for its direction from the
+// enforced policy trace. Pass hits only defer to the next tier, so they are skipped.
+// An end-of-tier hit (the default deny when a tier's policies select the endpoint but
+// none matched) is attributed to the policy that triggered it.
+func setPolicies(flow *pb.CalicoFlow, hits []*goldmanepb.PolicyHit) {
+	for _, hit := range hits {
+		policy := hit
+		if hit.GetKind() == goldmanepb.PolicyKind_EndOfTier && hit.GetTrigger() != nil {
+			policy = hit.GetTrigger()
+		}
 
-	val, err := strconv.ParseUint(s, 10, 32)
-	if err != nil {
-		return 0
-	}
+		p := &pb.Policy{
+			Name:      policy.GetName(),
+			Namespace: policy.GetNamespace(),
+			Kind:      policy.GetKind().String(),
+		}
 
-	return uint32(val)
+		switch {
+		case hit.GetAction() == goldmanepb.Action_Allow && flow.GetTrafficDirection() == pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS:
+			flow.EgressAllowedBy = append(flow.EgressAllowedBy, p)
+		case hit.GetAction() == goldmanepb.Action_Allow && flow.GetTrafficDirection() == pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS:
+			flow.IngressAllowedBy = append(flow.IngressAllowedBy, p)
+		case hit.GetAction() == goldmanepb.Action_Deny && flow.GetTrafficDirection() == pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS:
+			flow.EgressDeniedBy = append(flow.EgressDeniedBy, p)
+		case hit.GetAction() == goldmanepb.Action_Deny && flow.GetTrafficDirection() == pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS:
+			flow.IngressDeniedBy = append(flow.IngressDeniedBy, p)
+		}
+	}
 }
 
-// parseUint64 parses a string to uint64.
-func parseUint64(s string) uint64 {
-	if s == "" {
-		return 0
+// normalizeIPs parses IP address strings and returns them in canonical form, skipping
+// invalid ones and unmapping IPv4-mapped IPv6 addresses.
+func normalizeIPs(ips []string) []string {
+	normalized := make([]string, 0, len(ips))
+
+	for _, ip := range ips {
+		addr, err := netip.ParseAddr(ip)
+		if err != nil {
+			continue
+		}
+
+		normalized = append(normalized, addr.Unmap().String())
 	}
 
-	val, err := strconv.ParseUint(s, 10, 64)
-	if err != nil {
-		return 0
-	}
+	return normalized
+}
 
-	return val
+// newLayer4 builds the Layer4 message for a Goldmane protocol name. Returns nil for
+// protocols that a flow's Layer4 cannot represent (e.g. ipip, esp).
+func newLayer4(proto string, destPort uint32) *pb.Layer4 {
+	switch proto {
+	case goldmaneProtoTCP:
+		return &pb.Layer4{Protocol: &pb.Layer4_Tcp{Tcp: &pb.TCP{DestinationPort: destPort, Flags: &pb.TCPFlags{}}}}
+	case goldmaneProtoUDP:
+		return &pb.Layer4{Protocol: &pb.Layer4_Udp{Udp: &pb.UDP{DestinationPort: destPort}}}
+	case goldmaneProtoSCTP:
+		return &pb.Layer4{Protocol: &pb.Layer4_Sctp{Sctp: &pb.SCTP{DestinationPort: destPort}}}
+	case goldmaneProtoICMP:
+		return &pb.Layer4{Protocol: &pb.Layer4_Icmpv4{Icmpv4: &pb.ICMPv4{}}}
+	case goldmaneProtoICMP6:
+		return &pb.Layer4{Protocol: &pb.Layer4_Icmpv6{Icmpv6: &pb.ICMPv6{}}}
+	default:
+		return nil
+	}
 }

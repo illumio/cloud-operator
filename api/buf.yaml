@@ -4,5 +4,8 @@ version: v2
 lint:
   use:
     - STANDARD
+  # Vendored from upstream Calico; names are fixed by Goldmane's wire API.
+  ignore:
+    - illumio/cloud/goldmane
   rpc_allow_google_protobuf_empty_requests: true
   rpc_allow_google_protobuf_empty_responses: true
