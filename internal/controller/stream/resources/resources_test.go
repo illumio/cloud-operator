@@ -331,6 +331,121 @@ func TestBuildResourceAPIGroupMap_VersionFallback(t *testing.T) {
 	})
 }
 
+// Gateway API prefers v1, but TCPRoute, UDPRoute and TLSRoute are served only in
+// alpha versions, and GRPCRoute only in v1alpha2 before Gateway API v1.1. Each
+// route is watched at the highest-priority version that serves it.
+func TestBuildResourceAPIGroupMap_GatewayAPIAlphaRoutes(t *testing.T) {
+	clientset := k8sfake.NewSimpleClientset()
+
+	fakeDiscovery, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
+	require.True(t, ok, "failed to get fake discovery client")
+
+	fakeDiscovery.Resources = []*metav1.APIResourceList{
+		{GroupVersion: "gateway.networking.k8s.io/v1", APIResources: []metav1.APIResource{
+			{Name: "gatewayclasses", Kind: "GatewayClass"},
+			{Name: "gateways", Kind: "Gateway"},
+			{Name: "httproutes", Kind: "HTTPRoute"},
+		}},
+		{GroupVersion: "gateway.networking.k8s.io/v1beta1", APIResources: []metav1.APIResource{
+			{Name: "gateways", Kind: "Gateway"},
+			{Name: "httproutes", Kind: "HTTPRoute"},
+		}},
+		{GroupVersion: "gateway.networking.k8s.io/v1alpha3", APIResources: []metav1.APIResource{
+			{Name: "tlsroutes", Kind: "TLSRoute"},
+		}},
+		{GroupVersion: "gateway.networking.k8s.io/v1alpha2", APIResources: []metav1.APIResource{
+			{Name: "grpcroutes", Kind: "GRPCRoute"},
+			{Name: "tcproutes", Kind: "TCPRoute"},
+			{Name: "tlsroutes", Kind: "TLSRoute"},
+			{Name: "udproutes", Kind: "UDPRoute"},
+		}},
+	}
+
+	gatewayResources := slices.DeleteFunc(slices.Clone(resourceList), func(groupResource schema.GroupResource) bool {
+		return groupResource.Group != "gateway.networking.k8s.io"
+	})
+
+	result, err := buildResourceAPIGroupMap(gatewayResources, clientset, zap.NewNop(), true)
+	require.NoError(t, err)
+
+	assert.Equal(t, map[schema.GroupResource]ResourceInfo{
+		gr("gateway.networking.k8s.io", "gatewayclasses"): {Group: "gateway.networking.k8s.io", Version: "v1"},
+		gr("gateway.networking.k8s.io", "gateways"):       {Group: "gateway.networking.k8s.io", Version: "v1"},
+		gr("gateway.networking.k8s.io", "httproutes"):     {Group: "gateway.networking.k8s.io", Version: "v1"},
+		gr("gateway.networking.k8s.io", "grpcroutes"):     {Group: "gateway.networking.k8s.io", Version: "v1alpha2"},
+		gr("gateway.networking.k8s.io", "tcproutes"):      {Group: "gateway.networking.k8s.io", Version: "v1alpha2"},
+		gr("gateway.networking.k8s.io", "tlsroutes"):      {Group: "gateway.networking.k8s.io", Version: "v1alpha3"},
+		gr("gateway.networking.k8s.io", "udproutes"):      {Group: "gateway.networking.k8s.io", Version: "v1alpha2"},
+	}, result)
+}
+
+// Older or standard-channel Gateway API installs serve a subset of the route
+// kinds, or none at v1. Only the served resources are watched, at the version
+// the cluster serves them, and the missing ones are not an error.
+func TestBuildResourceAPIGroupMap_GatewayAPIOlderInstalls(t *testing.T) {
+	tests := map[string]struct {
+		resources []*metav1.APIResourceList
+		expected  map[schema.GroupResource]ResourceInfo
+	}{
+		"standard channel only: no alpha routes": {
+			resources: []*metav1.APIResourceList{
+				{GroupVersion: "gateway.networking.k8s.io/v1", APIResources: []metav1.APIResource{
+					{Name: "gatewayclasses", Kind: "GatewayClass"},
+					{Name: "gateways", Kind: "Gateway"},
+					{Name: "grpcroutes", Kind: "GRPCRoute"},
+					{Name: "httproutes", Kind: "HTTPRoute"},
+				}},
+			},
+			expected: map[schema.GroupResource]ResourceInfo{
+				gr("gateway.networking.k8s.io", "gatewayclasses"): {Group: "gateway.networking.k8s.io", Version: "v1"},
+				gr("gateway.networking.k8s.io", "gateways"):       {Group: "gateway.networking.k8s.io", Version: "v1"},
+				gr("gateway.networking.k8s.io", "grpcroutes"):     {Group: "gateway.networking.k8s.io", Version: "v1"},
+				gr("gateway.networking.k8s.io", "httproutes"):     {Group: "gateway.networking.k8s.io", Version: "v1"},
+			},
+		},
+		"pre-v1.0 install: v1beta1 preferred, GRPCRoute in v1alpha2": {
+			resources: []*metav1.APIResourceList{
+				{GroupVersion: "gateway.networking.k8s.io/v1beta1", APIResources: []metav1.APIResource{
+					{Name: "gatewayclasses", Kind: "GatewayClass"},
+					{Name: "gateways", Kind: "Gateway"},
+					{Name: "httproutes", Kind: "HTTPRoute"},
+				}},
+				{GroupVersion: "gateway.networking.k8s.io/v1alpha2", APIResources: []metav1.APIResource{
+					{Name: "gatewayclasses", Kind: "GatewayClass"},
+					{Name: "gateways", Kind: "Gateway"},
+					{Name: "grpcroutes", Kind: "GRPCRoute"},
+					{Name: "httproutes", Kind: "HTTPRoute"},
+				}},
+			},
+			expected: map[schema.GroupResource]ResourceInfo{
+				gr("gateway.networking.k8s.io", "gatewayclasses"): {Group: "gateway.networking.k8s.io", Version: "v1beta1"},
+				gr("gateway.networking.k8s.io", "gateways"):       {Group: "gateway.networking.k8s.io", Version: "v1beta1"},
+				gr("gateway.networking.k8s.io", "httproutes"):     {Group: "gateway.networking.k8s.io", Version: "v1beta1"},
+				gr("gateway.networking.k8s.io", "grpcroutes"):     {Group: "gateway.networking.k8s.io", Version: "v1alpha2"},
+			},
+		},
+	}
+
+	gatewayResources := slices.DeleteFunc(slices.Clone(resourceList), func(groupResource schema.GroupResource) bool {
+		return groupResource.Group != "gateway.networking.k8s.io"
+	})
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			clientset := k8sfake.NewSimpleClientset()
+
+			fakeDiscovery, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
+			require.True(t, ok, "failed to get fake discovery client")
+
+			fakeDiscovery.Resources = tt.resources
+
+			result, err := buildResourceAPIGroupMap(gatewayResources, clientset, zap.NewNop(), true)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestResourceListHasNoDuplicates(t *testing.T) {
 	seen := make(map[schema.GroupResource]struct{}, len(resourceList))
 
