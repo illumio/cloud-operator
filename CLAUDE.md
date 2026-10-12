@@ -23,6 +23,7 @@ ENVTEST_K8S_VERSION=1.36.0 go test -tags envtest ./internal/controller/reconcile
 internal/controller/
 ├── auth/             # OAuth2 authentication, cluster onboarding
 ├── collector/        # Flow collectors (Cilium, Falco, OVN-K, AWS VPC CNI)
+├── goldmane/         # Calico Goldmane discovery, mTLS, and connection
 ├── stream/           # gRPC stream management (core package)
 │   ├── manager.go    # Entry point: ConnectStreams()
 │   ├── interfaces.go # StreamClient, StreamClientFactory interfaces
@@ -30,6 +31,7 @@ internal/controller/
 │   │   └── cache/    # Config/policy cache
 │   ├── flows/        # Network flows stream
 │   │   ├── cache/      # Flow cache for aggregation/eviction
+│   │   ├── calico/     # Calico Goldmane flow collector
 │   │   ├── cilium/     # Cilium/Hubble flow collector
 │   │   ├── falco/      # Falco flow collector
 │   │   ├── ovnk/       # OVN-Kubernetes flow collector

@@ -27,6 +27,7 @@ internal/controller/
 │   │   └── cache/     # Configuration/policy cache
 │   ├── flows/         # Network flows stream
 │   │   ├── cache/       # Flow aggregation
+│   │   ├── calico/      # Calico Goldmane collector
 │   │   ├── cilium/      # Cilium/Hubble collector
 │   │   ├── falco/       # Falco collector
 │   │   ├── ovnk/        # OVN-Kubernetes collector
@@ -38,6 +39,7 @@ internal/controller/
 ├── ovn_template_sets/ # OVN-K IPFIX template set binaries
 ├── k8sclient/         # Kubernetes client wrapper
 ├── logging/           # Buffered gRPC logging and internal logging
+├── goldmane/          # Calico Goldmane discovery, mTLS, and connection
 ├── hubble/            # Cilium Hubble client
 └── testhelper/        # Shared test utilities
 ```
