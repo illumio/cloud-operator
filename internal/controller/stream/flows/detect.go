@@ -11,9 +11,11 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/collector"
+	"github.com/illumio/cloud-operator/internal/controller/goldmane"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/awsautomode"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/awsvpccni"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/calico"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cilium"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/ovnk"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
@@ -170,6 +172,22 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 		}
 	}
 
+	// Check for Calico Goldmane
+	if _, err := goldmane.DiscoverGoldmane(ctx, config.CalicoNamespace, clientset, config.Logger); err == nil {
+		config.Logger.Info("Using Calico Goldmane flow collector")
+
+		factory := &calico.Factory{
+			Logger:          config.Logger,
+			FlowSink:        flowSink,
+			CalicoNamespace: config.CalicoNamespace,
+			K8sClient:       config.K8sClient,
+		}
+
+		return pb.FlowCollector_FLOW_COLLECTOR_CALICO, "Calico", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
+			return factory.NewCollector(ctx)
+		})
+	}
+
 	// Check for EKS Auto Mode (node-proxy log polling).
 	// Auto Mode has no aws-node DaemonSet, so IsAWSVPCCNIAvailable above is false;
 	// the Network Policy Agent is AWS-managed and only its node-local log file is
@@ -211,7 +229,7 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 	// flow-collector stream. The reported type is FLOW_COLLECTOR_DISABLED so the
 	// backend can surface the lack of flow visibility.
 	config.Logger.Warn("No supported flow exporter detected; network flow collection is disabled. " +
-		"Configure a supported CNI plugin (Cilium+Hubble, OVN-Kubernetes, or AWS VPC CNI) to enable flow visibility.")
+		"Configure a supported CNI plugin (Cilium+Hubble, OVN-Kubernetes, AWS VPC CNI, or Calico+Goldmane) to enable flow visibility.")
 
 	return pb.FlowCollector_FLOW_COLLECTOR_DISABLED, "None", nil
 }

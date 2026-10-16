@@ -44,6 +44,7 @@ type ServerState struct {
 	// Flow tracking
 	CiliumFlowsReceived    int
 	FiveTupleFlowsReceived int
+	CalicoFlowsReceived    int
 }
 
 // NewServerState creates a new state tracker.
@@ -199,6 +200,14 @@ func (s *ServerState) GetFiveTupleFlowsReceived() int {
 	defer s.mu.RUnlock()
 
 	return s.FiveTupleFlowsReceived
+}
+
+// GetCalicoFlowsReceived returns the count of Calico flows received.
+func (s *ServerState) GetCalicoFlowsReceived() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.CalicoFlowsReceived
 }
 
 // RecordAuthRequest records an authentication request.

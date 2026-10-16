@@ -30,6 +30,14 @@
                 }
             }
         },
+        "calico": {
+            "type": "object",
+            "properties": {
+                "namespace": {
+                    "type": "string"
+                }
+            }
+        },
         "cilium": {
             "type": "object",
             "properties": {

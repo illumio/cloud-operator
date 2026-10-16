@@ -157,6 +157,31 @@ func (s *NetworkFlowsClientTestSuite) TestRun_SendCiliumFlow() {
 	s.mockStream.AssertExpectations(s.T())
 }
 
+func (s *NetworkFlowsClientTestSuite) TestRun_SendCalicoFlow() {
+	flow := &pb.CalicoFlow{
+		SourceIps:      []string{"10.0.0.1"},
+		DestinationIps: []string{"10.0.0.2"},
+	}
+
+	s.mockStream.On("Send", mock.MatchedBy(func(req *pb.SendKubernetesNetworkFlowsRequest) bool {
+		return req.GetCalicoFlow() == flow
+	})).Return(nil).Once()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		s.outFlows <- flow
+
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	err := s.client.Run(ctx)
+
+	s.Require().ErrorIs(err, context.Canceled)
+	s.mockStream.AssertExpectations(s.T())
+}
+
 func (s *NetworkFlowsClientTestSuite) TestRun_SendError() {
 	flow := &pb.FiveTupleFlow{
 		Layer3: &pb.IP{
@@ -234,6 +259,7 @@ func TestNetworkFlowsLiveness(t *testing.T) {
 	}{
 		{name: "successful five tuple flow", flow: &pb.FiveTupleFlow{}, wantHealthy: true},
 		{name: "successful Cilium flow", flow: &pb.CiliumFlow{}, wantHealthy: true},
+		{name: "successful Calico flow", flow: &pb.CalicoFlow{}, wantHealthy: true},
 		{name: "failed data send", flow: &pb.FiveTupleFlow{}, sendErr: errors.New("send failed")},
 		{name: "successful keepalive"},
 		{name: "failed keepalive", sendErr: errors.New("keepalive failed")},

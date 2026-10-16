@@ -980,6 +980,8 @@ enum FlowCollector {
   FLOW_COLLECTOR_OVNK = 4;
   // Indicates that AWS VPC CNI is deployed with Network Policy Agent for collecting network flows.
   FLOW_COLLECTOR_AWS_VPC_CNI = 5;
+  // Indicates that Calico CNI is deployed with Goldmane and is used for collecting network flows.
+  FLOW_COLLECTOR_CALICO = 6;
 }
 
 // Message sent by the operator in a KubernetesResources request stream.
@@ -1078,6 +1080,57 @@ message CiliumFlow {
   repeated Policy egress_denied_by = 13;
   // The CiliumNetworkPolicies denying the ingress of the flow.
   repeated Policy ingress_denied_by = 14;
+}
+
+// A flow received from Calico Goldmane using the Flows service's Stream RPC.
+// https://github.com/projectcalico/calico/blob/master/goldmane/proto/api.proto
+//
+// Goldmane aggregates all connections matching a flow key over a 15s window and
+// reports them once per reporting node: the source node's report carries the
+// egress policy decision, the destination node's report the ingress decision.
+message CalicoFlow {
+  // Start time of the Goldmane aggregation window.
+  google.protobuf.Timestamp time = 1;
+  // traffic_direction is the side that reported this flow: EGRESS when reported by
+  // the source endpoint's node, INGRESS when reported by the destination's.
+  TrafficDirection traffic_direction = 2;
+  // verdict of the flow for the reporting side: FORWARDED (Allow) or DROPPED (Deny).
+  Verdict verdict = 3;
+  // Distinct source IP addresses of the connections aggregated into this flow.
+  // Best effort: Goldmane caps the set at 100 addresses. Not paired with
+  // destination_ips; any source may have connected to any destination.
+  repeated string source_ips = 4;
+  // Distinct destination IP addresses, with the same semantics as source_ips.
+  repeated string destination_ips = 5;
+  // layer4 contains the protocol and destination port. Goldmane does not report
+  // source ports, so source ports are always zero.
+  Layer4 layer4 = 6;
+  // Source endpoint of the flow.
+  CalicoEndpoint source_endpoint = 7;
+  // Destination endpoint of the flow.
+  CalicoEndpoint destination_endpoint = 8;
+  // destination_service is the Service the source connected to, before DNAT.
+  Service destination_service = 9;
+  // The policies allowing the egress of the flow.
+  repeated Policy egress_allowed_by = 10;
+  // The policies allowing the ingress of the flow.
+  repeated Policy ingress_allowed_by = 11;
+  // The policies denying the egress of the flow.
+  repeated Policy egress_denied_by = 12;
+  // The policies denying the ingress of the flow.
+  repeated Policy ingress_denied_by = 13;
+}
+
+// An endpoint of a Calico Goldmane flow. A flow aggregates connections from all
+// pods of a workload, so it identifies a workload rather than a single pod.
+message CalicoEndpoint {
+  // Namespace of the endpoint; empty for non-namespaced endpoints.
+  string namespace = 1;
+  // Labels shared by all pods aggregated into the flow, as "key=value".
+  repeated string labels = 2;
+  // aggregated_name is the pod name prefix with a "*" wildcard (e.g.
+  // "cart-5b6c4d-*") for workloads, or "pub"/"pvt" for public/private networks.
+  string aggregated_name = 3;
 }
 
 // Service contains Service header fields of a flow.
@@ -1222,6 +1275,7 @@ message SendKubernetesNetworkFlowsRequest {
 
     CiliumFlow cilium_flow = 1;
     FiveTupleFlow five_tuple_flow = 2;
+    CalicoFlow calico_flow = 4;
   }
 }
 

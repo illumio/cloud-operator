@@ -95,6 +95,11 @@ openshift:
   # `oc adm policy add-scc-to-user anyuid -z <sa> -n <namespace>`).
   createAnyuidSccRoleBinding: true
 
+calico:
+  # The namespace in which Calico's Goldmane service is deployed.
+  # cloud-operator uses this to discover and connect to Goldmane for flow collection.
+  namespace: "calico-system"
+
 falco:
   enabled: false
   namespace: falco

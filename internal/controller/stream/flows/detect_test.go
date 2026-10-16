@@ -299,3 +299,28 @@ func TestDetectFlowCollectorPollingInterval(t *testing.T) {
 		})
 	}
 }
+
+func TestDetectFlowCollector_CalicoGoldmane(t *testing.T) {
+	clientset := k8sfake.NewClientset(&corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "goldmane", Namespace: "calico-system"},
+	})
+	getter := &fakeK8sClientGetter{
+		clientset: clientset,
+		discovery: clientset.Discovery(),
+		dynamic:   dynamicfake.NewSimpleDynamicClient(runtimescheme.NewScheme()),
+	}
+
+	collectorType, name, factory := DetectFlowCollector(t.Context(), CollectorConfig{
+		Logger:           zap.NewNop(),
+		K8sClient:        getter,
+		Stats:            stream.NewStats(),
+		CalicoNamespace:  "calico-system",
+		CiliumNamespaces: []string{"kube-system"},
+		OVNKNamespace:    "openshift-ovn-kubernetes",
+	})
+
+	require.NotNil(t, factory)
+	assert.Equal(t, pb.FlowCollector_FLOW_COLLECTOR_CALICO, collectorType)
+	assert.Equal(t, "Calico", name)
+	assert.Zero(t, factory.PollingInterval())
+}
