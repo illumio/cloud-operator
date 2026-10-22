@@ -55,6 +55,18 @@ func NewCoreResourceConverter(clientset kubernetes.Interface, logger *zap.Logger
 			)
 		}
 
+		// Enrich the Ingress and Gateway API objects that route traffic into the
+		// cluster. Ingress, IngressClass and the Gateway API kinds have no case in
+		// ConvertMetaObjectToMetadata either.
+		if err := convertEntryPoint(metadata, obj, gvk.Kind, gvk.Group); err != nil {
+			logger.Warn("Failed to read entry point, sending metadata only",
+				zap.String("kind", gvk.Kind),
+				zap.String("namespace", obj.GetNamespace()),
+				zap.String("name", obj.GetName()),
+				zap.Error(err),
+			)
+		}
+
 		return metadata, nil
 	}
 }
