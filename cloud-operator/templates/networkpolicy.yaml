@@ -12,15 +12,6 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    # Allow flow export HTTP requests from Falco.
-    - ports:
-        - protocol: TCP
-          port: 5000
-      from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: {{ .Values.falco.namespace }}
-          podSelector: {}
     # Allow IPFIX-over-UDP packets from the ovs-vswitchd daemon
     # that runs on every worker node in OpenShift OVN-k clusters.
     - ports:

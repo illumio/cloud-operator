@@ -140,59 +140,6 @@
                 }
             }
         },
-        "falco": {
-            "type": "object",
-            "properties": {
-                "customRules": {
-                    "type": "object",
-                    "properties": {
-                        "rules-networking.yaml": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "falco": {
-                    "type": "object",
-                    "properties": {
-                        "buffered_outputs": {
-                            "type": "boolean"
-                        },
-                        "http_output": {
-                            "type": "object",
-                            "properties": {
-                                "enabled": {
-                                    "type": "boolean"
-                                },
-                                "insecure": {
-                                    "type": "boolean"
-                                },
-                                "keep_alive": {
-                                    "type": "boolean"
-                                },
-                                "url": {
-                                    "type": "string"
-                                }
-                            }
-                        },
-                        "json_include_output_property": {
-                            "type": "boolean"
-                        },
-                        "json_include_tags_property": {
-                            "type": "boolean"
-                        },
-                        "json_output": {
-                            "type": "boolean"
-                        }
-                    }
-                },
-                "namespace": {
-                    "type": "string"
-                }
-            }
-        },
         "image": {
             "type": "object",
             "properties": {

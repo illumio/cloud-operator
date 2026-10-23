@@ -15,10 +15,6 @@ spec:
     app: {{ include "cloud-operator.name" . }}
     release: {{ .Release.Name }}
   ports:
-    - name: http-falco
-      protocol: TCP
-      port: 5000
-      targetPort: 5000
     - name: ipfix-collector
       protocol: UDP
       port: {{ .Values.env.ipfixCollectorPort }}
