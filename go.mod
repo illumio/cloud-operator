@@ -1,6 +1,6 @@
 module github.com/illumio/cloud-operator
 
-go 1.26.6
+go 1.26.9
 
 require (
 	github.com/cilium/cilium v1.20.2
