@@ -85,7 +85,7 @@ func readClusterCredentialsFromK8sSecret(ctx context.Context, clientset kubernet
 }
 
 // writeClusterCredentialsIntoK8sSecret updates the data in an existing Kubernetes Secret without overwriting annotations or labels.
-func writeClusterCredentialsIntoK8sSecret(ctx context.Context, clientset kubernetes.Interface, clusterClientID, clusterClusterSecret, clusterCreds string, podNamespace string) error {
+func writeClusterCredentialsIntoK8sSecret(ctx context.Context, clientset kubernetes.Interface, clusterClientID, clusterClientSecret, clusterCreds string, podNamespace string) error {
 	secretsClient := clientset.CoreV1().Secrets(podNamespace)
 	// Fetch the existing Secret to preserve metadata
 	existingSecret, err := secretsClient.Get(ctx, clusterCreds, metav1.GetOptions{})
@@ -96,7 +96,7 @@ func writeClusterCredentialsIntoK8sSecret(ctx context.Context, clientset kuberne
 	// Update only the Secret data
 	existingSecret.Data = map[string][]byte{
 		SecretFieldClientID:     []byte(clusterClientID),
-		SecretFieldClientSecret: []byte(clusterClusterSecret),
+		SecretFieldClientSecret: []byte(clusterClientSecret),
 	}
 
 	// Apply the update
