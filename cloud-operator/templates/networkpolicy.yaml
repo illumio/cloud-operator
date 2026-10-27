@@ -33,15 +33,13 @@ spec:
             cidr: "{{.}}"
         {{- end }}
       {{- end }}
-    # Allow syslog-over-TCP flow logs from the Felix daemon
-    # that runs on every worker node in Calico Enterprise clusters.
+    # Allow syslog flow logs from Calico Enterprise's LogCollector (Fluentd)
+    # pods.
     - ports:
         - protocol: TCP
           port: {{ .Values.env.syslogCollectorPort }}
-      {{- if .Values.calico.workerNodeCidrs }}
       from:
-        {{- range .Values.calico.workerNodeCidrs }}
-        - ipBlock:
-            cidr: "{{.}}"
-        {{- end }}
-      {{- end }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.calico.logCollectorNamespace }}
+          podSelector: {}

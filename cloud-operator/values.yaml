@@ -65,25 +65,19 @@ cilium:
     - gke-managed-dpv2-observability
 
 calico:
-  # The namespace in which Calico Enterprise is deployed.
-  # cloud-operator uses this to determine whether Calico Enterprise is deployed,
-  # in which case the syslog collector on TCP port 6514 is enabled to receive
-  # Felix flow logs.
-  namespace: "calico-system"
+  # The namespace of Calico Enterprise's LogCollector (Fluentd) pods.
+  # The NetworkPolicy allows syslog flow logs on the syslog collector port only
+  # from pods in this namespace.
+  logCollectorNamespace: "tigera-fluentd"
 
-  # The list of IP address CIDRs of the cluster's worker nodes.
-  # Used to restrict access from only those nodes to the syslog collector on TCP
-  # port 6514 in the NetworkPolicy.
-  #
-  # For example:
-  # workerNodeCidrs:
-  #   - "10.1.0.0/24"
-  #   - "10.2.0.0/24"
-  #
-  # If empty, defaults to allowing ingress traffic to TCP port 6514 from any
-  # address. This is a safe default only on clusters that are not running Calico
-  # Enterprise, because port 6514 is not open in that case.
-  workerNodeCidrs: []
+  # TLS for the syslog collector.
+  # To accept TLS from the LogCollector, create a kubernetes.io/tls Secret in
+  # the operator's namespace with a certificate for the operator Service's DNS
+  # name, and set secretName to its name. The collector then accepts both TLS
+  # and plain-text connections; set required to true to accept TLS only.
+  syslogTLS:
+    secretName: ""
+    required: false
 
 openshift:
   # The namespace in which OVN-k is deployed.
@@ -209,9 +203,9 @@ env:
   ipfixCollectorPort: 4739
 
   # The TCP port on which cloud-operator receives syslog flow logs from Calico
-  # Enterprise's Felix reporter. cloud-operator only listens on this port if it
-  # detects at startup that Calico Enterprise is installed.
-  # TCP 6514 is the standard port for syslog over TLS/TCP.
+  # Enterprise's LogCollector. cloud-operator only listens on this port if it
+  # detects at startup that Calico Enterprise is installed. The collector
+  # accepts plain-text syslog, and TLS when calico.syslogTLS is configured.
   syslogCollectorPort: 6514
 
   # The API URL used by cloud-operator to onboard itself if onboardingSecret

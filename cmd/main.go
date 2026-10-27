@@ -89,12 +89,21 @@ func bindEnv(logger *zap.Logger, key, envVar string) {
 	}
 }
 
+// syslogTLSConfig returns the TLS settings of the Calico Enterprise syslog
+// collector. Unset keys mean plain-text syslog only.
+func syslogTLSConfig() collector.CalicoSyslogTLS {
+	return collector.CalicoSyslogTLS{
+		CertFile: viper.GetString("syslog_tls_cert_file"),
+		KeyFile:  viper.GetString("syslog_tls_key_file"),
+		Required: viper.GetBool("syslog_tls_required"),
+	}
+}
+
 // logStartupConfig emits the resolved runtime configuration at startup. It is
 // split out of main() to keep that function's size manageable.
 func logStartupConfig(logger *zap.Logger, envConfig stream.Config) {
 	logger.Info("Starting application",
 		zap.Duration("aws_vpc_cni_logs_polling_interval", viper.GetDuration("aws_vpc_cni_logs_polling_interval")),
-		zap.String("calico_namespace", viper.GetString("calico_namespace")),
 		zap.Strings("cilium_namespaces", viper.GetStringSlice("cilium_namespaces")),
 		zap.String("cluster_creds_secret", envConfig.ClusterCreds),
 		zap.String("cluster_name", envConfig.ClusterName),
@@ -108,6 +117,9 @@ func logStartupConfig(logger *zap.Logger, envConfig stream.Config) {
 		zap.String("ovnk_namespace", viper.GetString("ovnk_namespace")),
 		zap.String("pod_namespace", envConfig.PodNamespace),
 		zap.Duration("stats_log_period", envConfig.StatsLogPeriod),
+		zap.String("syslog_collector_port", viper.GetString("syslog_collector_port")),
+		zap.String("syslog_tls_cert_file", viper.GetString("syslog_tls_cert_file")),
+		zap.Bool("syslog_tls_required", viper.GetBool("syslog_tls_required")),
 		zap.Duration("stream_keepalive_period_configuration", viper.GetDuration("stream_keepalive_period_configuration")),
 		zap.Duration("stream_keepalive_period_kubernetes_network_flows", viper.GetDuration("stream_keepalive_period_kubernetes_network_flows")),
 		zap.Duration("stream_keepalive_period_kubernetes_resources", viper.GetDuration("stream_keepalive_period_kubernetes_resources")),
@@ -138,7 +150,6 @@ func main() {
 
 	// Bind specific environment variables to keys
 	bindEnv(logger, "aws_vpc_cni_logs_polling_interval", "AWS_VPC_CNI_LOGS_POLLING_INTERVAL")
-	bindEnv(logger, "calico_namespace", "CALICO_NAMESPACE")
 	bindEnv(logger, "cilium_namespaces", "CILIUM_NAMESPACES")
 	bindEnv(logger, "cluster_creds", "CLUSTER_CREDS_SECRET")
 	bindEnv(logger, "cluster_name", "CLUSTER_NAME")
@@ -164,13 +175,15 @@ func main() {
 	bindEnv(logger, "stream_success_period_auth", "STREAM_SUCCESS_PERIOD_AUTH")
 	bindEnv(logger, "stream_success_period_connect", "STREAM_SUCCESS_PERIOD_CONNECT")
 	bindEnv(logger, "syslog_collector_port", "SYSLOG_COLLECTOR_PORT")
+	bindEnv(logger, "syslog_tls_cert_file", "SYSLOG_TLS_CERT_FILE")
+	bindEnv(logger, "syslog_tls_key_file", "SYSLOG_TLS_KEY_FILE")
+	bindEnv(logger, "syslog_tls_required", "SYSLOG_TLS_REQUIRED")
 	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "verbose_debugging", "VERBOSE_DEBUGGING")
 
 	// Set default values
 	viper.SetDefault("aws_vpc_cni_logs_polling_interval", "1s")
-	viper.SetDefault("calico_namespace", "calico-system")
 	viper.SetDefault("cilium_namespaces", []string{"kube-system", "gke-managed-dpv2-observability"})
 	viper.SetDefault("cluster_creds", "clustercreds")
 	viper.SetDefault("eks_auto_mode_log_path", collector.DefaultNetworkPolicyAgentLogPath)
@@ -282,7 +295,6 @@ func main() {
 		AutoModeLogPath:                viper.GetString("eks_auto_mode_log_path"),
 		AutoModeMaxConcurrentNodePolls: viper.GetInt("eks_auto_mode_max_concurrent_node_polls"),
 		AutoModePollInterval:           viper.GetDuration("eks_auto_mode_poll_interval"),
-		CalicoNamespace:                viper.GetString("calico_namespace"),
 		CiliumNamespaces:               viper.GetStringSlice("cilium_namespaces"),
 		FlowCache:                      flowCache,
 		IPFIXCollectorPort:             viper.GetString("ipfix_collector_port"),
@@ -291,6 +303,7 @@ func main() {
 		OVNKNamespace:                  viper.GetString("ovnk_namespace"),
 		Stats:                          stats,
 		SyslogCollectorPort:            viper.GetString("syslog_collector_port"),
+		SyslogTLS:                      syslogTLSConfig(),
 		TlsAuthProps:                   tlsAuthProps,
 	})
 

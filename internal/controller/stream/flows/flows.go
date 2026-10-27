@@ -60,7 +60,7 @@ type CollectorConfig struct {
 	AutoModeMaxConcurrentNodePolls int
 	AutoModeLogPath                string
 
-	// Calico Enterprise (Felix syslog flow reporter) configuration
+	// Calico Enterprise syslog collector configuration
 	SyslogCollectorPort string
-	CalicoNamespace     string
+	SyslogTLS           collector.CalicoSyslogTLS
 }

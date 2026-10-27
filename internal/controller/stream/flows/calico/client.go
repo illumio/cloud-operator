@@ -14,12 +14,13 @@ import (
 type calicoClient struct {
 	logger     *zap.Logger
 	syslogPort string
+	syslogTLS  collector.CalicoSyslogTLS
 	flowSink   collector.FlowSink
 }
 
-// Run collects flows via the Felix syslog flow reporter from Calico Enterprise.
+// Run collects flows forwarded over syslog by Calico Enterprise.
 func (c *calicoClient) Run(ctx context.Context) error {
-	calicoCollector := collector.NewCalicoCollector(c.logger, c.syslogPort, c.flowSink)
+	calicoCollector := collector.NewCalicoCollector(c.logger, c.syslogPort, c.syslogTLS, c.flowSink)
 
 	err := calicoCollector.RunSyslogCollector(ctx)
 	if err != nil {

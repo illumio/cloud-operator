@@ -20,6 +20,7 @@ type flowCollector interface {
 type Factory struct {
 	Logger     *zap.Logger
 	SyslogPort string
+	SyslogTLS  collector.CalicoSyslogTLS
 	FlowSink   collector.FlowSink
 }
 
@@ -28,6 +29,7 @@ func (f *Factory) NewCollector(_ context.Context) (flowCollector, error) {
 	return &calicoClient{
 		logger:     f.Logger,
 		syslogPort: f.SyslogPort,
+		syslogTLS:  f.SyslogTLS,
 		flowSink:   f.FlowSink,
 	}, nil
 }

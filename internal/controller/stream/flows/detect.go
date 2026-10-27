@@ -139,13 +139,14 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 		})
 	}
 
-	// Check for Calico Enterprise (Felix syslog flow reporter)
-	if collector.IsCalicoEnterpriseDeployed(ctx, config.Logger, config.CalicoNamespace, clientset) {
+	// Check for Calico Enterprise (flow logs forwarded by its LogCollector over syslog)
+	if collector.IsCalicoEnterpriseDeployed(ctx, config.Logger, config.K8sClient.GetDynamicClient()) {
 		config.Logger.Info("Using Calico Enterprise flow collector")
 
 		factory := &calico.Factory{
 			Logger:     config.Logger,
 			SyslogPort: config.SyslogCollectorPort,
+			SyslogTLS:  config.SyslogTLS,
 			FlowSink:   flowSink,
 		}
 

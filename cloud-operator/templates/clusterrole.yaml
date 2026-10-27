@@ -77,6 +77,10 @@ rules:
 - apiGroups: ["networking.k8s.io"]
   resources: ["ingressclasses", "ingresses", "networkpolicies"]
   verbs: ["get", "list", "watch"]
+# The Tigera operator's Installation identifies Calico Enterprise clusters.
+- apiGroups: ["operator.tigera.io"]
+  resources: ["installations"]
+  verbs: ["get"]
 # ANP/BANP are ingested for visibility; update, patch, and delete are also permitted.
 - apiGroups: ["policy.networking.k8s.io"]
   resources: ["adminnetworkpolicies", "baselineadminnetworkpolicies"]

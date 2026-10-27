@@ -1,0 +1,26 @@
+# Copyright 2026 Illumio, Inc. All Rights Reserved.
+suite: test network policy
+templates:
+  - networkpolicy.yaml
+tests:
+  - it: should allow syslog flow logs only from the LogCollector namespace
+    asserts:
+      - contains:
+          path: spec.ingress
+          content:
+            ports:
+              - protocol: TCP
+                port: 6514
+            from:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: tigera-fluentd
+                podSelector: {}
+
+  - it: should use the configured LogCollector namespace
+    set:
+      calico.logCollectorNamespace: custom-fluentd
+    asserts:
+      - equal:
+          path: spec.ingress[2].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: custom-fluentd

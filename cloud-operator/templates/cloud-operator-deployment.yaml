@@ -54,8 +54,6 @@ spec:
               protocol: TCP
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
-            - name: CALICO_NAMESPACE
-              value: "{{ .Values.calico.namespace }}"
             - name: CILIUM_NAMESPACES
               value: "{{ join " " .Values.cilium.namespaces }}"
             - name: CLUSTER_CREDS_SECRET
@@ -116,6 +114,14 @@ spec:
               value: "{{ .Values.env.streamSuccessPeriods.connect }}"
             - name: SYSLOG_COLLECTOR_PORT
               value: "{{ .Values.env.syslogCollectorPort }}"
+            {{- if .Values.calico.syslogTLS.secretName }}
+            - name: SYSLOG_TLS_CERT_FILE
+              value: /etc/illumio/syslog-tls/tls.crt
+            - name: SYSLOG_TLS_KEY_FILE
+              value: /etc/illumio/syslog-tls/tls.key
+            {{- end }}
+            - name: SYSLOG_TLS_REQUIRED
+              value: "{{ .Values.calico.syslogTLS.required }}"
             - name: TLS_SKIP_VERIFY
               value: "{{ .Values.env.tlsSkipVerify }}"
             - name: TOKEN_ENDPOINT
@@ -129,6 +135,11 @@ spec:
               mountPath: /var/run/gops
             - name: ipfix-template-sets
               mountPath: /ipfix-template-sets
+            {{- if .Values.calico.syslogTLS.secretName }}
+            - name: syslog-tls
+              mountPath: /etc/illumio/syslog-tls
+              readOnly: true
+            {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -149,3 +160,8 @@ spec:
         - name: ipfix-template-sets
           configMap:
             name: ipfix-template-sets
+        {{- if .Values.calico.syslogTLS.secretName }}
+        - name: syslog-tls
+          secret:
+            secretName: {{ .Values.calico.syslogTLS.secretName }}
+        {{- end }}

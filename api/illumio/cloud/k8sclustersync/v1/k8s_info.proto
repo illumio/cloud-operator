@@ -980,7 +980,7 @@ enum FlowCollector {
   FLOW_COLLECTOR_OVNK = 4;
   // Indicates that AWS VPC CNI is deployed with Network Policy Agent for collecting network flows.
   FLOW_COLLECTOR_AWS_VPC_CNI = 5;
-  // Indicates that Calico Enterprise is deployed and its Felix syslog flow reporter is used for collecting network flows.
+  // Indicates that Calico Enterprise is deployed and its LogCollector forwards network flows over syslog.
   FLOW_COLLECTOR_CALICO_ENTERPRISE = 7;
 }
 
@@ -1045,6 +1045,27 @@ message FiveTupleFlow {
     string time = 3 [deprecated = true];
     google.protobuf.Timestamp timestamp = 4;
   }
+
+  // verdict of the flow as reported by the CNI plugin. Only set by collectors that
+  // report one (Calico Enterprise: allow -> VERDICT_FORWARDED, deny -> VERDICT_DROPPED);
+  // VERDICT_UNKNOWN_UNSPECIFIED otherwise.
+  Verdict verdict = 5;
+
+  // traffic_direction of the flow as reported by the CNI plugin: which side's network
+  // policy produced the verdict. Only set by collectors that report one (Calico
+  // Enterprise: reported by the source endpoint's node -> TRAFFIC_DIRECTION_EGRESS,
+  // by the destination endpoint's node -> TRAFFIC_DIRECTION_INGRESS);
+  // TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED otherwise.
+  TrafficDirection traffic_direction = 6;
+
+  // The policies allowing the egress of the flow, for collectors that report them.
+  repeated Policy egress_allowed_by = 8;
+  // The policies allowing the ingress of the flow, for collectors that report them.
+  repeated Policy ingress_allowed_by = 9;
+  // The policies denying the egress of the flow, for collectors that report them.
+  repeated Policy egress_denied_by = 10;
+  // The policies denying the ingress of the flow, for collectors that report them.
+  repeated Policy ingress_denied_by = 11;
 }
 
 // A flow received from Cilium Hubble Relay using the Observer service's GetFlows RPC.
