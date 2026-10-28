@@ -8,7 +8,7 @@ flowchart LR
     subgraph cluster["Kubernetes Cluster"]
         direction TB
         op["cloud-operator<br/>(Deployment)"]
-        cni["CNI / Flow Source<br/>(Cilium·Hubble, AWS VPC CNI,<br/>OVN-K, Falco)"]
+        cni["CNI / Flow Source<br/>(Cilium·Hubble, OVN-K,<br/>Calico Enterprise, AWS VPC CNI,<br/>EKS Auto Mode)"]
         np["k8s NetworkPolicies"]
         api["Kube API Server"]
 
