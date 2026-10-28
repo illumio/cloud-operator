@@ -12,6 +12,16 @@ type FiveTupleFlowKey struct {
 	SourcePort      int
 	DestinationPort int
 	Protocol        string
+	// Verdict keeps flows with different verdicts for the same 5-tuple (e.g. an
+	// ACCEPT and a DENY) from being deduplicated into one.
+	Verdict Verdict
+	// TrafficDirection is deliberately not part of the key: the AWS agent logs one
+	// connection twice (egress at the source pod, ingress at the destination pod),
+	// and keying on it would send both. Only the first one cached is sent, so its
+	// direction is one side's decision; the other pod's policy may have evaluated
+	// the connection too. A differing verdict is still sent (Verdict is keyed).
+	// PolicyTier is left out for the same reason: it is the tier of that same
+	// side's decision, so the two stay consistent in the record that is sent.
 }
 
 func (flow *FiveTupleFlow) StartTimestamp() time.Time {
@@ -26,6 +36,7 @@ func (flow *FiveTupleFlow) Key() any {
 	key := FiveTupleFlowKey{
 		SourceIP:      flow.GetLayer3().GetSource(),
 		DestinationIP: flow.GetLayer3().GetDestination(),
+		Verdict:       flow.GetVerdict(),
 	}
 	switch l4 := flow.GetLayer4().GetProtocol().(type) {
 	case *Layer4_Tcp:
