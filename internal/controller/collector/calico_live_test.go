@@ -69,7 +69,7 @@ func TestRunSyslogCollectorEndToEnd(t *testing.T) {
 	require.NoError(t, probe.Close())
 
 	sink := &captureSink{}
-	c := NewCalicoCollector(zap.NewNop(), port, CalicoSyslogTLS{}, sink)
+	c := NewCalicoCollector(zap.NewNop(), port, CalicoSyslogTLS{}, sink, nil)
 
 	var wg sync.WaitGroup
 

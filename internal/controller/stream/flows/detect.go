@@ -143,11 +143,16 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 	if collector.IsCalicoEnterpriseDeployed(ctx, config.Logger, config.K8sClient.GetDynamicClient()) {
 		config.Logger.Info("Using Calico Enterprise flow collector")
 
+		// Mark Calico Enterprise active so calico_records_dropped is logged (it is
+		// suppressed on other collectors, where it would always be zero).
+		config.Stats.SetCalicoActive()
+
 		factory := &calico.Factory{
-			Logger:     config.Logger,
-			SyslogPort: config.SyslogCollectorPort,
-			SyslogTLS:  config.SyslogTLS,
-			FlowSink:   flowSink,
+			Logger:        config.Logger,
+			SyslogPort:    config.SyslogCollectorPort,
+			SyslogTLS:     config.SyslogTLS,
+			FlowSink:      flowSink,
+			RecordDropped: config.Stats.IncrementCalicoRecordsDropped,
 		}
 
 		return pb.FlowCollector_FLOW_COLLECTOR_CALICO_ENTERPRISE, "Calico-Enterprise", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {

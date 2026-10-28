@@ -76,15 +76,22 @@ func TestParseLogCollectorFlow(t *testing.T) {
 				StartTimestamp: timestamppb.New(time.Unix(1793048988, 0)),
 			},
 		},
-		"missing start_time leaves timestamp nil": {
+		"missing start_time is rejected": {
 			line: logCollectorLine(`{"source_ip":"10.244.163.79","source_port":59106,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`),
+			err:  ErrCalicoMissingTimestamp,
+		},
+		"zero start_time is rejected": {
+			line: logCollectorLine(`{"start_time":0,"source_ip":"10.244.163.79","source_port":59106,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`),
+			err:  ErrCalicoMissingTimestamp,
+		},
+		"ICMP flow with null ports": {
+			line: logCollectorLine(`{"start_time":1793048988,"source_ip":"10.244.163.79","source_port":null,"dest_ip":"10.244.163.65","dest_port":null,"proto":"icmp"}`),
 			expected: CalicoFlow{
-				SourceIP:        "10.244.163.79",
-				DestinationIP:   "10.244.163.65",
-				SourcePort:      59106,
-				DestinationPort: 53,
-				Protocol:        UDP,
-				IPVersion:       IPv4,
+				SourceIP:       "10.244.163.79",
+				DestinationIP:  "10.244.163.65",
+				Protocol:       ICMP,
+				IPVersion:      IPv4,
+				StartTimestamp: timestamppb.New(time.Unix(1793048988, 0)),
 			},
 		},
 		"other syslog record is not a LogCollector record": {
@@ -95,24 +102,32 @@ func TestParseLogCollectorFlow(t *testing.T) {
 			line: logCollectorLine(`{"source_ip":"10.244.163.79",`),
 			err:  ErrCalicoMalformedRecord,
 		},
-		"null source port (aggregated flow) is incomplete": {
-			line: logCollectorLine(`{"source_ip":"10.244.163.79","source_port":null,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`),
-			err:  ErrCalicoIncompleteFlow,
+		"null source port (aggregated flow) is rejected as aggregated": {
+			line: logCollectorLine(`{"start_time":1793048988,"source_ip":"10.244.163.79","source_port":null,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`),
+			err:  ErrCalicoAggregatedFlow,
+		},
+		"missing source port is rejected as aggregated": {
+			line: logCollectorLine(`{"start_time":1793048988,"source_ip":"10.244.163.79","dest_ip":"10.244.163.65","dest_port":53,"proto":"tcp"}`),
+			err:  ErrCalicoAggregatedFlow,
 		},
 		"missing dest_ip is incomplete": {
-			line: logCollectorLine(`{"source_ip":"10.244.163.79","source_port":1,"dest_port":53,"proto":"udp"}`),
+			line: logCollectorLine(`{"start_time":1793048988,"source_ip":"10.244.163.79","source_port":1,"dest_port":53,"proto":"udp"}`),
 			err:  ErrCalicoIncompleteFlow,
 		},
-		"aggregated source_ip is rejected": {
-			line: logCollectorLine(`{"source_ip":"-","source_port":59106,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`),
-			err:  ErrCalicoInvalidIP,
+		"aggregated source_ip is rejected as aggregated": {
+			line: logCollectorLine(`{"start_time":1793048988,"source_ip":"-","source_port":null,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`),
+			err:  ErrCalicoAggregatedFlow,
+		},
+		"aggregated dest_ip is rejected as aggregated": {
+			line: logCollectorLine(`{"start_time":1793048988,"source_ip":"10.244.163.79","source_port":59106,"dest_ip":"-","dest_port":53,"proto":"udp"}`),
+			err:  ErrCalicoAggregatedFlow,
 		},
 		"unknown protocol is rejected": {
-			line: logCollectorLine(`{"source_ip":"10.244.163.79","source_port":1,"dest_ip":"10.244.163.65","dest_port":2,"proto":"gre"}`),
+			line: logCollectorLine(`{"start_time":1793048988,"source_ip":"10.244.163.79","source_port":1,"dest_ip":"10.244.163.65","dest_port":2,"proto":"gre"}`),
 			err:  ErrCalicoUnknownProto,
 		},
 		"out of range port is rejected": {
-			line: logCollectorLine(`{"source_ip":"10.244.163.79","source_port":70000,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`),
+			line: logCollectorLine(`{"start_time":1793048988,"source_ip":"10.244.163.79","source_port":70000,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`),
 			err:  ErrCalicoInvalidPort,
 		},
 	}
@@ -164,9 +179,9 @@ func TestParseCalicoEnterpriseFlow(t *testing.T) {
 			line:          `<14>2026-06-29T22:45:59Z minikube calico-felix[51097]: INFO <nil> <nil>:  action="allow" dstIP="10.244.120.74" dstPort="8080" proto="6" srcIP="10.244.120.78" srcPort="48710" updateType=report`,
 			expectedError: ErrCalicoNotLogCollectorRecord,
 		},
-		"incomplete record is rejected": {
-			line:          logCollectorLine(`{"source_ip":"10.244.163.79","source_port":null,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`),
-			expectedError: ErrCalicoIncompleteFlow,
+		"aggregated record is rejected": {
+			line:          logCollectorLine(`{"start_time":1793048988,"source_ip":"10.244.163.79","source_port":null,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`),
+			expectedError: ErrCalicoAggregatedFlow,
 		},
 	}
 
@@ -192,23 +207,23 @@ func TestCalicoProcessLineCachesFlowByFormat(t *testing.T) {
 		wantErr  error
 	}{
 		"LogCollector record is sent as a FiveTupleFlow": {
-			line:     logCollectorLine(`{"source_ip":"10.244.163.79","source_port":1,"dest_ip":"10.244.163.65","dest_port":2,"proto":"tcp","action":"allow","reporter":"src"}`),
+			line:     logCollectorLine(`{"start_time":1793048988,"source_ip":"10.244.163.79","source_port":1,"dest_ip":"10.244.163.65","dest_port":2,"proto":"tcp","action":"allow","reporter":"src"}`),
 			wantType: &pb.FiveTupleFlow{},
 		},
 		"Felix flow record is rejected": {
 			line:    `<14>2026-06-29T22:45:59Z minikube calico-felix[51097]: INFO <nil> <nil>:  action="allow" dstIP="10.244.120.74" dstPort="8080" proto="6" srcIP="10.244.120.78" srcPort="48710" updateType=report`,
 			wantErr: ErrCalicoNotLogCollectorRecord,
 		},
-		"broken LogCollector record is rejected": {
-			line:    logCollectorLine(`{"source_ip":"10.244.163.79","source_port":null,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`),
-			wantErr: ErrCalicoIncompleteFlow,
+		"aggregated LogCollector record is rejected": {
+			line:    logCollectorLine(`{"start_time":1793048988,"source_ip":"10.244.163.79","source_port":null,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`),
+			wantErr: ErrCalicoAggregatedFlow,
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			sink := newRecordingSink()
-			collector := NewCalicoCollector(zap.NewNop(), "0", CalicoSyslogTLS{}, sink)
+			collector := NewCalicoCollector(zap.NewNop(), "0", CalicoSyslogTLS{}, sink, nil)
 
 			err := collector.processLine(context.Background(), zap.NewNop(), tt.line)
 			if tt.wantErr != nil {

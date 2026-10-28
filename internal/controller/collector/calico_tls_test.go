@@ -17,12 +17,14 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
@@ -218,7 +220,7 @@ func newTestCalicoCollector(t *testing.T, sink FlowSink, settings CalicoSyslogTL
 	config, err := loadCalicoSyslogTLSConfig(settings)
 	require.NoError(t, err)
 
-	collector := NewCalicoCollector(zap.NewNop(), "0", settings, sink)
+	collector := NewCalicoCollector(zap.NewNop(), "0", settings, sink, nil)
 	collector.tlsConfig = config
 	collector.firstByteTimeout = time.Second
 	collector.handshakeTimeout = time.Second
@@ -316,4 +318,41 @@ func TestCalicoCollectorClosesStalledHandshake(t *testing.T) {
 	require.NoError(t, err)
 
 	assertConnClosed(t, conn)
+}
+
+func TestCalicoCollectorWarnsOnceAboutAggregatedRecords(t *testing.T) {
+	sink := newRecordingSink()
+
+	var dropped atomic.Int64
+
+	collector := NewCalicoCollector(zap.NewNop(), "0", CalicoSyslogTLS{}, sink, func() { dropped.Add(1) })
+	collector.firstByteTimeout = time.Second
+
+	core, logs := observer.New(zap.WarnLevel)
+
+	aggregated := `<14>Oct 26 21:10:09 calico-ent tigera_secure: {"start_time":1793048988,"source_ip":"10.244.163.79","source_port":null,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`
+	noTimestamp := `<14>Oct 26 21:10:09 calico-ent tigera_secure: {"source_ip":"10.244.163.79","source_port":59106,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`
+
+	serverConn, clientConn := net.Pipe()
+
+	done := make(chan struct{})
+
+	go func() {
+		collector.handleConn(context.Background(), zap.New(core), serverConn)
+		close(done)
+	}()
+
+	_, err := clientConn.Write([]byte(aggregated + "\n" + aggregated + "\n" + noTimestamp + "\n" + aggregated + "\n" + testLogCollectorRecord + "\n"))
+	require.NoError(t, err)
+
+	waitForFlow(t, sink)
+	require.NoError(t, clientConn.Close())
+	<-done
+
+	assert.Equal(t, 1, sink.count())
+	assert.Equal(t, int64(4), dropped.Load(), "every rejected record is counted")
+
+	warnings := logs.FilterMessageSnippet("aggregated").All()
+	require.Len(t, warnings, 1, "one warning per connection")
+	assert.Contains(t, warnings[0].Message, "FelixConfiguration")
 }

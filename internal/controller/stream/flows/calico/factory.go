@@ -22,14 +22,17 @@ type Factory struct {
 	SyslogPort string
 	SyslogTLS  collector.CalicoSyslogTLS
 	FlowSink   collector.FlowSink
+	// RecordDropped is called for each syslog record that is not turned into a flow.
+	RecordDropped func()
 }
 
 // NewCollector creates a new Calico Enterprise flow collector.
 func (f *Factory) NewCollector(_ context.Context) (flowCollector, error) {
 	return &calicoClient{
-		logger:     f.Logger,
-		syslogPort: f.SyslogPort,
-		syslogTLS:  f.SyslogTLS,
-		flowSink:   f.FlowSink,
+		logger:        f.Logger,
+		syslogPort:    f.SyslogPort,
+		syslogTLS:     f.SyslogTLS,
+		recordDropped: f.RecordDropped,
+		flowSink:      f.FlowSink,
 	}, nil
 }

@@ -55,10 +55,17 @@ type CalicoCollector struct {
 	firstByteTimeout time.Duration
 	handshakeTimeout time.Duration
 	flowSink         FlowSink
+	recordDropped    func()
 }
 
 // NewCalicoCollector creates a new Calico Enterprise syslog flow collector.
-func NewCalicoCollector(logger *zap.Logger, syslogPort string, tlsSettings CalicoSyslogTLS, flowSink FlowSink) *CalicoCollector {
+// recordDropped, if not nil, is called for each record that is not turned into
+// a flow.
+func NewCalicoCollector(logger *zap.Logger, syslogPort string, tlsSettings CalicoSyslogTLS, flowSink FlowSink, recordDropped func()) *CalicoCollector {
+	if recordDropped == nil {
+		recordDropped = func() {}
+	}
+
 	return &CalicoCollector{
 		logger:           logger,
 		syslogPort:       syslogPort,
@@ -66,6 +73,7 @@ func NewCalicoCollector(logger *zap.Logger, syslogPort string, tlsSettings Calic
 		firstByteTimeout: calicoFirstByteTimeout,
 		handshakeTimeout: calicoHandshakeTimeout,
 		flowSink:         flowSink,
+		recordDropped:    recordDropped,
 	}
 }
 
@@ -202,6 +210,8 @@ func (c *CalicoCollector) handleConn(ctx context.Context, logger *zap.Logger, co
 	// metadata is attached; enlarge the buffer so long lines aren't truncated.
 	scanner.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), calicoSyslogMaxLineLength)
 
+	warnedAggregated := false
+
 	for scanner.Scan() {
 		select {
 		case <-ctx.Done():
@@ -214,9 +224,29 @@ func (c *CalicoCollector) handleConn(ctx context.Context, logger *zap.Logger, co
 			continue
 		}
 
-		if err := c.processLine(ctx, logger, line); err != nil {
-			logger.Debug("Skipping syslog record", zap.Error(err))
+		err := c.processLine(ctx, logger, line)
+		if err == nil {
+			continue
 		}
+
+		if ctx.Err() != nil {
+			return
+		}
+
+		c.recordDropped()
+
+		if errors.Is(err, ErrCalicoAggregatedFlow) && !warnedAggregated {
+			// Without this setting every record is dropped, so tell the user once
+			// per connection rather than only at debug level.
+			logger.Warn("Calico Enterprise is sending aggregated flow logs without IP addresses or source ports, so they are dropped; " +
+				"set flowLogsFileAggregationKindForAllowed and flowLogsFileAggregationKindForDenied to 0 in the FelixConfiguration")
+
+			warnedAggregated = true
+
+			continue
+		}
+
+		logger.Debug("Skipping syslog record", zap.Error(err))
 	}
 
 	// A connection closed mid-record yields a non-EOF scanner error; log it and

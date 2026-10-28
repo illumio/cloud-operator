@@ -12,15 +12,16 @@ import (
 
 // calicoClient implements FlowCollector for Calico Enterprise flow collection.
 type calicoClient struct {
-	logger     *zap.Logger
-	syslogPort string
-	syslogTLS  collector.CalicoSyslogTLS
-	flowSink   collector.FlowSink
+	logger        *zap.Logger
+	syslogPort    string
+	syslogTLS     collector.CalicoSyslogTLS
+	flowSink      collector.FlowSink
+	recordDropped func()
 }
 
 // Run collects flows forwarded over syslog by Calico Enterprise.
 func (c *calicoClient) Run(ctx context.Context) error {
-	calicoCollector := collector.NewCalicoCollector(c.logger, c.syslogPort, c.syslogTLS, c.flowSink)
+	calicoCollector := collector.NewCalicoCollector(c.logger, c.syslogPort, c.syslogTLS, c.flowSink, c.recordDropped)
 
 	err := calicoCollector.RunSyslogCollector(ctx)
 	if err != nil {
