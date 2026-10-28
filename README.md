@@ -109,6 +109,78 @@ helm install illumio --namespace illumio-cloud oci://ghcr.io/illumio/charts/clou
 - **gRPC Requests**:
   - All gRPC requests will also respect the `HTTPS_PROXY` environment variable.
 
+## Calico Enterprise Flow Collection
+
+On clusters running Calico Enterprise, the Cloud Operator receives network flows from Calico Enterprise's LogCollector over syslog. The operator uses this collector when the `default` Installation (`operator.tigera.io/v1`) has `spec.variant: TigeraSecureEnterprise`, and then listens for syslog on TCP port 6514.
+
+Calico Enterprise does not send flows to the operator by default. Two settings are required on the Calico side.
+
+### 1. Send flow logs to the operator
+
+Add a syslog store to the LogCollector that points at the operator's Service:
+
+```
+kubectl patch logcollector tigera-secure --type merge -p '{
+  "spec": {
+    "additionalStores": {
+      "syslog": {
+        "endpoint": "tcp://<release>-cloud-operator.<namespace>.svc.cluster.local:6514",
+        "logTypes": ["Flows"],
+        "packetSize": 8192
+      }
+    }
+  }
+}'
+```
+
+- `endpoint`: the operator's Service, for example `tcp://illumio-cloud-operator.illumio-cloud.svc.cluster.local:6514` for release `illumio` in namespace `illumio-cloud`.
+- `logTypes`: `Flows` only. Without it, Calico also sends audit and DNS logs, which the operator ignores.
+- `packetSize`: flow records are larger than the default of 1024 bytes and are cut off at that size, so set at least 8192.
+
+The LogCollector supports a single syslog store per cluster. If the cluster already sends syslog elsewhere, forward a copy of the `tigera_secure` records to the operator from that syslog server.
+
+### 2. Disable flow log aggregation
+
+By default, Calico Enterprise aggregates flow logs and leaves out IP addresses and source ports, so the operator cannot build a five-tuple from them. Set the aggregation level to 0 for allowed and denied flows:
+
+```
+kubectl patch felixconfiguration default --type merge -p '{
+  "spec": {
+    "flowLogsFileAggregationKindForAllowed": 0,
+    "flowLogsFileAggregationKindForDenied": 0
+  }
+}'
+```
+
+### TLS (optional)
+
+The operator accepts plain-text syslog by default. To also accept TLS, create a `kubernetes.io/tls` Secret in the operator's namespace with a certificate for the operator Service's DNS name, and set:
+
+```yaml
+calico:
+  syslogTLS:
+    secretName: <secret-name>
+    required: false   # true to reject plain-text connections
+```
+
+Then set `encryption: TLS` in the LogCollector's syslog store, and configure Calico Enterprise to trust the certificate's CA.
+
+### Helm values
+
+| Value | Default | Description |
+|---|---|---|
+| `env.syslogCollectorPort` | `6514` | TCP port the operator listens on for syslog. Must match the LogCollector `endpoint`. |
+| `calico.logCollectorNamespace` | `tigera-fluentd` | Namespace of the LogCollector pods. The NetworkPolicy allows syslog only from this namespace. |
+| `calico.syslogTLS.secretName` | `""` | Secret with the TLS certificate and key. Empty means plain text only. |
+| `calico.syslogTLS.required` | `false` | Accept TLS connections only. |
+
+### Troubleshooting
+
+- The operator logs `Using Calico Enterprise flow collector` at startup when it detects Calico Enterprise.
+- The `Stream statistics` log line includes `calico_records_dropped`, the number of syslog records that could not be turned into flows.
+- A warning `Calico Enterprise is sending aggregated flow logs ...` means flow log aggregation is still enabled. Apply step 2.
+- If `flows_received` stays at 0 and no records are dropped, check that the LogCollector's syslog `endpoint` points at the operator's Service and port.
+
 
 # IPFIX Template Sets ConfigMap
 
