@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
@@ -32,11 +33,20 @@ var protoJSONMarshaler = protojson.MarshalOptions{
 	EmitUnpopulated: false,
 }
 
-// kindMapping holds the Kubernetes kind and plural resource name for a configured
-// object's kind_specific oneof type. It is the single source of truth for the
-// kind/resource mapping used by ExtractKind, ExtractResourceName, and spec marshaling.
+// API groups of the configured (reconciled) kinds. They duplicate cilium.APIGroup
+// and awsvpccni.APIGroup because those packages import this one; a test keeps
+// them equal.
+const (
+	ciliumAPIGroup    = "cilium.io"
+	awsVPCCNIAPIGroup = "networking.k8s.aws"
+)
+
+// kindMapping holds the Kubernetes kind, API group and plural resource name for a
+// configured object's kind_specific oneof type. It is the single source of truth
+// for the mapping used by ExtractKind, ExtractGroupResource, and spec marshaling.
 type kindMapping struct {
 	kind         string
+	group        string
 	resourceName string
 }
 
@@ -45,13 +55,13 @@ type kindMapping struct {
 func kindMappingFor(data *pb.ConfiguredKubernetesObjectData) (kindMapping, error) {
 	switch data.GetKindSpecific().(type) {
 	case *pb.ConfiguredKubernetesObjectData_CiliumNetworkPolicy:
-		return kindMapping{kind: "CiliumNetworkPolicy", resourceName: "ciliumnetworkpolicies"}, nil
+		return kindMapping{kind: "CiliumNetworkPolicy", group: ciliumAPIGroup, resourceName: "ciliumnetworkpolicies"}, nil
 	case *pb.ConfiguredKubernetesObjectData_CiliumClusterwideNetworkPolicy:
-		return kindMapping{kind: "CiliumClusterwideNetworkPolicy", resourceName: "ciliumclusterwidenetworkpolicies"}, nil
+		return kindMapping{kind: "CiliumClusterwideNetworkPolicy", group: ciliumAPIGroup, resourceName: "ciliumclusterwidenetworkpolicies"}, nil
 	case *pb.ConfiguredKubernetesObjectData_CiliumCidrGroup:
-		return kindMapping{kind: "CiliumCIDRGroup", resourceName: "ciliumcidrgroups"}, nil
+		return kindMapping{kind: "CiliumCIDRGroup", group: ciliumAPIGroup, resourceName: "ciliumcidrgroups"}, nil
 	case *pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy:
-		return kindMapping{kind: "ClusterNetworkPolicy", resourceName: "clusternetworkpolicies"}, nil
+		return kindMapping{kind: "ClusterNetworkPolicy", group: awsVPCCNIAPIGroup, resourceName: "clusternetworkpolicies"}, nil
 	default:
 		return kindMapping{}, fmt.Errorf("unsupported kind_specific type: %T", data.GetKindSpecific())
 	}
@@ -59,12 +69,23 @@ func kindMappingFor(data *pb.ConfiguredKubernetesObjectData) (kindMapping, error
 
 // ExtractResourceName returns the plural resource name for the given configured object's kind.
 func ExtractResourceName(data *pb.ConfiguredKubernetesObjectData) (string, error) {
-	m, err := kindMappingFor(data)
+	groupResource, err := ExtractGroupResource(data)
 	if err != nil {
 		return "", err
 	}
 
-	return m.resourceName, nil
+	return groupResource.Resource, nil
+}
+
+// ExtractGroupResource returns the API group and plural resource name for the
+// given configured object's kind.
+func ExtractGroupResource(data *pb.ConfiguredKubernetesObjectData) (schema.GroupResource, error) {
+	m, err := kindMappingFor(data)
+	if err != nil {
+		return schema.GroupResource{}, err
+	}
+
+	return schema.GroupResource{Group: m.group, Resource: m.resourceName}, nil
 }
 
 // ExtractKind returns the Kubernetes kind string for a configured object.

@@ -104,22 +104,40 @@ func (r *Watcher) gvr() schema.GroupVersionResource {
 }
 
 // WatchK8sResources initiates a watch stream for the specified Kubernetes resource.
+// A failed watch calls cancel, which stops the whole resource stream so it
+// reconnects and lists every resource again. A resource that becomes
+// unavailable, because its CRD was deleted or its RBAC removed, stops only this
+// watcher, as it is skipped when unavailable at list time.
 func (r *Watcher) WatchK8sResources(ctx context.Context, cancel context.CancelFunc, resourceVersion string, mutationChan chan *pb.KubernetesResourceMutation) {
-	defer cancel()
-
 	err := r.limiter.Wait(ctx)
 	if err != nil {
 		r.logger.Error("Cannot wait using rate limiter", zap.Error(err))
+		cancel()
 
 		return
 	}
 
 	err = r.watchEvents(ctx, resourceVersion, mutationChan)
-	if err != nil {
-		r.logger.Error("Watch failed", zap.Error(err))
+	if isResourceUnavailable(err) {
+		r.logger.Warn("Resource no longer available, stopping its watch",
+			zap.String("reason", string(apierrors.ReasonForError(err))),
+			zap.Error(err))
 
 		return
 	}
+
+	if err != nil {
+		r.logger.Error("Watch failed", zap.Error(err))
+	}
+
+	cancel()
+}
+
+// isResourceUnavailable reports whether err says the resource cannot be listed
+// or watched: NotFound when its CRD was deleted, Forbidden when RBAC does not
+// permit it.
+func isResourceUnavailable(err error) bool {
+	return apierrors.IsNotFound(err) || apierrors.IsForbidden(err)
 }
 
 // DynamicListResources lists a specified resource dynamically and sends each item down the current gRPC stream.
@@ -281,13 +299,13 @@ func (r *Watcher) FetchResources(ctx context.Context, namespace string) (*unstru
 		// but shouldn't cause the entire stream to fail.
 		// NotFound: CRD was deleted after initial discovery (e.g., Cilium/Gateway API uninstalled)
 		// Forbidden: RBAC doesn't permit access to this resource
-		if apierrors.IsForbidden(err) || apierrors.IsNotFound(err) {
+		if isResourceUnavailable(err) {
 			r.logger.Warn("Resource unavailable",
 				zap.Stringer("kind", resource),
 				zap.String("reason", string(apierrors.ReasonForError(err))),
 				zap.Error(err))
 
-			return nil, fmt.Errorf("resource %s unavailable: %w", resource.Resource, err)
+			return nil, fmt.Errorf("resource %s unavailable: %w", resource.GroupResource(), err)
 		}
 
 		r.logger.Error("Cannot list resource", zap.Stringer("kind", resource), zap.Error(err))

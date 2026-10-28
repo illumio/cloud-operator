@@ -37,6 +37,8 @@ type mockClient struct {
 	deleteCalls   int
 	applyErr      error
 	deleteErr     error
+	appliedGVR    schema.GroupVersionResource
+	deletedGVR    schema.GroupVersionResource
 }
 
 func (m *mockClient) GetClientset() kubernetes.Interface {
@@ -75,8 +77,9 @@ func (m *mockClient) WatchResources(_ context.Context, _ schema.GroupVersionReso
 	return nil, nil //nolint:nilnil // mock implementation
 }
 
-func (m *mockClient) ApplyResource(_ context.Context, _ schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, _ string) (*unstructured.Unstructured, error) {
+func (m *mockClient) ApplyResource(_ context.Context, gvr schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, _ string) (*unstructured.Unstructured, error) {
 	m.applyCalls++
+	m.appliedGVR = gvr
 
 	if m.applyErr != nil {
 		return nil, m.applyErr
@@ -85,8 +88,9 @@ func (m *mockClient) ApplyResource(_ context.Context, _ schema.GroupVersionResou
 	return obj, nil
 }
 
-func (m *mockClient) DeleteResource(_ context.Context, _ schema.GroupVersionResource, _, _ string) error {
+func (m *mockClient) DeleteResource(_ context.Context, gvr schema.GroupVersionResource, _, _ string) error {
 	m.deleteCalls++
+	m.deletedGVR = gvr
 
 	return m.deleteErr
 }
@@ -141,8 +145,8 @@ func TestReconcile_EmptyCaches(t *testing.T) {
 
 	r := NewReconciler(logger, client, configCache, runtimeCache)
 	// Set resourceInfo for test (normally done in Start())
-	r.resourceInfo = map[string]resources.ResourceInfo{
-		"ciliumnetworkpolicies": {Group: "cilium.io", Version: "v2"},
+	r.resourceInfo = map[schema.GroupResource]resources.ResourceInfo{
+		{Group: "cilium.io", Resource: "ciliumnetworkpolicies"}: {Group: "cilium.io", Version: "v2"},
 	}
 
 	err := r.reconcileAll(ctx)
@@ -184,11 +188,11 @@ func newTestReconciler(t *testing.T, configObjects, runtimeObjects map[string]*p
 	populateCache(t, runtimeCache, runtimeObjects)
 
 	r := NewReconciler(zap.NewNop(), client, configCache, runtimeCache)
-	r.resourceInfo = map[string]resources.ResourceInfo{
-		"ciliumnetworkpolicies":            {Group: "cilium.io", Version: "v2"},
-		"ciliumclusterwidenetworkpolicies": {Group: "cilium.io", Version: "v2"},
-		"ciliumcidrgroups":                 {Group: "cilium.io", Version: "v2alpha1"},
-		"clusternetworkpolicies":           {Group: "networking.k8s.aws", Version: "v1alpha1"},
+	r.resourceInfo = map[schema.GroupResource]resources.ResourceInfo{
+		{Group: "cilium.io", Resource: "ciliumnetworkpolicies"}:            {Group: "cilium.io", Version: "v2"},
+		{Group: "cilium.io", Resource: "ciliumclusterwidenetworkpolicies"}: {Group: "cilium.io", Version: "v2"},
+		{Group: "cilium.io", Resource: "ciliumcidrgroups"}:                 {Group: "cilium.io", Version: "v2alpha1"},
+		{Group: "networking.k8s.aws", Resource: "clusternetworkpolicies"}:  {Group: "networking.k8s.aws", Version: "v1alpha1"},
 	}
 
 	return r, client
@@ -310,6 +314,7 @@ func TestReconcileObject_AppliesAWSClusterNetworkPolicyWhenDifferent(t *testing.
 	err := r.reconcileObject(context.Background(), "aws-policy-1")
 	require.NoError(t, err)
 	assert.Equal(t, 1, client.applyCalls, "Should apply AWS policy when config and runtime differ")
+	assert.Equal(t, schema.GroupVersionResource{Group: "networking.k8s.aws", Version: "v1alpha1", Resource: "clusternetworkpolicies"}, client.appliedGVR)
 }
 
 func TestReconcileObject_DeletesOrphanedAWSClusterNetworkPolicy(t *testing.T) {
@@ -329,6 +334,31 @@ func TestReconcileObject_DeletesOrphanedAWSClusterNetworkPolicy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, client.applyCalls, "Should not apply orphaned AWS object")
 	assert.Equal(t, 1, client.deleteCalls, "Should delete orphaned AWS runtime object")
+	assert.Equal(t, schema.GroupVersionResource{Group: "networking.k8s.aws", Version: "v1alpha1", Resource: "clusternetworkpolicies"}, client.deletedGVR)
+}
+
+// policy.networking.k8s.io also serves clusternetworkpolicies. The reconciler
+// looks resources up by group and resource, so discovering only that group
+// does not let it apply an AWS ClusterNetworkPolicy there.
+func TestReconcileObject_ResourceInOtherGroupIsNotUsed(t *testing.T) {
+	configObj := &pb.ConfiguredKubernetesObjectData{
+		Name: "allow-web",
+		KindSpecific: &pb.ConfiguredKubernetesObjectData_AwsClusterNetworkPolicy{
+			AwsClusterNetworkPolicy: &pb.KubernetesAWSClusterNetworkPolicyData{Priority: new(int32(100)), Tier: "Admin"},
+		},
+	}
+
+	r, client := newTestReconciler(t,
+		map[string]*pb.ConfiguredKubernetesObjectData{"aws-policy-1": configObj},
+		nil,
+	)
+	r.resourceInfo = map[schema.GroupResource]resources.ResourceInfo{
+		{Group: "policy.networking.k8s.io", Resource: "clusternetworkpolicies"}: {Group: "policy.networking.k8s.io", Version: "v1alpha2"},
+	}
+
+	err := r.reconcileObject(context.Background(), "aws-policy-1")
+	require.ErrorContains(t, err, "resource not discovered: clusternetworkpolicies.networking.k8s.aws")
+	assert.Equal(t, 0, client.applyCalls)
 }
 
 func TestReconcileAll_SkipsUnchangedObjects(t *testing.T) {
@@ -565,8 +595,8 @@ func TestCacheCloseUnblocksReconcilerLoop(t *testing.T) {
 
 	r := NewReconciler(zap.NewNop(), client, configCache, runtimeCache)
 	// Pre-set resourceInfo so Run() skips the discovery retry loop entirely
-	r.resourceInfo = map[string]resources.ResourceInfo{
-		"ciliumnetworkpolicies": {Group: "cilium.io", Version: "v2"},
+	r.resourceInfo = map[schema.GroupResource]resources.ResourceInfo{
+		{Group: "cilium.io", Resource: "ciliumnetworkpolicies"}: {Group: "cilium.io", Version: "v2"},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -647,8 +677,8 @@ func TestReplaceAllDoesNotDeadlockWhenReconcilerStarved(t *testing.T) {
 	runtimeCache := cache.NewConfiguredObjectCache()
 
 	r := NewReconciler(zap.NewNop(), client, configCache, runtimeCache)
-	r.resourceInfo = map[string]resources.ResourceInfo{
-		"ciliumnetworkpolicies": {Group: "cilium.io", Version: "v2"},
+	r.resourceInfo = map[schema.GroupResource]resources.ResourceInfo{
+		{Group: "cilium.io", Resource: "ciliumnetworkpolicies"}: {Group: "cilium.io", Version: "v2"},
 	}
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -710,8 +740,8 @@ func TestReplaceAllDoesNotDeadlockWhenConfigCacheStarved(t *testing.T) {
 	runtimeCache := cache.NewConfiguredObjectCache()
 
 	r := NewReconciler(zap.NewNop(), client, configCache, runtimeCache)
-	r.resourceInfo = map[string]resources.ResourceInfo{
-		"ciliumnetworkpolicies": {Group: "cilium.io", Version: "v2"},
+	r.resourceInfo = map[schema.GroupResource]resources.ResourceInfo{
+		{Group: "cilium.io", Resource: "ciliumnetworkpolicies"}: {Group: "cilium.io", Version: "v2"},
 	}
 
 	ctx, cancel := context.WithCancel(t.Context())

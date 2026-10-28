@@ -95,35 +95,6 @@ openshift:
   # `oc adm policy add-scc-to-user anyuid -z <sa> -n <namespace>`).
   createAnyuidSccRoleBinding: true
 
-falco:
-  enabled: false
-  namespace: falco
-  falco:
-    http_output:
-      enabled: true
-      keep_alive: true
-      url: "http://illumio-cloud-operator.illumio-cloud.svc.cluster.local:5000/"
-      insecure: true
-    json_output: true
-    json_include_tags_property: false
-    json_include_output_property: true
-    buffered_outputs: true
-  customRules:
-    rules-networking.yaml: |-
-      - macro: outbound_corp
-        condition: >
-          (((evt.type = connect and evt.dir=<) or
-            (evt.type in (sendto,sendmsg) and evt.dir=< and
-             fd.l4proto != tcp and fd.connected=false and fd.name_changed=true)) and
-           (fd.typechar = 4 or fd.typechar = 6) and
-           (fd.ip != "0.0.0.0" and fd.net != "127.0.0.0/8") and
-           (evt.rawres >= 0 or evt.res = EINPROGRESS))
-      - rule: kubernetes outbound connection
-        desc: A pod in namespace attempted to connect to the outer world
-        condition: outbound_corp and k8s.ns.name != ""
-        output: "illumio_network_traffic (time=%evt.time.iso8601 srcip=%fd.cip dstip=%fd.sip srcport=%fd.cport dstport=%fd.sport proto=%fd.l4proto procname=%proc.name ipversion=%fd.type)"
-        priority: WARNING
-
 awsVpcCni:
   # EKS Auto Mode Network Policy Agent log collection.
   #
@@ -197,6 +168,9 @@ env:
   statsLogPeriod: "30m"
 
   # The intervals between keepalive messages sent over each stream.
+  # After a detected collector starts, flow liveness allows 3x the shortest
+  # period + the collector's polling interval (if any) + flowCache.activeTimeout
+  # + 1m without a successfully sent data flow.
   streamKeepalivePeriods:
     configuration: "10s"
     kubernetesResources: "10s"

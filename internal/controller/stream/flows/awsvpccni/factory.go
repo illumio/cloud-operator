@@ -29,18 +29,22 @@ type Factory struct {
 	PollInterval time.Duration
 }
 
-// NewCollector creates a new VPC CNI flow collector.
-func (f *Factory) NewCollector(_ context.Context) (flowCollector, error) {
-	pollInterval := f.PollInterval
-	if pollInterval == 0 {
-		pollInterval = DefaultPollInterval
+// EffectivePollInterval returns the configured polling interval or its default.
+func (f *Factory) EffectivePollInterval() time.Duration {
+	if f.PollInterval == 0 {
+		return DefaultPollInterval
 	}
 
+	return f.PollInterval
+}
+
+// NewCollector creates a new VPC CNI flow collector.
+func (f *Factory) NewCollector(_ context.Context) (flowCollector, error) {
 	return &vpccniClient{
 		logger:       f.Logger,
 		flowSink:     f.FlowSink,
 		k8sClient:    f.K8sClient,
-		pollInterval: pollInterval,
+		pollInterval: f.EffectivePollInterval(),
 		lastPollTime: make(map[string]time.Time),
 	}, nil
 }

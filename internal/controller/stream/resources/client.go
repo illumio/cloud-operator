@@ -23,6 +23,10 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/config/cache"
 	"github.com/illumio/cloud-operator/internal/convert"
+	"github.com/illumio/cloud-operator/internal/convert/anp"
+	"github.com/illumio/cloud-operator/internal/convert/awsvpccni"
+	"github.com/illumio/cloud-operator/internal/convert/cilium"
+	"github.com/illumio/cloud-operator/internal/convert/ovn"
 	"github.com/illumio/cloud-operator/internal/version"
 )
 
@@ -58,7 +62,9 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 	dynamicClient := c.k8sClient.GetDynamicClient()
 	clientset := c.k8sClient.GetClientset()
 
-	resourceAPIGroupMap, err := BuildResourceAPIGroupMap(resourceList, clientset, c.logger)
+	// Search every served version: some watched CRDs (MetalLB, GKE NEGs) are not
+	// in their group's preferred version.
+	resourceAPIGroupMap, err := buildResourceAPIGroupMap(resourceList, clientset, c.logger, true)
 	if err != nil {
 		c.logger.Error("Failed to build resource api group map", zap.Error(err))
 
@@ -76,18 +82,24 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 	coreConverter := convert.NewCoreResourceConverter(clientset, c.logger)
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return convert.ConvertUnstructuredToCiliumResource(obj)
+		return cilium.ConvertUnstructuredToCiliumResource(obj)
 	}
-	awsConverter := convert.NewAWSResourceConverter(c.logger)
+	anpConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+		return anp.ConvertUnstructuredToAdminNetworkPolicyResource(obj)
+	}
+	egressConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+		return ovn.ConvertUnstructuredToEgressResource(obj)
+	}
+	awsConverter := awsvpccni.NewAWSResourceConverter(c.logger)
 
 	allWatchInfos := make([]watcherInfo, 0, len(resourceAPIGroupMap))
 	sharedLimiter := rate.NewLimiter(1, 5)
-	resourceManagers := make(map[string]*Watcher)
 	pendingSnapshot := make(map[string]*pb.ConfiguredKubernetesObjectData)
 	runtimeCacheHandler := c.newRuntimeCacheHandler(pendingSnapshot)
 
-	for _, resource := range slices.Sorted(maps.Keys(resourceAPIGroupMap)) {
-		resourceInfo := resourceAPIGroupMap[resource]
+	for _, groupResource := range slices.SortedFunc(maps.Keys(resourceAPIGroupMap), compareGroupResources) {
+		resourceInfo := resourceAPIGroupMap[groupResource]
+		resource := groupResource.Resource
 
 		select {
 		case <-ctx.Done():
@@ -99,12 +111,17 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 		var handler RuntimeCacheHandler
 
-		if convert.IsCiliumResource(resource) {
+		switch {
+		case cilium.IsCiliumResource(resourceInfo.Group, resource):
 			converter = ciliumConverter
 			handler = runtimeCacheHandler
+		case anp.IsAdminNetworkPolicyResource(resourceInfo.Group, resource):
+			converter = anpConverter
+		case ovn.IsEgressResource(resourceInfo.Group, resource):
+			converter = egressConverter
 		}
 
-		if convert.IsAWSResource(resource) {
+		if awsvpccni.IsAWSResource(resourceInfo.Group, resource) {
 			converter = awsConverter
 			handler = runtimeCacheHandler
 		}
@@ -120,15 +137,14 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 			Limiter:             sharedLimiter,
 			Converter:           converter,
 		})
-		resourceManagers[resource] = resourceManager
 
 		resourceVersion, err := resourceManager.DynamicListResources(ctx, resourceManager.logger)
 		if err != nil {
 			// Skip resources that are unavailable due to RBAC or missing CRDs.
 			// NotFound can occur when a CRD is deleted after discovery but before listing.
-			if apierrors.IsForbidden(err) || apierrors.IsNotFound(err) {
+			if isResourceUnavailable(err) {
 				c.logger.Warn("Skipping unavailable resource",
-					zap.String("kind", resource),
+					zap.String("resource", resource),
 					zap.String("api_group", resourceInfo.Group),
 					zap.String("reason", string(apierrors.ReasonForError(err))),
 					zap.Error(err))
@@ -140,9 +156,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		}
 
 		allWatchInfos = append(allWatchInfos, watcherInfo{
-			resource:        resource,
-			apiGroup:        resourceInfo.Group,
-			apiVersion:      resourceInfo.Version,
+			watcher:         resourceManager,
 			resourceVersion: resourceVersion,
 		})
 	}
@@ -171,15 +185,13 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 	defer cancel()
 
 	for _, info := range allWatchInfos {
-		resourceManager := resourceManagers[info.resource]
-
 		watcherWaitGroup.Add(1)
 
-		go func(info watcherInfo, manager *Watcher) {
+		go func(info watcherInfo) {
 			defer watcherWaitGroup.Done()
 
-			manager.WatchK8sResources(ctx, cancel, info.resourceVersion, mutationChan)
-		}(info, resourceManager)
+			info.watcher.WatchK8sResources(ctx, cancel, info.resourceVersion, mutationChan)
+		}(info)
 	}
 
 	stream.SetProcessingResources(false)

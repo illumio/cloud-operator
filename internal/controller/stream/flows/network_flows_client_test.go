@@ -6,9 +6,12 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
 
@@ -220,4 +223,106 @@ func (s *NetworkFlowsClientTestSuite) TestClose_Idempotent() {
 	s.Require().NoError(err)
 
 	s.True(s.client.closed)
+}
+
+func TestNetworkFlowsLiveness(t *testing.T) {
+	tests := []struct {
+		name        string
+		flow        pb.Flow
+		sendErr     error
+		wantHealthy bool
+	}{
+		{name: "successful five tuple flow", flow: &pb.FiveTupleFlow{}, wantHealthy: true},
+		{name: "successful Cilium flow", flow: &pb.CiliumFlow{}, wantHealthy: true},
+		{name: "failed data send", flow: &pb.FiveTupleFlow{}, sendErr: errors.New("send failed")},
+		{name: "successful keepalive"},
+		{name: "failed keepalive", sendErr: errors.New("keepalive failed")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				stream.ConfigureFlowLiveness(time.Minute)
+				t.Cleanup(func() { stream.ConfigureFlowLiveness(0) })
+				stream.StartFlowCollection()
+				time.Sleep(time.Minute + time.Nanosecond)
+				require.False(t, stream.ServerIsHealthy())
+
+				mockStream := &mockNetworkFlowsStream{}
+
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+
+				mockStream.On("Send", mock.Anything).Run(func(mock.Arguments) {
+					cancel()
+				}).Return(tt.sendErr).Once()
+
+				outFlows := make(chan pb.Flow, 1)
+				client := &networkFlowsClient{
+					grpcStream: mockStream,
+					logger:     zap.NewNop(),
+					flowCache:  cache.NewFlowCache(time.Second, 10, outFlows),
+					stats:      stream.NewStats(),
+				}
+
+				if tt.flow == nil {
+					err := client.SendKeepalive(ctx)
+					require.ErrorIs(t, err, tt.sendErr)
+				} else {
+					outFlows <- tt.flow
+
+					err := client.Run(ctx)
+					if tt.sendErr != nil {
+						require.ErrorIs(t, err, tt.sendErr)
+					} else {
+						require.ErrorIs(t, err, context.Canceled)
+					}
+				}
+
+				synctest.Wait()
+				assert.Equal(t, tt.wantHealthy, stream.ServerIsHealthy())
+				mockStream.AssertExpectations(t)
+			})
+		})
+	}
+}
+
+func TestNetworkFlowsLivenessBlockedSend(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		stream.ConfigureFlowLiveness(time.Minute)
+		t.Cleanup(func() { stream.ConfigureFlowLiveness(0) })
+		stream.StartFlowCollection()
+
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		release := make(chan struct{})
+		mockStream := &mockNetworkFlowsStream{}
+		mockStream.On("Send", mock.Anything).Run(func(mock.Arguments) {
+			<-release
+			cancel()
+		}).Return(nil).Once()
+
+		outFlows := make(chan pb.Flow, 1)
+		outFlows <- &pb.FiveTupleFlow{}
+
+		client := &networkFlowsClient{
+			grpcStream: mockStream,
+			logger:     zap.NewNop(),
+			flowCache:  cache.NewFlowCache(time.Second, 10, outFlows),
+			stats:      stream.NewStats(),
+		}
+
+		done := make(chan error, 1)
+		go func() { done <- client.Run(ctx) }()
+
+		synctest.Wait()
+
+		time.Sleep(time.Minute + time.Nanosecond)
+		assert.False(t, stream.ServerIsHealthy())
+		close(release)
+		require.ErrorIs(t, <-done, context.Canceled)
+		assert.True(t, stream.ServerIsHealthy())
+		mockStream.AssertExpectations(t)
+	})
 }

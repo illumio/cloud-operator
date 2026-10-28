@@ -33,7 +33,7 @@ type Reconciler struct {
 	client            k8sclient.Client
 	configCache       *cache.ConfiguredObjectCache
 	runtimeCache      *cache.ConfiguredObjectCache
-	resourceInfo      map[string]resources.ResourceInfo // discovered API group/version info
+	resourceInfo      map[schema.GroupResource]resources.ResourceInfo // discovered API group/version info
 	reconcileInterval time.Duration
 }
 
@@ -56,12 +56,12 @@ func NewReconciler(
 // Run discovers API resources, waits for the config cache to be ready, and runs the reconciliation loop.
 // It blocks until the context is cancelled.
 func (r *Reconciler) Run(ctx context.Context) {
-	var resourceInfo map[string]resources.ResourceInfo
+	var resourceInfo map[schema.GroupResource]resources.ResourceInfo
 
 	for attempt := range 5 {
 		var err error
 
-		resourceInfo, err = resources.BuildResourceAPIGroupMap(resources.ManagedResourceNames, r.client.GetClientset(), r.logger)
+		resourceInfo, err = resources.BuildResourceAPIGroupMap(resources.ManagedResources, r.client.GetClientset(), r.logger)
 		if err == nil {
 			break
 		}
@@ -223,14 +223,14 @@ func (r *Reconciler) reconcileAll(ctx context.Context) error {
 // SSA field ownership ensures that annotations managed by cloud-operator are authoritative:
 // omitted annotations are removed, and annotations owned by other field managers are preserved.
 func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKubernetesObjectData) error {
-	resourceName, err := convert.ExtractResourceName(configObj)
+	groupResource, err := convert.ExtractGroupResource(configObj)
 	if err != nil {
 		return err
 	}
 
-	info, ok := r.resourceInfo[resourceName]
+	info, ok := r.resourceInfo[groupResource]
 	if !ok {
-		return fmt.Errorf("resource not discovered: %s", resourceName)
+		return fmt.Errorf("resource not discovered: %s", groupResource)
 	}
 
 	// Convert to unstructured to be able to apply
@@ -239,7 +239,7 @@ func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKu
 		return fmt.Errorf("failed to create unstructured object: %w", err)
 	}
 
-	gvr := schema.GroupVersionResource{Group: info.Group, Version: info.Version, Resource: resourceName}
+	gvr := groupResource.WithVersion(info.Version)
 
 	applied, err := r.client.ApplyResource(ctx, gvr, desired.GetNamespace(), desired, convert.FieldManager)
 	if err != nil {
@@ -257,17 +257,17 @@ func (r *Reconciler) applyObject(ctx context.Context, configObj *pb.ConfiguredKu
 
 // deleteObject deletes an object from Kubernetes by deriving the GVR from the configured object.
 func (r *Reconciler) deleteObject(ctx context.Context, obj *pb.ConfiguredKubernetesObjectData) error {
-	resourceName, err := convert.ExtractResourceName(obj)
+	groupResource, err := convert.ExtractGroupResource(obj)
 	if err != nil {
 		return err
 	}
 
-	info, ok := r.resourceInfo[resourceName]
+	info, ok := r.resourceInfo[groupResource]
 	if !ok {
-		return fmt.Errorf("resource not discovered: %s", resourceName)
+		return fmt.Errorf("resource not discovered: %s", groupResource)
 	}
 
-	gvr := schema.GroupVersionResource{Group: info.Group, Version: info.Version, Resource: resourceName}
+	gvr := groupResource.WithVersion(info.Version)
 	namespace := obj.GetNamespace()
 
 	if err := r.client.DeleteResource(ctx, gvr, namespace, obj.GetName()); err != nil {

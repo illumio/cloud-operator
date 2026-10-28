@@ -20,7 +20,7 @@ import (
 	clientgotesting "k8s.io/client-go/testing"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/convert"
+	"github.com/illumio/cloud-operator/internal/convert/cilium"
 )
 
 // mockResourceStreamSender is a mock implementation of ResourceStreamSender for testing.
@@ -413,7 +413,7 @@ func TestProcessMutation_NilObject(t *testing.T) {
 func TestProcessMutation_CiliumPolicy(t *testing.T) {
 	logger := zap.NewNop()
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return convert.ConvertUnstructuredToCiliumResource(obj)
+		return cilium.ConvertUnstructuredToCiliumResource(obj)
 	}
 	rm := &Watcher{
 		resourceName:    "ciliumnetworkpolicies",
@@ -922,6 +922,11 @@ func TestFetchResources_NotFound(t *testing.T) {
 	if !apierrors.IsNotFound(err) {
 		t.Errorf("expected NotFound error, got %v", err)
 	}
+
+	// The message names the API group, since plural names are not unique across groups.
+	if !strings.Contains(err.Error(), "resource ciliumnetworkpolicies.cilium.io unavailable") {
+		t.Errorf("expected error to name the group, got %v", err)
+	}
 }
 
 func TestDynamicListResources_CoreResources(t *testing.T) {
@@ -976,7 +981,7 @@ func TestDynamicListResources_CiliumResources(t *testing.T) {
 
 	sender := &mockResourceStreamSender{}
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return convert.ConvertUnstructuredToCiliumResource(obj)
+		return cilium.ConvertUnstructuredToCiliumResource(obj)
 	}
 
 	rm := &Watcher{
@@ -1269,7 +1274,7 @@ func TestDynamicListResources_MultipleItems(t *testing.T) {
 func TestProcessMutation_CiliumClusterwidePolicy(t *testing.T) {
 	logger := zap.NewNop()
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-		return convert.ConvertUnstructuredToCiliumResource(obj)
+		return cilium.ConvertUnstructuredToCiliumResource(obj)
 	}
 	rm := &Watcher{
 		resourceName:    "ciliumclusterwidenetworkpolicies",
@@ -1358,3 +1363,103 @@ func (f *fakeRuntimeObjectWithGVK) SetGroupVersionKind(gvk schema.GroupVersionKi
 	f.gvk = gvk
 }
 func (f *fakeRuntimeObjectWithGVK) GroupVersionKind() schema.GroupVersionKind { return f.gvk }
+
+// newWatchTestWatcher returns a TargetGroupBinding watcher whose watch calls are
+// answered by watchResults, one per call, in order.
+func newWatchTestWatcher(t *testing.T, watchResults ...func() (watch.Interface, error)) *Watcher {
+	t.Helper()
+
+	dyn := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+
+	calls := 0
+
+	dyn.PrependWatchReactor("*", func(clientgotesting.Action) (bool, watch.Interface, error) {
+		if calls >= len(watchResults) {
+			t.Fatalf("unexpected watch call %d", calls+1)
+		}
+
+		result := watchResults[calls]
+		calls++
+
+		w, err := result()
+
+		return true, w, err
+	})
+
+	return &Watcher{
+		resourceName:    "targetgroupbindings",
+		apiGroup:        "elbv2.k8s.aws",
+		apiVersion:      "v1beta1",
+		dynamicClient:   dyn,
+		logger:          zap.NewNop(),
+		resourcesClient: &mockResourceStreamSender{},
+		converter:       stubConverter,
+		limiter:         rate.NewLimiter(rate.Inf, 1),
+	}
+}
+
+func failWatch(err error) func() (watch.Interface, error) {
+	return func() (watch.Interface, error) { return nil, err }
+}
+
+var targetGroupBindings = schema.GroupResource{Group: "elbv2.k8s.aws", Resource: "targetgroupbindings"}
+
+// A resource that becomes unavailable while the stream runs, because its CRD
+// was deleted or its RBAC removed, stops only its own watcher. The stream and
+// every other watcher keep running, as they do when a resource is unavailable
+// at list time.
+func TestWatchK8sResources_UnavailableResourceStopsOnlyItsWatcher(t *testing.T) {
+	tests := map[string]func() (watch.Interface, error){
+		"NotFound when the watch opens":  failWatch(apierrors.NewNotFound(targetGroupBindings, "")),
+		"Forbidden when the watch opens": failWatch(apierrors.NewForbidden(targetGroupBindings, "", errors.New("no RBAC"))),
+	}
+
+	for name, watchResult := range tests {
+		t.Run(name, func(t *testing.T) {
+			streamCtx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			newWatchTestWatcher(t, watchResult).WatchK8sResources(streamCtx, cancel, "1", make(chan *pb.KubernetesResourceMutation))
+
+			if streamCtx.Err() != nil {
+				t.Fatalf("stream context canceled for an unavailable resource: %v", streamCtx.Err())
+			}
+		})
+	}
+}
+
+// The CRD is deleted while it is being watched: the open watch reports an error
+// event, and re-opening the watch returns NotFound. Only this watcher stops.
+func TestWatchK8sResources_CRDDeletedDuringWatch(t *testing.T) {
+	openWatch := watch.NewFake()
+
+	w := newWatchTestWatcher(t,
+		func() (watch.Interface, error) { return openWatch, nil },
+		failWatch(apierrors.NewNotFound(targetGroupBindings, "")),
+	)
+
+	go openWatch.Error(&apierrors.NewNotFound(targetGroupBindings, "").ErrStatus)
+
+	streamCtx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	w.WatchK8sResources(streamCtx, cancel, "1", make(chan *pb.KubernetesResourceMutation))
+
+	if streamCtx.Err() != nil {
+		t.Fatalf("stream context canceled after the CRD was deleted: %v", streamCtx.Err())
+	}
+}
+
+// Any other watch failure still cancels the stream, so it reconnects and lists
+// every resource again.
+func TestWatchK8sResources_OtherErrorCancelsStream(t *testing.T) {
+	streamCtx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	w := newWatchTestWatcher(t, failWatch(apierrors.NewInternalError(errors.New("etcd unavailable"))))
+	w.WatchK8sResources(streamCtx, cancel, "1", make(chan *pb.KubernetesResourceMutation))
+
+	if streamCtx.Err() == nil {
+		t.Fatal("expected the stream context to be canceled")
+	}
+}

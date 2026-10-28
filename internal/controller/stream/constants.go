@@ -41,4 +41,11 @@ const (
 	// ResourceProcessingTimeout is the maximum time allowed for resource processing
 	// before the server is considered unhealthy.
 	ResourceProcessingTimeout = 5 * time.Minute
+
+	// FlowInactivityKeepaliveMultiplier allows several keepalive intervals for
+	// background traffic to produce flows before declaring the pipeline stalled.
+	FlowInactivityKeepaliveMultiplier = 3
+
+	// FlowInactivityMargin allows additional time for collection and delivery.
+	FlowInactivityMargin = time.Minute
 )

@@ -97,11 +97,20 @@ func (s *ConfigClientTestSuite) TearDownTest() {
 
 // runClient starts the client and reads the ResourceChanged channel asynchronously.
 // It returns a channel that yields the execution error when the client finally stops.
+//
+// The reader stops when the test ends. It reads the channel of this test's cache,
+// captured once: SetupTest replaces s.cache for the next test, and a reader that
+// re-read s.cache could take the next test's notifications.
 func (s *ConfigClientTestSuite) runClient(ctx context.Context) <-chan error {
+	ctx, cancel := context.WithCancel(ctx)
+	s.T().Cleanup(cancel)
+
+	client := s.client
+	changes := s.cache.ResourceChanged()
 	errCh := make(chan error, 1)
 
 	go func() {
-		errCh <- s.client.Run(ctx)
+		errCh <- client.Run(ctx)
 	}()
 
 	go func() {
@@ -109,7 +118,7 @@ func (s *ConfigClientTestSuite) runClient(ctx context.Context) <-chan error {
 			select {
 			case <-ctx.Done():
 				return
-			case _, ok := <-s.cache.ResourceChanged():
+			case _, ok := <-changes:
 				if !ok {
 					return
 				}
