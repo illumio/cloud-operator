@@ -1,8 +1,7 @@
 # Variables
 APP_NAME := operator
-DOCKER_USERNAME := pki619
+DOCKER_USERNAME := aaronnguyenillumio
 DOCKER_IMAGE := $(DOCKER_USERNAME)/$(APP_NAME)
-IMAGE_TAG ?= calicoenterprise
 LOCAL_REGISTRY := localhost:5000
 LOCAL_IMAGE := $(LOCAL_REGISTRY)/$(APP_NAME)
 COMMIT := $(shell git rev-parse --short HEAD)
@@ -15,7 +14,6 @@ CILIUM_VERSION := $(shell go list -m -f '{{.Version}}' github.com/cilium/cilium)
 ENVTEST_K8S_VERSION := 1.36.0
 CRD_DIR := internal/controller/reconciler/testdata/crds
 CRD_BASE_URL := https://raw.githubusercontent.com/cilium/cilium/$(CILIUM_VERSION)/pkg/k8s/apis/cilium.io/client/crds/v2
-export DOCKER_HOST ?= unix://$(HOME)/.docker/run/docker.sock
 
 # Default target
 .PHONY: all
@@ -73,14 +71,14 @@ clean:
 # Build Docker image
 .PHONY: docker-build
 docker-build:
-	@echo "Building Docker image $(DOCKER_IMAGE):$(IMAGE_TAG)..."
-	docker buildx build --platform linux/amd64,linux/arm64 --load -t $(DOCKER_IMAGE):$(IMAGE_TAG) .
+	@echo "Building Docker image..."
+	docker buildx build --platform linux/amd64,linux/arm64 --load -t $(DOCKER_IMAGE):latest .
 
 # Push Docker image to Docker Hub
 .PHONY: docker-push
 docker-push:
-	@echo "Pushing Docker image $(DOCKER_IMAGE):$(IMAGE_TAG)..."
-	docker push $(DOCKER_IMAGE):$(IMAGE_TAG)
+	@echo "Pushing Docker image to Docker Hub..."
+	docker push $(DOCKER_IMAGE):latest
 
 # Deploy target (build and push Docker image to Docker Hub)
 .PHONY: deploy

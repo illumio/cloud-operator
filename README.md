@@ -1,31 +1,6 @@
 # Cloud-operator
 The Illumio Cloud-operator is deployed as a Deployment on a desired cluster to stream information about the cluster's resources and network traffic to CloudSecure, and to enforce Illumio network policies by managing corresponding k8s NetworkPolicies in the cluster.
 
-## Architecture
-
-```mermaid
-flowchart LR
-    subgraph cluster["Kubernetes Cluster"]
-        direction TB
-        op["cloud-operator<br/>(Deployment)"]
-        cni["CNI / Flow Source<br/>(Cilium·Hubble, OVN-K,<br/>Calico Enterprise, AWS VPC CNI,<br/>EKS Auto Mode)"]
-        np["k8s NetworkPolicies"]
-        api["Kube API Server"]
-
-        api -->|resources, logs| op
-        cni -->|network flows| op
-        op -->|reconcile / enforce| np
-    end
-
-    op <-->|"gRPC streams (mTLS)"| cs["Illumio CloudSecure"]
-    cs -->|policies| op
-
-    classDef ext fill:#1f6feb,stroke:#0b3d91,color:#fff;
-    class cs ext;
-```
-
-The operator opens long-lived gRPC streams to CloudSecure to push **resources**, **logs**, and **network flows**, and receives **policy configuration** back to reconcile into native Kubernetes `NetworkPolicies`.
-
 ## Getting Started
 
 ### Deployment Instructions
