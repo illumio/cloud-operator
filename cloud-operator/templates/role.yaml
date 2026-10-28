@@ -10,8 +10,8 @@ metadata:
 rules:
 - apiGroups: [""] # "" indicates the core API group
   resources: ["secrets"]
-  # resourceNames: ["onboardingcreds", "clustercreds"]
-  verbs: ["get", "list", "patch", "update", "watch"]
+  resourceNames: ["onboardingcreds", "clustercreds"]
+  verbs: ["get", "patch", "update"]
 ---
 # Role for reading the hubble-relay-client-certs secret in the kube-system namespace
 apiVersion: rbac.authorization.k8s.io/v1
