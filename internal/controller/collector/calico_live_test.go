@@ -104,15 +104,11 @@ func TestRunSyslogCollectorEndToEnd(t *testing.T) {
 	assert.Equal(t, pb.IPVersion_IP_VERSION_IPV4, first.GetLayer3().GetIpVersion())
 	assert.Equal(t, uint32(48710), first.GetLayer4().GetTcp().GetSourcePort())
 	assert.Equal(t, uint32(8080), first.GetLayer4().GetTcp().GetDestinationPort())
-	assert.Equal(t, pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS, first.GetTrafficDirection())
-	assert.Equal(t, "default.allow-web", first.GetEgressAllowedBy()[0].GetName())
 
 	second, ok := sink.flows[1].(*pb.FiveTupleFlow)
 	require.True(t, ok)
 	assert.Equal(t, uint32(33001), second.GetLayer4().GetUdp().GetSourcePort())
 	assert.Equal(t, uint32(53), second.GetLayer4().GetUdp().GetDestinationPort())
-	assert.Equal(t, pb.Verdict_VERDICT_DROPPED, second.GetVerdict())
-	assert.Equal(t, "security.default-deny", second.GetIngressDeniedBy()[0].GetName())
 
 	assert.Equal(t, 2, sink.received)
 }

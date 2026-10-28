@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
@@ -131,110 +132,40 @@ func TestParseLogCollectorFlow(t *testing.T) {
 	}
 }
 
-func TestParseCalicoPolicy(t *testing.T) {
-	tests := map[string]struct {
-		value    string
-		policy   *pb.Policy
-		action   string
-		parsedOK bool
-	}{
-		"namespaced Calico NetworkPolicy": {
-			value:    "0|calico-system|np:kube-system/calico-system.cluster-dns|allow|0",
-			policy:   &pb.Policy{Name: "calico-system.cluster-dns", Namespace: "kube-system", Kind: "NetworkPolicy"},
-			action:   "allow",
-			parsedOK: true,
-		},
-		"GlobalNetworkPolicy has no namespace": {
-			value:    "1|security|gnp:security.block-egress|deny|3",
-			policy:   &pb.Policy{Name: "security.block-egress", Kind: "GlobalNetworkPolicy"},
-			action:   "deny",
-			parsedOK: true,
-		},
-		"Kubernetes NetworkPolicy": {
-			value:    "2|default|knp:shop/knp.default.allow-web|allow|0",
-			policy:   &pb.Policy{Name: "knp.default.allow-web", Namespace: "shop", Kind: "KubernetesNetworkPolicy"},
-			action:   "allow",
-			parsedOK: true,
-		},
-		"unknown kind prefix is kept as is": {
-			value:    "0|default|xyz:shop/policy-a|allow|0",
-			policy:   &pb.Policy{Name: "policy-a", Namespace: "shop", Kind: "xyz"},
-			action:   "allow",
-			parsedOK: true,
-		},
-		"policy without a kind prefix": {
-			value:    "0|default|shop/default.policy-a|deny|1",
-			policy:   &pb.Policy{Name: "default.policy-a", Namespace: "shop"},
-			action:   "deny",
-			parsedOK: true,
-		},
-		"too few fields is rejected": {
-			value: "0|default|np:shop/policy-a",
-		},
-		"empty name is rejected": {
-			value: "0|default|np:shop/|allow|0",
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			policy, action, ok := parseCalicoPolicy(tt.value)
-			require.Equal(t, tt.parsedOK, ok)
-
-			if !tt.parsedOK {
-				return
-			}
-
-			assert.Equal(t, tt.action, action)
-			assert.Equal(t, tt.policy.GetName(), policy.GetName())
-			assert.Equal(t, tt.policy.GetNamespace(), policy.GetNamespace())
-			assert.Equal(t, tt.policy.GetKind(), policy.GetKind())
-		})
-	}
-}
-
 func TestParseCalicoEnterpriseFlow(t *testing.T) {
-	allowDNS := "0|calico-system|np:kube-system/calico-system.cluster-dns|allow|0"
-	denyAll := "1|security|gnp:security.default-deny|deny|0"
+	policies := `"policies":{"enforced_policies":["0|calico-system|np:kube-system/calico-system.cluster-dns|allow|0"]}`
+
+	udpFlow := func(sourceIP, destinationIP string, ipVersion pb.IPVersion) *pb.FiveTupleFlow {
+		return &pb.FiveTupleFlow{
+			Layer3: &pb.IP{Source: sourceIP, Destination: destinationIP, IpVersion: ipVersion},
+			Layer4: &pb.Layer4{Protocol: &pb.Layer4_Udp{Udp: &pb.UDP{SourcePort: 59106, DestinationPort: 53}}},
+			Ts:     &pb.FiveTupleFlow_Timestamp{Timestamp: timestamppb.New(time.Unix(1793048988, 0))},
+		}
+	}
 
 	tests := map[string]struct {
 		line          string
-		direction     pb.TrafficDirection
-		verdict       pb.Verdict
-		egressAllow   []string
-		ingressAllow  []string
-		egressDeny    []string
-		ingressDeny   []string
+		expected      *pb.FiveTupleFlow
 		expectedError error
 	}{
-		"source side allowed": {
-			line:        logCollectorLine(`{"start_time":1793048988,"source_ip":"10.244.163.79","source_port":59106,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp","action":"allow","reporter":"src","policies":{"enforced_policies":["` + allowDNS + `"],"pending_policies":["` + denyAll + `"]}}`),
-			direction:   pb.TrafficDirection_TRAFFIC_DIRECTION_EGRESS,
-			verdict:     pb.Verdict_VERDICT_FORWARDED,
-			egressAllow: []string{"calico-system.cluster-dns"},
+		"source side record sends only the five-tuple": {
+			line:     logCollectorLine(`{"start_time":1793048988,"source_ip":"10.244.163.79","source_port":59106,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp","action":"allow","reporter":"src",` + policies + `}`),
+			expected: udpFlow("10.244.163.79", "10.244.163.65", pb.IPVersion_IP_VERSION_IPV4),
 		},
-		"destination side denied": {
-			line:        logCollectorLine(`{"start_time":1793048988,"source_ip":"10.244.163.79","source_port":59106,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp","action":"deny","reporter":"dst","policies":{"enforced_policies":["` + denyAll + `"]}}`),
-			direction:   pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS,
-			verdict:     pb.Verdict_VERDICT_DROPPED,
-			ingressDeny: []string{"security.default-deny"},
+		"denied destination side record sends only the five-tuple": {
+			line:     logCollectorLine(`{"start_time":1793048988,"source_ip":"10.244.163.79","source_port":59106,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp","action":"deny","reporter":"dst",` + policies + `}`),
+			expected: udpFlow("10.244.163.79", "10.244.163.65", pb.IPVersion_IP_VERSION_IPV4),
 		},
-		"destination side with allow and deny policies": {
-			line:         logCollectorLine(`{"source_ip":"10.244.163.79","source_port":1,"dest_ip":"10.244.163.65","dest_port":2,"proto":"tcp","action":"allow","reporter":"dst","policies":{"enforced_policies":["` + denyAll + `","` + allowDNS + `","malformed"]}}`),
-			direction:    pb.TrafficDirection_TRAFFIC_DIRECTION_INGRESS,
-			verdict:      pb.Verdict_VERDICT_FORWARDED,
-			ingressAllow: []string{"calico-system.cluster-dns"},
-			ingressDeny:  []string{"security.default-deny"},
-		},
-		"unknown reporter and action are unspecified and carry no policies": {
-			line: logCollectorLine(`{"source_ip":"10.244.163.79","source_port":1,"dest_ip":"10.244.163.65","dest_port":2,"proto":"tcp","action":"maybe","reporter":"other","policies":{"enforced_policies":["` + allowDNS + `"]}}`),
+		"IPv6 record": {
+			line:     logCollectorLine(`{"start_time":1793048988,"source_ip":"fd00::1","source_port":59106,"dest_ip":"fd00::2","dest_port":53,"proto":"udp"}`),
+			expected: udpFlow("fd00::1", "fd00::2", pb.IPVersion_IP_VERSION_IPV6),
 		},
 		"other syslog record is not a LogCollector record": {
 			line:          `<14>2026-06-29T22:45:59Z minikube calico-felix[51097]: INFO <nil> <nil>:  action="allow" dstIP="10.244.120.74" dstPort="8080" proto="6" srcIP="10.244.120.78" srcPort="48710" updateType=report`,
 			expectedError: ErrCalicoNotLogCollectorRecord,
 		},
 		"incomplete record is rejected": {
-			line:          logCollectorLine(`{"source_ip":"10.244.163.79","source_port":null,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp","action":"allow","reporter":"src"}`),
+			line:          logCollectorLine(`{"source_ip":"10.244.163.79","source_port":null,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`),
 			expectedError: ErrCalicoIncompleteFlow,
 		},
 	}
@@ -249,15 +180,7 @@ func TestParseCalicoEnterpriseFlow(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, "10.244.163.79", flow.GetLayer3().GetSource())
-			assert.Equal(t, "10.244.163.65", flow.GetLayer3().GetDestination())
-			assert.NotNil(t, flow.GetLayer4())
-			assert.Equal(t, tt.direction, flow.GetTrafficDirection())
-			assert.Equal(t, tt.verdict, flow.GetVerdict())
-			assert.Equal(t, tt.egressAllow, policyNames(flow.GetEgressAllowedBy()))
-			assert.Equal(t, tt.ingressAllow, policyNames(flow.GetIngressAllowedBy()))
-			assert.Equal(t, tt.egressDeny, policyNames(flow.GetEgressDeniedBy()))
-			assert.Equal(t, tt.ingressDeny, policyNames(flow.GetIngressDeniedBy()))
+			assert.True(t, proto.Equal(tt.expected, flow), "got %v", flow)
 		})
 	}
 }
@@ -302,19 +225,6 @@ func TestCalicoProcessLineCachesFlowByFormat(t *testing.T) {
 	}
 }
 
-func policyNames(policies []*pb.Policy) []string {
-	if len(policies) == 0 {
-		return nil
-	}
-
-	names := make([]string, 0, len(policies))
-	for _, policy := range policies {
-		names = append(names, policy.GetName())
-	}
-
-	return names
-}
-
 // TestParseLogCollectorFlowCapturedRecords runs real records captured from a
 // Calico Enterprise LogCollector syslog store through the parser.
 func TestParseLogCollectorFlowCapturedRecords(t *testing.T) {
@@ -338,12 +248,10 @@ func TestParseLogCollectorFlowCapturedRecords(t *testing.T) {
 		assert.Contains(t, []string{TCP, UDP}, flow.Protocol, "record %d", total)
 		assert.NotNil(t, flow.StartTimestamp, "record %d", total)
 
-		// Every captured record was reported and allowed by an enforced policy.
-		enterpriseFlow, err := ParseCalicoEnterpriseFlow(scanner.Text())
+		fiveTupleFlow, err := ParseCalicoEnterpriseFlow(scanner.Text())
 		require.NoError(t, err, "record %d", total)
-		assert.Equal(t, pb.Verdict_VERDICT_FORWARDED, enterpriseFlow.GetVerdict(), "record %d", total)
-		assert.NotEqual(t, pb.TrafficDirection_TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED, enterpriseFlow.GetTrafficDirection(), "record %d", total)
-		assert.NotEmpty(t, append(enterpriseFlow.GetEgressAllowedBy(), enterpriseFlow.GetIngressAllowedBy()...), "record %d", total)
+		assert.Equal(t, flow.SourceIP, fiveTupleFlow.GetLayer3().GetSource(), "record %d", total)
+		assert.Equal(t, flow.DestinationIP, fiveTupleFlow.GetLayer3().GetDestination(), "record %d", total)
 	}
 
 	require.NoError(t, scanner.Err())
