@@ -5,9 +5,13 @@ package collector
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -60,4 +64,48 @@ func TestIsCalicoEnterpriseDeployed(t *testing.T) {
 			assert.Equal(t, tt.expectedResult, result)
 		})
 	}
+}
+
+func TestNextAcceptDelay(t *testing.T) {
+	delays := make([]time.Duration, 0, 10)
+
+	var delay time.Duration
+
+	for range 10 {
+		delay = nextAcceptDelay(delay)
+		delays = append(delays, delay)
+	}
+
+	assert.Equal(t, []time.Duration{
+		5 * time.Millisecond, 10 * time.Millisecond, 20 * time.Millisecond, 40 * time.Millisecond,
+		80 * time.Millisecond, 160 * time.Millisecond, 320 * time.Millisecond, 640 * time.Millisecond,
+		time.Second, time.Second,
+	}, delays)
+}
+
+func TestRunSyslogCollectorShutdownLogsNoError(t *testing.T) {
+	core, logs := observer.New(zap.DebugLevel)
+	collector := NewCalicoCollector(zap.New(core), "0", CalicoSyslogTLS{}, newRecordingSink(), nil)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+
+	go func() {
+		done <- collector.RunSyslogCollector(ctx)
+	}()
+
+	require.Eventually(t, func() bool {
+		return logs.FilterMessage("Calico Enterprise syslog collector listening").Len() > 0
+	}, time.Second, 5*time.Millisecond)
+
+	cancel()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("collector did not stop after context cancellation")
+	}
+
+	assert.Empty(t, logs.FilterLevelExact(zapcore.ErrorLevel).All(), "closing an already-closed listener must not log an error")
 }

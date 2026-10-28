@@ -31,6 +31,12 @@ var (
 // allow a generous max-token size to avoid bufio.Scanner truncating a record.
 const calicoSyslogMaxLineLength = 1024 * 1024
 
+// Bounds of the backoff between retries of a failed Accept, as in net/http.
+const (
+	calicoMinAcceptDelay = 5 * time.Millisecond
+	calicoMaxAcceptDelay = time.Second
+)
+
 // CalicoFlow holds the five-tuple of a Calico Enterprise LogCollector flow
 // record.
 type CalicoFlow struct {
@@ -151,7 +157,8 @@ func (c *CalicoCollector) RunSyslogCollector(ctx context.Context) error {
 	}
 
 	defer func() {
-		if err := listener.Close(); err != nil {
+		// The listener is already closed if the context was canceled.
+		if err := listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 			logger.Error("Failed to close listener on syslog port", zap.Error(err))
 		}
 	}()
@@ -167,23 +174,48 @@ func (c *CalicoCollector) RunSyslogCollector(ctx context.Context) error {
 
 	logger.Info("Calico Enterprise syslog collector listening")
 
+	var acceptDelay time.Duration
+
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
+			if ctx.Err() != nil {
+				logger.Info("Context canceled in Calico Enterprise syslog collector")
+
+				return ctx.Err()
+			}
+
+			// Back off before retrying so that a persistent error, such as running
+			// out of file descriptors, does not spin the CPU and flood the log.
+			acceptDelay = nextAcceptDelay(acceptDelay)
+
+			logger.Error("Failed to accept syslog connection", zap.Error(err), zap.Duration("retry_in", acceptDelay))
+
 			select {
 			case <-ctx.Done():
 				logger.Info("Context canceled in Calico Enterprise syslog collector")
 
 				return ctx.Err()
-			default:
-				logger.Error("Failed to accept syslog connection", zap.Error(err))
-
-				continue
+			case <-time.After(acceptDelay):
 			}
+
+			continue
 		}
+
+		acceptDelay = 0
 
 		go c.handleConn(ctx, logger, conn)
 	}
+}
+
+// nextAcceptDelay returns the delay before retrying a failed Accept: it starts
+// at calicoMinAcceptDelay and doubles up to calicoMaxAcceptDelay.
+func nextAcceptDelay(previous time.Duration) time.Duration {
+	if previous == 0 {
+		return calicoMinAcceptDelay
+	}
+
+	return min(previous*2, calicoMaxAcceptDelay)
 }
 
 // handleConn reads newline-delimited syslog records from a single LogCollector
