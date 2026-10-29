@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/illumio/cloud-operator/internal/controller/collector"
+	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
 // flowCollector is the interface for flow collectors returned by this factory.
@@ -20,7 +21,7 @@ type flowCollector interface {
 type Factory struct {
 	Logger     *zap.Logger
 	SyslogPort string
-	SyslogTLS  collector.CalicoSyslogTLS
+	SyslogTLS  tls.ServerSettings
 	FlowSink   collector.FlowSink
 	// RecordDropped is called for each syslog record that is not turned into a flow.
 	RecordDropped func()

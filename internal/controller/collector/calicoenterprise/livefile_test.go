@@ -2,7 +2,7 @@
 
 //go:build livecalico
 
-package collector
+package calicoenterprise
 
 import (
 	"bufio"
@@ -12,14 +12,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestParseCalicoEnterpriseFlowAgainstLiveCapture runs every record from a live LogCollector
-// capture through ParseCalicoEnterpriseFlow to confirm it handles real production
+// TestParseFlowAgainstLiveCapture runs every record from a live LogCollector
+// capture through ParseFlow to confirm it handles real production
 // output (full decoration metadata, mixed protocols). Gated behind the
 // `livecalico` build tag and a capture file path so it never runs in CI.
 //
-//	go test -tags livecalico -run TestParseCalicoEnterpriseFlowAgainstLiveCapture \
+//	go test -tags livecalico -run TestParseFlowAgainstLiveCapture \
 //	  ./internal/controller/collector/ -args /tmp/calico_live_lines.txt
-func TestParseCalicoEnterpriseFlowAgainstLiveCapture(t *testing.T) {
+func TestParseFlowAgainstLiveCapture(t *testing.T) {
 	path := os.Getenv("CALICO_CAPTURE_FILE")
 	if path == "" {
 		path = "/tmp/calico_live_lines.txt"
@@ -42,7 +42,7 @@ func TestParseCalicoEnterpriseFlowAgainstLiveCapture(t *testing.T) {
 
 		total++
 
-		flow, err := ParseCalicoEnterpriseFlow(line)
+		flow, err := ParseFlow(line)
 		if err != nil {
 			t.Logf("line %d failed: %v\n  %s", total, err, line)
 

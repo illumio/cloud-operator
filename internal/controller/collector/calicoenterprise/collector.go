@@ -1,11 +1,11 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package collector
+package calicoenterprise
 
 import (
 	"bufio"
 	"context"
-	"crypto/tls"
+	cryptotls "crypto/tls"
 	"errors"
 	"net"
 	"time"
@@ -16,14 +16,17 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+
+	"github.com/illumio/cloud-operator/internal/controller/collector"
+	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
 // Errors for Calico syslog flow parsing.
 var (
-	ErrCalicoIncompleteFlow = errors.New("ignoring incomplete calico flow, missing five-tuple field")
-	ErrCalicoInvalidPort    = errors.New("ignoring calico flow due to unparseable port")
-	ErrCalicoUnknownProto   = errors.New("ignoring calico flow due to unknown protocol number")
-	ErrCalicoInvalidIP      = errors.New("ignoring calico flow due to unparseable IP address")
+	ErrIncompleteFlow = errors.New("ignoring incomplete calico flow, missing five-tuple field")
+	ErrInvalidPort    = errors.New("ignoring calico flow due to unparseable port")
+	ErrUnknownProto   = errors.New("ignoring calico flow due to unknown protocol number")
+	ErrInvalidIP      = errors.New("ignoring calico flow due to unparseable IP address")
 )
 
 // calicoSyslogMaxLineLength bounds a single syslog record. The LogCollector
@@ -37,9 +40,18 @@ const (
 	calicoMaxAcceptDelay = time.Second
 )
 
-// CalicoFlow holds the five-tuple of a Calico Enterprise LogCollector flow
+const (
+	// defaultFirstByteTimeout bounds how long a new connection may stay silent
+	// before the collector gives up on it.
+	defaultFirstByteTimeout = 10 * time.Second
+
+	// defaultHandshakeTimeout bounds the TLS handshake.
+	defaultHandshakeTimeout = 10 * time.Second
+)
+
+// Flow holds the five-tuple of a Calico Enterprise LogCollector flow
 // record.
-type CalicoFlow struct {
+type Flow struct {
 	SourceIP        string
 	DestinationIP   string
 	SourcePort      uint16
@@ -49,35 +61,35 @@ type CalicoFlow struct {
 	StartTimestamp  *timestamppb.Timestamp
 }
 
-// CalicoCollector collects flows from Calico Enterprise over syslog. Calico
+// Collector collects flows from Calico Enterprise over syslog. Calico
 // Enterprise's LogCollector connects over TCP, optionally with TLS,
 // and sends records using RFC 6587 section 3.4.1 non-transparent
 // (newline-terminated) framing.
-type CalicoCollector struct {
+type Collector struct {
 	logger           *zap.Logger
 	syslogPort       string
-	tlsSettings      CalicoSyslogTLS
-	tlsConfig        *tls.Config
+	tlsSettings      tls.ServerSettings
+	tlsConfig        *cryptotls.Config
 	firstByteTimeout time.Duration
 	handshakeTimeout time.Duration
-	flowSink         FlowSink
+	flowSink         collector.FlowSink
 	recordDropped    func()
 }
 
-// NewCalicoCollector creates a new Calico Enterprise syslog flow collector.
+// NewCollector creates a new Calico Enterprise syslog flow collector.
 // recordDropped, if not nil, is called for each record that is not turned into
 // a flow.
-func NewCalicoCollector(logger *zap.Logger, syslogPort string, tlsSettings CalicoSyslogTLS, flowSink FlowSink, recordDropped func()) *CalicoCollector {
+func NewCollector(logger *zap.Logger, syslogPort string, tlsSettings tls.ServerSettings, flowSink collector.FlowSink, recordDropped func()) *Collector {
 	if recordDropped == nil {
 		recordDropped = func() {}
 	}
 
-	return &CalicoCollector{
+	return &Collector{
 		logger:           logger,
 		syslogPort:       syslogPort,
 		tlsSettings:      tlsSettings,
-		firstByteTimeout: calicoFirstByteTimeout,
-		handshakeTimeout: calicoHandshakeTimeout,
+		firstByteTimeout: defaultFirstByteTimeout,
+		handshakeTimeout: defaultHandshakeTimeout,
 		flowSink:         flowSink,
 		recordDropped:    recordDropped,
 	}
@@ -97,11 +109,11 @@ const (
 	calicoEnterpriseVariant = "TigeraSecureEnterprise"
 )
 
-// IsCalicoEnterpriseDeployed reports whether the cluster runs Calico Enterprise,
+// IsDeployed reports whether the cluster runs Calico Enterprise,
 // based on the variant of the Tigera operator's default Installation. The
 // open-source Calico distribution uses the same operator and namespaces but
 // cannot forward flow logs, so the namespaces alone are not enough.
-func IsCalicoEnterpriseDeployed(ctx context.Context, logger *zap.Logger, dynamicClient dynamic.Interface) bool {
+func IsDeployed(ctx context.Context, logger *zap.Logger, dynamicClient dynamic.Interface) bool {
 	logger.Debug("Checking for Calico Enterprise deployment")
 
 	installation, err := dynamicClient.Resource(calicoInstallationGVR).Get(ctx, calicoInstallationName, metav1.GetOptions{})
@@ -126,13 +138,13 @@ func IsCalicoEnterpriseDeployed(ctx context.Context, logger *zap.Logger, dynamic
 // RunSyslogCollector runs the TCP listener for Calico Enterprise syslog flows.
 // It accepts connections from the LogCollector and processes one flow per
 // newline-delimited record. It blocks until the context is canceled.
-func (c *CalicoCollector) RunSyslogCollector(ctx context.Context) error {
+func (c *Collector) RunSyslogCollector(ctx context.Context) error {
 	logger := c.logger.With(
 		zap.String("address", c.syslogPort),
 	)
 	logger.Info("Starting Calico Enterprise syslog collector")
 
-	tlsConfig, err := loadCalicoSyslogTLSConfig(c.tlsSettings)
+	tlsConfig, err := tls.LoadServerConfig(c.tlsSettings)
 	if err != nil {
 		logger.Error("Failed to configure syslog TLS", zap.Error(err))
 
@@ -218,9 +230,21 @@ func nextAcceptDelay(previous time.Duration) time.Duration {
 	return min(previous*2, calicoMaxAcceptDelay)
 }
 
+// prepareConn returns a connection that yields plain syslog records: the TLS
+// connection after a successful handshake if the LogCollector started one, or
+// the plain connection.
+func (c *Collector) prepareConn(ctx context.Context, conn net.Conn) (net.Conn, error) {
+	return tls.PrepareServerConn(ctx, conn, tls.ServerConnOptions{
+		Config:           c.tlsConfig,
+		Required:         c.tlsSettings.Required,
+		FirstByteTimeout: c.firstByteTimeout,
+		HandshakeTimeout: c.handshakeTimeout,
+	})
+}
+
 // handleConn reads newline-delimited syslog records from a single LogCollector
 // connection and caches each parsed flow.
-func (c *CalicoCollector) handleConn(ctx context.Context, logger *zap.Logger, conn net.Conn) {
+func (c *Collector) handleConn(ctx context.Context, logger *zap.Logger, conn net.Conn) {
 	logger = logger.With(zap.String("remote_addr", conn.RemoteAddr().String()))
 	logger.Debug("Accepted syslog connection")
 
@@ -267,7 +291,7 @@ func (c *CalicoCollector) handleConn(ctx context.Context, logger *zap.Logger, co
 
 		c.recordDropped()
 
-		if errors.Is(err, ErrCalicoAggregatedFlow) && !warnedAggregated {
+		if errors.Is(err, ErrAggregatedFlow) && !warnedAggregated {
 			// Without this setting every record is dropped, so tell the user once
 			// per connection rather than only at debug level.
 			logger.Warn("Calico Enterprise is sending aggregated flow logs without IP addresses or source ports, so they are dropped; " +
@@ -289,8 +313,8 @@ func (c *CalicoCollector) handleConn(ctx context.Context, logger *zap.Logger, co
 }
 
 // processLine parses a single syslog record and caches the resulting flow.
-func (c *CalicoCollector) processLine(ctx context.Context, logger *zap.Logger, line string) error {
-	flow, err := ParseCalicoEnterpriseFlow(line)
+func (c *Collector) processLine(ctx context.Context, logger *zap.Logger, line string) error {
+	flow, err := ParseFlow(line)
 	if err != nil {
 		return err
 	}
@@ -311,12 +335,12 @@ func (c *CalicoCollector) processLine(ctx context.Context, logger *zap.Logger, l
 func calicoIPVersion(ip string) (string, error) {
 	parsed := net.ParseIP(ip)
 	if parsed == nil {
-		return "", ErrCalicoInvalidIP
+		return "", ErrInvalidIP
 	}
 
 	if parsed.To4() != nil {
-		return IPv4, nil
+		return collector.IPv4, nil
 	}
 
-	return IPv6, nil
+	return collector.IPv6, nil
 }

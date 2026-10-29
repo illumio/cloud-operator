@@ -11,6 +11,7 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/collector"
+	"github.com/illumio/cloud-operator/internal/controller/collector/calicoenterprise"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/awsautomode"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/awsvpccni"
@@ -140,7 +141,7 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 	}
 
 	// Check for Calico Enterprise (flow logs forwarded by its LogCollector over syslog)
-	if collector.IsCalicoEnterpriseDeployed(ctx, config.Logger, config.K8sClient.GetDynamicClient()) {
+	if calicoenterprise.IsDeployed(ctx, config.Logger, config.K8sClient.GetDynamicClient()) {
 		config.Logger.Info("Using Calico Enterprise flow collector")
 
 		// Mark Calico Enterprise active so calico_records_dropped is logged (it is

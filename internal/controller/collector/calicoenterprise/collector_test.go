@@ -1,6 +1,6 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package collector
+package calicoenterprise
 
 import (
 	"context"
@@ -16,9 +16,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
+
+	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
-func TestIsCalicoEnterpriseDeployed(t *testing.T) {
+func TestIsDeployed(t *testing.T) {
 	installation := func(name string, spec map[string]any) *unstructured.Unstructured {
 		return &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "operator.tigera.io/v1",
@@ -60,7 +62,7 @@ func TestIsCalicoEnterpriseDeployed(t *testing.T) {
 				map[schema.GroupVersionResource]string{calicoInstallationGVR: "InstallationList"},
 				tt.objects...)
 
-			result := IsCalicoEnterpriseDeployed(context.TODO(), zap.NewNop(), dynamicClient)
+			result := IsDeployed(context.TODO(), zap.NewNop(), dynamicClient)
 			assert.Equal(t, tt.expectedResult, result)
 		})
 	}
@@ -85,7 +87,7 @@ func TestNextAcceptDelay(t *testing.T) {
 
 func TestRunSyslogCollectorShutdownLogsNoError(t *testing.T) {
 	core, logs := observer.New(zap.DebugLevel)
-	collector := NewCalicoCollector(zap.New(core), "0", CalicoSyslogTLS{}, newRecordingSink(), nil)
+	collector := NewCollector(zap.New(core), "0", tls.ServerSettings{}, newRecordingSink(), nil)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)

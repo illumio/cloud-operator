@@ -91,8 +91,8 @@ func bindEnv(logger *zap.Logger, key, envVar string) {
 
 // syslogTLSConfig returns the TLS settings of the Calico Enterprise syslog
 // collector. Unset keys mean plain-text syslog only.
-func syslogTLSConfig() collector.CalicoSyslogTLS {
-	return collector.CalicoSyslogTLS{
+func syslogTLSConfig() tls.ServerSettings {
+	return tls.ServerSettings{
 		CertFile: viper.GetString("syslog_tls_cert_file"),
 		KeyFile:  viper.GetString("syslog_tls_key_file"),
 		Required: viper.GetBool("syslog_tls_required"),

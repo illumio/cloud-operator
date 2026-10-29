@@ -1,6 +1,6 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package collector
+package calicoenterprise
 
 import (
 	"encoding/json"
@@ -12,14 +12,15 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller/collector"
 )
 
 // Errors for Calico Enterprise LogCollector record parsing.
 var (
-	ErrCalicoNotLogCollectorRecord = errors.New("not a calico LogCollector record")
-	ErrCalicoMalformedRecord       = errors.New("ignoring calico LogCollector record with malformed JSON")
-	ErrCalicoAggregatedFlow        = errors.New("ignoring aggregated calico flow without source or destination IP addresses and ports")
-	ErrCalicoMissingTimestamp      = errors.New("ignoring calico flow without a start time")
+	ErrNotLogCollectorRecord = errors.New("not a calico LogCollector record")
+	ErrMalformedRecord       = errors.New("ignoring calico LogCollector record with malformed JSON")
+	ErrAggregatedFlow        = errors.New("ignoring aggregated calico flow without source or destination IP addresses and ports")
+	ErrMissingTimestamp      = errors.New("ignoring calico flow without a start time")
 )
 
 // calicoLogCollectorTag precedes the JSON body of every flow record that Calico
@@ -44,57 +45,57 @@ type calicoLogCollectorRecord struct {
 }
 
 // ParseLogCollectorFlow parses a single flow record forwarded by Calico
-// Enterprise's LogCollector syslog store into a CalicoFlow.
-func ParseLogCollectorFlow(line string) (CalicoFlow, error) {
+// Enterprise's LogCollector syslog store into a Flow.
+func ParseLogCollectorFlow(line string) (Flow, error) {
 	_, body, found := strings.Cut(line, calicoLogCollectorTag)
 	if !found {
-		return CalicoFlow{}, ErrCalicoNotLogCollectorRecord
+		return Flow{}, ErrNotLogCollectorRecord
 	}
 
 	var record calicoLogCollectorRecord
 	if err := json.Unmarshal([]byte(body), &record); err != nil {
-		return CalicoFlow{}, fmt.Errorf("%w: %w", ErrCalicoMalformedRecord, err)
+		return Flow{}, fmt.Errorf("%w: %w", ErrMalformedRecord, err)
 	}
 
 	if record.SourceIP == "" || record.DestIP == "" || record.Proto == "" {
-		return CalicoFlow{}, ErrCalicoIncompleteFlow
+		return Flow{}, ErrIncompleteFlow
 	}
 
 	protocol, err := parseLogCollectorProtocol(record.Proto)
 	if err != nil {
-		return CalicoFlow{}, err
+		return Flow{}, err
 	}
 
 	// Calico aggregates flow logs by default: aggregated records replace IP
 	// addresses with "-" and ports with null. ICMP has no ports.
 	if record.SourceIP == calicoAggregatedValue || record.DestIP == calicoAggregatedValue {
-		return CalicoFlow{}, ErrCalicoAggregatedFlow
+		return Flow{}, ErrAggregatedFlow
 	}
 
 	var sourcePort, destPort uint32
 
-	if protocol != ICMP {
+	if protocol != collector.ICMP {
 		if record.SourcePort == nil || record.DestPort == nil {
-			return CalicoFlow{}, ErrCalicoAggregatedFlow
+			return Flow{}, ErrAggregatedFlow
 		}
 
 		sourcePort, destPort = *record.SourcePort, *record.DestPort
 	}
 
 	if sourcePort > 65535 || destPort > 65535 {
-		return CalicoFlow{}, ErrCalicoInvalidPort
+		return Flow{}, ErrInvalidPort
 	}
 
 	ipVersion, err := calicoIPVersion(record.SourceIP)
 	if err != nil {
-		return CalicoFlow{}, err
+		return Flow{}, err
 	}
 
 	if _, err := calicoIPVersion(record.DestIP); err != nil {
-		return CalicoFlow{}, err
+		return Flow{}, err
 	}
 
-	flow := CalicoFlow{
+	flow := Flow{
 		SourceIP:        record.SourceIP,
 		DestinationIP:   record.DestIP,
 		SourcePort:      uint16(sourcePort),
@@ -106,7 +107,7 @@ func ParseLogCollectorFlow(line string) (CalicoFlow, error) {
 	// Drop flows without a start time, like the other collectors: an empty
 	// timestamp would date the flow 1970.
 	if record.StartTime <= 0 {
-		return CalicoFlow{}, ErrCalicoMissingTimestamp
+		return Flow{}, ErrMissingTimestamp
 	}
 
 	flow.StartTimestamp = timestamppb.New(time.Unix(record.StartTime, 0))
@@ -114,21 +115,21 @@ func ParseLogCollectorFlow(line string) (CalicoFlow, error) {
 	return flow, nil
 }
 
-// ParseCalicoEnterpriseFlow parses a single flow record forwarded by Calico
+// ParseFlow parses a single flow record forwarded by Calico
 // Enterprise's LogCollector syslog store into the five-tuple flow sent to
 // CloudSecure.
-func ParseCalicoEnterpriseFlow(line string) (*pb.FiveTupleFlow, error) {
+func ParseFlow(line string) (*pb.FiveTupleFlow, error) {
 	flow, err := ParseLogCollectorFlow(line)
 	if err != nil {
 		return nil, err
 	}
 
-	layer3, err := CreateLayer3Message(flow.SourceIP, flow.DestinationIP, flow.IPVersion)
+	layer3, err := collector.CreateLayer3Message(flow.SourceIP, flow.DestinationIP, flow.IPVersion)
 	if err != nil {
 		return nil, err
 	}
 
-	layer4, err := CreateLayer4Message(flow.Protocol, uint32(flow.SourcePort), uint32(flow.DestinationPort), flow.IPVersion)
+	layer4, err := collector.CreateLayer4Message(flow.Protocol, uint32(flow.SourcePort), uint32(flow.DestinationPort), flow.IPVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -146,15 +147,15 @@ func ParseCalicoEnterpriseFlow(line string) (*pb.FiveTupleFlow, error) {
 // the protocol name expected by CreateLayer4Message.
 func parseLogCollectorProtocol(value string) (string, error) {
 	switch strings.ToLower(value) {
-	case ICMP:
-		return ICMP, nil
-	case TCP:
-		return TCP, nil
-	case UDP:
-		return UDP, nil
-	case SCTP:
-		return SCTP, nil
+	case collector.ICMP:
+		return collector.ICMP, nil
+	case collector.TCP:
+		return collector.TCP, nil
+	case collector.UDP:
+		return collector.UDP, nil
+	case collector.SCTP:
+		return collector.SCTP, nil
 	default:
-		return "", ErrCalicoUnknownProto
+		return "", ErrUnknownProto
 	}
 }

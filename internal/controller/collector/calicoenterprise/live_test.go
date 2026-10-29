@@ -1,6 +1,6 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package collector
+package calicoenterprise
 
 import (
 	"context"
@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
 // captureSink records flows cached by the collector for assertions.
@@ -69,7 +70,7 @@ func TestRunSyslogCollectorEndToEnd(t *testing.T) {
 	require.NoError(t, probe.Close())
 
 	sink := &captureSink{}
-	c := NewCalicoCollector(zap.NewNop(), port, CalicoSyslogTLS{}, sink, nil)
+	c := NewCollector(zap.NewNop(), port, tls.ServerSettings{}, sink, nil)
 
 	var wg sync.WaitGroup
 

@@ -62,5 +62,5 @@ type CollectorConfig struct {
 
 	// Calico Enterprise syslog collector configuration
 	SyslogCollectorPort string
-	SyslogTLS           collector.CalicoSyslogTLS
+	SyslogTLS           tls.ServerSettings
 }

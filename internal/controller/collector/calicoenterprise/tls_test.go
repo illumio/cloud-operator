@@ -1,13 +1,13 @@
 // Copyright 2026 Illumio, Inc. All Rights Reserved.
 
-package collector
+package calicoenterprise
 
 import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/tls"
+	cryptotls "crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -27,6 +27,8 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
+	"github.com/illumio/cloud-operator/internal/controller/collector"
+	"github.com/illumio/cloud-operator/internal/pkg/tls"
 )
 
 const testLogCollectorRecord = `<14>Oct 26 21:10:09 calico-ent tigera_secure: {"start_time":1793048988,"source_ip":"10.244.163.79","source_port":59106,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`
@@ -101,62 +103,9 @@ func writeTestCertificate(t *testing.T) (string, string, *x509.CertPool) {
 	return certFile, keyFile, pool
 }
 
-func TestLoadCalicoSyslogTLSConfig(t *testing.T) {
-	certFile, keyFile, _ := writeTestCertificate(t)
-
-	tests := map[string]struct {
-		tlsSettings CalicoSyslogTLS
-		wantConfig  bool
-		wantErr     bool
-	}{
-		"no certificate configured": {
-			tlsSettings: CalicoSyslogTLS{},
-		},
-		"certificate and key configured": {
-			tlsSettings: CalicoSyslogTLS{CertFile: certFile, KeyFile: keyFile},
-			wantConfig:  true,
-		},
-		"certificate without key": {
-			tlsSettings: CalicoSyslogTLS{CertFile: certFile},
-			wantErr:     true,
-		},
-		"missing certificate file": {
-			tlsSettings: CalicoSyslogTLS{CertFile: "/nonexistent/tls.crt", KeyFile: keyFile},
-			wantErr:     true,
-		},
-		"TLS required without a certificate": {
-			tlsSettings: CalicoSyslogTLS{Required: true},
-			wantErr:     true,
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			config, err := loadCalicoSyslogTLSConfig(tt.tlsSettings)
-			if tt.wantErr {
-				require.Error(t, err)
-
-				return
-			}
-
-			require.NoError(t, err)
-
-			if !tt.wantConfig {
-				assert.Nil(t, config)
-
-				return
-			}
-
-			require.NotNil(t, config)
-			assert.Len(t, config.Certificates, 1)
-			assert.Equal(t, uint16(tls.VersionTLS12), config.MinVersion)
-		})
-	}
-}
-
 // startTestCollector serves a single connection with handleConn and returns
 // the client end of the connection.
-func startTestCollector(t *testing.T, collector *CalicoCollector) net.Conn {
+func startTestCollector(t *testing.T, collector *Collector) net.Conn {
 	t.Helper()
 
 	var listenConfig net.ListenConfig
@@ -214,13 +163,13 @@ func assertConnClosed(t *testing.T, conn net.Conn) {
 	}
 }
 
-func newTestCalicoCollector(t *testing.T, sink FlowSink, settings CalicoSyslogTLS) *CalicoCollector {
+func newTestCollector(t *testing.T, sink collector.FlowSink, settings tls.ServerSettings) *Collector {
 	t.Helper()
 
-	config, err := loadCalicoSyslogTLSConfig(settings)
+	config, err := tls.LoadServerConfig(settings)
 	require.NoError(t, err)
 
-	collector := NewCalicoCollector(zap.NewNop(), "0", settings, sink, nil)
+	collector := NewCollector(zap.NewNop(), "0", settings, sink, nil)
 	collector.tlsConfig = config
 	collector.firstByteTimeout = time.Second
 	collector.handshakeTimeout = time.Second
@@ -228,10 +177,10 @@ func newTestCalicoCollector(t *testing.T, sink FlowSink, settings CalicoSyslogTL
 	return collector
 }
 
-func TestCalicoCollectorPlainConnection(t *testing.T) {
+func TestCollectorPlainConnection(t *testing.T) {
 	certFile, keyFile, _ := writeTestCertificate(t)
 
-	tests := map[string]CalicoSyslogTLS{
+	tests := map[string]tls.ServerSettings{
 		"no certificate configured":        {},
 		"certificate configured, optional": {CertFile: certFile, KeyFile: keyFile},
 	}
@@ -239,7 +188,7 @@ func TestCalicoCollectorPlainConnection(t *testing.T) {
 	for name, settings := range tests {
 		t.Run(name, func(t *testing.T) {
 			sink := newRecordingSink()
-			conn := startTestCollector(t, newTestCalicoCollector(t, sink, settings))
+			conn := startTestCollector(t, newTestCollector(t, sink, settings))
 
 			_, err := conn.Write([]byte(testLogCollectorRecord + "\n"))
 			require.NoError(t, err)
@@ -250,10 +199,10 @@ func TestCalicoCollectorPlainConnection(t *testing.T) {
 	}
 }
 
-func TestCalicoCollectorTLSConnection(t *testing.T) {
+func TestCollectorTLSConnection(t *testing.T) {
 	certFile, keyFile, pool := writeTestCertificate(t)
 
-	tests := map[string]CalicoSyslogTLS{
+	tests := map[string]tls.ServerSettings{
 		"certificate configured, optional": {CertFile: certFile, KeyFile: keyFile},
 		"certificate configured, required": {CertFile: certFile, KeyFile: keyFile, Required: true},
 	}
@@ -261,9 +210,9 @@ func TestCalicoCollectorTLSConnection(t *testing.T) {
 	for name, settings := range tests {
 		t.Run(name, func(t *testing.T) {
 			sink := newRecordingSink()
-			rawConn := startTestCollector(t, newTestCalicoCollector(t, sink, settings))
+			rawConn := startTestCollector(t, newTestCollector(t, sink, settings))
 
-			conn := tls.Client(rawConn, &tls.Config{RootCAs: pool, ServerName: "localhost", MinVersion: tls.VersionTLS12})
+			conn := cryptotls.Client(rawConn, &cryptotls.Config{RootCAs: pool, ServerName: "localhost", MinVersion: cryptotls.VersionTLS12})
 			require.NoError(t, conn.HandshakeContext(context.Background()))
 
 			// Two records in one write must both be read after the handshake.
@@ -277,20 +226,20 @@ func TestCalicoCollectorTLSConnection(t *testing.T) {
 	}
 }
 
-func TestCalicoCollectorRejectsTLSWithoutCertificate(t *testing.T) {
+func TestCollectorRejectsTLSWithoutCertificate(t *testing.T) {
 	sink := newRecordingSink()
-	rawConn := startTestCollector(t, newTestCalicoCollector(t, sink, CalicoSyslogTLS{}))
+	rawConn := startTestCollector(t, newTestCollector(t, sink, tls.ServerSettings{}))
 
-	conn := tls.Client(rawConn, &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // the server is expected to reject the handshake
+	conn := cryptotls.Client(rawConn, &cryptotls.Config{InsecureSkipVerify: true}) //nolint:gosec // the server is expected to reject the handshake
 	require.Error(t, conn.HandshakeContext(context.Background()))
 	assert.Equal(t, 0, sink.count())
 }
 
-func TestCalicoCollectorRejectsPlainWhenTLSRequired(t *testing.T) {
+func TestCollectorRejectsPlainWhenTLSRequired(t *testing.T) {
 	certFile, keyFile, _ := writeTestCertificate(t)
 
 	sink := newRecordingSink()
-	conn := startTestCollector(t, newTestCalicoCollector(t, sink, CalicoSyslogTLS{CertFile: certFile, KeyFile: keyFile, Required: true}))
+	conn := startTestCollector(t, newTestCollector(t, sink, tls.ServerSettings{CertFile: certFile, KeyFile: keyFile, Required: true}))
 
 	_, err := conn.Write([]byte(testLogCollectorRecord + "\n"))
 	require.NoError(t, err)
@@ -299,33 +248,33 @@ func TestCalicoCollectorRejectsPlainWhenTLSRequired(t *testing.T) {
 	assert.Equal(t, 0, sink.count())
 }
 
-func TestCalicoCollectorClosesSilentConnection(t *testing.T) {
+func TestCollectorClosesSilentConnection(t *testing.T) {
 	sink := newRecordingSink()
-	conn := startTestCollector(t, newTestCalicoCollector(t, sink, CalicoSyslogTLS{}))
+	conn := startTestCollector(t, newTestCollector(t, sink, tls.ServerSettings{}))
 
 	// Send nothing: the collector must give up after the first-byte timeout.
 	assertConnClosed(t, conn)
 }
 
-func TestCalicoCollectorClosesStalledHandshake(t *testing.T) {
+func TestCollectorClosesStalledHandshake(t *testing.T) {
 	certFile, keyFile, _ := writeTestCertificate(t)
 
 	sink := newRecordingSink()
-	conn := startTestCollector(t, newTestCalicoCollector(t, sink, CalicoSyslogTLS{CertFile: certFile, KeyFile: keyFile}))
+	conn := startTestCollector(t, newTestCollector(t, sink, tls.ServerSettings{CertFile: certFile, KeyFile: keyFile}))
 
 	// Send only the first byte of a TLS record and stall the handshake.
-	_, err := conn.Write([]byte{tlsRecordTypeHandshake})
+	_, err := conn.Write([]byte{0x16}) // TLS handshake record type, the first byte of a ClientHello
 	require.NoError(t, err)
 
 	assertConnClosed(t, conn)
 }
 
-func TestCalicoCollectorWarnsOnceAboutAggregatedRecords(t *testing.T) {
+func TestCollectorWarnsOnceAboutAggregatedRecords(t *testing.T) {
 	sink := newRecordingSink()
 
 	var dropped atomic.Int64
 
-	collector := NewCalicoCollector(zap.NewNop(), "0", CalicoSyslogTLS{}, sink, func() { dropped.Add(1) })
+	collector := NewCollector(zap.NewNop(), "0", tls.ServerSettings{}, sink, func() { dropped.Add(1) })
 	collector.firstByteTimeout = time.Second
 
 	core, logs := observer.New(zap.WarnLevel)
