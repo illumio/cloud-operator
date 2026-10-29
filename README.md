@@ -170,8 +170,6 @@ Then set `encryption: TLS` in the LogCollector's syslog store, and configure Cal
 | Value | Default | Description |
 |---|---|---|
 | `env.syslogCollectorPort` | `6514` | TCP port the operator listens on for syslog. Must match the LogCollector `endpoint`. |
-| `calico.logCollectorNamespaces` | `[tigera-fluentd, calico-system]` | Namespaces of the LogCollector pods: `tigera-fluentd` (Fluentd, older releases) and `calico-system` (Fluent Bit, newer releases). The NetworkPolicy allows syslog only from these namespaces. |
-| `calico.logCollectorPodLabels` | `[fluentd-node, fluentd-node-windows, calico-fluent-bit, calico-fluent-bit-windows]` | `k8s-app` labels of the LogCollector pods. The NetworkPolicy allows syslog only from pods with one of these labels. An empty list allows every pod in the namespaces above. |
 | `calico.syslogTLS.secretName` | `""` | Secret with the TLS certificate and key. Empty means plain text only. |
 | `calico.syslogTLS.required` | `false` | Accept TLS connections only. |
 

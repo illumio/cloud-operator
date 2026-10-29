@@ -24,25 +24,30 @@ spec:
             cidr: "{{.}}"
         {{- end }}
       {{- end }}
-    # Allow syslog flow logs from Calico Enterprise's LogCollector pods.
+    # Allow syslog flow logs from Calico Enterprise's LogCollector pods:
+    # Fluentd in tigera-fluentd (older releases) and Fluent Bit in
+    # calico-system (newer releases).
     - ports:
         - protocol: TCP
           port: {{ .Values.env.syslogCollectorPort }}
       from:
-        {{- range .Values.calico.logCollectorNamespaces }}
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: {{ . }}
-          {{- if $.Values.calico.logCollectorPodLabels }}
+              kubernetes.io/metadata.name: tigera-fluentd
           podSelector:
             matchExpressions:
               - key: k8s-app
                 operator: In
                 values:
-                  {{- range $.Values.calico.logCollectorPodLabels }}
-                  - {{ . }}
-                  {{- end }}
-          {{- else }}
-          podSelector: {}
-          {{- end }}
-        {{- end }}
+                  - fluentd-node
+                  - fluentd-node-windows
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: calico-system
+          podSelector:
+            matchExpressions:
+              - key: k8s-app
+                operator: In
+                values:
+                  - calico-fluent-bit
+                  - calico-fluent-bit-windows

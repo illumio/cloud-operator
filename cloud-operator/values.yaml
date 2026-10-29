@@ -65,23 +65,6 @@ cilium:
     - gke-managed-dpv2-observability
 
 calico:
-  # The namespaces of Calico Enterprise's LogCollector pods: tigera-fluentd
-  # (older releases, Fluentd) and calico-system (newer releases, Fluent Bit).
-  # The NetworkPolicy allows syslog flow logs on the syslog
-  # collector port only from pods in these namespaces.
-  logCollectorNamespaces:
-    - tigera-fluentd
-    - calico-system
-
-  # The k8s-app label values of the LogCollector pods. Within the namespaces
-  # above, the NetworkPolicy allows syslog only from pods with one of these
-  # labels. Set to an empty list to allow every pod in those namespaces.
-  logCollectorPodLabels:
-    - fluentd-node
-    - fluentd-node-windows
-    - calico-fluent-bit
-    - calico-fluent-bit-windows
-
   # TLS for the syslog collector.
   # To accept TLS from the LogCollector, create a kubernetes.io/tls Secret in
   # the operator's namespace with a certificate for the operator Service's DNS
