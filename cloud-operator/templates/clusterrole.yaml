@@ -52,7 +52,7 @@ rules:
   resources: ["targetgroupbindings"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["gateway.networking.k8s.io"]
-  resources: ["gatewayclasses", "gateways", "httproutes"]
+  resources: ["gatewayclasses", "gateways", "grpcroutes", "httproutes", "tcproutes", "tlsroutes", "udproutes"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["k8s.ovn.org"]
   resources: ["egressfirewalls", "egressips"]

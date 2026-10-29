@@ -47,7 +47,6 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           ports:
             - containerPort: 8080
-            - containerPort: 5000
             - containerPort: {{ .Values.env.ipfixCollectorPort }}
               protocol: UDP
             - containerPort: {{ .Values.env.syslogCollectorPort }}
