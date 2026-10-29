@@ -7,11 +7,15 @@ import (
 	"context"
 	cryptotls "crypto/tls"
 	"errors"
+	"fmt"
 	"net"
+	"net/url"
+	"slices"
 	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -102,18 +106,35 @@ var calicoInstallationGVR = schema.GroupVersionResource{
 	Resource: "installations",
 }
 
+// logCollectorGVR identifies the Tigera operator's LogCollector resource.
+var logCollectorGVR = schema.GroupVersionResource{
+	Group:    "operator.tigera.io",
+	Version:  "v1",
+	Resource: "logcollectors",
+}
+
 const (
 	// calicoInstallationName is the name of the cluster's single Installation.
 	calicoInstallationName = "default"
 	// calicoEnterpriseVariant is the Installation variant of Calico Enterprise.
 	calicoEnterpriseVariant = "TigeraSecureEnterprise"
+	// logCollectorName is the name of the cluster's single LogCollector.
+	logCollectorName = "tigera-secure"
+	// logTypeFlows is the LogCollector log type of flow logs.
+	logTypeFlows = "Flows"
 )
 
-// IsDeployed reports whether the cluster runs Calico Enterprise,
-// based on the variant of the Tigera operator's default Installation. The
+// IsDeployed reports whether flows can be collected from Calico Enterprise:
+// the Tigera operator's default Installation must be the Calico Enterprise
+// variant, and its LogCollector must forward flow logs to a syslog store. The
 // open-source Calico distribution uses the same operator and namespaces but
 // cannot forward flow logs, so the namespaces alone are not enough.
-func IsDeployed(ctx context.Context, logger *zap.Logger, dynamicClient dynamic.Interface) bool {
+//
+// Without a syslog store sending flows, no flows would ever arrive, so Calico
+// Enterprise is not picked and other collectors can be detected instead. A
+// syslog endpoint on another port than syslogPort is logged as a likely
+// misconfiguration, but still picked, since the endpoint may be relayed.
+func IsDeployed(ctx context.Context, logger *zap.Logger, dynamicClient dynamic.Interface, syslogPort string) bool {
 	logger.Debug("Checking for Calico Enterprise deployment")
 
 	installation, err := dynamicClient.Resource(calicoInstallationGVR).Get(ctx, calicoInstallationName, metav1.GetOptions{})
@@ -132,7 +153,53 @@ func IsDeployed(ctx context.Context, logger *zap.Logger, dynamicClient dynamic.I
 
 	logger.Debug("Calico Enterprise installation found")
 
+	endpoint, sendsFlows, err := syslogStore(ctx, dynamicClient)
+	if err != nil {
+		logger.Warn("Failed to read the Calico Enterprise LogCollector, so its syslog store cannot be checked and "+
+			"Calico Enterprise flows will not be collected; fix the error and restart the operator", zap.Error(err))
+
+		return false
+	}
+
+	if endpoint == "" {
+		logger.Warn("Calico Enterprise detected, but its LogCollector has no syslog store, so no flows would be received; " +
+			"add a syslog store that sends Flows to the operator's syslog port and restart the operator")
+
+		return false
+	}
+
+	if !sendsFlows {
+		logger.Warn("Calico Enterprise detected, but its LogCollector syslog store does not send Flows logs; "+
+			"add Flows to its logTypes and restart the operator", zap.String("endpoint", endpoint))
+
+		return false
+	}
+
+	if endpointURL, err := url.Parse(endpoint); err != nil || endpointURL.Port() != syslogPort {
+		logger.Warn("Calico Enterprise LogCollector syslog endpoint does not use the operator's syslog port",
+			zap.String("endpoint", endpoint), zap.String("syslog_port", syslogPort))
+	}
+
 	return true
+}
+
+// syslogStore returns the endpoint of the LogCollector's syslog store, or ""
+// if there is none or the LogCollector does not exist, and whether the store
+// sends flow logs. Any other error reading the LogCollector is returned.
+func syslogStore(ctx context.Context, dynamicClient dynamic.Interface) (string, bool, error) {
+	logCollector, err := dynamicClient.Resource(logCollectorGVR).Get(ctx, logCollectorName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return "", false, nil
+	}
+
+	if err != nil {
+		return "", false, fmt.Errorf("failed to get LogCollector %s: %w", logCollectorName, err)
+	}
+
+	endpoint, _, _ := unstructured.NestedString(logCollector.Object, "spec", "additionalStores", "syslog", "endpoint")
+	logTypes, _, _ := unstructured.NestedStringSlice(logCollector.Object, "spec", "additionalStores", "syslog", "logTypes")
+
+	return endpoint, slices.Contains(logTypes, logTypeFlows), nil
 }
 
 // RunSyslogCollector runs the TCP listener for Calico Enterprise syslog flows.

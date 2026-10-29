@@ -33,8 +33,17 @@
         "calico": {
             "type": "object",
             "properties": {
-                "logCollectorNamespace": {
-                    "type": "string"
+                "logCollectorNamespaces": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "logCollectorPodLabels": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "syslogTLS": {
                     "type": "object",

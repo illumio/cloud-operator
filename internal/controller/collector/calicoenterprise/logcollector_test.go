@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,6 +25,66 @@ import (
 // Enterprise's LogCollector (fluentd) emits.
 func logCollectorLine(body string) string {
 	return `<14>Oct 26 21:10:09 calico-ent tigera_secure: ` + body
+}
+
+// fluentBitLine wraps a JSON body in the RFC 5424 syslog header that the
+// Fluent Bit LogCollector (Tigera operator v1.44+) sends: version, timestamp, host, app name,
+// empty procid, msgid and structured data, then a UTF-8 BOM before the message.
+func fluentBitLine(body string) string {
+	return "<14>1 2026-10-26T21:10:09.000000Z calico-ent tigera_secure - - - \xef\xbb\xbf" + body
+}
+
+func TestParseLogCollectorFlowSyslogFormats(t *testing.T) {
+	body := `{"start_time":1793048988,"source_ip":"10.244.163.79","source_port":59106,"dest_ip":"10.244.163.65","dest_port":53,"proto":"udp"}`
+	expected := Flow{
+		SourceIP:        "10.244.163.79",
+		DestinationIP:   "10.244.163.65",
+		SourcePort:      59106,
+		DestinationPort: 53,
+		Protocol:        collector.UDP,
+		IPVersion:       collector.IPv4,
+		StartTimestamp:  timestamppb.New(time.Unix(1793048988, 0)),
+	}
+
+	tests := map[string]struct {
+		line string
+		err  error
+	}{
+		"Fluentd RFC 3164 record (Tigera operator v1.43 and earlier)": {
+			line: logCollectorLine(body),
+		},
+		"Fluent Bit RFC 5424 record with a BOM (Tigera operator v1.44+)": {
+			line: fluentBitLine(body),
+		},
+		"RFC 5424 record without a BOM": {
+			line: "<14>1 2026-10-26T21:10:09.000000Z calico-ent tigera_secure - - - " + body,
+		},
+		"RFC 5424 record with a process ID": {
+			line: "<14>1 2026-10-26T21:10:09.000000Z calico-ent tigera_secure 42 - - " + body,
+		},
+		"tigera_secure inside another app's message is not a LogCollector record": {
+			line: `<14>1 2026-10-26T21:10:09.000000Z calico-ent other-app - - - {"note":" tigera_secure "}`,
+			err:  ErrNotLogCollectorRecord,
+		},
+		"tag without a JSON body is not a LogCollector record": {
+			line: "<14>1 2026-10-26T21:10:09.000000Z calico-ent tigera_secure - - - starting",
+			err:  ErrNotLogCollectorRecord,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			flow, err := ParseLogCollectorFlow(tt.line)
+			if tt.err != nil {
+				assert.ErrorIs(t, err, tt.err)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assertFlow(t, expected, flow)
+		})
+	}
 }
 
 func TestParseLogCollectorFlow(t *testing.T) {
@@ -257,6 +318,14 @@ func TestParseLogCollectorFlowCapturedRecords(t *testing.T) {
 
 	for scanner.Scan() {
 		total++
+
+		// The captured records come from Fluentd. Fluent Bit (operator v1.44+) sends the
+		// same JSON body with an RFC 5424 header, so check that form too.
+		_, body, found := strings.Cut(scanner.Text(), "tigera_secure: ")
+		require.True(t, found, "record %d", total)
+
+		_, err := ParseLogCollectorFlow(fluentBitLine(body))
+		require.NoError(t, err, "record %d as RFC 5424", total)
 
 		flow, err := ParseLogCollectorFlow(scanner.Text())
 		require.NoError(t, err, "record %d", total)

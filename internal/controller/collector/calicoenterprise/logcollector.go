@@ -23,11 +23,16 @@ var (
 	ErrMissingTimestamp      = errors.New("ignoring calico flow without a start time")
 )
 
-// calicoLogCollectorTag precedes the JSON body of every flow record that Calico
-// Enterprise's LogCollector forwards to a syslog store:
+// calicoLogCollectorAppName is the syslog app name of every flow record that
+// Calico Enterprise's LogCollector forwards to a syslog store. Fluentd
+// (Tigera operator v1.43 and earlier, up to Calico Enterprise 3.24 EP1) sends
+// RFC 3164 records, and Fluent Bit (operator v1.44 and later, Calico Enterprise
+// 3.24 EP3 and later) sends RFC 5424 records with empty procid, msgid and
+// structured data, and a UTF-8 BOM before the message:
 //
 //	<14>Oct 26 21:10:09 calico-ent tigera_secure: {"source_ip":"10.244.163.79",...}
-const calicoLogCollectorTag = "tigera_secure: "
+//	<14>1 2026-10-26T21:10:09.000000Z calico-ent tigera_secure - - - \xef\xbb\xbf{"source_ip":"10.244.163.79",...}
+const calicoLogCollectorAppName = " tigera_secure"
 
 // calicoAggregatedValue replaces the IP addresses of aggregated flow records.
 const calicoAggregatedValue = "-"
@@ -47,7 +52,7 @@ type calicoLogCollectorRecord struct {
 // ParseLogCollectorFlow parses a single flow record forwarded by Calico
 // Enterprise's LogCollector syslog store into a Flow.
 func ParseLogCollectorFlow(line string) (Flow, error) {
-	_, body, found := strings.Cut(line, calicoLogCollectorTag)
+	body, found := logCollectorMessage(line)
 	if !found {
 		return Flow{}, ErrNotLogCollectorRecord
 	}
@@ -141,6 +146,23 @@ func ParseFlow(line string) (*pb.FiveTupleFlow, error) {
 			Timestamp: flow.StartTimestamp,
 		},
 	}, nil
+}
+
+// logCollectorMessage returns the JSON message of a LogCollector syslog record
+// in either syslog format: the message starts at the first "{" after the app
+// name, which skips the RFC 3164 ":" or the RFC 5424 header fields and BOM.
+func logCollectorMessage(line string) (string, bool) {
+	jsonStart := strings.IndexByte(line, '{')
+	if jsonStart < 0 {
+		return "", false
+	}
+
+	appName := strings.Index(line[:jsonStart], calicoLogCollectorAppName)
+	if appName < 0 {
+		return "", false
+	}
+
+	return line[jsonStart:], true
 }
 
 // parseLogCollectorProtocol maps the protocol name in a LogCollector record to

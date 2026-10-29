@@ -141,7 +141,7 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 	}
 
 	// Check for Calico Enterprise (flow logs forwarded by its LogCollector over syslog)
-	if calicoenterprise.IsDeployed(ctx, config.Logger, config.K8sClient.GetDynamicClient()) {
+	if calicoenterprise.IsDeployed(ctx, config.Logger, config.K8sClient.GetDynamicClient(), config.SyslogCollectorPort) {
 		config.Logger.Info("Using Calico Enterprise flow collector")
 
 		// Mark Calico Enterprise active so calico_records_dropped is logged (it is

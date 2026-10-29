@@ -24,13 +24,25 @@ spec:
             cidr: "{{.}}"
         {{- end }}
       {{- end }}
-    # Allow syslog flow logs from Calico Enterprise's LogCollector (Fluentd)
-    # pods.
+    # Allow syslog flow logs from Calico Enterprise's LogCollector pods.
     - ports:
         - protocol: TCP
           port: {{ .Values.env.syslogCollectorPort }}
       from:
+        {{- range .Values.calico.logCollectorNamespaces }}
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: {{ .Values.calico.logCollectorNamespace }}
+              kubernetes.io/metadata.name: {{ . }}
+          {{- if $.Values.calico.logCollectorPodLabels }}
+          podSelector:
+            matchExpressions:
+              - key: k8s-app
+                operator: In
+                values:
+                  {{- range $.Values.calico.logCollectorPodLabels }}
+                  - {{ . }}
+                  {{- end }}
+          {{- else }}
           podSelector: {}
+          {{- end }}
+        {{- end }}

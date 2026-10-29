@@ -111,7 +111,7 @@ helm install illumio --namespace illumio-cloud oci://ghcr.io/illumio/charts/clou
 
 ## Calico Enterprise Flow Collection
 
-On clusters running Calico Enterprise, the Cloud Operator receives network flows from Calico Enterprise's LogCollector over syslog. The operator uses this collector when the `default` Installation (`operator.tigera.io/v1`) has `spec.variant: TigeraSecureEnterprise`, and then listens for syslog on TCP port 6514.
+On clusters running Calico Enterprise, the Cloud Operator receives network flows from Calico Enterprise's LogCollector over syslog. At startup, the operator uses this collector when the `default` Installation (`operator.tigera.io/v1`) has `spec.variant: TigeraSecureEnterprise` and the `tigera-secure` LogCollector has a syslog store that sends `Flows` logs, and then listens for syslog on TCP port 6514. Otherwise it continues detecting other flow sources, such as the AWS VPC CNI.
 
 Calico Enterprise does not send flows to the operator by default. Two settings are required on the Calico side.
 
@@ -170,13 +170,17 @@ Then set `encryption: TLS` in the LogCollector's syslog store, and configure Cal
 | Value | Default | Description |
 |---|---|---|
 | `env.syslogCollectorPort` | `6514` | TCP port the operator listens on for syslog. Must match the LogCollector `endpoint`. |
-| `calico.logCollectorNamespace` | `tigera-fluentd` | Namespace of the LogCollector pods. The NetworkPolicy allows syslog only from this namespace. |
+| `calico.logCollectorNamespaces` | `[tigera-fluentd, calico-system]` | Namespaces of the LogCollector pods: `tigera-fluentd` (Fluentd, older releases) and `calico-system` (Fluent Bit, newer releases). The NetworkPolicy allows syslog only from these namespaces. |
+| `calico.logCollectorPodLabels` | `[fluentd-node, fluentd-node-windows, calico-fluent-bit, calico-fluent-bit-windows]` | `k8s-app` labels of the LogCollector pods. The NetworkPolicy allows syslog only from pods with one of these labels. An empty list allows every pod in the namespaces above. |
 | `calico.syslogTLS.secretName` | `""` | Secret with the TLS certificate and key. Empty means plain text only. |
 | `calico.syslogTLS.required` | `false` | Accept TLS connections only. |
 
 ### Troubleshooting
 
-- The operator logs `Using Calico Enterprise flow collector` at startup when it detects Calico Enterprise.
+- The operator logs `Using Calico Enterprise flow collector` at startup when it detects Calico Enterprise with a syslog store configured.
+- A warning `Calico Enterprise detected, but its LogCollector has no syslog store` (or `does not send Flows logs`) means step 1 is missing or incomplete. The operator checks this only at startup: apply step 1, then restart the operator.
+- A warning `Failed to read the Calico Enterprise LogCollector` means the operator could not check the syslog store, for example because its RBAC does not allow reading `logcollectors`. The warning includes the error. Fix it, then restart the operator.
+- A warning that the syslog endpoint `does not use the operator's syslog port` means the LogCollector's `endpoint` port differs from `env.syslogCollectorPort`.
 - The `Stream statistics` log line includes `calico_records_dropped`, the number of syslog records that could not be turned into flows.
 - A warning `Calico Enterprise is sending aggregated flow logs ...` means flow log aggregation is still enabled. Apply step 2.
 - If `flows_received` stays at 0 and no records are dropped, check that the LogCollector's syslog `endpoint` points at the operator's Service and port.
