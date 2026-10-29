@@ -19,3 +19,7 @@ spec:
       protocol: UDP
       port: {{ .Values.env.ipfixCollectorPort }}
       targetPort: {{ .Values.env.ipfixCollectorPort }}
+    - name: syslog-collector
+      protocol: TCP
+      port: {{ .Values.env.syslogCollectorPort }}
+      targetPort: {{ .Values.env.syslogCollectorPort }}

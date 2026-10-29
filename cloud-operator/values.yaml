@@ -64,6 +64,16 @@ cilium:
     - kube-system
     - gke-managed-dpv2-observability
 
+calico:
+  # TLS for the syslog collector.
+  # To accept TLS from the LogCollector, create a kubernetes.io/tls Secret in
+  # the operator's namespace with a certificate for the operator Service's DNS
+  # name, and set secretName to its name. The collector then accepts both TLS
+  # and plain-text connections; set required to true to accept TLS only.
+  syslogTLS:
+    secretName: ""
+    required: false
+
 openshift:
   # The namespace in which OVN-k is deployed.
   # cloud-operator uses this to determine whether OVN-k is deployed, in which
@@ -157,6 +167,12 @@ env:
   # only listens on this port if it detects at startup that OVN-k is installed.
   # UDP 4739 is the standard port for IPFIX over UDP and should not be changed.
   ipfixCollectorPort: 4739
+
+  # The TCP port on which cloud-operator receives syslog flow logs from Calico
+  # Enterprise's LogCollector. cloud-operator only listens on this port if it
+  # detects at startup that Calico Enterprise is installed. The collector
+  # accepts plain-text syslog, and TLS when calico.syslogTLS is configured.
+  syslogCollectorPort: 6514
 
   # The API URL used by cloud-operator to onboard itself if onboardingSecret
   # is set and clusterCredsSecret is not set.

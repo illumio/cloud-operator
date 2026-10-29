@@ -30,6 +30,22 @@
                 }
             }
         },
+        "calico": {
+            "type": "object",
+            "properties": {
+                "syslogTLS": {
+                    "type": "object",
+                    "properties": {
+                        "required": {
+                            "type": "boolean"
+                        },
+                        "secretName": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "cilium": {
             "type": "object",
             "properties": {
@@ -128,6 +144,9 @@
                             "type": "string"
                         }
                     }
+                },
+                "syslogCollectorPort": {
+                    "type": "integer"
                 },
                 "tlsSkipVerify": {
                     "type": "boolean"

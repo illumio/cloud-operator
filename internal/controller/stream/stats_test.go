@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestNewStats(t *testing.T) {
@@ -130,6 +132,17 @@ func TestStats_AutoModeCounters(t *testing.T) {
 	stats.SetAutoModeNodesObserved(-5)
 	am = stats.GetAndResetAutoModeStats()
 	assert.Equal(t, uint64(0), am.NodesObserved)
+}
+
+func TestStats_CalicoRecordsDropped(t *testing.T) {
+	stats := NewStats()
+
+	for range 3 {
+		stats.IncrementCalicoRecordsDropped()
+	}
+
+	assert.Equal(t, uint64(3), stats.GetAndResetCalicoRecordsDropped())
+	assert.Equal(t, uint64(0), stats.GetAndResetCalicoRecordsDropped())
 }
 
 func TestStats_AutoModeRotationCounters(t *testing.T) {
@@ -271,4 +284,42 @@ func TestStartStatsLogger_NilLogger(t *testing.T) {
 	ctx := context.Background()
 
 	StartStatsLogger(ctx, nil, stats, time.Second)
+}
+
+func TestStartStatsLogger_CalicoRecordsDropped(t *testing.T) {
+	tests := map[string]struct {
+		calicoActive bool
+	}{
+		"logged when Calico Enterprise is the active collector": {calicoActive: true},
+		"omitted for other collectors":                          {calicoActive: false},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			core, logs := observer.New(zap.InfoLevel)
+			stats := NewStats()
+
+			if tt.calicoActive {
+				stats.SetCalicoActive()
+			}
+
+			stats.IncrementCalicoRecordsDropped()
+			stats.IncrementCalicoRecordsDropped()
+
+			StartStatsLogger(t.Context(), zap.New(core), stats, 20*time.Millisecond)
+
+			require.Eventually(t, func() bool {
+				return logs.FilterMessage("Stream statistics").Len() > 0
+			}, time.Second, 5*time.Millisecond)
+
+			fields := logs.FilterMessage("Stream statistics").All()[0].ContextMap()
+
+			dropped, found := fields["calico_records_dropped"]
+			assert.Equal(t, tt.calicoActive, found)
+
+			if tt.calicoActive {
+				assert.Equal(t, uint64(2), dropped)
+			}
+		})
+	}
 }

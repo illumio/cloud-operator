@@ -11,9 +11,11 @@ import (
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 	"github.com/illumio/cloud-operator/internal/controller/collector"
+	"github.com/illumio/cloud-operator/internal/controller/collector/calicoenterprise"
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/awsautomode"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/awsvpccni"
+	"github.com/illumio/cloud-operator/internal/controller/stream/flows/calico"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/cilium"
 	"github.com/illumio/cloud-operator/internal/controller/stream/flows/ovnk"
 	"github.com/illumio/cloud-operator/internal/pkg/tls"
@@ -134,6 +136,27 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 		}
 
 		return pb.FlowCollector_FLOW_COLLECTOR_OVNK, "OVN-K", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
+			return factory.NewCollector(ctx)
+		})
+	}
+
+	// Check for Calico Enterprise (flow logs forwarded by its LogCollector over syslog)
+	if calicoenterprise.IsDeployed(ctx, config.Logger, config.K8sClient.GetDynamicClient(), config.SyslogCollectorPort) {
+		config.Logger.Info("Using Calico Enterprise flow collector")
+
+		// Mark Calico Enterprise active so calico_records_dropped is logged (it is
+		// suppressed on other collectors, where it would always be zero).
+		config.Stats.SetCalicoActive()
+
+		factory := &calico.Factory{
+			Logger:        config.Logger,
+			SyslogPort:    config.SyslogCollectorPort,
+			SyslogTLS:     config.SyslogTLS,
+			FlowSink:      flowSink,
+			RecordDropped: config.Stats.IncrementCalicoRecordsDropped,
+		}
+
+		return pb.FlowCollector_FLOW_COLLECTOR_CALICO_ENTERPRISE, "Calico-Enterprise", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
 			return factory.NewCollector(ctx)
 		})
 	}
