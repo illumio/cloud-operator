@@ -134,10 +134,10 @@ kubectl patch logcollector tigera-secure --type merge -p '{
 ```
 
 - `endpoint`: the operator's Service, for example `tcp://illumio-cloud-operator.illumio-cloud.svc.cluster.local:6514` for release `illumio` in namespace `illumio-cloud`.
-- `logTypes`: `Flows` only. Without it, Calico also sends audit and DNS logs, which the operator ignores.
+- `logTypes`: `Flows` only. If it also lists `Audit` or `DNS`, the operator discards those records and counts them in `calico_records_dropped`.
 - `packetSize`: flow records are larger than the default of 1024 bytes and are cut off at that size, so set at least 8192.
 
-The LogCollector supports a single syslog store per cluster. If the cluster already sends syslog elsewhere, forward a copy of the `tigera_secure` records to the operator from that syslog server.
+The LogCollector supports a single syslog store per cluster, and the operator must be its endpoint.
 
 ### 2. Disable flow log aggregation
 
