@@ -238,6 +238,14 @@ func TestParseFlow(t *testing.T) {
 			line:     logCollectorLine(`{"start_time":1793048988,"source_ip":"fd00::1","source_port":59106,"dest_ip":"fd00::2","dest_port":53,"proto":"udp"}`),
 			expected: udpFlow("fd00::1", "fd00::2", pb.IPVersion_IP_VERSION_IPV6),
 		},
+		"SCTP record": {
+			line: logCollectorLine(`{"start_time":1793048988,"source_ip":"10.244.163.79","source_port":38412,"dest_ip":"10.244.163.65","dest_port":36412,"proto":"sctp"}`),
+			expected: &pb.FiveTupleFlow{
+				Layer3: &pb.IP{Source: "10.244.163.79", Destination: "10.244.163.65", IpVersion: pb.IPVersion_IP_VERSION_IPV4},
+				Layer4: &pb.Layer4{Protocol: &pb.Layer4_Sctp{Sctp: &pb.SCTP{SourcePort: 38412, DestinationPort: 36412}}},
+				Ts:     &pb.FiveTupleFlow_Timestamp{Timestamp: timestamppb.New(time.Unix(1793048988, 0))},
+			},
+		},
 		"other syslog record is not a LogCollector record": {
 			line:          `<14>2026-06-29T22:45:59Z minikube calico-felix[51097]: INFO <nil> <nil>:  action="allow" dstIP="10.244.120.74" dstPort="8080" proto="6" srcIP="10.244.120.78" srcPort="48710" updateType=report`,
 			expectedError: ErrNotLogCollectorRecord,

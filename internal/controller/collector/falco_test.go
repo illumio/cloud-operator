@@ -192,6 +192,21 @@ func TestCreateLayer4Message(t *testing.T) {
 			},
 			expectedErr: nil,
 		},
+		"SCTP protocol": {
+			proto:     SCTP,
+			srcPort:   38412,
+			dstPort:   36412,
+			ipVersion: "",
+			expected: &pb.Layer4{
+				Protocol: &pb.Layer4_Sctp{
+					Sctp: &pb.SCTP{
+						SourcePort:      38412,
+						DestinationPort: 36412,
+					},
+				},
+			},
+			expectedErr: nil,
+		},
 		"Unknown protocol": {
 			proto:       "unknown",
 			srcPort:     0,

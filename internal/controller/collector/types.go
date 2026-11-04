@@ -81,6 +81,15 @@ func CreateLayer4Message(proto string, srcPort, dstPort uint32, ipVersion string
 				},
 			},
 		}, nil
+	case SCTP:
+		return &pb.Layer4{
+			Protocol: &pb.Layer4_Sctp{
+				Sctp: &pb.SCTP{
+					SourcePort:      srcPort,
+					DestinationPort: dstPort,
+				},
+			},
+		}, nil
 	case ICMP:
 		switch ipVersion {
 		case IPv4:
