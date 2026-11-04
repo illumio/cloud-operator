@@ -4,6 +4,8 @@ package calicoenterprise
 
 import (
 	"context"
+	"io"
+	"net"
 	"testing"
 	"time"
 
@@ -186,4 +188,62 @@ func TestRunSyslogCollectorShutdownLogsNoError(t *testing.T) {
 	}
 
 	assert.Empty(t, logs.FilterLevelExact(zapcore.ErrorLevel).All(), "closing an already-closed listener must not log an error")
+}
+
+// TestHandleConnClosesConnectionOnCancel checks that stopping the collector
+// closes accepted connections, both while reading records and while still
+// waiting for the first byte, so the LogCollector reconnects to the new
+// listener instead of losing its next record to a stopped handler.
+func TestHandleConnClosesConnectionOnCancel(t *testing.T) {
+	tests := map[string]struct {
+		sendRecord bool
+	}{
+		"while reading records":        {sendRecord: true},
+		"while waiting for first byte": {sendRecord: false},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			sink := newRecordingSink()
+			collector := NewCollector(zap.NewNop(), "0", tls.ServerSettings{}, sink, nil)
+			// Long enough that only cancellation, not a timeout, can close the connection.
+			collector.firstByteTimeout = time.Minute
+
+			core, logs := observer.New(zap.WarnLevel)
+
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			serverConn, clientConn := net.Pipe()
+
+			t.Cleanup(func() { _ = clientConn.Close() })
+
+			done := make(chan struct{})
+
+			go func() {
+				collector.handleConn(ctx, zap.New(core), serverConn)
+				close(done)
+			}()
+
+			if tt.sendRecord {
+				_, err := clientConn.Write([]byte(testLogCollectorRecord + "\n"))
+				require.NoError(t, err)
+				waitForFlow(t, sink)
+			}
+
+			cancel()
+
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Fatal("handleConn did not return after the collector was stopped")
+			}
+
+			// The handler has returned, so a read on the client end ends immediately
+			// if the connection was closed.
+			_, err := clientConn.Read(make([]byte, 1))
+			require.ErrorIs(t, err, io.EOF, "the connection must be closed")
+			assert.Empty(t, logs.All(), "stopping the collector must not log a warning")
+		})
+	}
 }

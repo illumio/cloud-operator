@@ -316,14 +316,26 @@ func (c *Collector) handleConn(ctx context.Context, logger *zap.Logger, conn net
 	logger.Debug("Accepted syslog connection")
 
 	defer func() {
-		if err := conn.Close(); err != nil {
+		if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 			logger.Debug("Error closing syslog connection", zap.Error(err))
 		}
 	}()
 
+	// Close the connection as soon as the collector stops: closing the listener
+	// does not close accepted connections, so this handler would otherwise stay
+	// blocked reading an idle connection, and discard the next record that
+	// arrives on it. Closing it makes the LogCollector reconnect to the new
+	// listener before it sends that record.
+	stop := context.AfterFunc(ctx, func() {
+		_ = conn.Close()
+	})
+	defer stop()
+
 	syslogConn, err := c.prepareConn(ctx, conn)
 	if err != nil {
-		logger.Warn("Rejected syslog connection", zap.Error(err))
+		if ctx.Err() == nil {
+			logger.Warn("Rejected syslog connection", zap.Error(err))
+		}
 
 		return
 	}
@@ -374,7 +386,7 @@ func (c *Collector) handleConn(ctx context.Context, logger *zap.Logger, conn net
 
 	// A connection closed mid-record yields a non-EOF scanner error; log it and
 	// move on rather than treating a partial trailing line as a flow.
-	if err := scanner.Err(); err != nil {
+	if err := scanner.Err(); err != nil && ctx.Err() == nil {
 		logger.Debug("Syslog connection scan ended with error", zap.Error(err))
 	}
 }
