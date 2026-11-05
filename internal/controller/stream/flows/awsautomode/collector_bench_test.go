@@ -284,8 +284,8 @@ func (m *mockNodeProxy) serveRotated(w http.ResponseWriter, path string) {
 	// Record the fetch keyed by the rotated file's base name, so tests can assert
 	// exactly which generations were opened (e.g. that a ".log.gz" preferred away in
 	// favor of its ".log" is never fetched).
-	if slash := strings.LastIndexByte(path, '/'); slash >= 0 {
-		v, _ := m.rotatedGets.LoadOrStore(path[slash+1:], new(atomic.Int64))
+	if _, after, ok := strings.CutLast(path, "/"); ok {
+		v, _ := m.rotatedGets.LoadOrStore(after, new(atomic.Int64))
 		if counter, ok := v.(*atomic.Int64); ok {
 			counter.Add(1)
 		}

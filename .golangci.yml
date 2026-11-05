@@ -14,6 +14,7 @@ linters:
     - dupl
     - err113
     - exhaustruct
+    - exhaustruct_v5
     - funcorder
     - funlen
     - gochecknoglobals
@@ -32,6 +33,9 @@ linters:
     - wrapcheck
     - wsl
   settings:
+    modernize:
+      disable:
+        - embedlit # Keep TypeMeta/ObjectMeta explicit in Kubernetes object literals
     goconst:
       min-occurrences: 5 # Require 5+ occurrences before flagging (default is 3)
       ignore-tests: true # Ignore constants in test files

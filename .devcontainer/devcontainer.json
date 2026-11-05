@@ -3,7 +3,7 @@
     "build": {
       "dockerfile": "Dockerfile",
       "args": {
-        "VARIANT": "1.26-trixie"
+        "VARIANT": "1.27-trixie"
       }
     },
 
