@@ -91,7 +91,8 @@ func TestExponentialBackoff_SucceedsOnFirstAttempt(t *testing.T) {
 	select {
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("exponentialBackoff did not terminate in time")
-	case <-done:
+	case err := <-done:
+		require.Error(t, err, "Should give up once later attempts fail past the threshold")
 		assert.GreaterOrEqual(t, attempts, 1, "Should have attempted at least once")
 	}
 }
@@ -130,7 +131,8 @@ func TestExponentialBackoff_RetriesOnFailure(t *testing.T) {
 	select {
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("exponentialBackoff did not terminate in time")
-	case <-done:
+	case err := <-done:
+		require.Error(t, err, "Should give up once later attempts fail past the threshold")
 		assert.GreaterOrEqual(t, attempts, 3, "Should have retried at least 3 times")
 	}
 }
