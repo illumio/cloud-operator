@@ -113,7 +113,7 @@ spec:
               value: "{{ .Values.env.streamSuccessPeriods.connect }}"
             - name: SYSLOG_COLLECTOR_PORT
               value: "{{ .Values.env.syslogCollectorPort }}"
-            {{- if .Values.calico.syslogTLS.secretName }}
+            {{- if include "cloud-operator.syslogTLSSecretName" . }}
             - name: SYSLOG_TLS_CERT_FILE
               value: /etc/illumio/syslog-tls/tls.crt
             - name: SYSLOG_TLS_KEY_FILE
@@ -134,7 +134,7 @@ spec:
               mountPath: /var/run/gops
             - name: ipfix-template-sets
               mountPath: /ipfix-template-sets
-            {{- if .Values.calico.syslogTLS.secretName }}
+            {{- if include "cloud-operator.syslogTLSSecretName" . }}
             - name: syslog-tls
               mountPath: /etc/illumio/syslog-tls
               readOnly: true
@@ -159,8 +159,8 @@ spec:
         - name: ipfix-template-sets
           configMap:
             name: ipfix-template-sets
-        {{- if .Values.calico.syslogTLS.secretName }}
+        {{- if include "cloud-operator.syslogTLSSecretName" . }}
         - name: syslog-tls
           secret:
-            secretName: {{ .Values.calico.syslogTLS.secretName }}
+            secretName: {{ include "cloud-operator.syslogTLSSecretName" . }}
         {{- end }}

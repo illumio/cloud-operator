@@ -271,3 +271,55 @@ tests:
             name: syslog-tls
             secret:
               secretName: syslog-tls-cert
+
+  - it: should mount the Secret created by OpenShift's service-ca on OpenShift
+    capabilities:
+      apiVersions:
+        - security.openshift.io/v1
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SYSLOG_TLS_CERT_FILE
+            value: /etc/illumio/syslog-tls/tls.crt
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: syslog-tls
+            secret:
+              secretName: RELEASE-NAME-cloud-operator-syslog-tls
+
+  - it: should prefer the configured syslog TLS Secret on OpenShift
+    capabilities:
+      apiVersions:
+        - security.openshift.io/v1
+    set:
+      calico.syslogTLS.secretName: "syslog-tls-cert"
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: syslog-tls
+            secret:
+              secretName: syslog-tls-cert
+
+  - it: should not mount a syslog TLS Secret on OpenShift when service-ca is disabled
+    capabilities:
+      apiVersions:
+        - security.openshift.io/v1
+    set:
+      calico.syslogTLS.openshiftServiceCA: false
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SYSLOG_TLS_CERT_FILE
+            value: /etc/illumio/syslog-tls/tls.crt
+
+  - it: should not mount a syslog TLS Secret by default outside OpenShift
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SYSLOG_TLS_CERT_FILE
+            value: /etc/illumio/syslog-tls/tls.crt
