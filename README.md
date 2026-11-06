@@ -137,7 +137,7 @@ kubectl patch logcollector tigera-secure --type merge -p '{
 - `logTypes`: `Flows` only. If it also lists `Audit` or `DNS`, the operator discards those records and counts them in `calico_records_dropped`.
 - `packetSize`: flow records are larger than the default of 1024 bytes and are cut off at that size, so set at least 8192.
 
-The LogCollector supports a single syslog store per cluster, and the operator must be its endpoint.
+The LogCollector can send logs to only one syslog server (`spec.additionalStores.syslog`), and it must be the operator.
 
 ### 2. Disable flow log aggregation
 
@@ -154,7 +154,18 @@ kubectl patch felixconfiguration default --type merge -p '{
 
 ### TLS (optional)
 
-The operator accepts plain-text syslog by default. To also accept TLS, create a `kubernetes.io/tls` Secret in the operator's namespace with a certificate for the operator Service's DNS name, and set:
+The operator accepts plain-text syslog by default. To encrypt the flow logs, give the operator a certificate, make Calico Enterprise trust its CA, and set `encryption: TLS` in the LogCollector's syslog store. The operator reads the certificate on each new connection, so a renewed certificate is used without a restart.
+
+**On OpenShift**, the certificate is created and renewed automatically by OpenShift's service CA, in a Secret named `<release>-cloud-operator-syslog-tls`. Make Calico Enterprise trust OpenShift's service CA:
+
+```
+kubectl get configmap openshift-service-ca.crt -n tigera-operator -o jsonpath='{.data.service-ca\.crt}' > service-ca.crt
+kubectl create configmap syslog-ca -n tigera-operator --from-file=tls.crt=service-ca.crt
+```
+
+When OpenShift renews its service CA, update the `syslog-ca` ConfigMap the same way.
+
+**On other clusters**, create a `kubernetes.io/tls` Secret in the operator's namespace with a certificate for the operator Service's DNS names, `<release>-cloud-operator.<namespace>.svc` and `<release>-cloud-operator.<namespace>.svc.cluster.local`, and set:
 
 ```yaml
 calico:
@@ -163,15 +174,22 @@ calico:
     required: false   # true to reject plain-text connections
 ```
 
-Then set `encryption: TLS` in the LogCollector's syslog store, and configure Calico Enterprise to trust the certificate's CA.
+Then add the certificate's CA to Calico Enterprise:
+
+```
+kubectl create configmap syslog-ca -n tigera-operator --from-file=tls.crt=<ca.crt>
+```
+
+To renew the certificate, update the Secret.
 
 ### Helm values
 
 | Value | Default | Description |
 |---|---|---|
 | `env.syslogCollectorPort` | `6514` | TCP port the operator listens on for syslog. Must match the LogCollector `endpoint`. |
-| `calico.syslogTLS.secretName` | `""` | Secret with the TLS certificate and key. Empty means plain text only. |
+| `calico.syslogTLS.secretName` | `""` | Secret with the TLS certificate and key. Empty means plain text only, except on OpenShift (see `openshiftServiceCA`). |
 | `calico.syslogTLS.required` | `false` | Accept TLS connections only. |
+| `calico.syslogTLS.openshiftServiceCA` | `true` | On OpenShift, have OpenShift's service CA create and renew the certificate when `secretName` is empty. |
 
 ### Troubleshooting
 
