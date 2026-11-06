@@ -89,6 +89,16 @@ func bindEnv(logger *zap.Logger, key, envVar string) {
 	}
 }
 
+// syslogTLSConfig returns the TLS settings of the Calico Enterprise syslog
+// collector. Unset keys mean plain-text syslog only.
+func syslogTLSConfig() tls.ServerSettings {
+	return tls.ServerSettings{
+		CertFile: viper.GetString("syslog_tls_cert_file"),
+		KeyFile:  viper.GetString("syslog_tls_key_file"),
+		Required: viper.GetBool("syslog_tls_required"),
+	}
+}
+
 // logStartupConfig emits the resolved runtime configuration at startup. It is
 // split out of main() to keep that function's size manageable.
 func logStartupConfig(logger *zap.Logger, envConfig stream.Config) {
@@ -107,6 +117,9 @@ func logStartupConfig(logger *zap.Logger, envConfig stream.Config) {
 		zap.String("ovnk_namespace", viper.GetString("ovnk_namespace")),
 		zap.String("pod_namespace", envConfig.PodNamespace),
 		zap.Duration("stats_log_period", envConfig.StatsLogPeriod),
+		zap.String("syslog_collector_port", viper.GetString("syslog_collector_port")),
+		zap.String("syslog_tls_cert_file", viper.GetString("syslog_tls_cert_file")),
+		zap.Bool("syslog_tls_required", viper.GetBool("syslog_tls_required")),
 		zap.Duration("stream_keepalive_period_configuration", viper.GetDuration("stream_keepalive_period_configuration")),
 		zap.Duration("stream_keepalive_period_kubernetes_network_flows", viper.GetDuration("stream_keepalive_period_kubernetes_network_flows")),
 		zap.Duration("stream_keepalive_period_kubernetes_resources", viper.GetDuration("stream_keepalive_period_kubernetes_resources")),
@@ -161,6 +174,10 @@ func main() {
 	bindEnv(logger, "stream_keepalive_period_logs", "STREAM_KEEPALIVE_PERIOD_LOGS")
 	bindEnv(logger, "stream_success_period_auth", "STREAM_SUCCESS_PERIOD_AUTH")
 	bindEnv(logger, "stream_success_period_connect", "STREAM_SUCCESS_PERIOD_CONNECT")
+	bindEnv(logger, "syslog_collector_port", "SYSLOG_COLLECTOR_PORT")
+	bindEnv(logger, "syslog_tls_cert_file", "SYSLOG_TLS_CERT_FILE")
+	bindEnv(logger, "syslog_tls_key_file", "SYSLOG_TLS_KEY_FILE")
+	bindEnv(logger, "syslog_tls_required", "SYSLOG_TLS_REQUIRED")
 	bindEnv(logger, "tls_skip_verify", "TLS_SKIP_VERIFY")
 	bindEnv(logger, "token_endpoint", "TOKEN_ENDPOINT")
 	bindEnv(logger, "verbose_debugging", "VERBOSE_DEBUGGING")
@@ -188,6 +205,7 @@ func main() {
 	viper.SetDefault("stream_keepalive_period_logs", defaultStreamKeepalivePeriodLogs)
 	viper.SetDefault("stream_success_period_auth", defaultStreamSuccessPeriodAuth)
 	viper.SetDefault("stream_success_period_connect", defaultStreamSuccessPeriodConnect)
+	viper.SetDefault("syslog_collector_port", "6514")
 	viper.SetDefault("tls_skip_verify", false)
 	viper.SetDefault("token_endpoint", "https://dev.cloud.ilabs.io/api/v1/k8s_cluster/authenticate")
 	viper.SetDefault("verbose_debugging", false)
@@ -284,6 +302,8 @@ func main() {
 		Logger:                         logger,
 		OVNKNamespace:                  viper.GetString("ovnk_namespace"),
 		Stats:                          stats,
+		SyslogCollectorPort:            viper.GetString("syslog_collector_port"),
+		SyslogTLS:                      syslogTLSConfig(),
 		TlsAuthProps:                   tlsAuthProps,
 	})
 

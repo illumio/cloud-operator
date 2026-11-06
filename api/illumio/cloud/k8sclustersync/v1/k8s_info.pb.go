@@ -42,6 +42,8 @@ const (
 	FlowCollector_FLOW_COLLECTOR_OVNK FlowCollector = 4
 	// Indicates that AWS VPC CNI is deployed with Network Policy Agent for collecting network flows.
 	FlowCollector_FLOW_COLLECTOR_AWS_VPC_CNI FlowCollector = 5
+	// Indicates that Calico Enterprise is deployed and its LogCollector forwards network flows over syslog.
+	FlowCollector_FLOW_COLLECTOR_CALICO_ENTERPRISE FlowCollector = 7
 )
 
 // Enum value maps for FlowCollector.
@@ -53,14 +55,16 @@ var (
 		3: "FLOW_COLLECTOR_FALCO",
 		4: "FLOW_COLLECTOR_OVNK",
 		5: "FLOW_COLLECTOR_AWS_VPC_CNI",
+		7: "FLOW_COLLECTOR_CALICO_ENTERPRISE",
 	}
 	FlowCollector_value = map[string]int32{
-		"FLOW_COLLECTOR_UNSPECIFIED": 0,
-		"FLOW_COLLECTOR_DISABLED":    1,
-		"FLOW_COLLECTOR_CILIUM":      2,
-		"FLOW_COLLECTOR_FALCO":       3,
-		"FLOW_COLLECTOR_OVNK":        4,
-		"FLOW_COLLECTOR_AWS_VPC_CNI": 5,
+		"FLOW_COLLECTOR_UNSPECIFIED":       0,
+		"FLOW_COLLECTOR_DISABLED":          1,
+		"FLOW_COLLECTOR_CILIUM":            2,
+		"FLOW_COLLECTOR_FALCO":             3,
+		"FLOW_COLLECTOR_OVNK":              4,
+		"FLOW_COLLECTOR_AWS_VPC_CNI":       5,
+		"FLOW_COLLECTOR_CALICO_ENTERPRISE": 7,
 	}
 )
 
@@ -10166,14 +10170,15 @@ const file_illumio_cloud_k8sclustersync_v1_k8s_info_proto_rawDesc = "" +
 	"\x17create_or_update_object\x18\x01 \x01(\v2?.illumio.cloud.k8sclustersync.v1.ConfiguredKubernetesObjectDataH\x00R\x14createOrUpdateObject\x12h\n" +
 	"\rdelete_object\x18\x03 \x01(\v2A.illumio.cloud.k8sclustersync.v1.DeleteConfiguredKubernetesObjectH\x00R\fdeleteObjectB\n" +
 	"\n" +
-	"\bmutationJ\x04\b\x02\x10\x03*\xba\x01\n" +
+	"\bmutationJ\x04\b\x02\x10\x03*\xe0\x01\n" +
 	"\rFlowCollector\x12\x1e\n" +
 	"\x1aFLOW_COLLECTOR_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17FLOW_COLLECTOR_DISABLED\x10\x01\x12\x19\n" +
 	"\x15FLOW_COLLECTOR_CILIUM\x10\x02\x12\x18\n" +
 	"\x14FLOW_COLLECTOR_FALCO\x10\x03\x12\x17\n" +
 	"\x13FLOW_COLLECTOR_OVNK\x10\x04\x12\x1e\n" +
-	"\x1aFLOW_COLLECTOR_AWS_VPC_CNI\x10\x05*\x8c\x01\n" +
+	"\x1aFLOW_COLLECTOR_AWS_VPC_CNI\x10\x05\x12$\n" +
+	" FLOW_COLLECTOR_CALICO_ENTERPRISE\x10\a*\x8c\x01\n" +
 	"\x10TrafficDirection\x12;\n" +
 	"7TRAFFIC_DIRECTION_TRAFFIC_DIRECTION_UNKNOWN_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19TRAFFIC_DIRECTION_INGRESS\x10\x01\x12\x1c\n" +
