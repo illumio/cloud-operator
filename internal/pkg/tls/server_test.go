@@ -91,8 +91,12 @@ func TestLoadServerConfig(t *testing.T) {
 			settings: ServerSettings{CertFile: certFile},
 			wantErr:  true,
 		},
-		"missing certificate file": {
-			settings: ServerSettings{CertFile: "/nonexistent/tls.crt", KeyFile: keyFile},
+		"certificate files not created yet": {
+			settings:   ServerSettings{CertFile: "/nonexistent/tls.crt", KeyFile: "/nonexistent/tls.key"},
+			wantConfig: true,
+		},
+		"invalid certificate file": {
+			settings: ServerSettings{CertFile: keyFile, KeyFile: keyFile},
 			wantErr:  true,
 		},
 		"TLS required without a certificate": {
@@ -279,4 +283,36 @@ func TestLoadServerConfigReloadsRenewedCertificate(t *testing.T) {
 	// Once the files are valid again, the new certificate is served.
 	writeServerTestCertificateTo(t, dir, 3)
 	assert.Equal(t, int64(3), servedCertificateSerial(t, config))
+}
+
+func TestLoadServerConfigServesCertificateCreatedLater(t *testing.T) {
+	dir := t.TempDir()
+
+	config, err := LoadServerConfig(zap.NewNop(), ServerSettings{
+		CertFile: filepath.Join(dir, "tls.crt"),
+		KeyFile:  filepath.Join(dir, "tls.key"),
+	})
+	require.NoError(t, err, "a certificate that does not exist yet is not an error")
+	require.NotNil(t, config)
+
+	// Without a certificate, TLS handshakes fail.
+	serverConn, clientConn := net.Pipe()
+
+	t.Cleanup(func() {
+		_ = serverConn.Close()
+		_ = clientConn.Close()
+	})
+
+	go func() {
+		_ = tls.Server(serverConn, config).HandshakeContext(t.Context())
+		_ = serverConn.Close()
+	}()
+
+	client := tls.Client(clientConn, &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // the handshake is expected to fail
+	require.Error(t, client.HandshakeContext(t.Context()))
+
+	// Once the certificate is created, as when an optional Secret volume is
+	// populated, it is served without recreating the config.
+	writeServerTestCertificateTo(t, dir, 7)
+	assert.Equal(t, int64(7), servedCertificateSerial(t, config))
 }

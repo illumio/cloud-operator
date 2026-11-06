@@ -222,8 +222,6 @@ func (c *Collector) RunSyslogCollector(ctx context.Context) error {
 
 	if tlsConfig == nil {
 		logger.Info("No syslog TLS certificate configured; accepting plain-text syslog only")
-	} else {
-		logger.Info("Syslog TLS certificate configured", zap.Bool("tls_required", c.tlsSettings.Required))
 	}
 
 	var listenerConfig net.ListenConfig

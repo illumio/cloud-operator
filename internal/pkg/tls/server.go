@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"sync"
 	"time"
@@ -36,12 +37,14 @@ type ServerSettings struct {
 }
 
 // LoadServerConfig loads the server certificate. It returns a nil config when
-// no certificate is configured.
+// no certificate files are configured.
 //
 // The returned config re-reads the certificate files on each TLS handshake, so
-// a renewed certificate, such as an updated Secret mounted as a volume, is used
-// for new connections without a restart. The certificate is also loaded once
-// here, so that a missing or invalid certificate is reported at startup.
+// a created or renewed certificate, such as a Secret mounted as an optional
+// volume, is used for new connections without a restart. Until the files
+// exist, TLS handshakes fail and plain-text connections are still accepted,
+// unless TLS is required. The certificate is loaded once here, so that an
+// invalid certificate is reported at startup.
 func LoadServerConfig(logger *zap.Logger, settings ServerSettings) (*tls.Config, error) {
 	if settings.CertFile == "" && settings.KeyFile == "" {
 		if settings.Required {
@@ -61,7 +64,17 @@ func LoadServerConfig(logger *zap.Logger, settings ServerSettings) (*tls.Config,
 
 	reloader := &certificateReloader{logger: logger, certFile: settings.CertFile, keyFile: settings.KeyFile}
 
-	if _, err := reloader.load(); err != nil {
+	_, err := reloader.load()
+
+	switch {
+	case err == nil:
+		logger.Info("Loaded TLS certificate",
+			zap.String("cert_file", settings.CertFile), zap.Bool("tls_required", settings.Required))
+	case errors.Is(err, fs.ErrNotExist):
+		// The certificate may be created later, e.g. an optional Secret volume.
+		logger.Info("TLS certificate not found; TLS connections are accepted once it is created",
+			zap.String("cert_file", settings.CertFile), zap.Bool("tls_required", settings.Required))
+	default:
 		return nil, err
 	}
 
