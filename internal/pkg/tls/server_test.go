@@ -20,6 +20,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 // writeServerTestCertificate writes a self-signed certificate and key for
@@ -27,11 +29,23 @@ import (
 func writeServerTestCertificate(t *testing.T) (string, string, *x509.CertPool) {
 	t.Helper()
 
+	dir := t.TempDir()
+	pool := writeServerTestCertificateTo(t, dir, 1)
+
+	return filepath.Join(dir, "tls.crt"), filepath.Join(dir, "tls.key"), pool
+}
+
+// writeServerTestCertificateTo writes a self-signed certificate for localhost
+// with the given serial number to tls.crt and tls.key in dir, replacing any
+// existing files, and returns a pool that trusts the certificate.
+func writeServerTestCertificateTo(t *testing.T, dir string, serial int64) *x509.CertPool {
+	t.Helper()
+
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
 	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
+		SerialNumber: big.NewInt(serial),
 		Subject:      pkix.Name{CommonName: "localhost"},
 		DNSNames:     []string{"localhost"},
 		NotBefore:    time.Now().Add(-time.Hour),
@@ -46,12 +60,8 @@ func writeServerTestCertificate(t *testing.T) (string, string, *x509.CertPool) {
 	keyDER, err := x509.MarshalECPrivateKey(key)
 	require.NoError(t, err)
 
-	dir := t.TempDir()
-	certFile := filepath.Join(dir, "tls.crt")
-	keyFile := filepath.Join(dir, "tls.key")
-
-	require.NoError(t, os.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600))
-	require.NoError(t, os.WriteFile(keyFile, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "tls.crt"), pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "tls.key"), pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}), 0o600))
 
 	cert, err := x509.ParseCertificate(der)
 	require.NoError(t, err)
@@ -59,7 +69,7 @@ func writeServerTestCertificate(t *testing.T) (string, string, *x509.CertPool) {
 	pool := x509.NewCertPool()
 	pool.AddCert(cert)
 
-	return certFile, keyFile, pool
+	return pool
 }
 
 func TestLoadServerConfig(t *testing.T) {
@@ -93,7 +103,7 @@ func TestLoadServerConfig(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			config, err := LoadServerConfig(tt.settings)
+			config, err := LoadServerConfig(zap.NewNop(), tt.settings)
 			if tt.wantErr {
 				require.Error(t, err)
 
@@ -109,7 +119,8 @@ func TestLoadServerConfig(t *testing.T) {
 			}
 
 			require.NotNil(t, config)
-			assert.Len(t, config.Certificates, 1)
+			assert.Empty(t, config.Certificates, "the certificate is served through GetCertificate")
+			assert.NotNil(t, config.GetCertificate)
 			assert.Equal(t, uint16(tls.VersionTLS12), config.MinVersion)
 		})
 	}
@@ -147,7 +158,7 @@ func TestPrepareServerConnPlainText(t *testing.T) {
 func TestPrepareServerConnTLS(t *testing.T) {
 	certFile, keyFile, pool := writeServerTestCertificate(t)
 
-	config, err := LoadServerConfig(ServerSettings{CertFile: certFile, KeyFile: keyFile})
+	config, err := LoadServerConfig(zap.NewNop(), ServerSettings{CertFile: certFile, KeyFile: keyFile})
 	require.NoError(t, err)
 
 	opts := ServerConnOptions{Config: config, FirstByteTimeout: time.Second, HandshakeTimeout: time.Second}
@@ -169,7 +180,7 @@ func TestPrepareServerConnTLS(t *testing.T) {
 func TestPrepareServerConnRejects(t *testing.T) {
 	certFile, keyFile, _ := writeServerTestCertificate(t)
 
-	config, err := LoadServerConfig(ServerSettings{CertFile: certFile, KeyFile: keyFile})
+	config, err := LoadServerConfig(zap.NewNop(), ServerSettings{CertFile: certFile, KeyFile: keyFile})
 	require.NoError(t, err)
 
 	startTLS := func(c net.Conn) {
@@ -215,4 +226,57 @@ func TestPrepareServerConnRejects(t *testing.T) {
 			}
 		})
 	}
+}
+
+// servedCertificateSerial performs a TLS handshake with a server using config
+// and returns the serial number of the certificate the server presented.
+func servedCertificateSerial(t *testing.T, config *tls.Config) int64 {
+	t.Helper()
+
+	serverConn, clientConn := net.Pipe()
+
+	t.Cleanup(func() {
+		_ = serverConn.Close()
+		_ = clientConn.Close()
+	})
+
+	go func() {
+		_ = tls.Server(serverConn, config).HandshakeContext(t.Context())
+	}()
+
+	client := tls.Client(clientConn, &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // the test inspects the served certificate itself
+	require.NoError(t, client.HandshakeContext(t.Context()))
+
+	return client.ConnectionState().PeerCertificates[0].SerialNumber.Int64()
+}
+
+func TestLoadServerConfigReloadsRenewedCertificate(t *testing.T) {
+	dir := t.TempDir()
+	writeServerTestCertificateTo(t, dir, 1)
+
+	core, logs := observer.New(zap.WarnLevel)
+
+	config, err := LoadServerConfig(zap.New(core), ServerSettings{
+		CertFile: filepath.Join(dir, "tls.crt"),
+		KeyFile:  filepath.Join(dir, "tls.key"),
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(1), servedCertificateSerial(t, config))
+
+	// Renew the certificate without recreating the config, as when an updated
+	// Secret is written to a mounted volume.
+	writeServerTestCertificateTo(t, dir, 2)
+	assert.Equal(t, int64(2), servedCertificateSerial(t, config), "a new connection must get the renewed certificate")
+
+	// A certificate that fails to load keeps the last good certificate in use.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "tls.crt"), []byte("not a certificate"), 0o600))
+	assert.Equal(t, int64(2), servedCertificateSerial(t, config), "a failed reload must keep serving the last good certificate")
+
+	warnings := logs.FilterMessageSnippet("Failed to reload the TLS certificate").All()
+	require.Len(t, warnings, 1, "a failed reload must be logged")
+
+	// Once the files are valid again, the new certificate is served.
+	writeServerTestCertificateTo(t, dir, 3)
+	assert.Equal(t, int64(3), servedCertificateSerial(t, config))
 }

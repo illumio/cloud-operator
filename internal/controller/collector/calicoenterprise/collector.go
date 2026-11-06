@@ -211,7 +211,7 @@ func (c *Collector) RunSyslogCollector(ctx context.Context) error {
 	)
 	logger.Info("Starting Calico Enterprise syslog collector")
 
-	tlsConfig, err := tls.LoadServerConfig(c.tlsSettings)
+	tlsConfig, err := tls.LoadServerConfig(c.logger, c.tlsSettings)
 	if err != nil {
 		logger.Error("Failed to configure syslog TLS", zap.Error(err))
 
@@ -259,7 +259,7 @@ func (c *Collector) RunSyslogCollector(ctx context.Context) error {
 		conn, err := listener.Accept()
 		if err != nil {
 			if ctx.Err() != nil {
-				logger.Info("Context canceled in Calico Enterprise syslog collector")
+				logger.Debug("Context canceled in Calico Enterprise syslog collector")
 
 				return ctx.Err()
 			}
@@ -272,7 +272,7 @@ func (c *Collector) RunSyslogCollector(ctx context.Context) error {
 
 			select {
 			case <-ctx.Done():
-				logger.Info("Context canceled in Calico Enterprise syslog collector")
+				logger.Debug("Context canceled in Calico Enterprise syslog collector")
 
 				return ctx.Err()
 			case <-time.After(acceptDelay):
@@ -310,7 +310,7 @@ func (c *Collector) prepareConn(ctx context.Context, conn net.Conn) (net.Conn, e
 }
 
 // handleConn reads newline-delimited syslog records from a single LogCollector
-// connection and caches each parsed flow.
+// connection and sends each parsed flow into the flow cache.
 func (c *Collector) handleConn(ctx context.Context, logger *zap.Logger, conn net.Conn) {
 	logger = logger.With(zap.String("remote_addr", conn.RemoteAddr().String()))
 	logger.Debug("Accepted syslog connection")

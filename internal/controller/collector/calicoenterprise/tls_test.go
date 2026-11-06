@@ -157,8 +157,7 @@ func assertConnClosed(t *testing.T, conn net.Conn) {
 	require.Error(t, err)
 
 	// A closed connection reads as EOF or a reset; a timeout means it is still open.
-	var netErr net.Error
-	if errors.As(err, &netErr) {
+	if netErr, ok := errors.AsType[net.Error](err); ok {
 		assert.False(t, netErr.Timeout(), "connection should be closed, not idle")
 	}
 }
@@ -166,7 +165,7 @@ func assertConnClosed(t *testing.T, conn net.Conn) {
 func newTestCollector(t *testing.T, sink collector.FlowSink, settings tls.ServerSettings) *Collector {
 	t.Helper()
 
-	config, err := tls.LoadServerConfig(settings)
+	config, err := tls.LoadServerConfig(zap.NewNop(), settings)
 	require.NoError(t, err)
 
 	collector := NewCollector(zap.NewNop(), "0", settings, sink, nil)

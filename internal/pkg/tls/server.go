@@ -9,7 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // Errors for accepting server connections that may use TLS or plain text.
@@ -34,7 +37,12 @@ type ServerSettings struct {
 
 // LoadServerConfig loads the server certificate. It returns a nil config when
 // no certificate is configured.
-func LoadServerConfig(settings ServerSettings) (*tls.Config, error) {
+//
+// The returned config re-reads the certificate files on each TLS handshake, so
+// a renewed certificate, such as an updated Secret mounted as a volume, is used
+// for new connections without a restart. The certificate is also loaded once
+// here, so that a missing or invalid certificate is reported at startup.
+func LoadServerConfig(logger *zap.Logger, settings ServerSettings) (*tls.Config, error) {
 	if settings.CertFile == "" && settings.KeyFile == "" {
 		if settings.Required {
 			return nil, errors.New("TLS is required but no TLS certificate is configured")
@@ -47,15 +55,73 @@ func LoadServerConfig(settings ServerSettings) (*tls.Config, error) {
 		return nil, errors.New("both the TLS certificate file and key file must be set")
 	}
 
-	certificate, err := tls.LoadX509KeyPair(settings.CertFile, settings.KeyFile)
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
+	reloader := &certificateReloader{logger: logger, certFile: settings.CertFile, keyFile: settings.KeyFile}
+
+	if _, err := reloader.load(); err != nil {
+		return nil, err
+	}
+
+	return &tls.Config{
+		GetCertificate: reloader.getCertificate,
+		MinVersion:     tls.VersionTLS12,
+	}, nil
+}
+
+// certificateReloader serves the certificate in certFile and keyFile, re-reading
+// both files on each TLS handshake. Handshakes are rare for long-lived
+// connections, so reading the files each time is cheaper and simpler than
+// watching them.
+type certificateReloader struct {
+	logger   *zap.Logger
+	certFile string
+	keyFile  string
+
+	mu   sync.Mutex
+	last *tls.Certificate // last certificate that loaded successfully
+}
+
+// load reads the certificate and key files and remembers the result as the
+// last good certificate.
+func (r *certificateReloader) load() (*tls.Certificate, error) {
+	certificate, err := tls.LoadX509KeyPair(r.certFile, r.keyFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load TLS certificate: %w", err)
 	}
 
-	return &tls.Config{
-		Certificates: []tls.Certificate{certificate},
-		MinVersion:   tls.VersionTLS12,
-	}, nil
+	r.mu.Lock()
+	r.last = &certificate
+	r.mu.Unlock()
+
+	return &certificate, nil
+}
+
+// getCertificate implements tls.Config.GetCertificate. If the files cannot be
+// loaded, it keeps serving the last good certificate. Kubernetes swaps all the
+// files of an updated Secret volume at once, but the two files are opened one
+// after the other, so a read that straddles the swap can see a mismatched pair;
+// the next handshake then reads a consistent pair again.
+func (r *certificateReloader) getCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+	certificate, err := r.load()
+	if err == nil {
+		return certificate, nil
+	}
+
+	r.mu.Lock()
+	last := r.last
+	r.mu.Unlock()
+
+	if last == nil {
+		return nil, err
+	}
+
+	r.logger.Warn("Failed to reload the TLS certificate; serving the previously loaded certificate",
+		zap.String("cert_file", r.certFile), zap.Error(err))
+
+	return last, nil
 }
 
 // ServerConnOptions configures PrepareServerConn.
