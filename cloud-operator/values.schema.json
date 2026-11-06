@@ -36,14 +36,8 @@
                 "syslogTLS": {
                     "type": "object",
                     "properties": {
-                        "openshiftServiceCA": {
-                            "type": "boolean"
-                        },
                         "required": {
                             "type": "boolean"
-                        },
-                        "secretName": {
-                            "type": "string"
                         }
                     }
                 }

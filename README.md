@@ -154,9 +154,9 @@ kubectl patch felixconfiguration default --type merge -p '{
 
 ### TLS (optional)
 
-The operator accepts plain-text syslog by default. To encrypt the flow logs, give the operator a certificate, make Calico Enterprise trust its CA, and set `encryption: TLS` in the LogCollector's syslog store. The operator reads the certificate on each new connection, so a renewed certificate is used without a restart.
+The operator accepts plain-text syslog by default. To encrypt the flow logs, provide a certificate in a Secret named `cloud-operator-syslog-tls` in the operator's namespace, make Calico Enterprise trust its CA, and set `encryption: TLS` in the LogCollector's syslog store. The operator reads the certificate on each new connection, so a created or renewed Secret is used without a restart.
 
-**On OpenShift**, the certificate is created and renewed automatically by OpenShift's service CA, in a Secret named `<release>-cloud-operator-syslog-tls`. Make Calico Enterprise trust OpenShift's service CA:
+**On OpenShift**, OpenShift's service CA creates and renews the `cloud-operator-syslog-tls` Secret automatically. Make Calico Enterprise trust OpenShift's service CA:
 
 ```
 kubectl get configmap openshift-service-ca.crt -n tigera-operator -o jsonpath='{.data.service-ca\.crt}' > service-ca.crt
@@ -165,13 +165,10 @@ kubectl create configmap syslog-ca -n tigera-operator --from-file=tls.crt=servic
 
 When OpenShift renews its service CA, update the `syslog-ca` ConfigMap the same way.
 
-**On other clusters**, create a `kubernetes.io/tls` Secret in the operator's namespace with a certificate for the operator Service's DNS names, `<release>-cloud-operator.<namespace>.svc` and `<release>-cloud-operator.<namespace>.svc.cluster.local`, and set:
+**On other clusters**, create the Secret with a certificate for the operator Service's DNS names, `<release>-cloud-operator.<namespace>.svc` and `<release>-cloud-operator.<namespace>.svc.cluster.local`:
 
-```yaml
-calico:
-  syslogTLS:
-    secretName: <secret-name>
-    required: false   # true to reject plain-text connections
+```
+kubectl create secret tls cloud-operator-syslog-tls -n <namespace> --cert=tls.crt --key=tls.key
 ```
 
 Then add the certificate's CA to Calico Enterprise:
@@ -180,16 +177,16 @@ Then add the certificate's CA to Calico Enterprise:
 kubectl create configmap syslog-ca -n tigera-operator --from-file=tls.crt=<ca.crt>
 ```
 
-To renew the certificate, update the Secret.
+To renew the certificate, update the Secret before the certificate expires.
+
+To reject plain-text connections, set `calico.syslogTLS.required: true`.
 
 ### Helm values
 
 | Value | Default | Description |
 |---|---|---|
 | `env.syslogCollectorPort` | `6514` | TCP port the operator listens on for syslog. Must match the LogCollector `endpoint`. |
-| `calico.syslogTLS.secretName` | `""` | Secret with the TLS certificate and key. Empty means plain text only, except on OpenShift (see `openshiftServiceCA`). |
-| `calico.syslogTLS.required` | `false` | Accept TLS connections only. |
-| `calico.syslogTLS.openshiftServiceCA` | `true` | On OpenShift, have OpenShift's service CA create and renew the certificate when `secretName` is empty. |
+| `calico.syslogTLS.required` | `false` | Accept TLS connections only. The certificate is read from the `cloud-operator-syslog-tls` Secret. |
 
 ### Troubleshooting
 

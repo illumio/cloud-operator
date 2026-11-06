@@ -40,25 +40,3 @@ release: {{ .Release.Name }}
 {{- include "cloud-operator.fullname" . }}
 {{- end -}}
 {{- end -}}
-{{/*
-Whether OpenShift's service-ca creates the syslog collector's TLS certificate:
-on OpenShift, unless disabled or a certificate Secret is set explicitly.
-*/}}
-{{- define "cloud-operator.syslogTLSFromOpenShiftServiceCA" -}}
-{{- if and .Values.calico.syslogTLS.openshiftServiceCA (not .Values.calico.syslogTLS.secretName) (.Capabilities.APIVersions.Has "security.openshift.io/v1") -}}
-true
-{{- end -}}
-{{- end -}}
-
-{{/*
-The Secret with the syslog collector's TLS certificate: calico.syslogTLS.secretName
-if set, otherwise the Secret that OpenShift's service-ca creates for the
-operator Service, otherwise empty (plain-text syslog only).
-*/}}
-{{- define "cloud-operator.syslogTLSSecretName" -}}
-{{- if .Values.calico.syslogTLS.secretName -}}
-{{- .Values.calico.syslogTLS.secretName -}}
-{{- else if include "cloud-operator.syslogTLSFromOpenShiftServiceCA" . -}}
-{{- printf "%s-syslog-tls" (include "cloud-operator.fullname" .) -}}
-{{- end -}}
-{{- end -}}

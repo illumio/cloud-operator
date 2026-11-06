@@ -7,12 +7,11 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cloud-operator.labels" . | nindent 4 }}
-  {{- if include "cloud-operator.syslogTLSFromOpenShiftServiceCA" . }}
   annotations:
-    # OpenShift's service-ca creates and renews a TLS certificate for this
-    # Service in this Secret; the syslog collector serves it.
-    service.beta.openshift.io/serving-cert-secret-name: {{ include "cloud-operator.syslogTLSSecretName" . }}
-  {{- end }}
+    # On OpenShift, service-ca creates and renews a TLS certificate for this
+    # Service in this Secret, which the syslog collector serves. Ignored
+    # elsewhere.
+    service.beta.openshift.io/serving-cert-secret-name: cloud-operator-syslog-tls
 spec:
   {{- if .Values.service.clusterIP }}
   clusterIP: {{ .Values.service.clusterIP }}
