@@ -167,7 +167,7 @@ func main() {
 
 	// Set default values
 	viper.SetDefault("aws_vpc_cni_logs_polling_interval", "1s")
-	viper.SetDefault("cilium_namespaces", []string{"kube-system", "gke-managed-dpv2-observability"})
+	viper.SetDefault("cilium_namespaces", []string{"kube-system", "gke-managed-dpv2-observability", "cilium"})
 	viper.SetDefault("cluster_creds", "clustercreds")
 	viper.SetDefault("eks_auto_mode_log_path", collector.DefaultNetworkPolicyAgentLogPath)
 	viper.SetDefault("eks_auto_mode_max_concurrent_node_polls", 10)

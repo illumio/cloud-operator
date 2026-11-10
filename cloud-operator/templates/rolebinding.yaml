@@ -66,3 +66,21 @@ roleRef:
   kind: Role
   name: hubble-client-certs-reader
 {{- end }}
+{{- if (lookup "v1" "Namespace" "" "cilium") }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cloud-operator-read-hubble-client-certs
+  namespace: cilium
+  labels:
+    {{- include "cloud-operator.labels" . | nindent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.serviceAccount.name }}
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: hubble-client-certs-reader
+{{- end }}
