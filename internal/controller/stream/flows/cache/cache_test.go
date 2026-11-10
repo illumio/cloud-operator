@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
@@ -175,6 +176,39 @@ func TestFlowCache_EvictOldestFlow(t *testing.T) {
 
 	evictedFlow := <-c.OutFlows
 	assert.Equal(t, flow, evictedFlow)
+}
+
+// newFiveTupleFlow returns a flow for the same TCP 5-tuple with the given verdict.
+func newFiveTupleFlow(ts time.Time, verdict pb.Verdict) *pb.FiveTupleFlow {
+	return &pb.FiveTupleFlow{
+		Layer3:  &pb.IP{Source: "10.0.1.28", Destination: "10.0.1.132", IpVersion: pb.IPVersion_IP_VERSION_IPV4},
+		Layer4:  &pb.Layer4{Protocol: &pb.Layer4_Tcp{Tcp: &pb.TCP{SourcePort: 55484, DestinationPort: 80}}},
+		Ts:      &pb.FiveTupleFlow_Timestamp{Timestamp: timestamppb.New(ts)},
+		Verdict: verdict,
+	}
+}
+
+func TestFlowCache_FiveTupleFlowVerdictsNotDeduplicated(t *testing.T) {
+	outFlows := make(chan pb.Flow, 10)
+	c := NewFlowCache(10*time.Second, 100, outFlows)
+
+	ts := time.Now().Add(-time.Minute)
+	accept := newFiveTupleFlow(ts, pb.Verdict_VERDICT_FORWARDED)
+	deny := newFiveTupleFlow(ts, pb.Verdict_VERDICT_DROPPED)
+	acceptAgain := newFiveTupleFlow(ts, pb.Verdict_VERDICT_FORWARDED)
+
+	// Mirror Run's inFlows handling: skip duplicates, cache the rest.
+	for _, flow := range []pb.Flow{accept, deny, acceptAgain} {
+		if !c.shouldSkipFlow(flow) {
+			c.addFlowToCache(flow)
+		}
+	}
+
+	c.evictExpiredFlows(context.Background(), zap.NewNop())
+
+	require.Len(t, outFlows, 2, "ACCEPT and DENY for the same 5-tuple must both be exported")
+	assert.Same(t, accept, <-outFlows)
+	assert.Same(t, deny, <-outFlows)
 }
 
 func TestFlowCache_Run(t *testing.T) {
