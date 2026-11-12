@@ -109,6 +109,95 @@ helm install illumio --namespace illumio-cloud oci://ghcr.io/illumio/charts/clou
 - **gRPC Requests**:
   - All gRPC requests will also respect the `HTTPS_PROXY` environment variable.
 
+## Calico Enterprise Flow Collection
+
+On clusters running Calico Enterprise, the Cloud Operator receives network flows from Calico Enterprise's LogCollector over syslog. At startup, the operator uses this collector when the `default` Installation (`operator.tigera.io/v1`) has `spec.variant: TigeraSecureEnterprise` and the `tigera-secure` LogCollector has a syslog store that sends `Flows` logs, and then listens for syslog on TCP port 6514. Otherwise it continues detecting other flow sources, such as the AWS VPC CNI.
+
+Calico Enterprise does not send flows to the operator by default. Two settings are required on the Calico side.
+
+### 1. Send flow logs to the operator
+
+Add a syslog store to the LogCollector that points at the operator's Service:
+
+```
+kubectl patch logcollector tigera-secure --type merge -p '{
+  "spec": {
+    "additionalStores": {
+      "syslog": {
+        "endpoint": "tcp://<release>-cloud-operator.<namespace>.svc.cluster.local:6514",
+        "logTypes": ["Flows"],
+        "packetSize": 8192
+      }
+    }
+  }
+}'
+```
+
+- `endpoint`: the operator's Service, for example `tcp://illumio-cloud-operator.illumio-cloud.svc.cluster.local:6514` for release `illumio` in namespace `illumio-cloud`.
+- `logTypes`: `Flows` only. If it also lists `Audit` or `DNS`, the operator discards those records and counts them in `calico_records_dropped`.
+- `packetSize`: flow records are larger than the default of 1024 bytes and are cut off at that size, so set at least 8192.
+
+The LogCollector can send logs to only one syslog server (`spec.additionalStores.syslog`), and it must be the operator.
+
+### 2. Disable flow log aggregation
+
+By default, Calico Enterprise aggregates flow logs and leaves out IP addresses and source ports, so the operator cannot build a five-tuple from them. Set the aggregation level to 0 for allowed and denied flows:
+
+```
+kubectl patch felixconfiguration default --type merge -p '{
+  "spec": {
+    "flowLogsFileAggregationKindForAllowed": 0,
+    "flowLogsFileAggregationKindForDenied": 0
+  }
+}'
+```
+
+### TLS (optional)
+
+The operator accepts plain-text syslog by default. To encrypt the flow logs, provide a certificate in a Secret named `cloud-operator-syslog-tls` in the operator's namespace, make Calico Enterprise trust its CA, and set `encryption: TLS` in the LogCollector's syslog store. The operator reads the certificate on each new connection, so a created or renewed Secret is used without a restart.
+
+**On OpenShift**, OpenShift's service CA creates and renews the `cloud-operator-syslog-tls` Secret automatically. Make Calico Enterprise trust OpenShift's service CA:
+
+```
+kubectl get configmap openshift-service-ca.crt -n tigera-operator -o jsonpath='{.data.service-ca\.crt}' > service-ca.crt
+kubectl create configmap syslog-ca -n tigera-operator --from-file=tls.crt=service-ca.crt
+```
+
+When OpenShift renews its service CA, update the `syslog-ca` ConfigMap the same way.
+
+**On other clusters**, create the Secret with a certificate for the operator Service's DNS names, `<release>-cloud-operator.<namespace>.svc` and `<release>-cloud-operator.<namespace>.svc.cluster.local`:
+
+```
+kubectl create secret tls cloud-operator-syslog-tls -n <namespace> --cert=tls.crt --key=tls.key
+```
+
+Then add the certificate's CA to Calico Enterprise:
+
+```
+kubectl create configmap syslog-ca -n tigera-operator --from-file=tls.crt=<ca.crt>
+```
+
+To renew the certificate, update the Secret before the certificate expires.
+
+To reject plain-text connections, set `calico.syslogTLS.required: true`.
+
+### Helm values
+
+| Value | Default | Description |
+|---|---|---|
+| `env.syslogCollectorPort` | `6514` | TCP port the operator listens on for syslog. Must match the LogCollector `endpoint`. |
+| `calico.syslogTLS.required` | `false` | Accept TLS connections only. The certificate is read from the `cloud-operator-syslog-tls` Secret. |
+
+### Troubleshooting
+
+- The operator logs `Using Calico Enterprise flow collector` at startup when it detects Calico Enterprise with a syslog store configured.
+- A warning `Calico Enterprise detected, but its LogCollector has no syslog store` (or `does not send Flows logs`) means step 1 is missing or incomplete. The operator checks this only at startup: apply step 1, then restart the operator.
+- A warning `Failed to read the Calico Enterprise LogCollector` means the operator could not check the syslog store, for example because its RBAC does not allow reading `logcollectors`. The warning includes the error. Fix it, then restart the operator.
+- A warning that the syslog endpoint `does not use the operator's syslog port` means the LogCollector's `endpoint` port differs from `env.syslogCollectorPort`.
+- The `Stream statistics` log line includes `calico_records_dropped`, the number of syslog records that could not be turned into flows.
+- A warning `Calico Enterprise is sending aggregated flow logs ...` means flow log aggregation is still enabled. Apply step 2.
+- If `flows_received` stays at 0 and no records are dropped, check that the LogCollector's syslog `endpoint` points at the operator's Service and port.
+
 
 # IPFIX Template Sets ConfigMap
 
