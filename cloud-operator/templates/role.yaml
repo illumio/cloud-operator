@@ -55,3 +55,19 @@ rules:
   resourceNames: ["hubble-relay-client-certs"]
   verbs: ["get"]
 {{- end }}
+{{- if (lookup "v1" "Namespace" "" "cilium") }}
+---
+# Role to read secrets in the namespace of Cilium installed with its OLM operator on OpenShift
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hubble-client-certs-reader
+  namespace: cilium
+  labels:
+    {{- include "cloud-operator.labels" . | nindent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["hubble-relay-client-certs"]
+  verbs: ["get"]
+{{- end }}

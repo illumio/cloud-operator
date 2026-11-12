@@ -59,10 +59,13 @@ cluster:
 cilium:
   # The namespaces in which Cilium may be deployed.
   # cloud-operator will search for the Hubble Relay service in each namespace,
-  # in this order.
+  # in this order: kube-system for Cilium installed with its Helm chart,
+  # gke-managed-dpv2-observability for GKE Dataplane V2, and cilium for Cilium
+  # installed with its OLM operator on OpenShift.
   namespaces:
     - kube-system
     - gke-managed-dpv2-observability
+    - cilium
 
 calico:
   # TLS for the Calico Enterprise syslog collector. Optional: without a
