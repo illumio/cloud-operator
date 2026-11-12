@@ -67,6 +67,57 @@ cilium:
     - gke-managed-dpv2-observability
     - cilium
 
+calico:
+  # TLS for the Calico Enterprise syslog collector. Optional: without a
+  # certificate, the collector accepts plain-text syslog only.
+  #
+  # The collector serves the certificate in the Secret named
+  # cloud-operator-syslog-tls in the operator's namespace, if that Secret
+  # exists. With a certificate, the collector accepts both TLS and plain-text
+  # connections; set required to true to accept TLS only.
+  #
+  # On OpenShift, OpenShift's service-ca creates and renews this Secret
+  # automatically. The LogCollector must trust OpenShift's service CA: copy it
+  # from the openshift-service-ca.crt ConfigMap (key service-ca.crt) to the
+  # syslog-ca ConfigMap in the tigera-operator namespace (key tls.crt), and copy
+  # it again when OpenShift renews its service CA.
+  #
+  # Elsewhere, create the Secret yourself, of type kubernetes.io/tls.
+  #
+  # Certificate requirements:
+  # - Subject Alternative Names: the DNS names of the operator Service,
+  #   <service>.<namespace>.svc and <service>.<namespace>.svc.cluster.local,
+  #   for example illumio-cloud-operator.illumio-cloud.svc for release illumio
+  #   in namespace illumio-cloud. The common name (CN) is not used.
+  # - Extended key usage: server authentication.
+  # - Issuer: a CA that the LogCollector trusts. Add the CA certificate to the
+  #   syslog-ca ConfigMap in the tigera-operator namespace, under the tls.crt
+  #   key. Public CAs do not issue certificates for .svc names.
+  #
+  # The Secret holds the PEM-encoded certificate, followed by any intermediate
+  # CA certificates, under tls.crt, and the PEM-encoded private key under
+  # tls.key:
+  #
+  #   apiVersion: v1
+  #   kind: Secret
+  #   metadata:
+  #     name: cloud-operator-syslog-tls
+  #     namespace: illumio-cloud
+  #   type: kubernetes.io/tls
+  #   data:
+  #     tls.crt: <base64-encoded certificate chain>
+  #     tls.key: <base64-encoded private key>
+  #
+  # Or create it from the certificate and key files:
+  #
+  #   kubectl create secret tls cloud-operator-syslog-tls -n illumio-cloud --cert=tls.crt --key=tls.key
+  #
+  # The collector reads the certificate on each new connection, so a created or
+  # renewed Secret is used without restarting the operator. Outside OpenShift,
+  # renew the certificate in the Secret before it expires.
+  syslogTLS:
+    required: false
+
 openshift:
   # The namespace in which OVN-k is deployed.
   # cloud-operator uses this to determine whether OVN-k is deployed, in which
@@ -160,6 +211,13 @@ env:
   # only listens on this port if it detects at startup that OVN-k is installed.
   # UDP 4739 is the standard port for IPFIX over UDP and should not be changed.
   ipfixCollectorPort: 4739
+
+  # The TCP port on which cloud-operator receives syslog flow logs from Calico
+  # Enterprise's LogCollector. cloud-operator only listens on this port if it
+  # detects at startup that Calico Enterprise is installed. The collector
+  # accepts plain-text syslog, and TLS when the cloud-operator-syslog-tls
+  # Secret exists (see calico.syslogTLS).
+  syslogCollectorPort: 6514
 
   # The API URL used by cloud-operator to onboard itself if onboardingSecret
   # is set and clusterCredsSecret is not set.

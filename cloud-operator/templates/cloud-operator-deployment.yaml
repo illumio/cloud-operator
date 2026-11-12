@@ -49,6 +49,8 @@ spec:
             - containerPort: 8080
             - containerPort: {{ .Values.env.ipfixCollectorPort }}
               protocol: UDP
+            - containerPort: {{ .Values.env.syslogCollectorPort }}
+              protocol: TCP
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: CILIUM_NAMESPACES
@@ -109,6 +111,14 @@ spec:
               value: "{{ .Values.env.streamSuccessPeriods.auth }}"
             - name: STREAM_SUCCESS_PERIOD_CONNECT
               value: "{{ .Values.env.streamSuccessPeriods.connect }}"
+            - name: SYSLOG_COLLECTOR_PORT
+              value: "{{ .Values.env.syslogCollectorPort }}"
+            - name: SYSLOG_TLS_CERT_FILE
+              value: /etc/illumio/syslog-tls/tls.crt
+            - name: SYSLOG_TLS_KEY_FILE
+              value: /etc/illumio/syslog-tls/tls.key
+            - name: SYSLOG_TLS_REQUIRED
+              value: "{{ .Values.calico.syslogTLS.required }}"
             - name: TLS_SKIP_VERIFY
               value: "{{ .Values.env.tlsSkipVerify }}"
             - name: TOKEN_ENDPOINT
@@ -122,6 +132,9 @@ spec:
               mountPath: /var/run/gops
             - name: ipfix-template-sets
               mountPath: /ipfix-template-sets
+            - name: syslog-tls
+              mountPath: /etc/illumio/syslog-tls
+              readOnly: true
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -142,3 +155,9 @@ spec:
         - name: ipfix-template-sets
           configMap:
             name: ipfix-template-sets
+        # The syslog collector's TLS certificate. Optional: without this Secret,
+        # the collector accepts plain-text syslog only.
+        - name: syslog-tls
+          secret:
+            secretName: cloud-operator-syslog-tls
+            optional: true

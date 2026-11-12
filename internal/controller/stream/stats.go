@@ -24,6 +24,11 @@ type Stats struct {
 	// emitted, so the stats line is not cluttered with fields that are always zero.
 	autoModeActive atomic.Bool
 
+	// calicoActive is set once when Calico Enterprise is the active flow collector,
+	// so that calico_records_dropped is logged only for it.
+	calicoActive         atomic.Bool
+	calicoRecordsDropped atomic.Uint64 // syslog records that could not be turned into flows
+
 	// EKS Auto Mode node-proxy log collection counters.
 	autoModeNodesObserved atomic.Uint64 // last observed count of Auto Mode nodes (gauge-like)
 	autoModePollErrors    atomic.Uint64 // per-node / list poll errors since last report
@@ -58,6 +63,25 @@ func (s *Stats) IncrementResourceMutations() {
 // IncrementConfiguredObjectMutations increments the count of configured object mutations.
 func (s *Stats) IncrementConfiguredObjectMutations() {
 	s.configuredObjectMutations.Add(1)
+}
+
+// SetCalicoActive marks Calico Enterprise as the active flow collector, enabling
+// the calico_records_dropped counter to be logged. Called once at collector
+// detection.
+func (s *Stats) SetCalicoActive() {
+	s.calicoActive.Store(true)
+}
+
+// IncrementCalicoRecordsDropped increments the count of Calico Enterprise syslog
+// records that could not be turned into flows.
+func (s *Stats) IncrementCalicoRecordsDropped() {
+	s.calicoRecordsDropped.Add(1)
+}
+
+// GetAndResetCalicoRecordsDropped returns the count of dropped Calico Enterprise
+// syslog records since the last call, and resets it.
+func (s *Stats) GetAndResetCalicoRecordsDropped() uint64 {
+	return s.calicoRecordsDropped.Swap(0)
 }
 
 // SetAutoModeActive marks EKS Auto Mode as the active flow collector, enabling the
@@ -189,6 +213,11 @@ func StartStatsLogger(ctx context.Context, logger *zap.Logger, stats *Stats, per
 						zap.Uint64("eks_auto_mode_rotation_recovery_errors", am.RotationRecoveryErrors),
 						zap.Uint64("eks_auto_mode_rotation_gaps", am.RotationGaps),
 					)
+				}
+
+				calicoRecordsDropped := stats.GetAndResetCalicoRecordsDropped()
+				if stats.calicoActive.Load() {
+					fields = append(fields, zap.Uint64("calico_records_dropped", calicoRecordsDropped))
 				}
 
 				logger.Info("Stream statistics", fields...)
