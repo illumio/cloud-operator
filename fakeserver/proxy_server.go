@@ -130,10 +130,12 @@ func (p *ProxyServer) handleConnect(w http.ResponseWriter, r *http.Request) { //
 
 	defer func() {
 		err := destConn.Close()
-		p.logger.Error(
-			"Proxy handleConnect: Failed to close connection to destination",
-			zap.Error(err),
-		)
+		if err != nil {
+			p.logger.Error(
+				"Proxy handleConnect: Failed to close connection to destination",
+				zap.Error(err),
+			)
+		}
 	}()
 
 	p.logger.Info("Proxy handleConnect: TCP connected to target", zap.String("target", originalTargetHost), zap.String("dialedAs", effectiveTargetHost), zap.String("client", r.RemoteAddr))
@@ -157,10 +159,12 @@ func (p *ProxyServer) handleConnect(w http.ResponseWriter, r *http.Request) { //
 
 	defer func() {
 		err := clientUnderlyingConn.Close()
-		p.logger.Error(
-			"Proxy handleConnect: Failed to close underlying connection to destination",
-			zap.Error(err),
-		)
+		if err != nil {
+			p.logger.Error(
+				"Proxy handleConnect: Failed to close underlying client connection",
+				zap.Error(err),
+			)
+		}
 	}()
 
 	p.logger.Info("Proxy handleConnect: Hijacked connection", zap.String("clientRemote", clientUnderlyingConn.RemoteAddr().String()), zap.String("clientLocal", clientUnderlyingConn.LocalAddr().String()), zap.String("destRemote", destConn.RemoteAddr().String()), zap.String("destLocal", destConn.LocalAddr().String()))
