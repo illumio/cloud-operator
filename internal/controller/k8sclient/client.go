@@ -64,19 +64,23 @@ type realClient struct {
 	config        *rest.Config
 }
 
-// disableProxyTransport wraps the config to disable HTTP proxy.
-// This ensures consistent behavior with NewClientSet which also disables proxy.
-func disableProxyTransport(config *rest.Config) {
-	config.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
-		if transport, ok := rt.(*http.Transport); ok {
-			customTransport := transport.Clone()
-			customTransport.Proxy = nil
-
-			return customTransport
-		}
-
-		return rt
+// disableEnvironmentProxy keeps Kubernetes API requests from using the proxy
+// configured in the environment (HTTPS_PROXY), which is meant for reaching
+// CloudSecure only. A proxy set explicitly in the config (kubeconfig proxy-url)
+// is kept.
+//
+// The proxy is set on the config rather than by wrapping the transport: the
+// round tripper client-go passes to WrapTransport is not always an
+// *http.Transport, so its Proxy field cannot be reliably reset there.
+func disableEnvironmentProxy(config *rest.Config) {
+	if config.Proxy != nil {
+		return
 	}
+
+	// A nil proxy URL means "connect directly". Setting Proxy makes client-go
+	// skip its TLS transport cache, so each client gets its own connection
+	// pool. That is intended: do not move back to WrapTransport to restore it.
+	config.Proxy = http.ProxyURL(nil)
 }
 
 // IsRunningInCluster returns true if the application is running inside a Kubernetes cluster.
@@ -113,7 +117,7 @@ func getKubeConfig() (*rest.Config, error) {
 
 // NewClientFromConfig creates a Client from an existing config.
 func NewClientFromConfig(config *rest.Config) (Client, error) {
-	disableProxyTransport(config)
+	disableEnvironmentProxy(config)
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {

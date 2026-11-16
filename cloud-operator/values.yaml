@@ -212,6 +212,13 @@ env:
   # UDP 4739 is the standard port for IPFIX over UDP and should not be changed.
   ipfixCollectorPort: 4739
 
+  # A comma-separated list of hosts, domains, IP addresses and CIDRs that
+  # cloud-operator connects to directly instead of through httpsProxy, e.g.
+  # "10.0.0.0/8,.svc,.cluster.local". Only used if httpsProxy is set.
+  # cloud-operator never uses the proxy to connect to the Kubernetes API server,
+  # so it does not need to be listed here.
+  noProxy: ""
+
   # The TCP port on which cloud-operator receives syslog flow logs from Calico
   # Enterprise's LogCollector. cloud-operator only listens on this port if it
   # detects at startup that Calico Enterprise is installed. The collector

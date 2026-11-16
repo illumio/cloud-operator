@@ -108,6 +108,9 @@
                 "ipfixCollectorPort": {
                     "type": "integer"
                 },
+                "noProxy": {
+                    "type": "string"
+                },
                 "onboardingEndpoint": {
                     "type": "string"
                 },

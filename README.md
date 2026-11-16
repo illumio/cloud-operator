@@ -100,6 +100,8 @@ helm install illumio --namespace illumio-cloud oci://ghcr.io/illumio/charts/clou
 
 2. Ensure that the proxy server is accessible from the environment where the Cloud Operator is running.
 
+3. Optionally, set `env.noProxy` in the Helm values to a comma-separated list of hosts, domains, IP addresses and CIDRs that must be reached directly. It sets the `NO_PROXY` environment variable.
+
 ### Behavior
 
 - **HTTP Requests**:
@@ -107,7 +109,11 @@ helm install illumio --namespace illumio-cloud oci://ghcr.io/illumio/charts/clou
   - The `http.ProxyFromEnvironment` function is used to determine the proxy settings.
 
 - **gRPC Requests**:
-  - All gRPC requests will also respect the `HTTPS_PROXY` environment variable.
+  - gRPC requests to CloudSecure respect the `HTTPS_PROXY` environment variable.
+  - Hubble Relay is always reached directly, without the proxy.
+
+- **Kubernetes API Requests**:
+  - Requests to the Kubernetes API server never use the proxy from the environment, so the API server does not need to be listed in `NO_PROXY`.
 
 ## Calico Enterprise Flow Collection
 
