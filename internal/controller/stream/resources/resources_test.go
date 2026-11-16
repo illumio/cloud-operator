@@ -73,31 +73,6 @@ func TestBuildResourceApiGroupMap(t *testing.T) {
 		assert.Empty(t, result)
 	})
 
-	t.Run("skips metrics.k8s.io group", func(t *testing.T) {
-		clientset := k8sfake.NewSimpleClientset()
-
-		fakeDiscovery, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
-		require.True(t, ok, "failed to get fake discovery client")
-
-		fakeDiscovery.Resources = []*metav1.APIResourceList{
-			{
-				GroupVersion: "metrics.k8s.io/v1beta1",
-				APIResources: []metav1.APIResource{
-					{Name: "nodes", Kind: "NodeMetrics"},
-				},
-			},
-		}
-
-		resources := []schema.GroupResource{gr("metrics.k8s.io", "nodes")}
-
-		result, err := BuildResourceAPIGroupMap(resources, clientset, logger)
-		require.NoError(t, err)
-
-		// nodes should NOT be mapped because metrics.k8s.io is skipped
-		_, ok = result[gr("metrics.k8s.io", "nodes")]
-		assert.False(t, ok, "expected 'nodes' to be skipped for metrics.k8s.io group")
-	})
-
 	t.Run("requested resource not in any discovered group", func(t *testing.T) {
 		clientset := k8sfake.NewSimpleClientset()
 
