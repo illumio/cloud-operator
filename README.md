@@ -109,7 +109,8 @@ helm install illumio --namespace illumio-cloud oci://ghcr.io/illumio/charts/clou
   - The `http.ProxyFromEnvironment` function is used to determine the proxy settings.
 
 - **gRPC Requests**:
-  - All gRPC requests will also respect the `HTTPS_PROXY` environment variable.
+  - gRPC requests to CloudSecure respect the `HTTPS_PROXY` environment variable.
+  - Hubble Relay is always reached directly, without the proxy.
 
 - **Kubernetes API Requests**:
   - Requests to the Kubernetes API server never use the proxy from the environment, so the API server does not need to be listed in `NO_PROXY`.
