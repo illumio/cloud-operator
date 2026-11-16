@@ -120,7 +120,8 @@ func buildResourceAPIGroupMap(resources []schema.GroupResource, clientset kubern
 		// With aggregated discovery, a group whose every version is stale is
 		// still listed, with an empty preferred version: it serves nothing.
 		if group.PreferredVersion.GroupVersion == "" {
-			logger.Warn("Skipping API group with no available version", zap.String("group", group.Name))
+			logger.Warn("Skipping API group with no available version; its resources won't be watched until the next discovery",
+				zap.String("group", group.Name))
 
 			continue
 		}

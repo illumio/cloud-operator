@@ -64,6 +64,7 @@ Streams use the **StreamClient/StreamClientFactory** pattern for dependency inje
 - **Errors**: Wrap with context using `fmt.Errorf("...: %w", err)`
 - **Interfaces**: Define in consumer package, not provider
 - **Testing**: Unit tests alongside source (`*_test.go`), mocks for external deps
+- **Test file naming**: Name a test file after the source file it tests (`resources.go` → `resources_test.go`). Put a separate group of tests for the same file in `<source>_<topic>_test.go` (e.g. `resources_discovery_test.go`)
 
 ## Key Entry Points
 
