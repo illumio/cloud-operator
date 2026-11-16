@@ -79,6 +79,8 @@ spec:
               value: "{{ .Values.env.httpsProxy | default "" }}"
             - name: IPFIX_COLLECTOR_PORT
               value: "{{ .Values.env.ipfixCollectorPort }}"
+            - name: NO_PROXY
+              value: "{{ .Values.env.noProxy | default "" }}"
             - name: ONBOARDING_CLIENT_ID
               valueFrom:
                 secretKeyRef:

@@ -206,6 +206,13 @@ env:
   # Illumio CloudSecure. If not set, no proxy will be used.
   httpsProxy: ""
 
+  # A comma-separated list of hosts, domains, IP addresses and CIDRs that
+  # cloud-operator connects to directly instead of through httpsProxy, e.g.
+  # "10.0.0.0/8,.svc,.cluster.local". Only used if httpsProxy is set.
+  # cloud-operator never uses the proxy to connect to the Kubernetes API server,
+  # so it does not need to be listed here.
+  noProxy: ""
+
   # The UDP port on which cloud-operator is receiving IPFIX messages.
   # Currently, only OVS/OVN-k flow templates are supported, and cloud-operator
   # only listens on this port if it detects at startup that OVN-k is installed.
