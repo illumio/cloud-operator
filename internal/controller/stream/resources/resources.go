@@ -4,6 +4,7 @@ package resources
 
 import (
 	"cmp"
+	"fmt"
 	"slices"
 
 	"go.uber.org/zap"
@@ -92,8 +93,11 @@ func buildResourceAPIGroupMap(resources []schema.GroupResource, clientset kubern
 	resourceAPIGroupMap := make(map[schema.GroupResource]ResourceInfo)
 
 	resourceSet := make(map[schema.GroupResource]struct{})
+	wantedGroups := make(map[string]struct{})
+
 	for _, resource := range resources {
 		resourceSet[resource] = struct{}{}
+		wantedGroups[resource.Group] = struct{}{}
 	}
 
 	discoveryClient := clientset.Discovery()
@@ -106,8 +110,17 @@ func buildResourceAPIGroupMap(resources []schema.GroupResource, clientset kubern
 	}
 
 	for _, group := range apiGroups.Groups {
-		if group.Name == "metrics.k8s.io" {
-			logger.Debug("Skipping metrics.k8s.io group as it causes issues with discovery")
+		// Only discover groups that can serve a wanted resource, so an API the
+		// operator does not watch can never fail discovery (e.g. an aggregated
+		// APIService whose backend is unavailable, such as a metrics adapter).
+		if _, wanted := wantedGroups[group.Name]; !wanted {
+			continue
+		}
+
+		// With aggregated discovery, a group whose every version is stale is
+		// still listed, with an empty preferred version: it serves nothing.
+		if group.PreferredVersion.GroupVersion == "" {
+			logger.Warn("Skipping API group with no available version", zap.String("group", group.Name))
 
 			continue
 		}
@@ -118,7 +131,7 @@ func buildResourceAPIGroupMap(resources []schema.GroupResource, clientset kubern
 				continue
 			}
 
-			return nil, err
+			return nil, fmt.Errorf("failed to discover resources of %s: %w", group.PreferredVersion.GroupVersion, err)
 		}
 
 		addResources(resourceAPIGroupMap, resourceSet, group.Name, group.PreferredVersion.Version, resourceList.APIResources)
@@ -142,7 +155,7 @@ func buildResourceAPIGroupMap(resources []schema.GroupResource, clientset kubern
 					continue
 				}
 
-				return nil, err
+				return nil, fmt.Errorf("failed to discover resources of %s: %w", version.GroupVersion, err)
 			}
 
 			addResources(resourceAPIGroupMap, resourceSet, group.Name, version.Version, resourceList.APIResources)
