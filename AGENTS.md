@@ -66,6 +66,7 @@ Collectors that track progress through a log (for example the polling collectors
 - Wrap errors with useful context using `fmt.Errorf("...: %w", err)`.
 - Define interfaces in the consuming package rather than the provider package.
 - Keep unit tests beside their source in `*_test.go` files.
+- Name a test file after the source file it tests (`resources.go` → `resources_test.go`). Put a separate group of tests for the same file in `<source>_<topic>_test.go` (e.g. `resources_discovery_test.go`).
 - Mock external dependencies and Kubernetes clients where practical.
 - Preserve context cancellation through blocking calls and goroutines.
 

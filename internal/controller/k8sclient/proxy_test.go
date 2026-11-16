@@ -83,6 +83,18 @@ func TestNewClientFromConfig_IgnoresProxyEnvironment(t *testing.T) {
 	_, err := NewClientFromConfig(config)
 	require.NoError(t, err)
 
+	// Check the config directly: http.ProxyFromEnvironment reads the environment
+	// only once per process, so a transport still using it could resolve no proxy
+	// here if an earlier test read the environment before HTTPS_PROXY was set.
+	require.NotNil(t, config.Proxy, "the config must set an explicit proxy function")
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, apiServer+"/api", nil)
+	require.NoError(t, err)
+
+	proxyURL, err := config.Proxy(req)
+	require.NoError(t, err)
+	assert.Nil(t, proxyURL, "the config must connect to the API server directly")
+
 	assert.Nil(t, proxyFor(t, baseTransport(t, config), apiServer+"/api"),
 		"Kubernetes API requests must not go through the proxy from the environment")
 }

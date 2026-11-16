@@ -77,7 +77,9 @@ func disableEnvironmentProxy(config *rest.Config) {
 		return
 	}
 
-	// A nil proxy URL means "connect directly".
+	// A nil proxy URL means "connect directly". Setting Proxy makes client-go
+	// skip its TLS transport cache, so each client gets its own connection
+	// pool. That is intended: do not move back to WrapTransport to restore it.
 	config.Proxy = http.ProxyURL(nil)
 }
 
