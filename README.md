@@ -227,7 +227,7 @@ The template definitions and IDs are the same in Open vSwitch 2.9 and later, so 
      ```
 
 2. **Merge the templates into one message**:
-   - Run `internal/controller/ovn_template_sets/merge_template_sets.py templates.pcap internal/controller/ovn_template_sets/openvswitch.bin`.
+   - Copy the template records of all the captured messages into one template set in one IPFIX message, and save it as `internal/controller/ovn_template_sets/openvswitch.bin`.
 
 3. **Update the ConfigMap**:
    - Encode the contents of `openvswitch.bin` in base-64 and set it as the `binaryData` field of the ConfigMap in `cloud-operator/templates/ipfix-template-sets.yaml`.
