@@ -215,15 +215,22 @@ The ConfigMap `ipfix-template-sets.yaml` contains binary data required for IPFIX
 
 ## Steps to Obtain the Binary Data
 
-1. **Generate the Binary File**:
-   - Modify the OVN-K collector code manually to output the IPFIX message that contains the template set received from Open vSwitch to a local volume mount.
+Open vSwitch defines one template for each combination of L2, L3 and L4 protocols, tunneling and flow direction: 88 templates in total. It limits each IPFIX message to about 1024 bytes, so it exports its templates as several messages (18 as of Open vSwitch 3.5), and sends them again every 10 minutes by default. The operator preloads a single IPFIX message, so the templates of all those messages are merged into one message.
+
+The template definitions and IDs are the same in Open vSwitch 2.9 and later, so the file does not depend on the cluster.
+
+1. **Capture the template messages**:
    - Configure OVN-K to export flows to the collector.
+   - On a node, capture the IPFIX messages that contain template sets for more than 10 minutes, for example from a debug pod (`oc debug node/<node>`):
+     ```
+     timeout 690 tcpdump -i any -w templates.pcap 'udp dst port 4739 and udp[24:2] = 2'
+     ```
 
-2. **Save the Binary File**:
-   - The extracted binary data was saved to a file named `openvswitch.bin`.
+2. **Merge the templates into one message**:
+   - Copy the template records of all the captured messages into one template set in one IPFIX message, and save it as `internal/controller/ovn_template_sets/openvswitch.bin`.
 
-3. **Create the ConfigMap**:
-   - Encode the contents of the file in base-64 and add it into the ConfigMap as the `binaryData` field.
+3. **Update the ConfigMap**:
+   - Encode the contents of `openvswitch.bin` in base-64 and set it as the `binaryData` field of the ConfigMap in `cloud-operator/templates/ipfix-template-sets.yaml`.
    - Example ConfigMap YAML:
      ```yaml
      apiVersion: v1
