@@ -240,7 +240,6 @@ The template definitions and IDs are the same in Open vSwitch 2.9 and later, so 
      binaryData:
        openvswitch.bin: <data>
      ```
-   - The unit tests check that the file contains all the Open vSwitch templates and that the ConfigMap matches it.
 
 
 ## Usage
