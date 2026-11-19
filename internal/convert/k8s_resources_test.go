@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -18,10 +19,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	k8sfake "k8s.io/client-go/kubernetes/fake"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
-	"github.com/illumio/cloud-operator/internal/controller/k8sclient"
 )
 
 func (suite *ConvertTestSuite) TestConvertObjectToMetadata() {
@@ -32,15 +31,8 @@ func (suite *ConvertTestSuite) TestConvertObjectToMetadata() {
 		UID:             "test-uid",
 		ResourceVersion: "test-version",
 	}
-	logger := zap.NewNop()
-
-	k8sClient, err := k8sclient.NewClient()
-	if err != nil {
-		logger.Error("Failed to create clientset", zap.Error(err))
-		suite.T().Error("could not create clientset")
-	}
 	// Execute the function under test.
-	got := ConvertMetaObjectToMetadata(context.Background(), configMap, nil, k8sClient.GetClientset(), "configMap", "", "v1")
+	got := ConvertMetaObjectToMetadata(configMap, nil, "configMap", "", "v1")
 
 	// Define what you expect to get.
 	want := metav1.ObjectMeta{
@@ -57,10 +49,9 @@ func (suite *ConvertTestSuite) TestConvertObjectToMetadata() {
 }
 
 func TestNewCoreResourceConverter_HappyPath(t *testing.T) {
-	clientset := k8sfake.NewSimpleClientset()
 	logger := zap.NewNop()
 
-	converter := NewCoreResourceConverter(clientset, logger)
+	converter := NewCoreResourceConverter(logger)
 
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -93,10 +84,9 @@ func TestNewCoreResourceConverter_HappyPath(t *testing.T) {
 }
 
 func TestNewCoreResourceConverter_MissingMetadata(t *testing.T) {
-	clientset := k8sfake.NewSimpleClientset()
 	logger := zap.NewNop()
 
-	converter := NewCoreResourceConverter(clientset, logger)
+	converter := NewCoreResourceConverter(logger)
 
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -262,8 +252,7 @@ func TestNewCoreResourceConverter_WorkloadLabels(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clientset := k8sfake.NewSimpleClientset()
-			converter := NewCoreResourceConverter(clientset, zap.NewNop())
+			converter := NewCoreResourceConverter(zap.NewNop())
 
 			obj := &unstructured.Unstructured{
 				Object: map[string]any{
@@ -300,8 +289,7 @@ func TestNewCoreResourceConverter_WorkloadLabels(t *testing.T) {
 }
 
 func TestNewCoreResourceConverter_NonWorkloadHasNilWorkload(t *testing.T) {
-	clientset := k8sfake.NewSimpleClientset()
-	converter := NewCoreResourceConverter(clientset, zap.NewNop())
+	converter := NewCoreResourceConverter(zap.NewNop())
 
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -372,15 +360,6 @@ func TestGetMetadataFromResource(t *testing.T) {
 }
 
 func (suite *ConvertTestSuite) TestConvertMetaObjectToMetadata() {
-	logger := zap.NewNop()
-
-	k8sClient, err := k8sclient.NewClient()
-	if err != nil {
-		logger.Error("Failed to create clientset", zap.Error(err))
-		suite.T().Fatalf("could not create clientset: %v", err)
-	}
-
-	clientset := k8sClient.GetClientset()
 	sampleData := make(map[string]string)
 	creationTimestamp := metav1.Time{Time: time.Now()}
 
@@ -499,7 +478,7 @@ func (suite *ConvertTestSuite) TestConvertMetaObjectToMetadata() {
 
 	for name, tt := range tests {
 		suite.Run(name, func() {
-			result := ConvertMetaObjectToMetadata(context.Background(), tt.objMeta, nil, clientset, tt.kind, tt.apiGroup, tt.apiVersion)
+			result := ConvertMetaObjectToMetadata(tt.objMeta, nil, tt.kind, tt.apiGroup, tt.apiVersion)
 			suite.Equal(tt.expected, result)
 		})
 	}
@@ -1579,9 +1558,6 @@ func TestConvertNetworkPolicyToProto_Comprehensive(t *testing.T) {
 }
 
 func TestConvertMetaObjectToMetadata_Node(t *testing.T) {
-	ctx := context.Background()
-	clientset := k8sfake.NewSimpleClientset()
-
 	tests := map[string]struct {
 		node             *v1.Node
 		apiGroup         string
@@ -1649,7 +1625,7 @@ func TestConvertMetaObjectToMetadata_Node(t *testing.T) {
 			obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(tt.node)
 			require.NoError(t, err)
 
-			result := ConvertMetaObjectToMetadata(ctx, tt.node.ObjectMeta, &unstructured.Unstructured{Object: obj}, clientset, "Node", tt.apiGroup, "v1")
+			result := ConvertMetaObjectToMetadata(tt.node.ObjectMeta, &unstructured.Unstructured{Object: obj}, "Node", tt.apiGroup, "v1")
 
 			if tt.expectedNodeData == nil {
 				assert.Nil(t, result.GetKindSpecific())
@@ -1665,7 +1641,7 @@ func TestConvertMetaObjectToMetadata_Node(t *testing.T) {
 func TestConvertMetaObjectToMetadata_NodeWithoutRawObject(t *testing.T) {
 	objMeta := metav1.ObjectMeta{Name: "node-a"}
 
-	result := ConvertMetaObjectToMetadata(context.Background(), objMeta, nil, k8sfake.NewSimpleClientset(), "Node", "", "v1")
+	result := ConvertMetaObjectToMetadata(objMeta, nil, "Node", "", "v1")
 
 	assert.Nil(t, result.GetKindSpecific())
 }
@@ -1796,12 +1772,51 @@ func TestConvertMetaObjectToMetadata_DeletedServiceKeepsData(t *testing.T) {
 		}}},
 	}
 
-	// The clientset has no Services, as after a delete.
-	result := ConvertMetaObjectToMetadata(context.Background(), service.ObjectMeta, serviceToUnstructured(t, service), k8sfake.NewSimpleClientset(), "Service", "", "v1")
+	result := ConvertMetaObjectToMetadata(service.ObjectMeta, serviceToUnstructured(t, service), "Service", "", "v1")
 
 	require.NotNil(t, result.GetService())
 	assert.Equal(t, "Local", result.GetService().GetExternalTrafficPolicy())
 	assert.Equal(t, []*pb.LoadBalancerIngress{{Ip: new("34.120.1.2")}}, result.GetService().GetLoadBalancerIngress())
+}
+
+// The NetworkPolicy data must come from the listed or watched object, not from a
+// GET per NetworkPolicy: a snapshot of thousands of NetworkPolicies would be
+// throttled by the client's rate limit, and a delete event carries an object
+// that no longer exists in the API.
+func TestConvertMetaObjectToMetadata_NetworkPolicyReadFromObject(t *testing.T) {
+	tcp := v1.ProtocolTCP
+	port := intstr.FromInt32(8080)
+	networkPolicy := &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "allow-web", Namespace: "default"},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From:  []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "client"}}}},
+				Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port}},
+			}},
+		},
+	}
+
+	expected, err := convertNetworkPolicyToProto(networkPolicy)
+	require.NoError(t, err)
+
+	obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(networkPolicy)
+	require.NoError(t, err)
+
+	result := ConvertMetaObjectToMetadata(networkPolicy.ObjectMeta, &unstructured.Unstructured{Object: obj}, "NetworkPolicy", networkingv1.GroupName, "v1")
+
+	require.NotNil(t, result.GetNetworkPolicy())
+	assert.True(t, proto.Equal(expected, result.GetNetworkPolicy()), "got %v, want %v", result.GetNetworkPolicy(), expected)
+}
+
+// A NetworkPolicy without its object is sent with metadata only.
+func TestConvertMetaObjectToMetadata_NetworkPolicyWithoutObject(t *testing.T) {
+	objMeta := metav1.ObjectMeta{Name: "allow-web", Namespace: "default"}
+	result := ConvertMetaObjectToMetadata(objMeta, nil, "NetworkPolicy", networkingv1.GroupName, "v1")
+
+	assert.Equal(t, "allow-web", result.GetName())
+	assert.Nil(t, result.GetKindSpecific())
 }
 
 // CRDs in other groups can reuse core kind names. They must be sent with
@@ -1812,10 +1827,6 @@ func TestConvertMetaObjectToMetadata_OtherGroupKindsGetMetadataOnly(t *testing.T
 		ObjectMeta: objMeta,
 		Spec:       v1.ServiceSpec{Type: v1.ServiceTypeLoadBalancer, ClusterIPs: []string{"10.96.0.10"}},
 	}
-	clientset := k8sfake.NewSimpleClientset(
-		coreService,
-		&networkingv1.NetworkPolicy{ObjectMeta: objMeta},
-	)
 
 	tests := map[string]struct {
 		kind     string
@@ -1833,7 +1844,7 @@ func TestConvertMetaObjectToMetadata_OtherGroupKindsGetMetadataOnly(t *testing.T
 			obj.SetKind(tt.kind)
 			obj.SetAPIVersion(tt.apiGroup + "/v1")
 
-			result := ConvertMetaObjectToMetadata(context.Background(), objMeta, obj, clientset, tt.kind, tt.apiGroup, "v1")
+			result := ConvertMetaObjectToMetadata(objMeta, obj, tt.kind, tt.apiGroup, "v1")
 
 			assert.Equal(t, "web", result.GetName())
 			assert.Nil(t, result.GetKindSpecific())

@@ -16,17 +16,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
 // NewCoreResourceConverter returns a ResourceConverter for standard Kubernetes resources.
-// It closes over clientset and logger because core resource conversion needs them:
-// clientset to fetch NetworkPolicy specs, logger to report objects whose
-// kind-specific data cannot be read.
-func NewCoreResourceConverter(clientset kubernetes.Interface, logger *zap.Logger) func(ctx context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
-	return func(ctx context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+// It closes over logger to report objects whose kind-specific data cannot be
+// read. Conversion reads only the given object and makes no API calls.
+func NewCoreResourceConverter(logger *zap.Logger) func(ctx context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
+	return func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 		objMeta, err := GetMetadataFromResource(logger, *obj)
 		if err != nil {
 			return nil, fmt.Errorf("cannot get metadata from resource: %w", err)
@@ -34,7 +32,7 @@ func NewCoreResourceConverter(clientset kubernetes.Interface, logger *zap.Logger
 
 		gvk := obj.GroupVersionKind()
 
-		metadata := ConvertMetaObjectToMetadata(ctx, *objMeta, obj, clientset, gvk.Kind, gvk.Group, gvk.Version)
+		metadata := ConvertMetaObjectToMetadata(*objMeta, obj, gvk.Kind, gvk.Group, gvk.Version)
 
 		// Enrich workload controllers with the labels applied to the pods they create.
 		// These kinds have no case in ConvertMetaObjectToMetadata, so KindSpecific is
@@ -182,7 +180,7 @@ func GetMetadataFromResource(logger *zap.Logger, resource unstructured.Unstructu
 
 // ConvertMetaObjectToMetadata takes a metav1.ObjectMeta and converts it into a proto message object KubernetesObjectData.
 // rawObj is the already-listed unstructured object, used to read kind-specific data (e.g. Pod IPs) without extra API calls.
-func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, rawObj *unstructured.Unstructured, clientset kubernetes.Interface, kind, apiGroup, apiVersion string) *pb.KubernetesObjectData {
+func ConvertMetaObjectToMetadata(obj metav1.ObjectMeta, rawObj *unstructured.Unstructured, kind, apiGroup, apiVersion string) *pb.KubernetesObjectData {
 	ownerReferences := convertOwnerReferences(obj.GetOwnerReferences())
 
 	objMetadata := &pb.KubernetesObjectData{
@@ -218,7 +216,7 @@ func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, raw
 			return objMetadata
 		}
 
-		networkPolicy, err := getContentsOfNetworkPolicy(ctx, obj.GetName(), clientset, obj.GetNamespace())
+		networkPolicy, err := convertToKubernetesNetworkPolicyData(rawObj)
 		if err != nil {
 			return objMetadata
 		}
@@ -251,19 +249,22 @@ func ConvertMetaObjectToMetadata(ctx context.Context, obj metav1.ObjectMeta, raw
 	return objMetadata
 }
 
-// getContentsOfNetworkPolicy gets the contents of a NetworkPolicy and returns it as a KubernetesNetworkPolicyData proto message.
-func getContentsOfNetworkPolicy(ctx context.Context, networkPolicyName string, clientset kubernetes.Interface, networkPolicyNamespace string) (*pb.KubernetesNetworkPolicyData, error) {
-	networkPolicy, err := clientset.NetworkingV1().NetworkPolicies(networkPolicyNamespace).Get(ctx, networkPolicyName, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
+// convertToKubernetesNetworkPolicyData converts an already-listed unstructured
+// NetworkPolicy to KubernetesNetworkPolicyData. Reading the event's own object,
+// rather than fetching the NetworkPolicy again, avoids one API call per
+// NetworkPolicy, which the client's rate limit would stretch to minutes in a
+// snapshot of thousands, and keeps the data on delete events.
+func convertToKubernetesNetworkPolicyData(obj *unstructured.Unstructured) (*pb.KubernetesNetworkPolicyData, error) {
+	if obj == nil {
+		return nil, errors.New("network policy object is nil")
 	}
 
-	convertedNetworkPolicyData, err := convertNetworkPolicyToProto(networkPolicy)
-	if err != nil {
-		return nil, err
+	networkPolicy := &networkingv1.NetworkPolicy{}
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, networkPolicy); err != nil {
+		return nil, fmt.Errorf("failed to convert unstructured to NetworkPolicy: %w", err)
 	}
 
-	return convertedNetworkPolicyData, nil
+	return convertNetworkPolicyToProto(networkPolicy)
 }
 
 // convertNetworkPolicyToProto converts a Kubernetes NetworkPolicy to a proto message KubernetesNetworkPolicyData.

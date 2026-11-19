@@ -80,7 +80,7 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 		return err
 	}
 
-	coreConverter := convert.NewCoreResourceConverter(clientset, c.logger)
+	coreConverter := convert.NewCoreResourceConverter(c.logger)
 	ciliumConverter := func(_ context.Context, obj *unstructured.Unstructured) (*pb.KubernetesObjectData, error) {
 		return cilium.ConvertUnstructuredToCiliumResource(obj)
 	}
