@@ -11,7 +11,6 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	k8sfake "k8s.io/client-go/kubernetes/fake"
 
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
@@ -27,7 +26,7 @@ func convertBinding(t *testing.T, obj map[string]any) *pb.KubernetesObjectData {
 func convertBindingWithLogger(t *testing.T, obj map[string]any, logger *zap.Logger) *pb.KubernetesObjectData {
 	t.Helper()
 
-	converter := NewCoreResourceConverter(k8sfake.NewSimpleClientset(), logger)
+	converter := NewCoreResourceConverter(logger)
 
 	result, err := converter(context.Background(), &unstructured.Unstructured{Object: obj})
 	require.NoError(t, err)
