@@ -5,6 +5,7 @@ package collector
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/hex"
 	"os"
 	"regexp"
 	"testing"
@@ -21,6 +22,15 @@ const (
 	ipfixVersion = 10
 	// Open vSwitch exports IPFIX with observation domain ID 0 unless configured otherwise.
 	ovsObservationDomainID = 0
+
+	// ovsExporterStatsTemplateID is the ID of the options template of Open
+	// vSwitch's exporter statistics: the ID after the last possible template ID,
+	// like ipfix_get_options_template_id in ofproto/ofproto-dpif-ipfix.c.
+	ovsExporterStatsTemplateID = 462
+
+	// ovsExporterStatsMessage is an exporter statistics message captured from
+	// Open vSwitch 3.5.2. It contains one data set that uses the options template.
+	ovsExporterStatsMessage = "000a00206aff0ec30000c9bb0000000001ce0010000000010000000000000000"
 )
 
 // ovsTemplateIDs returns the IDs of all the templates that Open vSwitch exports,
@@ -91,6 +101,38 @@ func TestBundledIPFIXTemplateSetsCoverAllOVSTemplates(t *testing.T) {
 	}
 
 	assert.Equal(t, 88, total, "Open vSwitch exports 88 templates")
+}
+
+// TestBundledIPFIXTemplateSetsDecodeExporterStatistics checks that the
+// exporter statistics that Open vSwitch sends can be decoded with the preloaded
+// template sets. Open vSwitch sends these statistics just before it sends its
+// templates, so without the preloaded options template the first statistics
+// message received after startup fails to decode.
+func TestBundledIPFIXTemplateSetsDecodeExporterStatistics(t *testing.T) {
+	packet, err := os.ReadFile(bundledTemplateSetsFile)
+	require.NoError(t, err)
+
+	templateSystem := netflows.CreateTemplateSystem()
+
+	_, err = netflows.DecodeMessage(bytes.NewBuffer(packet), templateSystem)
+	require.NoError(t, err)
+
+	_, err = templateSystem.GetTemplate(ipfixVersion, ovsObservationDomainID, ovsExporterStatsTemplateID)
+	require.NoError(t, err, "the exporter statistics options template is not preloaded")
+
+	statsMessage, err := hex.DecodeString(ovsExporterStatsMessage)
+	require.NoError(t, err)
+
+	decoded, err := netflows.DecodeMessage(bytes.NewBuffer(statsMessage), templateSystem)
+	require.NoError(t, err)
+
+	ipfixPacket, ok := decoded.(netflows.IPFIXPacket)
+	require.True(t, ok)
+	require.Len(t, ipfixPacket.FlowSets, 1)
+
+	// Exporter statistics are not flows: they must not be decoded as a data set
+	// that the collector would convert into flows.
+	assert.IsType(t, netflows.OptionsDataFlowSet{}, ipfixPacket.FlowSets[0])
 }
 
 // TestHelmChartIPFIXTemplateSetsMatchBundledFile checks that the ConfigMap in
