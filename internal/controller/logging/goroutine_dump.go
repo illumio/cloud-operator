@@ -60,7 +60,7 @@ func splitGoroutineDump(dump string, chunkSize int) []string {
 		current strings.Builder
 	)
 
-	for _, goroutine := range strings.Split(strings.TrimSpace(dump), goroutineSeparator) {
+	for goroutine := range strings.SplitSeq(strings.TrimSpace(dump), goroutineSeparator) {
 		if current.Len() > 0 && current.Len()+len(goroutineSeparator)+len(goroutine) > chunkSize {
 			chunks = append(chunks, current.String())
 			current.Reset()
