@@ -5,7 +5,6 @@ package resources
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,34 +15,24 @@ import (
 	pb "github.com/illumio/cloud-operator/api/illumio/cloud/k8sclustersync/v1"
 )
 
-// overlapDetectingResourcesStream is a resources stream whose Send records
-// whether another Send was running at the same time.
-type overlapDetectingResourcesStream struct {
-	inFlight   atomic.Int32
-	overlapped atomic.Bool
+// blockingResourcesStream is a resources stream whose Send does not return until
+// release is closed, so a test controls how long a send is in flight.
+type blockingResourcesStream struct {
 	// entered receives a value each time a Send starts.
 	entered chan struct{}
-	// sendDuration is how long each Send stays in flight.
-	sendDuration time.Duration
+	// release is closed to let every Send return.
+	release chan struct{}
 }
 
-func (s *overlapDetectingResourcesStream) Send(_ *pb.SendKubernetesResourcesRequest) error {
-	if s.inFlight.Add(1) > 1 {
-		s.overlapped.Store(true)
-	}
-	defer s.inFlight.Add(-1)
+func (s *blockingResourcesStream) Send(_ *pb.SendKubernetesResourcesRequest) error {
+	s.entered <- struct{}{}
 
-	select {
-	case s.entered <- struct{}{}:
-	default:
-	}
-
-	time.Sleep(s.sendDuration)
+	<-s.release
 
 	return nil
 }
 
-func (s *overlapDetectingResourcesStream) Recv() (*pb.SendKubernetesResourcesResponse, error) {
+func (s *blockingResourcesStream) Recv() (*pb.SendKubernetesResourcesResponse, error) {
 	return nil, nil
 }
 
@@ -52,9 +41,9 @@ func (s *overlapDetectingResourcesStream) Recv() (*pb.SendKubernetesResourcesRes
 // leave one of them waiting forever for write quota, which stops the resource
 // snapshot until the liveness probe restarts the operator.
 func TestResourcesClient_KeepaliveDoesNotOverlapResourceSend(t *testing.T) {
-	grpcStream := &overlapDetectingResourcesStream{
-		entered:      make(chan struct{}, 2),
-		sendDuration: 20 * time.Millisecond,
+	grpcStream := &blockingResourcesStream{
+		entered: make(chan struct{}, 2),
+		release: make(chan struct{}),
 	}
 	client := &resourcesClient{grpcStream: grpcStream, logger: zap.NewNop()}
 
@@ -64,18 +53,28 @@ func TestResourcesClient_KeepaliveDoesNotOverlapResourceSend(t *testing.T) {
 		assert.NoError(t, client.SendObjectData(zap.NewNop(), &pb.KubernetesObjectData{Name: "pod-0"}))
 	})
 
-	// Send the keepalive while the resource send is in flight.
 	select {
 	case <-grpcStream.entered:
 	case <-time.After(5 * time.Second):
 		require.FailNow(t, "the resource send did not start")
 	}
 
+	// The resource send stays in flight until release is closed. A keepalive
+	// that enters Send before then overlaps it.
 	wg.Go(func() {
 		assert.NoError(t, client.SendKeepalive(context.Background()))
 	})
 
+	overlapped := false
+
+	select {
+	case <-grpcStream.entered:
+		overlapped = true
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(grpcStream.release)
 	wg.Wait()
 
-	assert.False(t, grpcStream.overlapped.Load(), "a keepalive and a resource were sent on the stream at the same time")
+	assert.False(t, overlapped, "a keepalive was sent on the stream while a resource send was in flight")
 }

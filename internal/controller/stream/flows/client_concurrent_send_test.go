@@ -5,7 +5,6 @@ package flows
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,34 +16,24 @@ import (
 	"github.com/illumio/cloud-operator/internal/controller/stream"
 )
 
-// overlapDetectingNetworkFlowsStream is a network flows stream whose Send
-// records whether another Send was running at the same time.
-type overlapDetectingNetworkFlowsStream struct {
-	inFlight   atomic.Int32
-	overlapped atomic.Bool
+// blockingNetworkFlowsStream is a network flows stream whose Send does not return until
+// release is closed, so a test controls how long a send is in flight.
+type blockingNetworkFlowsStream struct {
 	// entered receives a value each time a Send starts.
 	entered chan struct{}
-	// sendDuration is how long each Send stays in flight.
-	sendDuration time.Duration
+	// release is closed to let every Send return.
+	release chan struct{}
 }
 
-func (s *overlapDetectingNetworkFlowsStream) Send(_ *pb.SendKubernetesNetworkFlowsRequest) error {
-	if s.inFlight.Add(1) > 1 {
-		s.overlapped.Store(true)
-	}
-	defer s.inFlight.Add(-1)
+func (s *blockingNetworkFlowsStream) Send(_ *pb.SendKubernetesNetworkFlowsRequest) error {
+	s.entered <- struct{}{}
 
-	select {
-	case s.entered <- struct{}{}:
-	default:
-	}
-
-	time.Sleep(s.sendDuration)
+	<-s.release
 
 	return nil
 }
 
-func (s *overlapDetectingNetworkFlowsStream) Recv() (*pb.SendKubernetesNetworkFlowsResponse, error) {
+func (s *blockingNetworkFlowsStream) Recv() (*pb.SendKubernetesNetworkFlowsResponse, error) {
 	return nil, nil
 }
 
@@ -52,9 +41,9 @@ func (s *overlapDetectingNetworkFlowsStream) Recv() (*pb.SendKubernetesNetworkFl
 // goroutine that sends flows share the stream, and two concurrent sends can
 // leave one of them waiting forever for write quota.
 func TestNetworkFlowsClient_KeepaliveDoesNotOverlapFlowSend(t *testing.T) {
-	grpcStream := &overlapDetectingNetworkFlowsStream{
-		entered:      make(chan struct{}, 2),
-		sendDuration: 20 * time.Millisecond,
+	grpcStream := &blockingNetworkFlowsStream{
+		entered: make(chan struct{}, 2),
+		release: make(chan struct{}),
 	}
 	client := &networkFlowsClient{grpcStream: grpcStream, logger: zap.NewNop(), stats: stream.NewStats()}
 
@@ -64,18 +53,28 @@ func TestNetworkFlowsClient_KeepaliveDoesNotOverlapFlowSend(t *testing.T) {
 		assert.NoError(t, client.sendNetworkFlowRequest(&pb.FiveTupleFlow{}))
 	})
 
-	// Send the keepalive while the flow send is in flight.
 	select {
 	case <-grpcStream.entered:
 	case <-time.After(5 * time.Second):
 		require.FailNow(t, "the flow send did not start")
 	}
 
+	// The flow send stays in flight until release is closed. A keepalive that
+	// enters Send before then overlaps it.
 	wg.Go(func() {
 		assert.NoError(t, client.SendKeepalive(context.Background()))
 	})
 
+	overlapped := false
+
+	select {
+	case <-grpcStream.entered:
+		overlapped = true
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(grpcStream.release)
 	wg.Wait()
 
-	assert.False(t, grpcStream.overlapped.Load(), "a keepalive and a flow were sent on the stream at the same time")
+	assert.False(t, overlapped, "a keepalive was sent on the stream while a flow send was in flight")
 }
