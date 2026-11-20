@@ -34,12 +34,14 @@ func TestLogGoroutineDump(t *testing.T) {
 	// Add the stack of the caller to errors, as the production logger does.
 	logger := zap.New(core, zap.AddStacktrace(zapcore.ErrorLevel))
 
-	LogGoroutineDump(logger, "resource processing has been running for 5m1s")
+	var local strings.Builder
+
+	LogGoroutineDump(logger, &local, "resource processing has been running for 5m1s")
 
 	entries := logs.FilterMessage("Goroutine dump").All()
 	require.NotEmpty(t, entries)
 
-	var stacks strings.Builder
+	var logged []string
 
 	for i, entry := range entries {
 		fields := entry.ContextMap()
@@ -50,11 +52,47 @@ func TestLogGoroutineDump(t *testing.T) {
 
 		chunk, ok := fields["stacks"].(string)
 		require.True(t, ok, "the stacks field must be a string")
-		stacks.WriteString(chunk)
+
+		logged = append(logged, chunk)
 	}
 
-	assert.Contains(t, stacks.String(), "goroutine ")
-	assert.Contains(t, stacks.String(), "blockedInGoroutineDumpTest", "the dump must hold the stack of a blocked goroutine")
+	dump := strings.Join(logged, goroutineSeparator)
+
+	assert.Contains(t, dump, "goroutine ")
+	// The arguments of the blocked function are two channels, which the dump
+	// would print as addresses.
+	assert.Contains(t, dump, "logging.blockedInGoroutineDumpTest(...)\n", "the dump must hold the stack of a blocked goroutine, without its arguments")
+
+	// The local writer gets the whole dump, whatever happens to the log entries.
+	assert.Equal(t, "goroutine dump: resource processing has been running for 5m1s\n"+dump+"\n", local.String())
+}
+
+func TestRedactGoroutineDumpArguments(t *testing.T) {
+	dump := strings.Join([]string{
+		"goroutine 67 [select, 4 minutes]:",
+		"google.golang.org/grpc/internal/transport.(*writeQuota).get(0xc000123456, 0x40)",
+		"\t/go/pkg/mod/google.golang.org/grpc@v1.85.0/internal/transport/flowcontrol.go:60 +0x8a",
+		"github.com/illumio/cloud-operator/internal/controller/stream/resources.(*resourcesClient).SendToStream(0xc000aaaaaa, {0xc000bbbbbb, 0x5, 0x5})",
+		"\t/workspace/internal/controller/stream/resources/client.go:271 +0x1b4",
+		"github.com/illumio/cloud-operator/internal/controller/stream.runStreamWithKeepalive.func1()",
+		"\t/workspace/internal/controller/stream/manager.go:128 +0x10c",
+		"created by github.com/illumio/cloud-operator/internal/controller/stream.runStreamWithKeepalive in goroutine 67",
+		"\t/workspace/internal/controller/stream/manager.go:123 +0x2f5",
+	}, "\n")
+
+	expected := strings.Join([]string{
+		"goroutine 67 [select, 4 minutes]:",
+		"google.golang.org/grpc/internal/transport.(*writeQuota).get(...)",
+		"\t/go/pkg/mod/google.golang.org/grpc@v1.85.0/internal/transport/flowcontrol.go:60 +0x8a",
+		"github.com/illumio/cloud-operator/internal/controller/stream/resources.(*resourcesClient).SendToStream(...)",
+		"\t/workspace/internal/controller/stream/resources/client.go:271 +0x1b4",
+		"github.com/illumio/cloud-operator/internal/controller/stream.runStreamWithKeepalive.func1()",
+		"\t/workspace/internal/controller/stream/manager.go:128 +0x10c",
+		"created by github.com/illumio/cloud-operator/internal/controller/stream.runStreamWithKeepalive in goroutine 67",
+		"\t/workspace/internal/controller/stream/manager.go:123 +0x2f5",
+	}, "\n")
+
+	assert.Equal(t, expected, redactGoroutineDumpArguments(dump))
 }
 
 func TestSplitGoroutineDump(t *testing.T) {
