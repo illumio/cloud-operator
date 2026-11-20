@@ -279,7 +279,7 @@ func TestGetClusterCredentials_OnboardsOnceWithoutSecret(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config := AuthConfig{ //nolint:gosec // G101: test credentials, not real
+	config := AuthConfig{
 		ClusterCreds:           "clustercreds",
 		PodNamespace:           "illumio-cloud",
 		OnboardingClientID:     "onboarding-id",
