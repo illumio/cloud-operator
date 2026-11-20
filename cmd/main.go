@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-logr/zapr"
@@ -65,10 +66,18 @@ const (
 // newHealthHandler returns an HTTP HandlerFunc that checks the health of the
 // server by calling the given function and returns a status code accordingly.
 // The status function returns an empty string if the server is healthy, or an error status if the server is unhealthy.
+//
+// When the server becomes unhealthy, the handler logs the stack of every
+// goroutine, once, so that the logs show where the server stalled before the
+// liveness probe restarts it.
 func newHealthHandler(logger *zap.Logger, status func() string) http.HandlerFunc {
+	// dumped is true if the goroutines were dumped since the server was last healthy.
+	var dumped atomic.Bool
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		reason := status()
 		if reason == "" {
+			dumped.Store(false)
 			w.WriteHeader(http.StatusOK)
 
 			return
@@ -76,6 +85,15 @@ func newHealthHandler(logger *zap.Logger, status func() string) http.HandlerFunc
 
 		logger.Error("Health check failed", zap.String("reason", reason))
 		http.Error(w, reason, http.StatusInternalServerError)
+
+		if dumped.CompareAndSwap(false, true) {
+			// Send the response first: the dump is large and must not delay the probe.
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+
+			logging.LogGoroutineDump(logger, reason)
+		}
 	}
 }
 

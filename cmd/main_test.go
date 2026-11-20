@@ -31,6 +31,37 @@ func TestNewHealthHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)
 		assert.Contains(t, rec.Body.String(), "flow send blocked")
-		assert.Equal(t, 1, logs.FilterField(zap.String("reason", "flow send blocked")).Len())
+		assert.Equal(t, 1, logs.FilterMessage("Health check failed").FilterField(zap.String("reason", "flow send blocked")).Len())
+	})
+
+	// The goroutines are dumped when the server becomes unhealthy, and not
+	// again by the next probes, which fail until the liveness probe restarts
+	// the server.
+	t.Run("dumps the goroutines once per unhealthy period", func(t *testing.T) {
+		core, logs := observer.New(zap.ErrorLevel)
+		reason := "flow send blocked"
+		handler := newHealthHandler(zap.New(core), func() string { return reason })
+		probe := func() {
+			handler(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil))
+		}
+		dumps := func() int {
+			return logs.FilterMessage("Goroutine dump").FilterField(zap.Int("part", 1)).Len()
+		}
+
+		probe()
+		probe()
+		probe()
+		assert.Equal(t, 3, logs.FilterMessage("Health check failed").Len())
+		assert.Equal(t, 1, dumps())
+
+		reason = ""
+
+		probe()
+		assert.Equal(t, 1, dumps())
+
+		reason = "resource processing has been running for 5m1s"
+
+		probe()
+		assert.Equal(t, 2, dumps())
 	})
 }
