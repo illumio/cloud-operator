@@ -49,7 +49,10 @@ type resourcesClient struct {
 	clusterName   string // Optional: cluster name for self-managed clusters
 	runtimeCache  *cache.ConfiguredObjectCache
 
-	mutex  sync.RWMutex
+	// mutex serializes the sends on grpcStream and guards closed. A gRPC stream
+	// allows only one Send at a time: two concurrent sends can leave one of them
+	// waiting forever for write quota. Run and the keepalive goroutine both send.
+	mutex  sync.Mutex
 	closed bool
 }
 
@@ -228,8 +231,8 @@ func (c *resourcesClient) Run(ctx context.Context) error {
 
 // SendKeepalive sends a keepalive message on the resources stream.
 func (c *resourcesClient) SendKeepalive(_ context.Context) error {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
 	if c.closed {
 		return errors.New("stream closed")
@@ -261,8 +264,8 @@ func (c *resourcesClient) Close() error {
 
 // SendToStream sends a request to the resources stream.
 func (c *resourcesClient) SendToStream(request *pb.SendKubernetesResourcesRequest) error {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
 	if c.closed {
 		return errors.New("stream closed")

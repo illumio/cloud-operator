@@ -31,7 +31,10 @@ type networkFlowsClient struct {
 	flowCache  *cache.FlowCache
 	stats      *stream.Stats
 
-	mutex  sync.RWMutex
+	// mutex serializes the sends on grpcStream and guards closed. A gRPC stream
+	// allows only one Send at a time: two concurrent sends can leave one of them
+	// waiting forever for write quota. Run and the keepalive goroutine both send.
+	mutex  sync.Mutex
 	closed bool
 }
 
@@ -86,8 +89,8 @@ func (c *networkFlowsClient) sendNetworkFlowRequest(flow any) error {
 		return fmt.Errorf("unsupported flow type: %T", flow)
 	}
 
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
 	if c.closed {
 		return errors.New("stream closed")
@@ -106,8 +109,8 @@ func (c *networkFlowsClient) sendNetworkFlowRequest(flow any) error {
 
 // SendKeepalive sends a keepalive message on the network flows stream.
 func (c *networkFlowsClient) SendKeepalive(_ context.Context) error {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
 	if c.closed {
 		return errors.New("stream closed")
