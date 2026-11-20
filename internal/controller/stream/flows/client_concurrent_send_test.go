@@ -4,6 +4,7 @@ package flows
 
 import (
 	"context"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -34,7 +35,7 @@ func (s *blockingNetworkFlowsStream) Send(_ *pb.SendKubernetesNetworkFlowsReques
 }
 
 func (s *blockingNetworkFlowsStream) Recv() (*pb.SendKubernetesNetworkFlowsResponse, error) {
-	return nil, nil
+	return nil, io.EOF
 }
 
 // A gRPC stream allows only one Send at a time. The keepalive goroutine and the

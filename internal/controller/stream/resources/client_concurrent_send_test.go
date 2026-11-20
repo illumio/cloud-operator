@@ -4,6 +4,7 @@ package resources
 
 import (
 	"context"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -33,7 +34,7 @@ func (s *blockingResourcesStream) Send(_ *pb.SendKubernetesResourcesRequest) err
 }
 
 func (s *blockingResourcesStream) Recv() (*pb.SendKubernetesResourcesResponse, error) {
-	return nil, nil
+	return nil, io.EOF
 }
 
 // A gRPC stream allows only one Send at a time. The keepalive goroutine and the
