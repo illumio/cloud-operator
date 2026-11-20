@@ -18,6 +18,8 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/keepalive"
+	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -71,9 +73,15 @@ func GetClusterCredentials(ctx context.Context, logger *zap.Logger, clientset ku
 	return clientID, clientSecret, err
 }
 
-// readClusterCredentialsFromK8sSecret takes a secretName and reads the file.
+// readClusterCredentialsFromK8sSecret reads the cluster credentials from the
+// Secret. A Secret that does not exist is not an error: it returns empty
+// credentials, as the cluster is not onboarded yet.
 func readClusterCredentialsFromK8sSecret(ctx context.Context, clientset kubernetes.Interface, secretName string, podNamespace string) (string, string, error) {
 	secret, err := clientset.CoreV1().Secrets(podNamespace).Get(ctx, secretName, metav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		return "", "", nil
+	}
+
 	if err != nil {
 		return "", "", fmt.Errorf("failed to read cluster credentials from k8s secret: %w", err)
 	}
@@ -84,22 +92,46 @@ func readClusterCredentialsFromK8sSecret(ctx context.Context, clientset kubernet
 	return clientID, clientSecret, nil
 }
 
-// writeClusterCredentialsIntoK8sSecret updates the data in an existing Kubernetes Secret without overwriting annotations or labels.
+// writeClusterCredentialsIntoK8sSecret stores the cluster credentials in the
+// Secret. It creates the Secret if it does not exist. Otherwise it replaces
+// only the data of the Secret and keeps its labels and annotations.
+//
+// The operator owns this Secret. A Secret that the Helm chart rendered with
+// empty credentials would be applied again by "helm template" and GitOps tools
+// on every deployment, which erases the credentials and onboards the cluster
+// again as a new cluster.
 func writeClusterCredentialsIntoK8sSecret(ctx context.Context, clientset kubernetes.Interface, clusterClientID, clusterClusterSecret, clusterCreds string, podNamespace string) error {
 	secretsClient := clientset.CoreV1().Secrets(podNamespace)
-	// Fetch the existing Secret to preserve metadata
-	existingSecret, err := secretsClient.Get(ctx, clusterCreds, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to read cluster credentials from k8s secret for update: %w", err)
-	}
-
-	// Update only the Secret data
-	existingSecret.Data = map[string][]byte{
+	data := map[string][]byte{
 		SecretFieldClientID:     []byte(clusterClientID),
 		SecretFieldClientSecret: []byte(clusterClusterSecret),
 	}
 
-	// Apply the update
+	existingSecret, err := secretsClient.Get(ctx, clusterCreds, metav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		_, err = secretsClient.Create(ctx, &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: clusterCreds, Namespace: podNamespace},
+			Type:       corev1.SecretTypeOpaque,
+			Data:       data,
+		}, metav1.CreateOptions{})
+		if err == nil {
+			return nil
+		}
+
+		if !k8serrors.IsAlreadyExists(err) {
+			return fmt.Errorf("failed to create k8s secret for cluster credentials: %w", err)
+		}
+
+		// The Secret was created since the Get. Update it instead.
+		existingSecret, err = secretsClient.Get(ctx, clusterCreds, metav1.GetOptions{})
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to read cluster credentials from k8s secret for update: %w", err)
+	}
+
+	existingSecret.Data = data
+
 	_, err = secretsClient.Update(ctx, existingSecret, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to write cluster credentials into k8s secret: %w", err)
