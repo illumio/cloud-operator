@@ -58,6 +58,13 @@ func GetClusterCredentials(ctx context.Context, logger *zap.Logger, clientset ku
 			return "", "", errors.New("onboarding credentials are not configured")
 		}
 
+		// Onboarding registers a new cluster. Do it only if the credentials
+		// can be stored: otherwise every retry would register another cluster.
+		err = ensureClusterCredentialsSecret(ctx, clientset, config.ClusterCreds, config.PodNamespace)
+		if err != nil {
+			return "", "", fmt.Errorf("not onboarding the cluster, as its credentials cannot be stored: %w", err)
+		}
+
 		clientID, clientSecret, err = OnboardCluster(ctx, config.TlsSkipVerify, config.OnboardingEndpoint,
 			config.OnboardingClientID, config.OnboardingClientSecret, logger)
 		if err != nil {
@@ -90,6 +97,35 @@ func readClusterCredentialsFromK8sSecret(ctx context.Context, clientset kubernet
 	clientSecret := string(secret.Data[SecretFieldClientSecret])
 
 	return clientID, clientSecret, nil
+}
+
+// ensureClusterCredentialsSecret checks that the operator can store the cluster
+// credentials: it creates the Secret, empty, if it does not exist, and checks
+// with a dry run that it may update it.
+func ensureClusterCredentialsSecret(ctx context.Context, clientset kubernetes.Interface, clusterCreds string, podNamespace string) error {
+	secretsClient := clientset.CoreV1().Secrets(podNamespace)
+
+	secret, err := secretsClient.Get(ctx, clusterCreds, metav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		secret, err = secretsClient.Create(ctx, &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: clusterCreds, Namespace: podNamespace},
+			Type:       corev1.SecretTypeOpaque,
+		}, metav1.CreateOptions{})
+		if k8serrors.IsAlreadyExists(err) {
+			secret, err = secretsClient.Get(ctx, clusterCreds, metav1.GetOptions{})
+		}
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to create or read k8s secret for cluster credentials: %w", err)
+	}
+
+	_, err = secretsClient.Update(ctx, secret, metav1.UpdateOptions{DryRun: []string{metav1.DryRunAll}})
+	if err != nil {
+		return fmt.Errorf("failed to check that the k8s secret for cluster credentials can be updated: %w", err)
+	}
+
+	return nil
 }
 
 // writeClusterCredentialsIntoK8sSecret stores the cluster credentials in the

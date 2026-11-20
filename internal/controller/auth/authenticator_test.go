@@ -5,6 +5,7 @@ package auth
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -331,6 +332,60 @@ func TestGetClusterCredentials_OnboardsOnceWithoutSecret(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "cluster-id", string(secret.Data[SecretFieldClientID]))
 	assert.Equal(t, "cluster-secret", string(secret.Data[SecretFieldClientSecret]))
+}
+
+// If the operator cannot store the credentials, it must not onboard the
+// cluster: every retry would register another cluster.
+func TestGetClusterCredentials_DoesNotOnboardIfCredentialsCannotBeStored(t *testing.T) {
+	forbidden := func(verb string) k8stesting.ReactionFunc {
+		return func(k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, k8serrors.NewForbidden(v1.Resource("secrets"), "clustercreds", errors.New("cannot "+verb))
+		}
+	}
+
+	tests := map[string]struct {
+		secretExists  bool
+		forbiddenVerb string
+	}{
+		"cannot create the Secret": {secretExists: false, forbiddenVerb: "create"},
+		"cannot update the Secret": {secretExists: true, forbiddenVerb: "update"},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			clientset := fake.NewClientset()
+
+			if tt.secretExists {
+				_, err := clientset.CoreV1().Secrets("illumio-cloud").Create(ctx, &v1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "clustercreds", Namespace: "illumio-cloud"},
+				}, metav1.CreateOptions{})
+				require.NoError(t, err)
+			}
+
+			clientset.PrependReactor(tt.forbiddenVerb, "secrets", forbidden(tt.forbiddenVerb))
+
+			onboardings := 0
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				onboardings++
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"cluster_client_id":"cluster-id","cluster_client_secret":"cluster-secret"}`)
+			}))
+			defer server.Close()
+
+			_, _, err := GetClusterCredentials(ctx, zap.NewNop(), clientset, AuthConfig{
+				ClusterCreds:           "clustercreds",
+				PodNamespace:           "illumio-cloud",
+				OnboardingClientID:     "onboarding-id",
+				OnboardingClientSecret: "onboarding-secret",
+				OnboardingEndpoint:     server.URL,
+			})
+			require.ErrorContains(t, err, "not onboarding the cluster")
+			assert.Equal(t, 0, onboardings, "the cluster must not be onboarded")
+		})
+	}
 }
 
 // TestParseToken tests the ParseToken function.
