@@ -193,7 +193,7 @@ func (suite *AuthTestSuite) TestWriteK8sSecret() {
 				}
 			}
 
-			err := writeClusterCredentialsIntoK8sSecret(ctx, fakeClientset, tt.clusterClientID, tt.clusterClientSecret, tt.secretName, "illumio-cloud")
+			_, _, err := writeClusterCredentialsIntoK8sSecret(ctx, fakeClientset, tt.clusterClientID, tt.clusterClientSecret, tt.secretName, "illumio-cloud")
 			if tt.expectedError {
 				suite.EqualErrorf(err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
 			} else {
@@ -221,8 +221,10 @@ func TestWriteClusterCredentials_KeepsMetadataOfExistingSecret(t *testing.T) {
 		Data: map[string][]byte{SecretFieldClientID: []byte(""), SecretFieldClientSecret: []byte("")},
 	})
 
-	err := writeClusterCredentialsIntoK8sSecret(ctx, clientset, "id", "secret", "clustercreds", "illumio-cloud")
+	clientID, clientSecret, err := writeClusterCredentialsIntoK8sSecret(ctx, clientset, "id", "secret", "clustercreds", "illumio-cloud")
 	require.NoError(t, err)
+	assert.Equal(t, "id", clientID)
+	assert.Equal(t, "secret", clientSecret)
 
 	secret, err := clientset.CoreV1().Secrets("illumio-cloud").Get(ctx, "clustercreds", metav1.GetOptions{})
 	require.NoError(t, err)
@@ -232,36 +234,65 @@ func TestWriteClusterCredentials_KeepsMetadataOfExistingSecret(t *testing.T) {
 	assert.Equal(t, map[string]string{"helm.sh/resource-policy": "keep"}, secret.Annotations)
 }
 
-// If the Secret is created between the read and the create, the operator
-// updates it instead of failing.
+// If the Secret is created between the read and the create, the operator does
+// not fail. It fills in a Secret without credentials. It keeps the credentials
+// of a Secret that another instance already filled in, and returns them, so
+// that all instances use one cluster identity.
 func TestWriteClusterCredentials_SecretCreatedConcurrently(t *testing.T) {
-	ctx := context.Background()
-	clientset := fake.NewClientset()
+	tests := map[string]struct {
+		concurrentData       map[string][]byte
+		expectedClientID     string
+		expectedClientSecret string
+	}{
+		"without credentials": {
+			concurrentData:       nil,
+			expectedClientID:     "id",
+			expectedClientSecret: "secret",
+		},
+		"with the credentials of another instance": {
+			concurrentData: map[string][]byte{
+				SecretFieldClientID:     []byte("other-id"),
+				SecretFieldClientSecret: []byte("other-secret"),
+			},
+			expectedClientID:     "other-id",
+			expectedClientSecret: "other-secret",
+		},
+	}
 
-	// The first Get reports that the Secret does not exist, although it does.
-	gets := 0
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			clientset := fake.NewClientset()
 
-	clientset.PrependReactor("get", "secrets", func(k8stesting.Action) (bool, runtime.Object, error) {
-		gets++
-		if gets == 1 {
-			return true, nil, k8serrors.NewNotFound(v1.Resource("secrets"), "clustercreds")
-		}
+			// The first Get reports that the Secret does not exist, although it does.
+			gets := 0
 
-		return false, nil, nil
-	})
+			clientset.PrependReactor("get", "secrets", func(k8stesting.Action) (bool, runtime.Object, error) {
+				gets++
+				if gets == 1 {
+					return true, nil, k8serrors.NewNotFound(v1.Resource("secrets"), "clustercreds")
+				}
 
-	_, err := clientset.CoreV1().Secrets("illumio-cloud").Create(ctx, &v1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "clustercreds", Namespace: "illumio-cloud"},
-	}, metav1.CreateOptions{})
-	require.NoError(t, err)
+				return false, nil, nil
+			})
 
-	err = writeClusterCredentialsIntoK8sSecret(ctx, clientset, "id", "secret", "clustercreds", "illumio-cloud")
-	require.NoError(t, err)
+			_, err := clientset.CoreV1().Secrets("illumio-cloud").Create(ctx, &v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "clustercreds", Namespace: "illumio-cloud"},
+				Data:       tt.concurrentData,
+			}, metav1.CreateOptions{})
+			require.NoError(t, err)
 
-	secret, err := clientset.CoreV1().Secrets("illumio-cloud").Get(ctx, "clustercreds", metav1.GetOptions{})
-	require.NoError(t, err)
-	assert.Equal(t, "id", string(secret.Data[SecretFieldClientID]))
-	assert.Equal(t, "secret", string(secret.Data[SecretFieldClientSecret]))
+			clientID, clientSecret, err := writeClusterCredentialsIntoK8sSecret(ctx, clientset, "id", "secret", "clustercreds", "illumio-cloud")
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedClientID, clientID)
+			assert.Equal(t, tt.expectedClientSecret, clientSecret)
+
+			secret, err := clientset.CoreV1().Secrets("illumio-cloud").Get(ctx, "clustercreds", metav1.GetOptions{})
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedClientID, string(secret.Data[SecretFieldClientID]))
+			assert.Equal(t, tt.expectedClientSecret, string(secret.Data[SecretFieldClientSecret]))
+		})
+	}
 }
 
 // Without a Secret, the operator onboards the cluster and creates the Secret.
