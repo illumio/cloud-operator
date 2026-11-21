@@ -103,6 +103,15 @@ func newHealthHandler(logger *zap.Logger, status func() string, dump func(reason
 	}
 }
 
+// dumpGoroutines returns a function that logs the stack of every goroutine,
+// without waiting for it: logging the stacks can block if the log stream is
+// stalled.
+func dumpGoroutines(logger *zap.Logger) func(reason string) {
+	return func(reason string) {
+		go logging.LogGoroutineDump(logger, os.Stderr, reason)
+	}
+}
+
 // bindEnv is a helper function that binds an environment variable to a key and handles errors.
 func bindEnv(logger *zap.Logger, key, envVar string) {
 	if err := viper.BindEnv(key, envVar); err != nil {
@@ -262,10 +271,7 @@ func main() {
 		logger.Error("Failed to start gops agent", zap.Error(err))
 	}
 
-	http.HandleFunc("/healthz", newHealthHandler(logger, stream.UnhealthyReason, func(reason string) {
-		// Logging the stacks can block if the log stream is stalled.
-		go logging.LogGoroutineDump(logger, os.Stderr, reason)
-	}))
+	http.HandleFunc("/healthz", newHealthHandler(logger, stream.UnhealthyReason, dumpGoroutines(logger)))
 
 	healthChecker := &http.Server{
 		Addr:              ":8080",

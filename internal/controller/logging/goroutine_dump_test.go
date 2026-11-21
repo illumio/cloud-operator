@@ -41,7 +41,7 @@ func TestLogGoroutineDump(t *testing.T) {
 	entries := logs.FilterMessage("Goroutine dump").All()
 	require.NotEmpty(t, entries)
 
-	var logged []string
+	logged := make([]string, 0, len(entries))
 
 	for i, entry := range entries {
 		fields := entry.ContextMap()
