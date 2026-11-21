@@ -5,6 +5,7 @@ package auth
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,8 +21,10 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 // AuthTestSuite is the test suite for auth package.
@@ -73,10 +76,10 @@ func (suite *AuthTestSuite) TestReadCredentialsK8sSecrets() {
 			expectedClientID:     "test-client-id",
 			expectedClientSecret: "test-client-secret",
 		},
+		// A Secret that does not exist means that the cluster is not onboarded yet.
 		"secret-not-found": {
-			secretName:     "non-existent-secret",
-			expectedError:  true,
-			expectedErrMsg: "failed to read cluster credentials from k8s secret: secrets \"non-existent-secret\" not found",
+			secretName:    "non-existent-secret",
+			expectedError: false,
 		},
 		"client-id-not-found": {
 			secretName: "test-secret-no-client-id",
@@ -141,14 +144,14 @@ func (suite *AuthTestSuite) TestWriteK8sSecret() {
 		expectedError       bool
 		expectedErrMsg      string
 	}{
-		"failure": { //nolint:gosec // G101: test credentials, not real
-			namespaceExists:     false,
+		// The operator creates the Secret if it does not exist.
+		"secret-not-found": { //nolint:gosec // G101: test credentials, not real
+			namespaceExists:     true,
 			secretExists:        false,
 			clusterClientID:     "test-client-id",
 			clusterClientSecret: "test-client-secret",
 			secretName:          "write-test-secret",
-			expectedError:       true,
-			expectedErrMsg:      "failed to read cluster credentials from k8s secret for update: secrets \"write-test-secret\" not found",
+			expectedError:       false,
 		},
 		"success": { //nolint:gosec // G101: test credentials, not real
 			namespaceExists:     true,
@@ -191,12 +194,196 @@ func (suite *AuthTestSuite) TestWriteK8sSecret() {
 				}
 			}
 
-			err := writeClusterCredentialsIntoK8sSecret(ctx, fakeClientset, tt.clusterClientID, tt.clusterClientSecret, tt.secretName, "illumio-cloud")
+			_, _, err := writeClusterCredentialsIntoK8sSecret(ctx, fakeClientset, tt.clusterClientID, tt.clusterClientSecret, tt.secretName, "illumio-cloud")
 			if tt.expectedError {
 				suite.EqualErrorf(err, tt.expectedErrMsg, "Error should be: %v, got: %v", tt.expectedErrMsg, err)
 			} else {
-				suite.NoError(err)
+				suite.Require().NoError(err)
+
+				secret, err := fakeClientset.CoreV1().Secrets("illumio-cloud").Get(ctx, tt.secretName, metav1.GetOptions{})
+				suite.Require().NoError(err)
+				suite.Equal(tt.clusterClientID, string(secret.Data[SecretFieldClientID]))
+				suite.Equal(tt.clusterClientSecret, string(secret.Data[SecretFieldClientSecret]))
 			}
+		})
+	}
+}
+
+// The labels and annotations of an existing Secret are kept: only its data is replaced.
+func TestWriteClusterCredentials_KeepsMetadataOfExistingSecret(t *testing.T) {
+	ctx := context.Background()
+	clientset := fake.NewClientset(&v1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "clustercreds",
+			Namespace:   "illumio-cloud",
+			Labels:      map[string]string{"app": "cloud-operator"},
+			Annotations: map[string]string{"helm.sh/resource-policy": "keep"},
+		},
+		Data: map[string][]byte{SecretFieldClientID: []byte(""), SecretFieldClientSecret: []byte("")},
+	})
+
+	clientID, clientSecret, err := writeClusterCredentialsIntoK8sSecret(ctx, clientset, "id", "secret", "clustercreds", "illumio-cloud")
+	require.NoError(t, err)
+	assert.Equal(t, "id", clientID)
+	assert.Equal(t, "secret", clientSecret)
+
+	secret, err := clientset.CoreV1().Secrets("illumio-cloud").Get(ctx, "clustercreds", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "id", string(secret.Data[SecretFieldClientID]))
+	assert.Equal(t, "secret", string(secret.Data[SecretFieldClientSecret]))
+	assert.Equal(t, map[string]string{"app": "cloud-operator"}, secret.Labels)
+	assert.Equal(t, map[string]string{"helm.sh/resource-policy": "keep"}, secret.Annotations)
+}
+
+// If the Secret is created between the read and the create, the operator does
+// not fail. It fills in a Secret without credentials. It keeps the credentials
+// of a Secret that another instance already filled in, and returns them, so
+// that all instances use one cluster identity.
+func TestWriteClusterCredentials_SecretCreatedConcurrently(t *testing.T) {
+	tests := map[string]struct {
+		concurrentData       map[string][]byte
+		expectedClientID     string
+		expectedClientSecret string
+	}{
+		"without credentials": {
+			concurrentData:       nil,
+			expectedClientID:     "id",
+			expectedClientSecret: "secret",
+		},
+		"with the credentials of another instance": {
+			concurrentData: map[string][]byte{
+				SecretFieldClientID:     []byte("other-id"),
+				SecretFieldClientSecret: []byte("other-secret"),
+			},
+			expectedClientID:     "other-id",
+			expectedClientSecret: "other-secret",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			clientset := fake.NewClientset()
+
+			// The first Get reports that the Secret does not exist, although it does.
+			gets := 0
+
+			clientset.PrependReactor("get", "secrets", func(k8stesting.Action) (bool, runtime.Object, error) {
+				gets++
+				if gets == 1 {
+					return true, nil, k8serrors.NewNotFound(v1.Resource("secrets"), "clustercreds")
+				}
+
+				return false, nil, nil
+			})
+
+			_, err := clientset.CoreV1().Secrets("illumio-cloud").Create(ctx, &v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "clustercreds", Namespace: "illumio-cloud"},
+				Data:       tt.concurrentData,
+			}, metav1.CreateOptions{})
+			require.NoError(t, err)
+
+			clientID, clientSecret, err := writeClusterCredentialsIntoK8sSecret(ctx, clientset, "id", "secret", "clustercreds", "illumio-cloud")
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedClientID, clientID)
+			assert.Equal(t, tt.expectedClientSecret, clientSecret)
+
+			secret, err := clientset.CoreV1().Secrets("illumio-cloud").Get(ctx, "clustercreds", metav1.GetOptions{})
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedClientID, string(secret.Data[SecretFieldClientID]))
+			assert.Equal(t, tt.expectedClientSecret, string(secret.Data[SecretFieldClientSecret]))
+		})
+	}
+}
+
+// Without a Secret, the operator onboards the cluster and creates the Secret.
+// It then reads the credentials from the Secret and does not onboard again.
+func TestGetClusterCredentials_OnboardsOnceWithoutSecret(t *testing.T) {
+	ctx := context.Background()
+	clientset := fake.NewClientset()
+	onboardings := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		onboardings++
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"cluster_client_id":"cluster-id","cluster_client_secret":"cluster-secret"}`)
+	}))
+	defer server.Close()
+
+	config := AuthConfig{
+		ClusterCreds:           "clustercreds",
+		PodNamespace:           "illumio-cloud",
+		OnboardingClientID:     "onboarding-id",
+		OnboardingClientSecret: "onboarding-secret",
+		OnboardingEndpoint:     server.URL,
+	}
+
+	for range 2 {
+		clientID, clientSecret, err := GetClusterCredentials(ctx, zap.NewNop(), clientset, config)
+		require.NoError(t, err)
+		assert.Equal(t, "cluster-id", clientID)
+		assert.Equal(t, "cluster-secret", clientSecret)
+	}
+
+	assert.Equal(t, 1, onboardings, "the cluster must be onboarded only once")
+
+	secret, err := clientset.CoreV1().Secrets("illumio-cloud").Get(ctx, "clustercreds", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "cluster-id", string(secret.Data[SecretFieldClientID]))
+	assert.Equal(t, "cluster-secret", string(secret.Data[SecretFieldClientSecret]))
+}
+
+// If the operator cannot store the credentials, it must not onboard the
+// cluster: every retry would register another cluster.
+func TestGetClusterCredentials_DoesNotOnboardIfCredentialsCannotBeStored(t *testing.T) {
+	forbidden := func(verb string) k8stesting.ReactionFunc {
+		return func(k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, k8serrors.NewForbidden(v1.Resource("secrets"), "clustercreds", errors.New("cannot "+verb))
+		}
+	}
+
+	tests := map[string]struct {
+		secretExists  bool
+		forbiddenVerb string
+	}{
+		"cannot create the Secret": {secretExists: false, forbiddenVerb: "create"},
+		"cannot update the Secret": {secretExists: true, forbiddenVerb: "update"},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			clientset := fake.NewClientset()
+
+			if tt.secretExists {
+				_, err := clientset.CoreV1().Secrets("illumio-cloud").Create(ctx, &v1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "clustercreds", Namespace: "illumio-cloud"},
+				}, metav1.CreateOptions{})
+				require.NoError(t, err)
+			}
+
+			clientset.PrependReactor(tt.forbiddenVerb, "secrets", forbidden(tt.forbiddenVerb))
+
+			onboardings := 0
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				onboardings++
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"cluster_client_id":"cluster-id","cluster_client_secret":"cluster-secret"}`)
+			}))
+			defer server.Close()
+
+			_, _, err := GetClusterCredentials(ctx, zap.NewNop(), clientset, AuthConfig{
+				ClusterCreds:           "clustercreds",
+				PodNamespace:           "illumio-cloud",
+				OnboardingClientID:     "onboarding-id",
+				OnboardingClientSecret: "onboarding-secret",
+				OnboardingEndpoint:     server.URL,
+			})
+			require.ErrorContains(t, err, "not onboarding the cluster")
+			assert.Equal(t, 0, onboardings, "the cluster must not be onboarded")
 		})
 	}
 }

@@ -29,6 +29,9 @@ Namespace: {{ .Release.Namespace }}
 
 - To delete the release, run:
     helm delete {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+  Helm does not delete the clustercreds Secret, which holds the credentials of
+  the cluster. To delete it, run:
+    kubectl delete secret clustercreds --namespace {{ .Release.Namespace }}
 
 - To run unittests, run:
     helm unittest .

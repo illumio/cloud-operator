@@ -35,10 +35,27 @@ resources:
     cpu: 250m
     memory: 256Mi
 
+# The credentials of this cluster, stored in the clustercreds Secret.
+# By default, leave clientId and clientSecret empty: cloud-operator onboards the
+# cluster with onboardingSecret, creates the clustercreds Secret and stores the
+# credentials in it. The chart then does not render the Secret, so deploying
+# again, including with "helm template" or a GitOps tool, keeps the credentials.
+#
+# In this case Helm does not manage the clustercreds Secret, and "helm uninstall"
+# does not delete it. Delete it by hand when you uninstall the release:
+#   kubectl delete secret clustercreds --namespace <namespace>
+# If you install cloud-operator again without deleting it, cloud-operator uses
+# the credentials in the Secret and does not onboard the cluster again.
 clusterCredsSecret:
+  # Credentials of a cluster that is already onboarded. If set, the chart
+  # renders the clustercreds Secret with them, unless the Secret already exists.
   clientId: ""
   clientSecret: ""
+  # If true, the chart never renders the clustercreds Secret.
   disableSecretCreation: false
+  # If true, the chart always renders the clustercreds Secret with clientId and
+  # clientSecret, and replaces an existing Secret. With empty credentials, this
+  # erases the credentials and cloud-operator onboards the cluster again.
   forceSecretCreation: false
 
 onboardingSecret:
