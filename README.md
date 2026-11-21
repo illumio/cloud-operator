@@ -46,6 +46,13 @@ helm uninstall illumio --namespace illumio-cloud
 ```
 This will delete all the resources associated with the `illumio` release from the `illumio-cloud` namespace.
 
+Helm does not manage the `clustercreds` Secret, in which cloud-operator stores the credentials of the cluster, and does not delete it. Delete it by hand:
+
+```
+kubectl delete secret clustercreds --namespace illumio-cloud
+```
+If you install cloud-operator again without deleting this Secret, cloud-operator uses the credentials in it and does not onboard the cluster again.
+
 ### Prerequisites
 - go version v1.22.2+
 - Kubernetes v1.30+ cluster.

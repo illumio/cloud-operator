@@ -40,6 +40,12 @@ resources:
 # cluster with onboardingSecret, creates the clustercreds Secret and stores the
 # credentials in it. The chart then does not render the Secret, so deploying
 # again, including with "helm template" or a GitOps tool, keeps the credentials.
+#
+# In this case Helm does not manage the clustercreds Secret, and "helm uninstall"
+# does not delete it. Delete it by hand when you uninstall the release:
+#   kubectl delete secret clustercreds --namespace <namespace>
+# If you install cloud-operator again without deleting it, cloud-operator uses
+# the credentials in the Secret and does not onboard the cluster again.
 clusterCredsSecret:
   # Credentials of a cluster that is already onboarded. If set, the chart
   # renders the clustercreds Secret with them, unless the Secret already exists.
