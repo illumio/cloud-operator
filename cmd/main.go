@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
+	"sync"
 	"time"
 
 	"github.com/go-logr/zapr"
@@ -65,17 +67,48 @@ const (
 // newHealthHandler returns an HTTP HandlerFunc that checks the health of the
 // server by calling the given function and returns a status code accordingly.
 // The status function returns an empty string if the server is healthy, or an error status if the server is unhealthy.
-func newHealthHandler(logger *zap.Logger, status func() string) http.HandlerFunc {
+//
+// When the server becomes unhealthy, the handler calls dump with the reason,
+// once, so that the logs show where the server stalled before the liveness
+// probe restarts it. The handler does not wait for dump to log the stacks: it
+// must not delay the response to the probe.
+func newHealthHandler(logger *zap.Logger, status func() string, dump func(reason string)) http.HandlerFunc {
+	var (
+		// mutex serializes the probes, so that a slow probe cannot record an
+		// older state after a newer one.
+		mutex sync.Mutex
+		// dumped is true if dump was called since the server was last healthy.
+		dumped bool
+	)
+
 	return func(w http.ResponseWriter, r *http.Request) {
+		mutex.Lock()
 		reason := status()
+		mustDump := reason != "" && !dumped
+		dumped = reason != ""
+		mutex.Unlock()
+
 		if reason == "" {
 			w.WriteHeader(http.StatusOK)
 
 			return
 		}
 
+		if mustDump {
+			dump(reason)
+		}
+
 		logger.Error("Health check failed", zap.String("reason", reason))
 		http.Error(w, reason, http.StatusInternalServerError)
+	}
+}
+
+// dumpGoroutines returns a function that logs the stack of every goroutine,
+// without waiting for it: logging the stacks can block if the log stream is
+// stalled.
+func dumpGoroutines(logger *zap.Logger) func(reason string) {
+	return func(reason string) {
+		go logging.LogGoroutineDump(logger, os.Stderr, reason)
 	}
 }
 
@@ -238,7 +271,7 @@ func main() {
 		logger.Error("Failed to start gops agent", zap.Error(err))
 	}
 
-	http.HandleFunc("/healthz", newHealthHandler(logger, stream.UnhealthyReason))
+	http.HandleFunc("/healthz", newHealthHandler(logger, stream.UnhealthyReason, dumpGoroutines(logger)))
 
 	healthChecker := &http.Server{
 		Addr:              ":8080",
