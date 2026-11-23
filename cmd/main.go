@@ -301,6 +301,7 @@ func main() {
 		K8sClient:                      k8sClient,
 		Logger:                         logger,
 		OVNKNamespace:                  viper.GetString("ovnk_namespace"),
+		PodNamespace:                   viper.GetString("pod_namespace"),
 		Stats:                          stats,
 		SyslogCollectorPort:            viper.GetString("syslog_collector_port"),
 		SyslogTLS:                      syslogTLSConfig(),
