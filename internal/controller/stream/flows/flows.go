@@ -49,6 +49,8 @@ type CollectorConfig struct {
 	TlsAuthProps       *tls.AuthProperties
 	IPFIXCollectorPort string
 	OVNKNamespace      string
+	// PodNamespace is the namespace of the operator's pod and Services.
+	PodNamespace string
 	// AWS VPC CNI configuration
 	AWSVPCCNIPollingInterval time.Duration
 

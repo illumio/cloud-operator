@@ -211,6 +211,27 @@ To reject plain-text connections, set `calico.syslogTLS.required: true`.
 - A warning `Calico Enterprise is sending aggregated flow logs ...` means flow log aggregation is still enabled. Apply step 2.
 - If `flows_received` stays at 0 and no records are dropped, check that the LogCollector's syslog `endpoint` points at the operator's Service and port.
 
+## OVN-Kubernetes Flow Collection on OpenShift
+
+On OpenShift with OVN-Kubernetes, the operator receives network flows as IPFIX on UDP port `4739` (`env.ipfixCollectorPort`). OVN-Kubernetes exports the flows to the addresses in `spec.exportNetworkFlows.ipfix.collectors` of the cluster network configuration, which must contain the cluster IP of the operator's Service:
+
+```sh
+COLLECTOR=$(kubectl -n illumio-cloud get service -l app=cloud-operator -o jsonpath='{.items[0].spec.clusterIP}'):4739
+kubectl patch network.operator cluster --type merge \
+  -p "{\"spec\":{\"exportNetworkFlows\":{\"ipfix\":{\"collectors\":[\"$COLLECTOR\"]}}}}"
+```
+
+The collector is an IP address, not a name. If the operator's Service is deleted and created again, or gets another name (it contains the Helm release name), it gets another cluster IP, and the flows are sent to an address where nothing listens. To keep the address, set `service.clusterIP` and always use the same release name.
+
+### Troubleshooting
+
+The operator compares the configured collectors with the Services that select its pod, at startup and every 5 minutes, and logs the result when it changes. It only reads the network configuration and never changes it.
+
+- `OVN-Kubernetes exports network flows to the IPFIX collector` means the export is set up correctly.
+- An error `OVN-Kubernetes exports network flows to an address that does not lead to this pod` or `OVN-Kubernetes does not export network flows` means no flows will be received. The log entry lists the `configured_collectors` and the `expected_collectors`: set the collectors to one of the expected ones, as above.
+- A warning `No Service leads to the IPFIX collector of this pod` means no Service in the operator's namespace selects its pod and forwards UDP to the IPFIX collector port.
+- A warning `Not allowed to read network.operator.openshift.io/cluster` means the operator's ClusterRole lacks `get` on that object, so the export is not checked.
+
 
 # IPFIX Template Sets ConfigMap
 

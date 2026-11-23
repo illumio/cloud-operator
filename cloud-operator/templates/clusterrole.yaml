@@ -77,6 +77,13 @@ rules:
 - apiGroups: ["networking.k8s.io"]
   resources: ["ingressclasses", "ingresses", "networkpolicies"]
   verbs: ["get", "list", "watch"]
+# On OpenShift, the cluster network configuration lists the addresses to which
+# OVN-Kubernetes exports network flows. The operator only reads it, to report an
+# export that does not lead to its IPFIX collector.
+- apiGroups: ["operator.openshift.io"]
+  resources: ["networks"]
+  resourceNames: ["cluster"]
+  verbs: ["get"]
 # The Tigera operator's Installation identifies Calico Enterprise clusters, and its
 # LogCollector shows whether flow logs are forwarded to a syslog store.
 - apiGroups: ["operator.tigera.io"]

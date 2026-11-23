@@ -21,6 +21,10 @@ type Factory struct {
 	Logger             *zap.Logger
 	IPFIXCollectorPort string
 	FlowSink           collector.FlowSink
+	// K8sClient and PodNamespace are used to check that OVN-Kubernetes exports
+	// its flows to this pod. The check is skipped if K8sClient is nil.
+	K8sClient    collector.K8sClientGetter
+	PodNamespace string
 }
 
 // NewCollector creates a new OVN-K flow collector.
@@ -29,5 +33,7 @@ func (f *Factory) NewCollector(_ context.Context) (flowCollector, error) {
 		logger:             f.Logger,
 		ipfixCollectorPort: f.IPFIXCollectorPort,
 		flowSink:           f.FlowSink,
+		k8sClient:          f.K8sClient,
+		podNamespace:       f.PodNamespace,
 	}, nil
 }

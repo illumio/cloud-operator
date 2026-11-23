@@ -133,6 +133,8 @@ func DetectFlowCollector(ctx context.Context, config CollectorConfig) (pb.FlowCo
 			Logger:             config.Logger,
 			IPFIXCollectorPort: config.IPFIXCollectorPort,
 			FlowSink:           flowSink,
+			K8sClient:          config.K8sClient,
+			PodNamespace:       config.PodNamespace,
 		}
 
 		return pb.FlowCollector_FLOW_COLLECTOR_OVNK, "OVN-K", collectorFactoryFunc(func(ctx context.Context) (Collector, error) {
